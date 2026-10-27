@@ -64,7 +64,7 @@ struct PendingApprovalCard: View {
                 Button {
                     approve(approval)
                 } label: {
-                    Label("Approve", systemImage: "faceid")
+                    Label("Approve", systemImage: SettingsView.biometrySystemImage)
                         .frame(maxWidth: .infinity)
                 }
                 .applyProminentGlassStyle()

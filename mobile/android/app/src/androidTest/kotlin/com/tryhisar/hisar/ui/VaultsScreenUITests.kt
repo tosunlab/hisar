@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.ui
 
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
@@ -89,6 +90,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             scrollTo("favorite-Netflix")
             saveScreenshot("vaults-home-favorites")
             scrollTo("organization-section-Acme")
+            scrollTo("waiting-vault-key-Acme")
             assertTrue(exists(hasTestTag("waiting-vault-key-Acme")))
             saveScreenshot("vaults-home-vaults")
             scrollTo("tag-work")
@@ -124,24 +126,69 @@ class VaultsScreenUITests : HisarUITestCase() {
             Espresso.closeSoftKeyboard()
             goBack()
 
+            dismissNotice()
             scrollTo("favorite-GitHub")
             scrollTo("favorite-Netflix")
             composeRule.onNodeWithTag("favorite-Netflix").performTouchInput { swipeLeft() }
             tap("unfavorite-Netflix")
             composeRule.waitUntil(10_000) { !exists(hasTestTag("favorite-Netflix")) }
+            waitForNotice("Removed from Favorites.")
+            val notice = composeRule.onNodeWithTag("notice").fetchSemanticsNode().boundsInRoot
+            val newButton = composeRule.onNodeWithTag("new-menu").fetchSemanticsNode().boundsInRoot
+            assertTrue("the snackbar stays above New", notice.bottom <= newButton.top)
+            saveScreenshot("vaults-snackbar")
+            composeRule.onNodeWithTag("new-menu").performClick()
+            waitFor("new-sheet")
+            goBack()
+            dismissNotice()
 
             tap("category-creditCards")
             waitFor("item-Visa")
             saveScreenshot("vaults-by-type")
             goBack()
-            tap("category-sshKeys")
-            waitFor(hasText("No ssh keys"))
-            goBack()
+            assertFalse("a type without items is left out", exists(hasTestTag("category-sshKeys")))
             tap("tag-work")
             waitFor("item-AWS")
             saveScreenshot("vaults-tag")
             goBack()
             waitFor("vaults-list")
+        }
+    }
+
+    @Test
+    fun testSettingsRowsRemainReachableAfterNotices() {
+        launchApp(buildBackend()).use {
+            waitFor("vaults-list")
+            openSettings("open-help")
+            tap("copy-diagnostics")
+            waitFor("notice")
+            goBack()
+            scrollTo("sign-out")
+            saveScreenshot("settings-sign-out-notice")
+            dismissNotice()
+            tap("sign-out")
+            tap("cancel-confirmation")
+
+            tap("open-security")
+            tap("open-change-master-password")
+            type(FakeBackend.PASSWORD, "change-password-current")
+            type("changed master password", "change-password-new")
+            type("changed master password", "change-password-repeated")
+            tap("change-password-submit")
+            tap("change-password-confirm")
+            waitFor("open-replace-secret-key")
+            waitFor("notice")
+            saveScreenshot("security-password-change-notice")
+            dismissNotice()
+            tap("open-replace-secret-key")
+            waitFor("replace-secret-key-password")
+            goBack()
+            goBack()
+
+            scrollTo("sign-out")
+            tap("sign-out")
+            tap("confirm-sign-out")
+            waitFor("sign-in-mode")
         }
     }
 
@@ -168,6 +215,10 @@ class VaultsScreenUITests : HisarUITestCase() {
             tap("deletion-choice-delete")
             waitFor("deletion-confirm-name")
             type("Work 2026", "deletion-confirm-name")
+            waitFor("notice")
+            val notice = composeRule.onNodeWithTag("notice").fetchSemanticsNode().boundsInRoot
+            val deleteButton = composeRule.onNodeWithTag("delete-vault-confirm").fetchSemanticsNode().boundsInRoot
+            assertTrue("the rename snackbar ($notice) stays above Delete vault ($deleteButton)", notice.bottom <= deleteButton.top)
             saveScreenshot("vault-delete-items")
             tap("delete-vault-confirm")
             waitForNotice("Deleted Work 2026.")
@@ -194,7 +245,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             waitFor(hasText("Your Personal vault can't be deleted."))
             saveScreenshot("vault-blocked")
             tap("blocked-reason-ok")
-            tap("share-vault")
+            choose("share-vault", "vault-actions")
             waitFor(hasText("Personal vaults are private"))
             tap("personal-vault-note-ok")
         }
@@ -206,8 +257,9 @@ class VaultsScreenUITests : HisarUITestCase() {
             waitFor("vaults-list")
             tap("new-menu")
             waitFor("new-vault")
+            assertTrue("new items go into the Personal vault from here", exists(hasTestTag("new-item-vault") and hasText("Personal", substring = true)))
             saveScreenshot("vaults-new-menu")
-            composeRule.onNodeWithTag("new-vault").performClick()
+            tap("new-vault")
             waitFor("new-vault-where")
             saveScreenshot("new-vault")
             composeRule.onNodeWithTag("new-vault-name").performTextInput("Runbooks")
@@ -229,6 +281,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             waitFor("vaults-list")
             tap("tab-search")
             waitFor("search-empty")
+            composeRule.waitUntil("the empty search takes the focus", 5_000) { exists(hasTestTag("search-field") and isFocused()) }
             saveScreenshot("search-empty")
             type("alice", "search-field")
             waitFor("item-GitHub")

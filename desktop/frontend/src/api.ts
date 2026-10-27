@@ -1,5 +1,5 @@
 import { Browser } from "@wailsio/runtime";
-import { ApprovalTouchIDService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
+import { ApprovalTouchIDService, SettingsWindowService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import { BrowserBridge, InviteLinkService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/core/app";
@@ -152,6 +152,9 @@ export type {
 export type SSHKeyType = "ed25519" | "rsa";
 export type VaultRole = "owner" | "editor" | "reader";
 export type OrganizationRole = "admin" | "member";
+// MainWindowAction is what a Settings action leads to in the main window, which owns the vaults, the sharing panel and
+// pending recovery.
+export type MainWindowAction = "import" | "sharing" | "recovery";
 
 // ShareInvitations: waiting lists the shares this user accepted that the owner's app has not finished yet.
 export interface ShareInvitations {
@@ -450,6 +453,17 @@ const wailsApi = {
     ApprovalTouchIDService.SetApprovalPromptFrame(x, y, width, height),
   clearApprovalTouchIDFrame: (): Promise<void> => ApprovalTouchIDService.ClearApprovalPromptFrame(),
   cancelApprovalTouchID: (): Promise<void> => ApprovalTouchIDService.CancelApprovalPrompt(),
+  // showSettingsWindow opens Settings in its own window and reports false where Settings is an overlay instead (Linux).
+  // While Hisar is locked the window opens after the unlock.
+  showSettingsWindow: (sectionID: string): Promise<boolean> => SettingsWindowService.Show(sectionID),
+  hideSettingsWindow: (): Promise<void> => SettingsWindowService.Hide(),
+  // takeSettingsWindowRequest returns the section the Settings window was asked to open at ("" for its last), once, or null.
+  takeSettingsWindowRequest: async (): Promise<string | null> => {
+    const [sectionID, isRequested] = await SettingsWindowService.TakeOpenRequest();
+    return isRequested ? sectionID : null;
+  },
+  // openInMainWindow closes the Settings window and has the main window open what a Settings action leads to.
+  openInMainWindow: (action: MainWindowAction): Promise<void> => SettingsWindowService.OpenInMainWindow(action),
   getOneTimeCode: (vaultID: string, itemID: string): Promise<OneTimeCode> => Service.GetOneTimeCode(vaultID, itemID),
   copyField: (vaultID: string, itemID: string, fieldName: string): Promise<void> =>
     Service.CopyField(vaultID, itemID, fieldName),

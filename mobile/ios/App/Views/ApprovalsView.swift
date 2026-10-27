@@ -46,7 +46,7 @@ struct ApprovalList: View {
                     Text(allApproval.count == 1 ? "1 request waiting" : "\(allApproval.count) requests waiting")
                         .accessibilityIdentifier("approvals-header")
                 } footer: {
-                    Text("Tap a request to see what it asks for. Approving answers that one request; it never unlocks Hisar on your Mac.")
+                    Text("Tap a request to see what it asks for.")
                 }
             }
         }
@@ -55,19 +55,19 @@ struct ApprovalList: View {
             if !isMacApprovalAllowed {
                 ContentUnavailableView {
                     Label("Approving Mac requests is off", systemImage: "laptopcomputer.slash")
+                        .accessibilityIdentifier("approvals-off")
                 } description: {
                     Text("Your Mac decides on its own: Touch ID or the master password there.")
                 } actions: {
-                    Button("Allow Approving Mac Requests", action: allowMacApproval)
+                    Button("Approve requests from my Mac", action: allowMacApproval)
                         .buttonStyle(.glass)
                         .accessibilityIdentifier("approvals-allow")
                 }
-                .accessibilityIdentifier("approvals-off")
             } else if allApproval.isEmpty {
                 ContentUnavailableView {
                     Label("No requests waiting", systemImage: "laptopcomputer.and.iphone")
                 } description: {
-                    Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, or to let an app like Raycast use Hisar, the request appears here while Hisar is open and unlocked on this iPhone.")
+                    Text("Requests from Hisar on your Mac appear here while this iPhone is unlocked.")
                 }
                 .accessibilityIdentifier("approvals-empty")
             }

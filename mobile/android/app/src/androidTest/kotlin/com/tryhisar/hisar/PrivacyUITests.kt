@@ -32,7 +32,7 @@ class PrivacyUITests : HisarUITestCase() {
         goBack()
         openTab("Vaults")
         tap("vault-Personal")
-        choose("add-login", "add-item")
+        choose("new-login", "new-menu")
         tap("editor-generate-password")
         waitFor(hasTestTag("generator-use") and isEnabled())
         val password = readText("generated-password")

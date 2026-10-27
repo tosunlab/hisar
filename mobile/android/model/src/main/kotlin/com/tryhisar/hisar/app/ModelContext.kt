@@ -100,8 +100,8 @@ interface ModelContext {
 
     suspend fun refreshPendingRecovery()
 
-    /** Shows a floating confirmation for 2.5 seconds. */
-    fun showNotice(message: String)
+    /** Shows a snackbar, with an optional action until it is dismissed. */
+    fun showNotice(message: String, action: Notice.Action? = null)
 
     /** Shows the Settings screen an invitation link points to, now when unlocked or right after the next unlock. */
     fun openInvitationSettings(destination: SettingsDestination)

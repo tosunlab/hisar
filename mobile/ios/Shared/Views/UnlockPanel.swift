@@ -4,6 +4,7 @@ struct UnlockPanel: View {
     var email: String
     var requestDescription: String = ""
     var isBiometricReady: Bool
+    var lockCount: Int
     var biometryName: String
     var isBusy: Bool
     var errorMessage: String?
@@ -13,6 +14,8 @@ struct UnlockPanel: View {
     var submitBiometric: () async -> Void
     var signOut: (() -> Void)?
 
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var promptedLockCount = -1
     @State private var password = ""
     @FocusState private var isPasswordFocused: Bool
 
@@ -69,7 +72,7 @@ struct UnlockPanel: View {
                 VStack(spacing: 12) {
                     if isBiometricReady {
                         Button {
-                            Task { await submitBiometric() }
+                            Task { await submitBiometricAndFocus() }
                         } label: {
                             Label("Unlock with \(biometryName)", systemImage: biometryName == "Touch ID" ? "touchid" : "faceid")
                                 .frame(maxWidth: .infinity)
@@ -106,6 +109,28 @@ struct UnlockPanel: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .applyThemedListBackground()
+        .onAppear {
+            if !isBiometricReady { isPasswordFocused = true }
+            promptBiometricIfReady()
+        }
+        .onChange(of: scenePhase) { _, _ in promptBiometricIfReady() }
+        .onChange(of: isBiometricReady) { _, isReady in
+            if !isReady { isPasswordFocused = true }
+        }
+        .onChange(of: errorMessage) { _, message in
+            if message != nil { isPasswordFocused = true }
+        }
+    }
+
+    private func submitBiometricAndFocus() async {
+        await submitBiometric()
+        isPasswordFocused = true
+    }
+
+    private func promptBiometricIfReady() {
+        guard scenePhase == .active, isBiometricReady, !isBusy, promptedLockCount != lockCount else { return }
+        promptedLockCount = lockCount
+        Task { await submitBiometricAndFocus() }
     }
 
     private func submit() {

@@ -55,7 +55,6 @@ func (s *Service) IsWebsiteIconsEnabled() bool {
 // SetWebsiteIconsEnabled turns website icons on or off for this device; turning them off forgets the cached icons.
 func (s *Service) SetWebsiteIconsEnabled(isEnabled bool) error {
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
 	s.state.IsWebsiteIconsDisabled = !isEnabled
 	if !isEnabled {
 		s.websiteIcons.mutex.Lock()
@@ -70,7 +69,15 @@ func (s *Service) SetWebsiteIconsEnabled(isEnabled bool) error {
 			s.localCache.ClearWebsiteIcons()
 		}
 	}
-	return s.state.Save()
+	err := s.state.Save()
+	s.mutex.Unlock()
+	if err != nil {
+		return err
+	}
+	if s.config.OnWebsiteIconsChange != nil {
+		s.config.OnWebsiteIconsChange(isEnabled)
+	}
+	return nil
 }
 
 // PrepareItemIcon turns an image the user chose into the PNG an item's icon keeps: cropped to a square and scaled down

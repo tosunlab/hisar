@@ -66,9 +66,8 @@ val TabBarHeight: Dp
  * floating tab bar. Back on another tab returns to Vaults, as on Android's other top-level destinations.
  */
 @Composable
-fun MainTabs(model: AppModel, approvalBadgeCount: Int = 0) {
+fun MainTabs(model: AppModel) {
     val selectedTab by model.selectedTab.collectAsStateWithLifecycle()
-    val isSheetShown by model.navigation.isSheetShown.collectAsStateWithLifecycle()
     val stateHolder = rememberSaveableStateHolder()
     LaunchedEffect(selectedTab) { model.reportActivity() }
     // A notification tapped while Hisar was locked opens its screen once the tabs show, after unlocking.
@@ -84,10 +83,13 @@ fun MainTabs(model: AppModel, approvalBadgeCount: Int = 0) {
                 Tab.SEARCH -> SearchTab(model)
             }
         }
-        if (!isSheetShown) {
-            TabBar(selectedTab, approvalBadgeCount, onSelect = { model.selectedTab.value = it }, modifier = Modifier.align(Alignment.BottomCenter))
-        }
     }
+}
+
+@Composable
+fun MainTabBar(model: AppModel, approvalBadgeCount: Int) {
+    val selectedTab by model.selectedTab.collectAsStateWithLifecycle()
+    TabBar(selectedTab, approvalBadgeCount, onSelect = { model.selectedTab.value = it }, modifier = Modifier)
 }
 
 private class TabItem(val tab: Tab, val title: String, val icon: ImageVector, val testTag: String)

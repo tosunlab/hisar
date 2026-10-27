@@ -137,9 +137,6 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       </label>
       <p v-if="store.allVault.length === 0" class="muted empty-row">No vaults yet.</p>
     </div>
-    <p class="muted settings-note" data-testid="coding-agents-explanation">
-      Agents can find items in these vaults and use their secrets after you approve; other vaults stay invisible to them.
-    </p>
     <p v-if="store.agentErrorMessage" class="error settings-note" role="alert" data-testid="coding-agents-error">{{ store.agentErrorMessage }}</p>
   </section>
 
@@ -272,7 +269,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
 .empty-row {
   margin: 0;
   padding: 10px 14px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .available-text {
@@ -306,7 +303,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
   margin: 4px 0 0;
   padding: 0;
   list-style: none;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .remembered-list li {

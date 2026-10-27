@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -30,6 +31,7 @@ import com.tryhisar.hisar.model.ItemField
 import com.tryhisar.hisar.model.ItemServer
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.RowDivider
+import com.tryhisar.hisar.ui.settings.ToggleRow
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 
@@ -75,7 +77,7 @@ fun LoginSections(
         }
     }
     if (!item.isDatabase) {
-        FormSection(header = "One-time password", footer = { Text("The setup key or link from the site's two-factor setup. Hisar then shows the current code.") }) {
+        FormSection(header = "One-time password") {
             EditorField(
                 item.oneTimePassword,
                 { value -> onChange(draft.withItem { it.copy(oneTimePassword = value) }) },
@@ -87,14 +89,17 @@ fun LoginSections(
         }
         FormSection(header = if (item.isServer) "Admin console" else "Websites") {
             draft.allURLText.forEachIndexed { index, text ->
-                SwipeToDeleteRow(onDelete = { onChange(draft.copy(allURLText = draft.allURLText.filterIndexed { other, _ -> other != index })) }) {
+                val remove = { onChange(draft.copy(allURLText = draft.allURLText.filterIndexed { other, _ -> other != index })) }
+                SwipeToDeleteRow(onDelete = remove) {
                     EditorField(
                         text,
                         { value -> onChange(draft.copy(allURLText = draft.allURLText.toMutableList().apply { set(index, value) })) },
                         if (item.isServer) "https://console.example.com" else "https://example.com",
                         "editor-website-$index",
                         kind = FieldKind.URL,
-                    )
+                    ) {
+                        RemoveRowButton("Remove website ${text.ifEmpty { "${index + 1}" }}", "editor-website-$index-remove", remove)
+                    }
                 }
                 RowDivider()
             }
@@ -340,7 +345,7 @@ fun SoftwareLicenseSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -
     }
 }
 
-/** Custom fields: each with its name, its value, hidden when secret, and the Secret switch; a swipe deletes one. */
+/** Custom fields: each with its name, its value, hidden when secret, and the Secret switch; its button or a swipe removes one. */
 @Composable
 fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit) {
     val allField = draft.item.allField
@@ -348,17 +353,18 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
         onChange(draft.withItem { item -> item.copy(allField = item.allField.toMutableList().apply { set(index, transform(get(index))) }) })
     FormSection(header = "Other fields") {
         allField.forEachIndexed { index, field ->
-            SwipeToDeleteRow(onDelete = { onChange(draft.withItem { item -> item.copy(allField = item.allField.filterIndexed { other, _ -> other != index }) }) }) {
-                Column(Modifier.padding(vertical = 4.dp)) {
-                    EditorField(field.name, { value -> update(index) { it.copy(name = value) } }, "Name", "editor-field-$index-name", textStyle = HisarType.footnote)
-                    EditorField(
-                        field.value, { value -> update(index) { it.copy(value = value) } }, "Value", "editor-field-$index-value",
-                        kind = if (field.concealed) FieldKind.SECRET else FieldKind.TEXT, isSecret = field.concealed,
-                    )
-                    ToggleRow(
-                        "Secret", field.concealed, { isOn -> update(index) { it.copy(concealed = isOn) } }, testTag = "editor-field-$index-secret",
-                        textStyle = HisarType.footnote, color = HisarTheme.colors.secondaryLabel,
-                    )
+            val remove = { onChange(draft.withItem { item -> item.copy(allField = item.allField.filterIndexed { other, _ -> other != index }) }) }
+            SwipeToDeleteRow(onDelete = remove) {
+                Row(Modifier.padding(vertical = 4.dp).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        EditorField(field.name, { value -> update(index) { it.copy(name = value) } }, "Name", "editor-field-$index-name", textStyle = HisarType.footnote)
+                        EditorField(
+                            field.value, { value -> update(index) { it.copy(value = value) } }, "Value", "editor-field-$index-value",
+                            kind = if (field.concealed) FieldKind.SECRET else FieldKind.TEXT, isSecret = field.concealed,
+                        )
+                        ToggleRow("Secret", field.concealed, { isOn -> update(index) { it.copy(concealed = isOn) } }, testTag = "editor-field-$index-secret")
+                    }
+                    RemoveRowButton("Remove field ${field.name.ifEmpty { "${index + 1}" }}", "editor-field-$index-remove", remove)
                 }
             }
             RowDivider()
@@ -372,7 +378,7 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
     }
 }
 
-/** One row per tag, removed by swiping, and a field that adds what is typed on Done; commas separate several tags. */
+/** One row per tag, removed by its button or a swipe, and a field that adds what is typed on Done; commas separate several tags. */
 @Composable
 fun TagSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit) {
     val allTag = draft.item.allTag
@@ -381,18 +387,21 @@ fun TagSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit) {
         footer = if (allTag.isEmpty()) ({ Text("Tags group items across vaults; the Vaults screen lists them.") }) else null,
     ) {
         for (tag in allTag) {
-            SwipeToDeleteRow(onDelete = { onChange(draft.withItem { item -> item.copy(allTag = item.allTag - tag) }) }) {
+            val remove = { onChange(draft.withItem { item -> item.copy(allTag = item.allTag - tag) }) }
+            SwipeToDeleteRow(onDelete = remove) {
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                        .heightIn(min = 52.dp)
+                        .padding(start = 16.dp, end = 4.dp)
                         .testTag("editor-tag-$tag"),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Start,
                 ) {
                     Icon(Icons.AutoMirrored.Outlined.Label, contentDescription = null, tint = HisarTheme.colors.tint, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.size(12.dp))
-                    Text(tag, style = HisarType.body, color = HisarTheme.colors.label)
+                    Text(tag, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.weight(1f))
+                    RemoveRowButton("Remove tag $tag", "editor-tag-$tag-remove", remove)
                 }
             }
             RowDivider()

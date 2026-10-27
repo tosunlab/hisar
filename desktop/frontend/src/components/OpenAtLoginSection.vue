@@ -19,7 +19,7 @@ const stateDescription = computed(() => {
     return { tone: "", text: "Only the installed Hisar app can open at login; this build cannot." };
   }
   if (!status.isOpenAtLogin) {
-    return { tone: "stopped", text: "Off. Open Hisar yourself after you log in, or ssh, git and hisar fail until you do." };
+    return { tone: "stopped", text: "Off." };
   }
   if (status.systemState === "requires-approval") {
     return { tone: "warning", text: "Waiting for your approval: turn Hisar on in System Settings → General → Login Items." };

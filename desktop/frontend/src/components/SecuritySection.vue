@@ -38,7 +38,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
 
 <template>
   <section data-testid="security-section">
-    <div v-show="isRowVisible('touch-id') || isRowVisible('auto-lock')" class="settings-block">
+    <div v-show="isRowVisible('touch-id') || isRowVisible('auto-lock') || isRowVisible('clipboard')" class="settings-block">
       <p class="section-label">Unlock</p>
       <div class="settings-group">
         <div v-show="isRowVisible('touch-id')" class="setting">
@@ -91,8 +91,8 @@ async function submitSaveEmergencyKit(): Promise<void> {
         <div v-show="isRowVisible('auto-lock')" class="setting">
           <div class="setting-text">
             <strong>Auto-lock</strong>
-            <p v-if="isMacPlatform()" class="muted">Hisar locks once your Mac has had no keyboard, mouse or trackpad input for this long, and when the screen locks or the Mac sleeps. Typing in a terminal or editor keeps it unlocked; SSH, command-line and agent requests alone do not. Copied values are cleared after 90 seconds.</p>
-            <p v-else class="muted">Hisar locks once this computer has had no keyboard or mouse input for this long; on a desktop that does not report it, once Hisar itself has not been used for this long. Copied values are cleared after 90 seconds.</p>
+            <p v-if="isMacPlatform()" class="muted">Hisar locks after this long without keyboard, mouse or trackpad input on this Mac, and when the screen locks.</p>
+            <p v-else class="muted">Hisar locks once this computer has had no keyboard or mouse input for this long; on a desktop that does not report it, once Hisar itself has not been used for this long.</p>
           </div>
           <select
             class="auto-lock"
@@ -105,6 +105,11 @@ async function submitSaveEmergencyKit(): Promise<void> {
             <option v-for="option in allAutoLockOption" :key="option.seconds" :value="option.seconds">{{ option.label }}</option>
           </select>
         </div>
+        <div v-show="isRowVisible('clipboard')" class="setting" data-testid="clipboard-clearing">
+          <div class="setting-text">
+            <strong>Clear copied values after 90 seconds</strong>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -114,14 +119,14 @@ async function submitSaveEmergencyKit(): Promise<void> {
         <div v-show="isRowVisible('change-master-password')" class="setting">
           <div class="setting-text">
             <strong>Master password</strong>
-            <p class="muted">Changing it signs out your other devices. Your Secret Key and Emergency Kit stay the same.</p>
+            <p class="muted">Signs out your other devices.</p>
           </div>
           <button data-testid="change-master-password" @click="isChangingMasterPassword = true">Change master password…</button>
         </div>
         <div v-show="isRowVisible('replace-secret-key')" class="setting">
           <div class="setting-text">
             <strong>Secret Key</strong>
-            <p class="muted">Replace it if your Secret Key or Emergency Kit may have been seen by someone else. You get a new Emergency Kit, and your other devices are signed out.</p>
+            <p class="muted">Signs out your other devices.</p>
           </div>
           <button data-testid="replace-secret-key" @click="isReplacingSecretKey = true">Replace Secret Key…</button>
         </div>
@@ -136,7 +141,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
             <strong>Emergency Kit</strong>
             <p class="muted">A printable PDF with your sign-in address, email and Secret Key, for signing in on a new device. It is the only way back in if you lose your devices.</p>
           </div>
-          <button v-if="!isSavingEmergencyKit" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save PDF</button>
+          <button v-if="!isSavingEmergencyKit" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save Emergency Kit…</button>
         </div>
         <form v-if="isSavingEmergencyKit" class="settings-group-form" @submit.prevent="submitSaveEmergencyKit">
           <input
@@ -150,7 +155,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
             required
           />
           <button type="button" class="ghost" @click="isSavingEmergencyKit = false">Cancel</button>
-          <button class="primary" type="submit" :disabled="store.isBusy">Save</button>
+          <button class="primary" type="submit" :disabled="store.isBusy">Save Emergency Kit…</button>
         </form>
       </div>
     </div>

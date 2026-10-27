@@ -8,21 +8,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Badge
-import androidx.compose.material.icons.outlined.CreditCard
-import androidx.compose.material.icons.outlined.DataObject
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.MoreHoriz
-import androidx.compose.material.icons.outlined.Password
 import androidx.compose.material.icons.outlined.PersonAddAlt
-import androidx.compose.material.icons.outlined.Place
-import androidx.compose.material.icons.automirrored.outlined.StickyNote2
-import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,8 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
@@ -52,20 +42,6 @@ import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.ToolbarIconButton
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import kotlinx.coroutines.launch
-
-private class AddItemChoice(val title: String, val category: String, val testTag: String, val icon: ImageVector)
-
-private val allAddItemChoice = listOf(
-    AddItemChoice("Login", ItemDetail.CATEGORY_LOGIN, "add-login", Icons.Outlined.Password),
-    AddItemChoice("Secure note", ItemDetail.CATEGORY_SECURE_NOTE, "add-secure-note", Icons.AutoMirrored.Outlined.StickyNote2),
-    AddItemChoice("Credit card", ItemDetail.CATEGORY_CREDIT_CARD, "add-credit-card", Icons.Outlined.CreditCard),
-    AddItemChoice("Identity", ItemDetail.CATEGORY_IDENTITY, "add-identity", Icons.Outlined.Badge),
-    AddItemChoice("API credential", ItemDetail.CATEGORY_API_CREDENTIAL, "add-api-credential", Icons.Outlined.DataObject),
-    AddItemChoice("Address", ItemDetail.CATEGORY_ADDRESS, "add-address", Icons.Outlined.Place),
-    AddItemChoice("Software license", ItemDetail.CATEGORY_SOFTWARE_LICENSE, "add-software-license", Icons.Outlined.Verified),
-    AddItemChoice("Server", ItemDetail.CATEGORY_SERVER, "add-server", Icons.Outlined.Dns),
-    AddItemChoice("Database", ItemDetail.CATEGORY_DATABASE, "add-database", Icons.Outlined.Storage),
-)
 
 /** The dialogs the vault screen opens; one at a time. */
 private sealed interface VaultDialog {
@@ -91,7 +67,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
     var searchText by rememberSaveable { mutableStateOf("") }
     var vaultActions by remember { mutableStateOf<VaultActions?>(null) }
     var dialog by remember { mutableStateOf<VaultDialog?>(null) }
-    var isAddMenuShown by remember { mutableStateOf(false) }
+    var isNewSheetShown by remember { mutableStateOf(false) }
     var isActionMenuShown by remember { mutableStateOf(false) }
     var issueToDelete by remember { mutableStateOf<ReadIssue?>(null) }
 
@@ -100,12 +76,13 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
     LaunchedEffect(vault == null) { if (vault == null) stack.pop() }
     vault ?: return
 
-    val isWritable = vault.readIssues.none { it.kind == "vault-key" } && (vault.type == VaultSummary.TYPE_PERSONAL || vault.role != Member.VAULT_ROLE_READER)
+    val isWritable = VaultLogic.isWritable(vault)
     val isShared = vault.type == VaultSummary.TYPE_SHARED || vault.isOrganization
     val openSharing = {
         stack.push(if (vault.isOrganization) VaultsDestination.OrganizationVaultSharing(vaultID, vault.organizationID) else VaultsDestination.VaultSharing(vaultID))
     }
     val allMatch = VaultLogic.filterAllItem(data.listAllItemReference(vaultID), searchText).filter { it.item.readIssue == null }
+    if (isWritable) NewButton(onClick = { isNewSheetShown = true })
 
     PushedListScaffold(
         title = vault.name,
@@ -114,33 +91,16 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         isEmpty = allMatch.isEmpty() && vault.readIssues.isEmpty(),
         emptyContent = { if (searchText.isEmpty()) NoItemsYet(isWritable) else NoSearchResults(searchText) },
         searchField = { SearchField(searchText, { searchText = it }, "Search ${vault.name}", testTag = "vault-search") },
+        bottomClearance = if (isWritable) NewButtonClearance else 0.dp,
         actions = {
-            if (isShared && vault.role != Member.VAULT_ROLE_OWNER) {
-                ToolbarIconButton(Icons.Outlined.Group, "Members", testTag = "vault-members", onClick = openSharing)
-            } else {
-                ToolbarIconButton(Icons.Outlined.PersonAddAlt, "Share", testTag = "share-vault") {
-                    if (isShared) openSharing() else dialog = VaultDialog.PersonalVaultIsPrivate
-                }
-            }
-            if (isWritable) {
-                Box {
-                    ToolbarIconButton(Icons.Outlined.Add, "Add item", testTag = "add-item") { isAddMenuShown = true }
-                    HisarMenu(isAddMenuShown, onDismiss = { isAddMenuShown = false }) {
-                        for (choice in allAddItemChoice) {
-                            HisarMenuItem(choice.title, choice.testTag, icon = choice.icon, onClick = {
-                                isAddMenuShown = false
-                                stack.push(VaultsDestination.Editor(EditorRequest.New(vaultID, ItemDetail(category = choice.category)), opensSavedItem = false))
-                            })
-                        }
-                    }
-                }
-            }
             Box {
                 ToolbarIconButton(Icons.Outlined.MoreHoriz, "Vault actions", testTag = "vault-actions") { isActionMenuShown = true }
                 VaultActionsMenu(
                     isExpanded = isActionMenuShown,
                     actions = vaultActions,
+                    isMembersOnly = isShared && vault.role != Member.VAULT_ROLE_OWNER,
                     onDismiss = { isActionMenuShown = false },
+                    share = { if (isShared) openSharing() else dialog = VaultDialog.PersonalVaultIsPrivate },
                     rename = { dialog = VaultDialog.Rename(vault.name) },
                     delete = { stack.push(VaultsDestination.DeleteVault(it)) },
                     leave = { dialog = VaultDialog.Leave },
@@ -165,6 +125,17 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
                 ItemRow(model, reference.item, "item-${reference.item.title}", onClick = { stack.push(VaultsDestination.Item(vaultID, reference.item.id)) })
             }
         }
+    }
+    if (isNewSheetShown) {
+        NewItemSheet(
+            allVault = data.allVault,
+            currentVaultID = vaultID,
+            onNewItem = { chosenVaultID, category ->
+                stack.push(VaultsDestination.Editor(EditorRequest.New(chosenVaultID, ItemDetail(category = category)), opensSavedItem = chosenVaultID != vaultID))
+            },
+            onNewVault = { stack.push(VaultsDestination.NewVault) },
+            onDismiss = { isNewSheetShown = false },
+        )
     }
     issueToDelete?.let { issue ->
         AlertDialog(
@@ -214,19 +185,24 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         VaultDialog.PersonalVaultIsPrivate -> AlertDialog(
             onDismissRequest = { dialog = null },
             title = { Text("Personal vaults are private") },
-            text = { Text("Only you can open the items in your Personal vault. To share items with other people, create a shared vault with + on the Vaults screen and share that.") },
+            text = { Text("Only you can open the items in your Personal vault. To share items with other people, create a shared vault with New on the Vaults screen and share that.") },
             confirmButton = { PlainButton("OK", { dialog = null }, testTag = "personal-vault-note-ok") },
         )
         null -> Unit
     }
 }
 
-/** Every action on the vault; one the user can't take explains why instead. */
+/**
+ * Every action on the vault, Share or Members first; one the user can't take explains why instead. [isMembersOnly] is a
+ * shared vault the user does not own: they see who has it but cannot invite.
+ */
 @Composable
 private fun VaultActionsMenu(
     isExpanded: Boolean,
     actions: VaultActions?,
+    isMembersOnly: Boolean,
     onDismiss: () -> Unit,
+    share: () -> Unit,
     rename: () -> Unit,
     delete: (VaultActions) -> Unit,
     leave: () -> Unit,
@@ -237,6 +213,11 @@ private fun VaultActionsMenu(
         action()
     }
     HisarMenu(isExpanded, onDismiss) {
+        if (isMembersOnly) {
+            HisarMenuItem("Members", "vault-members", icon = Icons.Outlined.Group, onClick = { choose(share) })
+        } else {
+            HisarMenuItem("Share…", "share-vault", icon = Icons.Outlined.PersonAddAlt, onClick = { choose(share) })
+        }
         if (actions == null) {
             HisarMenuItem("Loading…", "vault-actions-loading", onClick = {}, enabled = false)
             return@HisarMenu

@@ -89,13 +89,13 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 
 h2 {
   margin: 0;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
 }
 
 .panel-heading p {
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .list-card {

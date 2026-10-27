@@ -109,7 +109,6 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Lasts"])
         XCTAssertEqual(approval.allDetailRow.map(\.value), ["Raycast", "Until Hisar locks on MacBook Pro"])
         XCTAssertEqual(approval.detailLine, "Until Hisar locks on MacBook Pro", "the card says how long approving lasts, as there is no command")
-        XCTAssertEqual(approval.approvalNote, "Approving lets Raycast use Hisar until it locks on your Mac; it does not unlock Hisar there.")
         XCTAssertFalse(approval.isRememberable)
     }
 
@@ -127,7 +126,6 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(approval.allDetailRow.map(\.value), [
             "Raycast", "username\npassword", "Expires in 7 days · 1 view", "Anyone with the link can read these until it expires or its views run out.",
         ])
-        XCTAssertEqual(approval.approvalNote, "Approving lets this one request continue; it does not unlock Hisar on your Mac.")
         XCTAssertEqual(approval.detailLine, "username, password", "the card names what the link shares")
         XCTAssertFalse(approval.isRememberable)
     }
@@ -216,9 +214,9 @@ final class PhoneApprovalTests: XCTestCase {
     }
 
     func testCardFooterNamesWhatApproveSends() {
-        XCTAssertEqual(createRememberingApproval(requestID: "ssh").cardApprovalNote, "Also allows Terminal for 1 hour. Tap the request to approve it once. It never unlocks Hisar on your Mac.")
-        XCTAssertEqual(createRememberingApproval(requestID: "signing", isRememberedByDefault: false).cardApprovalNote, "Approving answers this one request. It never unlocks Hisar on your Mac.")
-        XCTAssertEqual(createApproval(requestID: "once").cardApprovalNote, "Approving answers this one request. It never unlocks Hisar on your Mac.")
+        XCTAssertEqual(createRememberingApproval(requestID: "ssh").cardApprovalNote, "Also allows Terminal for 1 hour. Tap the request to approve it once.")
+        XCTAssertEqual(createRememberingApproval(requestID: "signing", isRememberedByDefault: false).cardApprovalNote, "Approving answers this one request.")
+        XCTAssertEqual(createApproval(requestID: "once").cardApprovalNote, "Approving answers this one request.")
     }
 
     func testSheetSwitchIsSentWithTheApproval() async {

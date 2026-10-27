@@ -72,7 +72,8 @@ describe("New item menu", () => {
     expect(wrapper.find('[role="menu"]').exists()).toBe(false);
     await wrapper.find('button[aria-label="New item"]').trigger("click");
     const allMenuItem = wrapper.findAll('[role="menuitem"]');
-    expect(allMenuItem.map((menuItem) => menuItem.text())).toEqual([expect.stringContaining("Login"), "Secure note", "Credit card", "Identity", "API credential", "Address", "Software license", "Server", "Database", "SSH key", "Import…", "Share text…"]);
+    expect(allMenuItem.map((menuItem) => menuItem.text())).toEqual([expect.stringContaining("Login"), "Secure note", "Credit card", "Identity", "API credential", "Address", "Software license", "Server", "Database", "SSH key", "Import…"]);
+    expect(wrapper.find('[role="menu"] hr').element.previousElementSibling?.getAttribute("data-testid")).toBe("new-ssh-key");
 
     await wrapper.find('[data-testid="new-ssh-key"]').trigger("click");
     expect(store.editorMode).toBe("create-ssh-key");
@@ -188,7 +189,8 @@ describe("SSH key detail", () => {
     expect(wrapper.find('[data-testid="public-key"]').text()).toBe("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHisarTestKey Laptop key");
     expect(wrapper.find('[data-testid="public-key"]').classes()).toContain("monospace");
     expect(wrapper.text()).toContain("Used for GitHub");
-    expect(wrapper.text()).toContain("Hisar's SSH agent offers this key while Hisar is unlocked");
+    expect(wrapper.text()).not.toContain("SSH agent offers this key");
+    expect(wrapper.text()).not.toContain("End-to-end encrypted with");
     expect(wrapper.text()).not.toContain("PRIVATE KEY");
     expect(wrapper.text()).toContain("Private keyNever leaves Hisar; the SSH agent uses it");
     expect(wrapper.find('button[aria-label="Reveal password"]').exists()).toBe(false);
@@ -223,7 +225,7 @@ describe("SSH key detail", () => {
     await wrapper.find('[data-testid="copy-all-commit-signing"]').trigger("click");
     await flushPromises();
     expect(api.copyText).toHaveBeenLastCalledWith(allCommand.join("\n"));
-    expect(store.noticeMessage).toBe("Commands copied, clears in 90 seconds");
+    expect(store.noticeMessage).toBe("Commands copied. It clears in 90 seconds.");
     expect(api.copyField).not.toHaveBeenCalled();
   });
 

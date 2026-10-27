@@ -74,8 +74,7 @@ const allSigningRememberOption = [
           <div class="setting-text">
             <strong>Remember SSH approvals</strong>
             <p class="muted">
-              How long “Don’t ask again” in the SSH dialog covers the same key for the same app. Locking Hisar always forgets it; commit signing
-              has its own setting below.
+              How long “Don’t ask again” in the SSH dialog covers the same key for the same app. Locking Hisar always forgets it.
             </p>
           </div>
           <select
@@ -128,9 +127,7 @@ const allSigningRememberOption = [
           <div class="setting-text">
             <strong>Remember commit signing</strong>
             <p class="muted">
-              Git signs with an SSH key from your vaults through the agent (<span class="monospace">gpg.format ssh</span>). By default every signature
-              asks. Allow remembering to get a “Don’t ask again” option in the signing dialog, for one app in one repository with one key, so a
-              <span class="monospace">git rebase</span> asks once. Tags always ask; locking Hisar forgets it.
+              Lets the signing dialog offer “Don’t ask again” for one app, repository and key. Tags always ask.
             </p>
           </div>
           <select
@@ -158,7 +155,7 @@ const allSigningRememberOption = [
 
 .config-details summary {
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 

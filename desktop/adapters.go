@@ -31,7 +31,8 @@ func (clipboard *wailsClipboard) SetText(text string) bool {
 }
 func (clipboard *wailsClipboard) GetText() (string, bool) { return clipboard.app.Clipboard.Text() }
 
-// appNotifier tells the windows what changed in the backend: lock, remote changes, share links and the theme.
+// appNotifier tells the windows what changed in the backend: lock, remote changes, share links, the theme and website
+// icons.
 type appNotifier struct{ app *application.App }
 
 func (notifier *appNotifier) NotifyLocked() { notifier.app.Event.Emit(eventLocked, "auto-lock") }
@@ -53,6 +54,13 @@ func (notifier *appNotifier) NotifyThemeChange(theme app.Theme) {
 	background.SetAppAppearance(theme.Appearance)
 	if notifier.app != nil {
 		notifier.app.Event.Emit(eventThemeChanged, theme)
+	}
+}
+
+// NotifyWebsiteIconsChange tells every window, which shows or drops website icons; Settings has a window of its own.
+func (notifier *appNotifier) NotifyWebsiteIconsChange(isEnabled bool) {
+	if notifier.app != nil {
+		notifier.app.Event.Emit(eventWebsiteIconsChanged, isEnabled)
 	}
 }
 

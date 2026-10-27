@@ -60,7 +60,7 @@ async function confirmRevoke(shareLink: ShareLink): Promise<void> {
 .empty {
   margin: 0;
   padding: 12px 14px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .share-link-list {
@@ -113,7 +113,7 @@ async function confirmRevoke(shareLink: ShareLink): Promise<void> {
 }
 
 .share-link-fields {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
@@ -122,7 +122,7 @@ async function confirmRevoke(shareLink: ShareLink): Promise<void> {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 
 .badge {
@@ -149,6 +149,6 @@ async function confirmRevoke(shareLink: ShareLink): Promise<void> {
   border: 1px solid var(--color-danger-border);
   border-radius: var(--radius);
   background: var(--color-danger-background);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 </style>

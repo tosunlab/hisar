@@ -25,6 +25,25 @@ class ItemIconPickerTests {
     }
 
     @Test
+    fun testChoosingAColorShowsOnTheIcon() {
+        assertEquals(ChosenIcon(preset = "key", color = "blue"), ChosenIcon.applyColor(null, "blue", ItemDetail.CATEGORY_LOGIN))
+        assertNull(ChosenIcon.applyColor(null, "", ItemDetail.CATEGORY_LOGIN), "no color keeps the icon automatic")
+        assertEquals(ChosenIcon(preset = "code", color = "red"), ChosenIcon.applyColor(ChosenIcon(preset = "code", color = "blue"), "red", ItemDetail.CATEGORY_LOGIN))
+        assertEquals(ChosenIcon(preset = "code"), ChosenIcon.applyColor(ChosenIcon(preset = "code", color = "blue"), "", ItemDetail.CATEGORY_LOGIN))
+        assertEquals(ChosenIcon(preset = "rocket", color = "red"), ChosenIcon.applyColor(ChosenIcon(preset = "rocket"), "red", ItemDetail.CATEGORY_LOGIN), "a newer app's preset keeps its ID")
+        val photo = ChosenIcon(image = ByteString(1, 2, 3))
+        assertEquals(photo, ChosenIcon.applyColor(photo, "red", ItemDetail.CATEGORY_LOGIN), "a photo has no color")
+        for ((category, preset) in listOf(
+            ItemDetail.CATEGORY_SERVER to "server",
+            ItemDetail.CATEGORY_DATABASE to "database",
+            ItemDetail.CATEGORY_SSH_KEY to "terminal",
+            ItemDetail.CATEGORY_CREDIT_CARD to "card",
+        )) {
+            assertEquals(ChosenIcon(preset = preset, color = "blue"), ChosenIcon.applyColor(null, "blue", category))
+        }
+    }
+
+    @Test
     fun testPreparingAPhotoShowsWhyItWasRefused() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startUnlockedModel()

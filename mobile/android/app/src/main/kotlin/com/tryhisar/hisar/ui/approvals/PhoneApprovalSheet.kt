@@ -64,6 +64,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.model.PhoneApproval
@@ -270,25 +271,35 @@ private fun Header(approval: PhoneApproval) {
 }
 
 @Composable
-private fun DetailRow(row: PhoneApproval.DetailRow) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(row.label, style = HisarType.body, color = HisarTheme.colors.label)
-        SelectionContainer(Modifier.weight(1f)) {
-            Text(
-                row.value,
-                style = if (row.isMonospaced) HisarType.subheadline.copy(fontFamily = HisarType.bodyMonospaced.fontFamily) else HisarType.subheadline,
-                color = HisarTheme.colors.label,
-                textAlign = TextAlign.End,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("phone-approval-row-${row.label}"),
-            )
+internal fun DetailRow(row: PhoneApproval.DetailRow) {
+    val modifier = Modifier
+        .fillMaxWidth()
+        .heightIn(min = 52.dp)
+        .padding(horizontal = 16.dp, vertical = 14.dp)
+    if (!row.isCompact || row.value.length > 40 || '\n' in row.value) {
+        Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(row.label, style = HisarType.footnote.copy(fontSize = 13.sp), color = HisarTheme.colors.secondaryLabel, modifier = Modifier.testTag("phone-approval-label-${row.label}"))
+            SelectionContainer {
+                Text(
+                    row.value,
+                    style = (if (row.isMonospaced) HisarType.bodyMonospaced else HisarType.body).copy(fontSize = 15.sp),
+                    color = HisarTheme.colors.label,
+                    modifier = Modifier.fillMaxWidth().testTag("phone-approval-row-${row.label}"),
+                )
+            }
+        }
+    } else {
+        Row(modifier, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(row.label, style = HisarType.body, color = HisarTheme.colors.label)
+            SelectionContainer(Modifier.weight(1f)) {
+                Text(
+                    row.value,
+                    style = HisarType.subheadline,
+                    color = HisarTheme.colors.label,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.fillMaxWidth().testTag("phone-approval-row-${row.label}"),
+                )
+            }
         }
     }
 }

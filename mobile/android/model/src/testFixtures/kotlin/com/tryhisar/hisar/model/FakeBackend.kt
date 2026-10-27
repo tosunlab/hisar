@@ -453,7 +453,7 @@ open class FakeBackend : VaultBackend {
         val oneTimePassword = item.oneTimePassword.trimmingWhitespacesAndNewlines()
         val isSecret = oneTimePassword.replace(" ", "").all { it.uppercaseChar() in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" }
         if (oneTimePassword.isNotEmpty() && !oneTimePassword.startsWith("otpauth://totp/") && !isSecret) {
-            throw BackendError("The one-time password is not a valid secret or otpauth:// link")
+            throw BackendError("The one-time code is not a valid secret or otpauth:// link")
         }
         var savedItem = item.copy(
             oneTimePassword = when {

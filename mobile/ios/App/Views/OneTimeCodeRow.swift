@@ -12,44 +12,54 @@ struct OneTimeCodeRow: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("One-time code")
-                        .font(.footnote)
-                        .foregroundStyle(.themeSecondary)
-                    if let oneTimeCode {
-                        Text(oneTimeCode.formattedCode)
-                            .font(.title2.weight(.semibold).monospacedDigit())
-                            .contentTransition(.numericText())
-                            .accessibilityIdentifier("one-time-code-value")
-                    } else if isUnavailable {
-                        Text("The one-time password could not be read.")
-                            .foregroundStyle(.themeSecondary)
-                    } else {
-                        ProgressView()
-                    }
-                }
-                Spacer(minLength: 0)
+            HStack(spacing: 0) {
                 if let oneTimeCode {
-                    CountdownRing(secondsLeft: oneTimeCode.countSecondsLeft(at: context.date), period: oneTimeCode.period)
-                    Button(action: copy) {
-                        Image(systemName: "doc.on.doc")
+                    let secondsLeft = oneTimeCode.countSecondsLeft(at: context.date)
+                    CopyFieldButton(label: "one-time code", value: "\(oneTimeCode.formattedCode), \(secondsLeft) seconds left", identifier: "copy-one-time-code", copy: copy) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                title
+                                Text(oneTimeCode.formattedCode)
+                                    .font(.title2.weight(.semibold).monospacedDigit())
+                                    .contentTransition(.numericText())
+                            }
+                            Spacer(minLength: 8)
+                            CountdownRing(secondsLeft: secondsLeft, period: oneTimeCode.period)
+                                .accessibilityHidden(true)
+                        }
                     }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Copy one-time code")
-                    .accessibilityIdentifier("copy-one-time-code")
+                    CopyIconButton(copy: copy)
+                } else {
+                    VStack(alignment: .leading, spacing: 3) {
+                        title
+                        if isUnavailable {
+                            Text("The one-time code could not be read.")
+                                .foregroundStyle(.themeSecondary)
+                        } else {
+                            ProgressView()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .listRowInsets(EdgeInsets())
         .contextMenu {
             Button(action: copy) {
                 Label("Copy one-time code", systemImage: "doc.on.doc")
             }
             Button(action: copyReference) {
-                Label("Copy Secret Reference", systemImage: "terminal")
+                Label("Copy secret reference", systemImage: "terminal")
             }
         }
         .task(id: itemID) { await refreshCode() }
+    }
+
+    private var title: some View {
+        Text("One-time code")
+            .font(.footnote)
+            .foregroundStyle(.themeSecondary)
     }
 
     private func refreshCode() async {

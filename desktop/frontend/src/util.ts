@@ -489,6 +489,12 @@ export function buildCommitSigningCommandList(publicKey: string): CommitSigningC
   ];
 }
 
+export function capitalizeFirstLetter(label: string): string {
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+export const vaultRoleDescription = "Readers view items, editors also change them, owners also share, rename and delete the vault.";
+
 export function formatRole(role: string): string {
   return role ? role[0].toUpperCase() + role.slice(1) : "";
 }

@@ -16,7 +16,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -158,24 +157,6 @@ fun ErrorBanner(message: String) {
             Spacer(Modifier.size(12.dp))
             Text(message, style = HisarType.subheadline, color = HisarTheme.colors.label)
         }
-    }
-}
-
-/** The floating confirmation at the bottom of the screen. */
-@Composable
-fun NoticeToast(message: String, modifier: Modifier = Modifier) {
-    Row(
-        modifier
-            .padding(horizontal = 16.dp)
-            .shadow(8.dp, CircleShape)
-            .background(HisarTheme.colors.cellBackground, CircleShape)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .testTag("notice"),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF34C759), modifier = Modifier.size(20.dp))
-        Spacer(Modifier.size(8.dp))
-        Text(message, style = HisarType.subheadline, fontWeight = FontWeight.Medium, color = HisarTheme.colors.label)
     }
 }
 

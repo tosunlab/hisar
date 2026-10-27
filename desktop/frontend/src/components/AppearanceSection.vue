@@ -18,7 +18,7 @@ onMounted(loadWebsiteIconSetting);
       <div v-show="isRowVisible('appearance')" class="setting">
         <div class="setting-text">
           <strong id="appearance-label">Appearance</strong>
-          <p class="muted">System switches between light and dark with macOS.</p>
+          <p class="muted">Choose System to follow the system's light or dark appearance.</p>
         </div>
         <div class="segmented" role="radiogroup" aria-labelledby="appearance-label">
           <button
@@ -224,7 +224,7 @@ onMounted(loadWebsiteIconSetting);
 }
 
 .swatch-name {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   text-align: center;
 }
 

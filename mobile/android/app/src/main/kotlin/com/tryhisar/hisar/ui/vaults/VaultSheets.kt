@@ -10,21 +10,27 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.UnfoldMore
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -39,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -59,13 +66,14 @@ import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.components.ScreenMargin
+import com.tryhisar.hisar.ui.components.noticeClearance
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import kotlinx.coroutines.launch
 
-/** A sheet's page: its bar, then grouped sections that scroll above the keyboard. */
+/** A sheet's page: its bar, then grouped sections that scroll, and [bottomBar] pinned under them; all stay above the keyboard. */
 @Composable
-fun SheetPage(bar: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+fun SheetPage(bar: @Composable () -> Unit, bottomBar: (@Composable ColumnScope.() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
@@ -81,6 +89,17 @@ fun SheetPage(bar: @Composable () -> Unit, content: @Composable ColumnScope.() -
         ) {
             content()
             Spacer(Modifier.height(32.dp))
+        }
+        if (bottomBar != null) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .noticeClearance()
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(horizontal = ScreenMargin, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                content = bottomBar,
+            )
         }
     }
 }
@@ -175,7 +194,7 @@ fun NewVaultScreen(model: AppModel, onCancel: () -> Unit, onCreated: (VaultSumma
             {
                 Text(
                     if (chosen.isSharedVault) {
-                        "A shared vault starts with only you. Share it by email with Share in the vault's toolbar; your Personal vault stays private."
+                        "A shared vault starts with only you. Share it by email from the vault's ⋯ menu; your Personal vault stays private."
                     } else {
                         "${chosen.teamName}'s members get this vault. Manage it in Settings → Organizations."
                     },
@@ -202,7 +221,7 @@ fun NewVaultScreen(model: AppModel, onCancel: () -> Unit, onCreated: (VaultSumma
 
 /**
  * Deleting a vault: who loses access, then moving its items to another vault or deleting them once the vault's name is
- * typed. The iPhone's VaultDeletionSheet.
+ * typed, in the field right above the pinned Delete vault button. The iPhone's VaultDeletionSheet.
  */
 @Composable
 fun VaultDeletionScreen(model: AppModel, actions: VaultActions, onClose: () -> Unit) {
@@ -220,7 +239,45 @@ fun VaultDeletionScreen(model: AppModel, actions: VaultActions, onClose: () -> U
     LaunchedEffect(Unit) { model.errorMessage.value = null }
     BackHandler(enabled = isBusy) {}
 
-    SheetPage(bar = { SheetTopBar("Delete “${actions.vault.name}”", onCancel = onClose, cancelTestTag = "delete-vault-cancel") }) {
+    SheetPage(
+        bar = { SheetTopBar("Delete “${actions.vault.name}”?", onCancel = onClose, cancelTestTag = "delete-vault-cancel") },
+        bottomBar = {
+            if (itemCount > 0 && !isMoving) {
+                Box(Modifier.fillMaxWidth().background(HisarTheme.colors.cellBackground, RoundedCornerShape(26.dp))) {
+                    FormTextField(
+                        typedName,
+                        { typedName = it },
+                        placeholder = "Type ${actions.vault.name} to confirm",
+                        testTag = "deletion-confirm-name",
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
+                    )
+                }
+            }
+            Button(
+                onClick = {
+                    val chosen = request ?: return@Button
+                    scope.launch { if (model.vaults.deleteVault(actions.vault.id, chosen)) onClose() }
+                },
+                enabled = request != null && !isBusy,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = HisarTheme.colors.destructive,
+                    contentColor = Color.Black,
+                    disabledContainerColor = HisarTheme.colors.fill,
+                    disabledContentColor = HisarTheme.colors.secondaryLabel,
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp)
+                    .testTag("delete-vault-confirm"),
+            ) {
+                if (isBusy) {
+                    CircularProgressIndicator(Modifier.size(22.dp), color = HisarTheme.colors.secondaryLabel, strokeWidth = 2.dp)
+                } else {
+                    Text("Delete vault", style = HisarType.headline)
+                }
+            }
+        },
+    ) {
         errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
         if (actions.allMemberLosingAccess.isNotEmpty()) {
             FormSection(
@@ -262,7 +319,7 @@ fun VaultDeletionScreen(model: AppModel, actions: VaultActions, onClose: () -> U
                         RowDivider()
                         ChoiceRow("Delete the vault and its $count", isSelected = isDeletingItems, testTag = "deletion-choice-delete") { isDeletingItems = true }
                     }
-                    RowDivider()
+                    if (isMoving) RowDivider()
                 }
                 if (isMoving) {
                     PickerRow(
@@ -273,38 +330,12 @@ fun VaultDeletionScreen(model: AppModel, actions: VaultActions, onClose: () -> U
                         { targetVaultID = it.id },
                         testTag = "deletion-target",
                     )
-                } else {
-                    FormTextField(
-                        typedName,
-                        { typedName = it },
-                        placeholder = "Type ${actions.vault.name} to confirm",
-                        testTag = "deletion-confirm-name",
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
-                    )
+                } else if (!isMovePossible) {
+                    FormRow { Text("Delete the vault and its $count", style = HisarType.body, color = HisarTheme.colors.label) }
                 }
             }
         } else {
             FormSection { FormRow { Text("This vault is empty.", style = HisarType.body, color = HisarTheme.colors.secondaryLabel) } }
-        }
-        FormSection {
-            val isEnabled = request != null && !isBusy
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 52.dp)
-                    .clickable(enabled = isEnabled, role = Role.Button) {
-                        val chosen = request ?: return@clickable
-                        scope.launch { if (model.vaults.deleteVault(actions.vault.id, chosen)) onClose() }
-                    }
-                    .testTag("delete-vault-confirm"),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (isBusy) {
-                    CircularProgressIndicator(Modifier.size(22.dp), color = HisarTheme.colors.secondaryLabel, strokeWidth = 2.dp)
-                } else {
-                    Text("Delete vault", style = HisarType.body, color = if (isEnabled) HisarTheme.colors.destructive else HisarTheme.colors.secondaryLabel)
-                }
-            }
         }
     }
 }
