@@ -138,9 +138,13 @@ private fun PreviewSections(
     val exportOrigin = describeExportOrigin(preview.exportedFrom, preview.exportedAt)
     if (exportOrigin != null || preview.notice.isNotEmpty()) {
         FormSection(modifier = Modifier.testTag("hisar-import-origin")) {
-            exportOrigin?.let { Text(it, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel) }
-            if (preview.notice.isNotEmpty()) {
-                Text(preview.notice, style = HisarType.footnote, color = HisarTheme.colors.orange, modifier = Modifier.testTag("hisar-import-notice"))
+            FormRow {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    exportOrigin?.let { Text(it, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel) }
+                    if (preview.notice.isNotEmpty()) {
+                        Text(preview.notice, style = HisarType.footnote, color = HisarTheme.colors.orange, modifier = Modifier.testTag("hisar-import-notice"))
+                    }
+                }
             }
         }
     }
@@ -150,7 +154,7 @@ private fun PreviewSections(
         modifier = Modifier.testTag("credential-import-vault"),
     ) {
         if (isGrouped) {
-            Text(preview.groupDestinationExplanation)
+            FormRow { Text(preview.groupDestinationExplanation) }
         } else {
             allVault.forEachIndexed { index, vault ->
                 if (index > 0) RowDivider()
@@ -162,7 +166,7 @@ private fun PreviewSections(
     }
     preview.groups.forEachIndexed { groupIndex, group ->
         FormSection(header = "Source and destination access", modifier = Modifier.testTag("credential-import-access")) {
-            Text("${group.name} to ${group.vaultName}")
+            FormRow { Text("${group.name} to ${group.vaultName}") }
             if (isGrouped) {
                 NavigationRow(
                     "Vault for ${VaultLogic.describeItemCount(group.itemCount)}",
@@ -172,11 +176,15 @@ private fun PreviewSections(
                     enabled = !isWorking,
                 )
             }
-            Text(if (group.isPrivate) "Private or unspecified source" else "Shared source")
-            group.members.forEach { member ->
-                Text("${member.name.ifEmpty { member.accountID }} <${member.email}> · ${member.role}${if (member.isCurrentUser) " (you)" else ""}")
+            FormRow(Modifier.testTag("credential-import-group-$groupIndex-access-details")) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (group.isPrivate) "Private or unspecified source" else "Shared source")
+                    group.members.forEach { member ->
+                        Text("${member.name.ifEmpty { member.accountID }} <${member.email}> · ${member.role}${if (member.isCurrentUser) " (you)" else ""}")
+                    }
+                    Text("Imported items are readable by the destination's current members. Access can change later.")
+                }
             }
-            Text("Imported items are readable by the destination's current members. Access can change later.")
         }
     }
     groupToMap?.let { group ->

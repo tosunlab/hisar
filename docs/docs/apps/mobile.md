@@ -112,6 +112,7 @@ A Hisar export restores each source vault to its original writable vault when av
 Review each destination and its current members before importing.
 Each source group has one destination selector. Open it to choose a writable vault; its current members remain visible
 in the source group's access card.
+The import's origin and access explanations use the same card insets as the destination controls.
 
 Credential Exchange imports keep Cancel and system Back available while batches are saving. Closing the import
 does not roll back saved items or interrupt the current batch. The current batch can finish, but no later batch starts.
