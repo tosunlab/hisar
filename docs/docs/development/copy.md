@@ -124,7 +124,7 @@ Sign-out removes the active account's local data, not separately protected unfin
 | SSH agent, Use Hisar for SSH | key agent |
 | Approve requests on my smart device (Mac) / Approve requests from my Mac (iPhone, Android) · or approve on your smart device (Mac approval window) · Your smart device can now approve requests | Approve requests on my iPhone, Allow approvals from my iPhone, Allow approving Mac requests |
 | Approve, Deny | Allow, Reject |
-| "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet) · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
+| "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet, for a request approved once) · "Approving also lets \<app> use Hisar without asking until then. It does not unlock Hisar on your Mac." (phone approval sheet for a command-line request, under its **Lasts** row: "Until 10 minutes after this terminal’s last command, or until Hisar locks", "Until 10 minutes after the last request from \<app>, or until Hisar locks", "For this connection only, at most until 10 minutes after its last request or until Hisar locks", which the Mac's dialog says after "Lasts") · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
 
 ## Notifications

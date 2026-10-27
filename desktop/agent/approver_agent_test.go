@@ -270,6 +270,7 @@ func TestAgentDialogGoesToThePhoneWithTheAgentName(t *testing.T) {
 	want := approval.Description{
 		Kind: approval.KindCommandLine, AppName: "Claude Code (via hisar mcp) in Terminal", Purpose: "run a command with 1 secret",
 		CommandLine: "npm test", RepositoryPath: "~/src/app", TerminalName: "ttys003", Secrets: []string{"Work › Stripe › api key"},
+		Lifetime: "until 10 minutes after the last request from Claude Code, or until Hisar locks",
 	}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("phone request = %+v", description)
@@ -279,6 +280,21 @@ func TestAgentDialogGoesToThePhoneWithTheAgentName(t *testing.T) {
 	if result := waitForAgentResult(t, resultChannel); result.err != nil || result.result.Duration != clisocket.AgentGrantOnce {
 		t.Errorf("phone approval = %+v", result)
 	}
+}
+
+func TestAgentPhoneRequestSaysHowLongOnlyAConnectionApprovalLasts(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, nil)
+	request := createAgentRequest(clisocket.AgentRequestRun)
+	request.CommandLine, request.SecretNames, request.IsConnectionApproval = []string{"npm", "test"}, []string{"Work › Stripe › api key"}, false
+	resultChannel := startAgentApproval(approver, request)
+	waitForApprovalEvent(t, emitter)
+	if description := phone.waitForStart(t); description.Lifetime != "" {
+		t.Errorf("a secret request of an approved agent is answered once: %q", description.Lifetime)
+	}
+	phone.answer(false)
+	waitForAgentResult(t, resultChannel)
 }
 
 func TestAgentDialogLeavesOutTheAppWhenItIsTheAgent(t *testing.T) {

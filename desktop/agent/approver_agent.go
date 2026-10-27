@@ -274,6 +274,9 @@ func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent, reques
 	if event.Purpose == clisocket.AgentRequestConnect {
 		description.CommandLine = event.ClientPath
 	}
+	if event.IsConnectionApproval {
+		description.Lifetime = fmt.Sprintf("until %d minutes after the last request from %s, or until Hisar locks", int(clisocket.DefaultApprovalLifetime/time.Minute), event.AgentName)
+	}
 	if event.WorkingDirectory != "" {
 		description.RepositoryPath = event.WorkingDirectory
 	}

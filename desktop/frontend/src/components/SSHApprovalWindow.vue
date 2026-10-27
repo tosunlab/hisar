@@ -198,15 +198,15 @@ const rememberLabel = computed(
     `Don’t ask again for ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} ${approval.value?.rememberPeriod || "for 1 hour"}`,
 );
 
-// commandLineCoverage is who approving a command-line request approves, and for how long, by ApprovalEvent.coverage.
-const commandLineCoverage = computed(() => {
+// commandLineApproved is who approving a command-line request approves, by ApprovalEvent.coverage.
+const commandLineApproved = computed(() => {
   switch (approval.value?.coverage) {
     case "app":
-      return { approved: `hisar in ${inlineAppName.value}`, note: `Lasts until 10 minutes after the last request from ${inlineAppName.value}, or until Hisar locks.` };
+      return `hisar in ${inlineAppName.value}`;
     case "connection":
-      return { approved: "this connection", note: "Lasts for this connection only; Hisar cannot verify the app it comes from." };
+      return "this connection";
     default:
-      return { approved: "this terminal", note: "Lasts until 10 minutes after this terminal’s last command, or until Hisar locks." };
+      return "this terminal";
   }
 });
 
@@ -217,14 +217,14 @@ const unlockNote = computed(() => {
   if (isLauncher.value) {
     return `Hisar is locked; unlocking it also approves ${approval.value?.appName}.`;
   }
-  return isCommandLine.value ? `Hisar is locked; unlocking it also approves ${commandLineCoverage.value.approved}.` : "Hisar is locked; approving also unlocks it.";
+  return isCommandLine.value ? `Hisar is locked; unlocking it also approves ${commandLineApproved.value}.` : "Hisar is locked; approving also unlocks it.";
 });
 
 const durationNote = computed(() => {
   if (isLauncher.value) {
     return isLauncherShare.value ? "" : "You can revoke it sooner in Settings → Developer tools.";
   }
-  return isCommandLine.value ? commandLineCoverage.value.note : "";
+  return isCommandLine.value && approval.value?.lifetime ? `Lasts ${approval.value.lifetime}.` : "";
 });
 
 const agentNote = computed(() => {
@@ -560,9 +560,13 @@ onBeforeUnmount(() => {
                     name="signInLogin"
                     :value="index"
                     :checked="approvalStore.loginIndex === index"
+                    :aria-label="[login.username, `${login.vaultName} › ${login.title}`].filter(Boolean).join(', ')"
                     @change="setSignInLogin(approval.requestID, index)"
                   />
-                  <span class="login-text">{{ login.vaultName }} › {{ login.title }}, {{ login.username }}</span>
+                  <span class="login-text">
+                    <span v-if="login.username" class="login-username">{{ login.username }}</span>
+                    <span class="login-item">{{ login.vaultName }} › {{ login.title }}</span>
+                  </span>
                 </label>
               </div>
               <p class="muted sign-in-note" data-testid="approval-sign-in-note">{{ signInNote }}</p>
@@ -1113,12 +1117,12 @@ h1 {
 .login-choice {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .login-option {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 9px;
   margin: 0 0 0 2px;
   font-size: var(--font-size-13);
@@ -1129,14 +1133,24 @@ h1 {
 .login-option input {
   width: auto;
   flex: none;
-  margin: 0;
+  margin: 2px 0 0;
 }
 
 .login-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.login-username {
+  font-weight: 500;
+}
+
+.login-item {
+  font-size: var(--font-size-12);
+  color: var(--color-text-muted);
 }
 
 .sign-in-note {

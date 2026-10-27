@@ -260,7 +260,12 @@ func TestLauncherShareOnThePhone(t *testing.T) {
 }
 
 func TestCommandLineApprovalSaysWhatItCovers(t *testing.T) {
-	for _, coverage := range []clisocket.ApprovalCoverage{clisocket.CoverageTerminalSession, clisocket.CoverageApp, clisocket.CoverageConnection} {
+	lifetimeByCoverage := map[clisocket.ApprovalCoverage]string{
+		clisocket.CoverageTerminalSession: "until 10 minutes after this terminal’s last command, or until Hisar locks",
+		clisocket.CoverageApp:             "until 10 minutes after the last request from Terminal, or until Hisar locks",
+		clisocket.CoverageConnection:      "for this connection only, at most until 10 minutes after its last request or until Hisar locks",
+	}
+	for coverage, lifetime := range lifetimeByCoverage {
 		emitter := createFakeEmitter()
 		approver := createCommandLineApprover(&fakeBiometric{isAvailable: true}, emitter, &fakeUnlocker{}, 0)
 		request := createCommandLineRequest()
@@ -270,8 +275,12 @@ func TestCommandLineApprovalSaysWhatItCovers(t *testing.T) {
 		}
 		resultChannel := make(chan error, 1)
 		go func() { resultChannel <- approver.ApproveCommandLine(context.Background(), request) }()
-		if event := waitForApprovalEvent(t, emitter); event.Coverage != string(coverage) || event.TerminalName != request.TerminalName {
+		event := waitForApprovalEvent(t, emitter)
+		if event.Coverage != string(coverage) || event.TerminalName != request.TerminalName || event.Lifetime != lifetime {
 			t.Errorf("%s: event = %+v", coverage, event)
+		}
+		if description := approver.buildCommandLinePhoneDescription(event); description.Lifetime != lifetime {
+			t.Errorf("%s: the phone says it lasts %q", coverage, description.Lifetime)
 		}
 		approver.DenyAll()
 		waitForCommandLineResult(t, resultChannel)
