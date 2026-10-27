@@ -23,6 +23,8 @@ struct ItemEditorView: View {
     @State private var isIconPickerShown = false
     @State private var isDeleteConfirmationShown = false
     @State private var hasLoadedDraft = false
+    @State private var editorAccount: ItemEditorAccount?
+    @State private var openedLockCount = 0
     @State private var newTagText = ""
     @State private var isCardSecretRevealed = false
     @State private var cardDescription = CardDescription()
@@ -38,7 +40,7 @@ struct ItemEditorView: View {
     private var isNew: Bool { originalItem == nil }
 
     private var hasChanges: Bool {
-        hasLoadedDraft && (buildIconPreviewItem() != loadedItem || !newTagText.isEmpty)
+        hasLoadedDraft && (buildIconPreviewItem() != loadedItem || !newTagText.isEmpty || chosenVaultID != vaultID)
     }
 
     private var allWritableVault: [VaultSummary] { model.allVault.filter(AppModel.isWritableVault) }
@@ -260,6 +262,13 @@ struct ItemEditorView: View {
         }
         .interactiveDismissDisabled(model.isBusy || hasChanges)
         .onAppear(perform: loadDraft)
+        .onChange(of: draft) { _, _ in retainDraft() }
+        .onChange(of: allURLText) { _, _ in retainDraft() }
+        .onChange(of: chosenVaultID) { _, _ in retainDraft() }
+        .onChange(of: newTagText) { _, _ in retainDraft() }
+        .onDisappear {
+            if model.status.isUnlocked && model.lockCount == openedLockCount { model.discardEditor() }
+        }
     }
 
     private func cancel() {
@@ -271,14 +280,31 @@ struct ItemEditorView: View {
     }
 
     private func close() {
+        hasLoadedDraft = false
+        model.discardEditor()
         model.clearError()
         dismiss()
     }
 
     private func loadDraft() {
         guard !hasLoadedDraft else { return }
+        editorAccount = ItemEditorAccount(model.status)
+        openedLockCount = model.lockCount
         hasLoadedDraft = true
         model.clearError()
+        if let kept = model.retainedEditor, kept.sourceVaultID == vaultID, kept.originalItem?.id == originalItem?.id {
+            draft = kept.item
+            allURLText = kept.allURLText
+            chosenVaultID = kept.chosenVaultID
+            newTagText = kept.newTagText
+            loadedItem = kept.loadedItem
+            isOldAddressShown = kept.isOldAddressShown
+            numberBrand = kept.numberBrand
+            if let card = draft.card {
+                cardDescription = CardDescription(brand: card.brand, last4: card.last4, numberWarning: card.numberWarning, expiryWarning: card.expiryWarning)
+            }
+            return
+        }
         chosenVaultID = vaultID
         if let originalItem {
             draft = originalItem
@@ -312,6 +338,17 @@ struct ItemEditorView: View {
             numberBrand = card.brand
         }
         loadedItem = buildIconPreviewItem()
+        retainDraft()
+    }
+
+    private func retainDraft() {
+        guard hasLoadedDraft, let editorAccount else { return }
+        model.retainEditor(ItemEditorSession(
+            account: editorAccount,
+            sourceVaultID: vaultID, originalItem: originalItem, item: draft,
+            allURLText: allURLText, chosenVaultID: chosenVaultID, newTagText: newTagText,
+            loadedItem: loadedItem, isOldAddressShown: isOldAddressShown, numberBrand: numberBrand
+        ))
     }
 
     /// The types the picker offers: the known brands, plus a type saved from elsewhere that is not one of them.
@@ -929,6 +966,8 @@ struct ItemEditorView: View {
         let vaultID = chosenVaultID
         Task {
             if let savedItem = await model.saveItem(vaultID: vaultID, item: item) {
+                hasLoadedDraft = false
+                model.discardEditor()
                 loadedItem = buildIconPreviewItem()
                 finish(savedItem, vaultID)
                 dismiss()
@@ -940,6 +979,8 @@ struct ItemEditorView: View {
         guard let originalItem else { return }
         Task {
             if await model.deleteItem(vaultID: vaultID, itemID: originalItem.id) {
+                hasLoadedDraft = false
+                model.discardEditor()
                 loadedItem = buildIconPreviewItem()
                 dismiss()
                 finish(nil, vaultID)

@@ -230,6 +230,90 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.allVault.count, 2)
     }
 
+    func testItemEditorDraftSurvivesLockAndUnlock() async {
+        let model = await createUnlockedModel()
+        let item = ItemDetail(title: "Draft", password: "generated-password")
+        model.retainEditor(ItemEditorSession(account: ItemEditorAccount(model.status), sourceVaultID: "personal", originalItem: nil, item: item, allURLText: ["https://example.com", ""], chosenVaultID: "family", newTagText: "pending", loadedItem: ItemDetail()))
+        model.handleDidEnterBackground()
+        currentDate += model.autoLockInterval + 1
+        model.handleWillEnterForeground()
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertFalse(model.isRestoredEditorShown)
+        var finalDraft = model.retainedEditor!
+        finalDraft.item.password = "last-keystroke"
+        model.retainEditor(finalDraft)
+        _ = await model.unlock(password: FakeBackend.password)
+        XCTAssertTrue(model.isRestoredEditorShown)
+        XCTAssertEqual(model.retainedEditor?.item.password, "last-keystroke")
+        XCTAssertEqual(model.retainedEditor?.allURLText, ["https://example.com", ""])
+        XCTAssertEqual(model.retainedEditor?.chosenVaultID, "family")
+        XCTAssertEqual(model.retainedEditor?.newTagText, "pending")
+    }
+
+    func testItemEditorPermissionChangeKeepsDraftForRecovery() async {
+        let model = await createUnlockedModel()
+        let item = ItemDetail(title: "Draft", password: "keep-this")
+        model.retainEditor(ItemEditorSession(account: ItemEditorAccount(model.status), sourceVaultID: "family", originalItem: nil, item: item, allURLText: [""], chosenVaultID: "family", loadedItem: ItemDetail()))
+        model.lock()
+        backend.allVault = backend.allVault.map { vault in
+            var changed = vault
+            if vault.id == "family" { changed.role = "reader" }
+            return changed
+        }
+        _ = await model.unlock(password: FakeBackend.password)
+        XCTAssertFalse(model.isRestoredEditorShown)
+        XCTAssertNotNil(model.editorRecoveryMessage)
+        XCTAssertEqual(model.retainedEditor?.item.password, "keep-this")
+        model.recoverEditorCopy()
+        XCTAssertTrue(model.isRestoredEditorShown)
+        XCTAssertEqual(model.retainedEditor?.chosenVaultID, "personal")
+        XCTAssertEqual(model.retainedEditor?.item.password, "keep-this")
+        model.lock()
+        _ = await model.unlock(password: FakeBackend.password)
+        XCTAssertTrue(model.isRestoredEditorShown)
+        XCTAssertNil(model.editorRecoveryMessage)
+    }
+
+    func testItemEditorChangedSourceRequiresRecovery() async throws {
+        let model = await createUnlockedModel()
+        let original = try backend.getItem(vaultID: "personal", itemID: "github")
+        var draft = original
+        draft.password = "unsaved"
+        model.retainEditor(ItemEditorSession(account: ItemEditorAccount(model.status), sourceVaultID: "personal", originalItem: original, item: draft, allURLText: original.allURL, chosenVaultID: "personal", loadedItem: original))
+        model.lock()
+        backend.allItemByVaultID["personal"]?.removeAll { $0.id == original.id }
+        _ = await model.unlock(password: FakeBackend.password)
+        XCTAssertNotNil(model.editorRecoveryMessage)
+        XCTAssertEqual(model.retainedEditor?.item.password, "unsaved")
+        model.recoverEditorCopy()
+        XCTAssertNil(model.retainedEditor?.originalItem)
+        XCTAssertEqual(model.retainedEditor?.item.id, "")
+    }
+
+    func testItemEditorClearsOnSaveDiscardSignOutAndAccountSwitch() async {
+        let model = await createUnlockedModel()
+        let item = ItemDetail(title: "Draft", password: "secret")
+        let draft = ItemEditorSession(account: ItemEditorAccount(model.status), sourceVaultID: "personal", originalItem: nil, item: item, allURLText: [""], chosenVaultID: "personal", loadedItem: ItemDetail())
+        model.retainEditor(draft)
+        _ = await model.saveItem(vaultID: "personal", item: item)
+        XCTAssertNil(model.retainedEditor)
+        model.retainEditor(draft)
+        model.discardEditor()
+        XCTAssertNil(model.retainedEditor)
+        model.retainEditor(draft)
+        backend.status.email = "other@example.com"
+        model.refreshStatus()
+        XCTAssertNil(model.retainedEditor)
+        model.retainEditor(draft)
+        XCTAssertNil(model.retainedEditor, "an old editor cannot attach its draft to the next account")
+        backend.status.email = draft.account.email
+        model.refreshStatus()
+        model.retainEditor(draft)
+        model.lock()
+        _ = await model.signOut()
+        XCTAssertNil(model.retainedEditor)
+    }
+
     func testLockedEventFromBackendShowsLockScreen() async {
         let model = await createUnlockedModel()
         let lockCountBefore = model.lockCount
