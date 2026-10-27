@@ -282,7 +282,12 @@ private fun TagChip(tag: String) {
 private fun LoginSection(model: AppModel, vaultID: String, item: ItemDetail, actions: ItemFieldActions) {
     RowsSection {
         if (item.username.isNotEmpty()) row { FieldRow(actions, "username", "Username", item.username, isConcealed = false) }
-        if (item.password.isNotEmpty()) row { FieldRow(actions, "password", "Password", item.password, isConcealed = true) }
+        if (item.password.isNotEmpty()) row {
+            Column {
+                FieldRow(actions, "password", "Password", item.password, isConcealed = true)
+                ItemPasswordStrengthMeter(model, item.password, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
+        }
         if (item.hasOneTimePassword) {
             row {
                 OneTimeCodeRow(

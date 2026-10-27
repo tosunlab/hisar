@@ -338,7 +338,7 @@ Postponed setup keeps a warning row in normal layout, including while locked or 
 
 Setup selects a single pending record without resuming it. Several records keep an explicit chooser, and a result opens its own operation. Refresh preserves a valid selection; selecting a different operation clears entered factors and any temporary kit. Each phase shows one prominent next action. Preparing a temporary kit alone never promotes delivery acknowledgement above saving, printing, or sharing it.
 
-The account form rates the master password with the same strength meter as the item editor (Weak, Fair, Good, Strong). It refuses fewer than 10 characters and passwords estimated below 28 bits (common words and patterns such as `password1234`), with "This password is too easy to guess. Add a few more words or characters."; a Weak password above that is allowed with a hint, because the Secret Key also protects the account. The server only checks the length.
+The Create account and Change master password forms of the Mac, iPhone and Android apps rate the new master password with the same strength meter as the item editor (Weak, Fair, Good, Strong). One rule in `core/item` (`CheckMasterPassword`, beside the meter's `RatePassword`) decides for every app. The forms refuse fewer than 10 characters and passwords estimated below 28 bits (common words and patterns such as `password1234`), with "This password is too easy to guess. Add a few more words or characters."; a Weak password above that is allowed with a hint, because the Secret Key also protects the account. Change master password also refuses the current password as the new one: "The new master password is the same as the current one." The server only checks the length.
 
 The admin dashboard's setup page (§5.1) runs the same steps in its Web Worker as the "Admin dashboard" device. Its form refuses fewer than 10 characters and a repeated password that does not match; it has no strength meter.
 
@@ -664,6 +664,11 @@ Recovery is only through the Emergency Kit (§4.1). With the email, server and S
 - **Lost Secret Key:** it is on the Emergency Kit, and on every device still signed in, where the desktop app saves a new Emergency Kit after the master password (Settings → Security → Emergency Kit) and the CLI has `hisar emergency-kit`. A Secret Key that may have leaked is replaced from a signed-in device (§5.7).
 - **Forgotten master password:** it cannot be recovered by anyone, including Hisar. The server never sees it, and nothing the server or a device stores opens the keyset without it, so the data only that account can open is lost; shared vaults stay with their other members. The apps say so plainly when the account is created and on the Secret Key / Emergency Kit screen.
 - Losing the Emergency Kit and every signed-in device loses the account as well.
+
+On the Mac, Settings → Security → Recovery also offers **Show Secret Key…**. It verifies the current master password
+through the same account-unlock derivation as saving the kit, then returns the key and a sign-in QR code without writing
+a PDF. Verification and delivery are bound to the same unlocked session. Leaving Recovery, locking, or changing accounts
+clears the displayed key, QR code and pending response. **Copy Secret Key** uses the backend clipboard and its 90-second clearing.
 
 **Interrupted setup is distinct from forgotten-password recovery.** The operation journal (§5.2) reconciles a particular already-prepared signup or factor replacement; it cannot recover a forgotten password or bypass the independent Secret Key. Native default recovery needs the OS-wrapped operation key and password. Without that OS protection, restart needs the explicitly user-saved Emergency Kit as well as the password because no factor is persisted in the journal. The CLI exposes `hisar account pending list|resume|kit|acknowledge|discard`; discard is restricted to prepared operations for which no finish may have been sent.
 
@@ -1125,6 +1130,13 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 
 These are the rules in [`IsURLMatch`](https://github.com/tosunlab/hisar/blob/main/core/browserprotocol/match.go). Registrable-domain matching includes sibling hosts even when different people operate them. Exact-host mode still permits a saved `http` URL on an `https` page under the scheme rule above, so it is not exact-origin matching. The extension's manual **All logins** choice is a separate user override, not a matching guarantee.
 
+The exact-host preference is local to each device. On iPhone and Android it is in Settings → AutoFill. Website password
+and one-time-code requests reload this preference from the shared state before matching or filling, so an already-running
+iOS AutoFill extension uses a change on its next request. It does not affect native Android app-certificate matching,
+passkey relying-party checks, or the user's explicit choice of another login.
+Password and biometric unlock also reload this preference before they can save state, so an extension with an older
+in-memory setting cannot overwrite a stricter choice made in the app.
+
 **Android app links** (`core/item/androidapp.go`, `core/app/androidapps.go`). A login or server can be linked to Android apps, so Android AutoFill offers it inside those apps. A link is the app's package name **and** the SHA-256 of its signing certificate, since a sideloaded app can take any package name. It is stored among the item's URLs as `androidapp://<package>?sha256=<64 lower-case hex>`: every app that predates links keeps the URL when it edits the login, and none fills it into a page, because only `http` and `https` URLs match pages. `ItemDetail.URLs` holds only the websites and `ItemDetail.AndroidApps` the links (the certificate as upper-case colon hex, as `apksigner` shows it); `SaveItem` keeps the stored links when the editor sends none, and `AddAndroidApp` ("Always use for this app") and `RemoveAndroidApp` change them. An `androidapp://` URL without a valid certificate, such as a Bitwarden import, stays a website and never matches an app. `ListLoginsForAndroidApp` offers only logins linked to exactly that package and certificate; Hisar never guesses a site from a package name. Android's Digital Asset Links check reads `ListLoginWebsites` (each https-reachable host of the logins' websites and its registrable domain), fetches that host's `assetlinks.json`, and fills an app the site vouches for through the URL matching above. The Mac and iPhone show links read-only in the item.
 
 **Extension behaviour.**
@@ -1166,6 +1178,10 @@ These are the rules in [`IsURLMatch`](https://github.com/tosunlab/hisar/blob/mai
 - Native UI: SwiftUI and Kotlin/Jetpack Compose.
 - System autofill: the iOS AutoFill Credential Provider extension, a second process that shares the app's state and encrypted cache through the app group; Android's `AutofillService`, which runs in the app's own process on the app's backend.
 - Memory constraint: the iOS AutoFill extension must stay well below the system limit (Argon2 64 MiB).
+
+Both native apps show the shared Go password estimator's four-segment Weak/Fair/Good/Strong meter below nonempty item
+passwords in detail, the editor and the generator. Detail passwords stay masked. The meter exposes one accessibility
+label and value, with decorative segments hidden. Item-password strength is informational, not a save or generation gate.
 
 **iOS (Phase 4, first).** `mobile/hisarkit` wraps the app backend (`core/app`, shared with the Mac app, which has no Wails import and compiles for `ios/arm64`), so the phone gets the same sign-in, offline cache, matching and sharing logic. `make build-ios-framework` runs `gomobile bind -target=ios,iossimulator -iosversion=26.0` and writes `mobile/build/HisarKit.xcframework` (Swift module `HisarKit`, classes prefixed `Hisarkit`).
 

@@ -18,6 +18,7 @@ import com.tryhisar.hisar.model.ImportProgress
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.LoginCredential
 import com.tryhisar.hisar.model.LoginMatch
+import com.tryhisar.hisar.model.MasterPasswordFeedback
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.OneTimeCode
 import com.tryhisar.hisar.model.Organization
@@ -28,6 +29,7 @@ import com.tryhisar.hisar.model.PasskeyClientData
 import com.tryhisar.hisar.model.PasskeyRegistrationOptions
 import com.tryhisar.hisar.model.PasskeyRegistrationRequest
 import com.tryhisar.hisar.model.PasskeyRegistrationResult
+import com.tryhisar.hisar.model.PasswordStrength
 import com.tryhisar.hisar.model.PendingRecovery
 import com.tryhisar.hisar.model.PendingRecoveryExport
 import com.tryhisar.hisar.model.PhoneApproval
@@ -343,6 +345,11 @@ class HisarKitBackend(
     override fun generatePassword(length: Int, isDigitIncluded: Boolean, isSymbolIncluded: Boolean): String =
         call { generatePassword(length.toLong(), isDigitIncluded, isSymbolIncluded) }
 
+    override fun ratePassword(password: String): PasswordStrength = decode(PasswordStrength.serializer(), call { ratePassword(password) })
+
+    override fun checkMasterPassword(password: String): MasterPasswordFeedback =
+        decode(MasterPasswordFeedback.serializer(), call { checkMasterPassword(password) })
+
     override fun listAllLoginForService(serviceIdentifier: String): List<LoginMatch> =
         decodeList(LoginMatch.serializer(), call { listAllLoginForService(serviceIdentifier) })
 
@@ -484,6 +491,10 @@ class HisarKitBackend(
     override fun isMacApprovalAllowed(): Boolean = call { isMacApprovalAllowed() }
 
     override fun setMacApprovalAllowed(isAllowed: Boolean) = call { setMacApprovalAllowed(isAllowed) }
+
+    override fun isExactHostMatch(): Boolean = call { isExactHostMatch() }
+
+    override fun setExactHostMatch(isExact: Boolean) = call { setExactHostMatch(isExact) }
 
     override fun getTheme(): VaultTheme = try {
         decode(VaultTheme.serializer(), call { getTheme() })

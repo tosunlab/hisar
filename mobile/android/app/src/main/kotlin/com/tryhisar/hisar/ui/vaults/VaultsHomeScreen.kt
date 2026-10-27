@@ -28,7 +28,6 @@ import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Sell
-import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -108,6 +107,7 @@ fun VaultsHomeScreen(model: AppModel) {
     var isPulling by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf<Refusal?>(null) }
     val allItem = data.listAllItemReference()
+    val allTag = VaultLogic.listAllTag(allItem)
     val grouping = OrganizationLogic.groupVaults(data.allVault, data.allOrganization, data.waitingVaultKeys.allWaiting)
 
     fun answerOrganizationInvitation(invitation: OrganizationInvitation, isAccepted: Boolean) {
@@ -207,32 +207,22 @@ fun VaultsHomeScreen(model: AppModel) {
                         is WaitingShareInvitation -> NoteRow(invitation.describe(Instant.now()), Icons.Outlined.Schedule, Modifier.testTag("waiting-${invitation.id}"))
                     }
                 }
-                if (data.allVault.isNotEmpty()) {
-                    val allFavorite = data.listAllFavoriteReference()
-                    if (allFavorite.isEmpty()) {
-                        cardSection("favorites", listOf(Unit), rowKey = { "empty" }, header = "Favorites") {
-                            NoteRow(
-                                "Star an item to keep it here, on all your devices. Only you see your favorites.",
-                                Icons.Outlined.StarOutline,
-                                Modifier.testTag("favorites-empty"),
-                            )
+                val allFavorite = data.listAllFavoriteReference()
+                if (allFavorite.isNotEmpty()) {
+                    cardSection("favorites", allFavorite.take(3), rowKey = { it.id }, header = "Favorites", dividerStart = { ItemRowTextStart }) { reference ->
+                        FavoriteSwipeRow(model, reference.vaultID, reference.item, isLeading = false) {
+                            ItemRow(model, reference.item, "favorite-${reference.item.title}", vaultID = reference.vaultID, vaultName = reference.vaultName, showsFavorite = false, onClick = {
+                                stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
+                            })
                         }
-                    } else {
-                        cardSection("favorites", allFavorite.take(3), rowKey = { it.id }, header = "Favorites", dividerStart = { ItemRowTextStart }) { reference ->
-                            FavoriteSwipeRow(model, reference.vaultID, reference.item, isLeading = false) {
-                                ItemRow(model, reference.item, "favorite-${reference.item.title}", vaultID = reference.vaultID, vaultName = reference.vaultName, showsFavorite = false, onClick = {
-                                    stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
-                                })
-                            }
-                        }
-                        cardSection("all-favorites", listOf(Unit), rowKey = { "show-all" }) {
-                            NavigationRow(
-                                testTag = "show-all-favorites",
-                                onClick = { stack.push(VaultsDestination.Favorites) },
-                                badge = allFavorite.size,
-                                leading = { RowSymbol(Icons.Outlined.StarOutline) },
-                            ) { Text("Show all favorites", style = HisarType.body, color = HisarTheme.colors.label) }
-                        }
+                    }
+                    cardSection("all-favorites", listOf(Unit), rowKey = { "show-all" }) {
+                        NavigationRow(
+                            testTag = "show-all-favorites",
+                            onClick = { stack.push(VaultsDestination.Favorites) },
+                            badge = allFavorite.size,
+                            leading = { RowSymbol(Icons.Outlined.StarOutline) },
+                        ) { Text("Show all favorites", style = HisarType.body, color = HisarTheme.colors.label) }
                     }
                 }
                 vaultSection(data, isRefreshing, grouping.allOtherVault) { stack.push(VaultsDestination.Vault(it.id)) }
@@ -248,13 +238,15 @@ fun VaultsHomeScreen(model: AppModel) {
                         leading = { RowSymbol(category.icon) },
                     ) { Text(category.title, style = HisarType.body, color = HisarTheme.colors.label) }
                 }
-                cardSection("tags", VaultLogic.listAllTag(allItem), rowKey = { it.name }, header = "Tags", dividerStart = { SymbolRowTextStart }) { tag ->
-                    NavigationRow(
-                        testTag = "tag-${tag.name}",
-                        onClick = { stack.push(VaultsDestination.Tag(tag.name)) },
-                        badge = tag.itemCount,
-                        leading = { RowSymbol(Icons.Outlined.Sell) },
-                    ) { Text(tag.name, style = HisarType.body, color = HisarTheme.colors.label) }
+                if (allTag.isNotEmpty()) {
+                    cardSection("tags", listOf(Unit), rowKey = { "tags" }, dividerStart = { SymbolRowTextStart }) {
+                        NavigationRow(
+                            testTag = "tags",
+                            onClick = { stack.push(VaultsDestination.Tags) },
+                            badge = allTag.size,
+                            leading = { RowSymbol(Icons.Outlined.Sell) },
+                        ) { Text("Tags", style = HisarType.body, color = HisarTheme.colors.label) }
+                    }
                 }
                 item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp + NewButtonClearance)) }
             }

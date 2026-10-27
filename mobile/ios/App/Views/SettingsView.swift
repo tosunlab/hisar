@@ -679,6 +679,7 @@ struct MacApprovalsView: View {
                 }
             } footer: {
                 Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")
+                Text("On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device.")
             }
         }
         .applyThemedListStyle()
@@ -809,6 +810,15 @@ struct AutoFillSettingsView: View {
                         Label("Open AutoFill & Passwords", systemImage: "gear")
                     }
                 }
+            }
+            Section {
+                Toggle("Only fill on the exact host", isOn: Binding(
+                    get: { model.isExactHostMatch },
+                    set: { isExact in Task { await model.setExactHostMatch(isExact) } }
+                ))
+                .accessibilityIdentifier("exact-host-match")
+            } footer: {
+                Text("Off: a login for google.com also fills on accounts.google.com. On: only on the host saved in the item.")
             }
         }
         .applyThemedListStyle()

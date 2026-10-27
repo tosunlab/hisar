@@ -104,7 +104,7 @@ fun SettingsTab(model: AppModel) {
             SettingsDestination.REPLACE_SECRET_KEY -> ReplaceSecretKeyScreen(model, pop)
             SettingsDestination.DELETE_ACCOUNT -> DeleteAccountScreen(model, pop)
             SettingsDestination.EXPORT_DATA -> ExportDataScreen(model, pop)
-            SettingsDestination.AUTOFILL -> SettingsScreen("AutoFill", onBack = pop) { AutoFillSettingsSections() }
+            SettingsDestination.AUTOFILL -> SettingsScreen("AutoFill", onBack = pop) { AutoFillSettingsSections(model) }
             SettingsDestination.PASSWORD_GENERATOR -> StandalonePasswordGeneratorScreen(model, pop)
             SettingsDestination.PEOPLE -> PeopleScreen(model, pop)
             SettingsDestination.ORGANIZATIONS -> OrganizationsScreen(model, pop)

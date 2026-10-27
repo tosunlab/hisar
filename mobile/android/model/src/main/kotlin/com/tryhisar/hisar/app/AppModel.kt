@@ -3,6 +3,8 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.FavoriteItem
 import com.tryhisar.hisar.model.ItemDetail
+import com.tryhisar.hisar.model.MasterPasswordFeedback
+import com.tryhisar.hisar.model.PasswordStrength
 import com.tryhisar.hisar.model.PushKind
 import com.tryhisar.hisar.model.Organizations
 import com.tryhisar.hisar.model.RemovedVaultNotice
@@ -412,6 +414,13 @@ class AppModel(
         mutableCopyCount.update { it + 1 }
         showNotice("Secret reference copied.")
     }
+
+    /** core/item's rating of a password for the strength meter, or the empty rating without a backend. */
+    suspend fun ratePassword(password: String): PasswordStrength = attempt { it.ratePassword(password) } ?: PasswordStrength()
+
+    /** core/item's rule for a new master password; a password it could not rate counts as refused. */
+    suspend fun checkMasterPassword(password: String): MasterPasswordFeedback =
+        attempt { it.checkMasterPassword(password) } ?: MasterPasswordFeedback(isBlocking = true)
 
     /** Copies a secret the app holds itself, such as a website or a generated password, as Go copies fields. */
     fun copyText(text: String, label: String) {

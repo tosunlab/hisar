@@ -47,6 +47,14 @@ func (hisar *Hisar) SetMacApprovalAllowed(isAllowed bool) error {
 	return app.NewApprovalPreference(hisar.service).SetPhoneApproval(isAllowed)
 }
 
+func (hisar *Hisar) IsExactHostMatch() bool {
+	return app.IsExactHostMatch(hisar.service)
+}
+
+func (hisar *Hisar) SetExactHostMatch(isExactHostMatch bool) error {
+	return app.SetExactHostMatch(hisar.service, isExactHostMatch)
+}
+
 // GetTheme returns this phone's app.Theme as JSON; the AutoFill extension reads the same state file.
 func (hisar *Hisar) GetTheme() string {
 	theme, _ := encodeJSON(hisar.service.GetTheme(), nil)

@@ -24,6 +24,8 @@ sealed interface VaultsDestination {
 
     data class Tag(val tag: String) : VaultsDestination
 
+    data object Tags : VaultsDestination
+
     data class Item(val vaultID: String, val itemID: String) : VaultsDestination
 
     /** The editor; when [opensSavedItem], saving shows the new item in its place, as the Vaults screen's New menu does. */

@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import { disableBiometricUnlock, enableBiometricUnlock, saveEmergencyKit, setAutoLock, store } from "../store";
+import { onBeforeUnmount, ref, watch } from "vue";
+import { api, getErrorMessage, type RevealedSecretKey } from "../api";
+import { copyText, disableBiometricUnlock, enableBiometricUnlock, saveEmergencyKit, setAutoLock, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 import { isMacPlatform, touchIDConsent } from "../util";
 import ChangeMasterPasswordDialog from "./ChangeMasterPasswordDialog.vue";
 import ReplaceSecretKeyDialog from "./ReplaceSecretKeyDialog.vue";
 
-const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true });
+const props = withDefaults(defineProps<{ isActive?: boolean }>(), { isActive: true });
 
+type SecretKeyDisplay = { kind: "closed" } | { kind: "password"; isPending: boolean } | { kind: "revealed"; value: RevealedSecretKey };
+const secretKeyDisplay = ref<SecretKeyDisplay>({ kind: "closed" });
+const revealPassword = ref("");
+let revealGeneration = 0;
 const allAutoLockOption = [
   { seconds: 30, label: "30 seconds" },
   { seconds: 60, label: "1 minute" },
@@ -33,10 +38,10 @@ function cancelSaveEmergencyKit(): void {
   isSavingEmergencyKit.value = false;
 }
 
-watch(() => props.active && isRowVisible("touch-id"), (visible) => {
+watch(() => props.isActive && isRowVisible("touch-id"), (visible) => {
   if (!visible) cancelEnableTouchID();
 });
-watch(() => props.active && isRowVisible("emergency-kit"), (visible) => {
+watch(() => props.isActive && isRowVisible("emergency-kit"), (visible) => {
   if (!visible) cancelSaveEmergencyKit();
 });
 
@@ -53,6 +58,38 @@ async function submitSaveEmergencyKit(): Promise<void> {
   }
   emergencyKitPassword.value = "";
 }
+
+function clearSecretKey(): void {
+  revealGeneration++;
+  secretKeyDisplay.value = { kind: "closed" };
+  revealPassword.value = "";
+  emergencyKitPassword.value = "";
+  isSavingEmergencyKit.value = false;
+}
+
+async function submitRevealSecretKey(): Promise<void> {
+  const generation = ++revealGeneration;
+  store.errorMessage = "";
+  secretKeyDisplay.value = { kind: "password", isPending: true };
+  const password = revealPassword.value;
+  revealPassword.value = "";
+  try {
+    const value = await api.revealSecretKey(password);
+    if (generation === revealGeneration) secretKeyDisplay.value = { kind: "revealed", value };
+  } catch (error) {
+    if (generation === revealGeneration) {
+      store.errorMessage = getErrorMessage(error);
+      secretKeyDisplay.value = { kind: "password", isPending: false };
+    }
+  }
+}
+
+watch(
+  [() => props.isActive, () => isRowVisible("emergency-kit"), () => store.status.state, () => store.status.email, () => store.status.server, () => store.recoveryEpoch],
+  clearSecretKey,
+  { flush: "sync" },
+);
+onBeforeUnmount(clearSecretKey);
 </script>
 
 <template>
@@ -160,7 +197,27 @@ async function submitSaveEmergencyKit(): Promise<void> {
             <strong>Emergency Kit</strong>
             <p class="muted">A printable PDF with your sign-in address, email and Secret Key, for signing in on a new device. It is the only way back in if you lose your devices.</p>
           </div>
+          <button v-if="secretKeyDisplay.kind === 'closed'" data-testid="show-secret-key" @click="secretKeyDisplay = { kind: 'password', isPending: false }">Show Secret Key…</button>
+          <button v-if="!isSavingEmergencyKit && secretKeyDisplay.kind !== 'revealed'" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save Emergency Kit…</button>
+        </div>
+        <form v-if="secretKeyDisplay.kind === 'password'" class="settings-group-form" data-testid="reveal-secret-key-form" @submit.prevent="submitRevealSecretKey">
+          <label>
+            <span>Master password</span>
+            <input v-model="revealPassword" name="revealSecretKeyPassword" type="password" autocomplete="current-password" required :disabled="secretKeyDisplay.isPending" />
+          </label>
+          <button type="button" class="ghost" @click="clearSecretKey">Cancel</button>
+          <button class="primary" type="submit" :disabled="secretKeyDisplay.isPending">{{ secretKeyDisplay.isPending ? "Checking…" : "Show Secret Key" }}</button>
+        </form>
+        <div v-if="secretKeyDisplay.kind === 'revealed'" class="revealed-key" data-testid="revealed-secret-key">
+          <div class="key" :aria-label="secretKeyDisplay.value.secretKey">
+            <span v-for="(part, index) in secretKeyDisplay.value.secretKey.split('-')" :key="index" class="key-part monospace">{{ part }}</span>
+          </div>
+          <img class="sign-in-qr" :src="`data:image/png;base64,${secretKeyDisplay.value.qrCode}`" alt="Scan with Hisar on your phone to sign in" data-testid="secret-key-qr" />
+          <div class="row">
+            <button data-testid="copy-secret-key" @click="copyText(secretKeyDisplay.value.secretKey, 'Secret Key')">Copy Secret Key</button>
           <button v-if="!isSavingEmergencyKit" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save Emergency Kit…</button>
+            <button class="ghost" data-testid="hide-secret-key" @click="clearSecretKey">Hide Secret Key</button>
+          </div>
         </div>
         <form v-if="isSavingEmergencyKit" class="settings-group-form" @submit.prevent="submitSaveEmergencyKit">
           <input
@@ -187,5 +244,36 @@ async function submitSaveEmergencyKit(): Promise<void> {
 .auto-lock {
   flex: none;
   width: auto;
+}
+
+.revealed-key {
+  padding: 16px;
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 12px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.key-part {
+  padding: 4px 6px;
+  border-radius: var(--radius-small);
+  background: var(--color-surface-raised);
+  font-size: var(--font-size-15);
+}
+
+.sign-in-qr {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+  margin: 16px auto;
 }
 </style>

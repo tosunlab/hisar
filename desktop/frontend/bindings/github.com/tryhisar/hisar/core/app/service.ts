@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as item$0 from "../item/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as session$0 from "../session/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -82,6 +85,14 @@ export function ChangeMasterPassword(currentPassword: string, newPassword: strin
  */
 export function ChangeVaultMemberRole(vaultID: string, accountID: string, role: string): $CancellablePromise<void> {
     return $Call.ByID(3754330141, vaultID, accountID, role);
+}
+
+/**
+ * CheckMasterPassword rates a new master password for Create account and Change master password, with the one sentence
+ * to show under it; the forms refuse a password whose feedback is blocking.
+ */
+export function CheckMasterPassword(password: string): $CancellablePromise<item$0.MasterPasswordFeedback> {
+    return $Call.ByID(1185217996, password);
 }
 
 /**
@@ -606,6 +617,13 @@ export function PreviewImport(vaultID: string): $CancellablePromise<$models.Impo
 }
 
 /**
+ * RatePassword is the strength meter's rating of a password, the same rule CheckMasterPassword uses.
+ */
+export function RatePassword(password: string): $CancellablePromise<item$0.PasswordStrength> {
+    return $Call.ByID(219966386, password);
+}
+
+/**
  * RemoveAndroidApp unlinks a login from an Android app; removing a link the login does not have changes nothing.
  */
 export function RemoveAndroidApp(vaultID: string, itemID: string, packageName: string, certificateSHA256: string): $CancellablePromise<$models.ItemDetail> {
@@ -682,6 +700,13 @@ export function ResumePendingRecovery(operationID: string, password: string): $C
 
 export function ResumePendingRecoveryWithSecretKey(operationID: string, password: string, secretKey: string, priorSecretKey: string): $CancellablePromise<$models.SignUpResult> {
     return $Call.ByID(201039221, operationID, password, secretKey, priorSecretKey);
+}
+
+/**
+ * RevealSecretKey verifies the current master password without writing an Emergency Kit.
+ */
+export function RevealSecretKey(password: string): $CancellablePromise<$models.RevealedSecretKey> {
+    return $Call.ByID(3347932335, password);
 }
 
 /**

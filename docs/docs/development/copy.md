@@ -47,7 +47,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Review recipient · Give this person access? · Give access | Confirms the concrete account, security code, vault, and role before delivering a key to an identity not bound by the original invitation. Available on Mac, iPhone, and Android. |
 | Codes don't match | Cancels the reviewed invitation, without confirming its recipient or resetting a key pin. Keep the review open if cancellation fails. On success, "Cancelled the invitation to \<email>." |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
-| Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
+| Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac shows one visible legend per panel: "Readers view items, editors also change them, owners also share, rename and delete the vault." Phones describe the chosen role: "Readers view items but can't change them.", "Editors view and change items.", or "Owners view and change items, share, rename and delete the vault, change roles and remove people." |
 | Make Ada an owner of Work? · Change Ada's role from Owner to Editor? | Confirm granting or removing Owner before submitting. Name the vault's management rights, including rename and delete. Team changes preview each person's strongest role through all remaining teams. Cancel leaves the saved role unchanged. |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
 | "Ask \<name> for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code." | Another person's code. Compare the code for one identity, not the codes each person sees for the other. |
@@ -120,6 +120,7 @@ The one-time code setup and failure copy is shared across the apps.
 | “Work” is no longer available: it was deleted, or you no longer have access to it. | Vault removed by admin |
 | Moved N items to Personal and deleted Work. · Deleted Work. · You left Work. | — |
 | Import & Export (Settings section on the Mac), Export data… (iPhone and Android, Settings → Account), `hisar export` | Backup, Download my data, Takeout |
+| Hisar import help names each export path: Settings → Import & Export on a Mac, Settings → Account → Export data… on an iPhone or Android phone, or `hisar export`. | Settings → Export your data on any device |
 | encrypted export, export passphrase ("at least 10 characters"; Hisar can't recover it) | export password, backup key, master password (for the export's own passphrase) |
 | Plain JSON, with the warning "Plain JSON is not encrypted. Anyone who gets the file can read every password, one-time code secret and SSH private key in it. Delete it when you are done." | unencrypted backup, raw export |
 | Export with Touch ID… / Export with Face ID / Export with biometrics (Android) · Exported N items from M vaults to \<path>. | — |
@@ -145,6 +146,7 @@ The summary counts known unreadable items and affected vaults with singular or p
 | the hisar command-line tool (`hisar`) | the CLI (in app copy), the binary |
 | SSH agent, Use Hisar for SSH | key agent |
 | Approve requests on my smart device (Mac) / Approve requests from my Mac (iPhone, Android) · or approve on your smart device (Mac approval window) · Your smart device can now approve requests | Approve requests on my iPhone, Allow approvals from my iPhone, Allow approving Mac requests |
+| Set up Mac approvals (empty Approvals list) · "On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device." (phone settings) · "On your phone, turn on Settings → Mac approvals → Approve requests from my Mac." (Mac settings) | Claiming to know the other device's switch |
 | Approve, Deny | Allow, Reject |
 | "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet) · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |

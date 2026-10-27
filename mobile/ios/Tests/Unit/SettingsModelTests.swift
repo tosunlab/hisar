@@ -230,6 +230,16 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertTrue(model.isMacApprovalAllowed)
     }
 
+    func testExactHostPreferenceStartsFromTheBackendAndIsSaved() async {
+        backend.isExactHostMatchValue = true
+        let model = await createUnlockedModel()
+        XCTAssertTrue(model.isExactHostMatch)
+        let changed = await model.setExactHostMatch(false)
+        XCTAssertTrue(changed)
+        XCTAssertFalse(model.isExactHostMatch)
+        XCTAssertFalse(backend.isExactHostMatchValue)
+    }
+
     func testApproveFromTheCardWithoutOpeningTheSheet() async {
         backend.allPendingApproval = [createApproval(requestID: "first"), createApproval(requestID: "second")]
         let model = await createUnlockedModel()

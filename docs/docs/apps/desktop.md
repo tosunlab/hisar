@@ -129,6 +129,8 @@ SSH key Generate and Import use the same shortcuts, validation, and draft cancel
 In **Other fields**, each row is an accessible group named after its field, or its position while unnamed.
 Value, secrecy, and removal controls include that name and update when you rename the field.
 
+The item editor's password generator supports 8 to 64 characters. It starts at 24 characters with digits and symbols enabled.
+
 Item and Favorites lists are listboxes with keyboard navigation and `aria-selected` on each option.
 The item list's accessible name is its vault's name. The selected sidebar vault or Favorites entry has `aria-current="true"`.
 
@@ -166,7 +168,7 @@ Design: [Design](../design.md) §4.4 (vault keys and rotation), §5.1 (invites) 
 
 Design: [Design](../design.md) §6. The Emergency Kit (email, server and Secret Key) plus the master password is the only way to sign in again; there is no account recovery.
 
-- **Lost Secret Key**: it is on the Emergency Kit. Settings → Security → Emergency Kit saves a new kit after the master password, and the sign-in screen says where to find it.
+- **Lost Secret Key**: it is on the Emergency Kit. In Settings → Security → Recovery, **Show Secret Key…** asks for the master password, then shows the key with **Copy Secret Key** and a QR code to scan with Hisar on your phone. It writes no PDF. **Save Emergency Kit…** saves a kit after the same verification. Leaving Recovery or locking hides the key and QR code.
 - **Forgotten master password**: nobody can recover it, including Hisar. The Create account form and the Secret Key screen after sign up say so.
 - On the lock screen, **Sign out of this device** focuses **Cancel** in its confirmation. **Escape** cancels and returns focus to the sign-out link.
 - The master password field stays focused while Touch ID waits, so typing can start without a click. Submitting the password cancels the pending Touch ID check.

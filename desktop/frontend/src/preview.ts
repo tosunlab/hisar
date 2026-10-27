@@ -25,7 +25,9 @@ import type {
   ItemDetail,
   LauncherApp,
   LoginItemStatus,
+  MasterPasswordFeedback,
   PasswordConfig,
+  PasswordStrength,
   ShareInvitations,
   ShareLink,
   ShareLinkField,
@@ -1491,6 +1493,25 @@ function continuePreviewImport(): Promise<ImportProgress> {
   );
 }
 
+// The preview has no Go backend, so it rates by length and two common patterns; the app rates with core/item.
+function ratePreviewPassword(password: string): PasswordStrength {
+  const bits = /password|1234/i.test(password) ? 8 : password.length * 3;
+  if (password === "") return { level: "", label: "", bits: 0 };
+  if (bits < 40) return { level: "weak", label: "Weak", bits };
+  if (bits < 60) return { level: "fair", label: "Fair", bits };
+  if (bits < 90) return { level: "good", label: "Good", bits };
+  return { level: "strong", label: "Strong", bits };
+}
+
+function checkPreviewMasterPassword(password: string): MasterPasswordFeedback {
+  const strength = ratePreviewPassword(password);
+  const feedback = { ...strength, message: "A few random words you can remember make a strong master password.", isBlocking: false };
+  if (password !== "" && password.length < 10) return { ...feedback, message: "Use at least 10 characters.", isBlocking: true };
+  if (password !== "" && strength.bits < 28) return { ...feedback, message: "This password is too easy to guess. Add a few more words or characters.", isBlocking: true };
+  if (strength.level === "weak") return { ...feedback, message: "You can use it, but another word or a few more characters make it much harder to guess." };
+  return feedback;
+}
+
 export const previewApi = {
   listAllImportFormat: () =>
     resolveAfterDelay([
@@ -1671,6 +1692,7 @@ export const previewApi = {
     vault.readIssues = vault.readIssues?.filter((issue) => issue.itemId);
     return resolveAfterDelay(buildPreviewVaultSummary(vault));
   },
+  ratePassword: (password: string) => Promise.resolve(ratePreviewPassword(password)),
   generatePassword: (config: PasswordConfig) => {
     const alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ" + (config.digits ? "23456789" : "") + (config.symbols ? "!@#$%^&*-_=+?" : "");
     const allRandom = crypto.getRandomValues(new Uint32Array(config.length || 24));
@@ -2093,6 +2115,9 @@ export const previewApi = {
   saveNewAccountEmergencyKit: () => resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
   saveEmergencyKit: (password: string) =>
     password.length < 4 ? Promise.reject(new Error("incorrect email, master password or Secret Key")) : resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
+  revealSecretKey: (password: string) => password.length < 4
+    ? Promise.reject(new Error("incorrect email, master password or Secret Key"))
+    : resolveAfterDelay({"qrCode":"iVBORw0KGgoAAAANSUhEUgAAAUAAAAFAAQMAAAD3XjfpAAAABlBMVEX///8AAABVwtN+AAAEG0lEQVR42uyaQW7srBKFP8sDhiyBnZiNWWlHvTF7JyyBIQPL56kK5yb3zt7gl5pWyIx8aglTVJ06wO/4Hb/jPxtBkg4ddWGqs7b01Jmg5ZbbwmT/rW8IFgh7UF3iFZ8ybC5BQW0JqlOFeSRQCju5TrogqqycqDRa1lGn+tBzMPDQHo/6EVVJz3ImFe0NlngMCUqXbWElSVJLYW+Ei+ltQQhHmyRtEJ/aOAmlZV0O/h3hrw56SmmL7/Wzrr7XBgaf/Df3vDYIwNSmmusHa5SvGqRmk/wzXhwMhRzUptpnV4/HoDsas1Tn+n4gtNwmzz2PunpdkEB7m3TFHaLGAYNaDhdg8yePMuuE1DwAtH//3hBg0c6ko2Z91pU1bUDzT2Fw/V71ACBg2SNL+qywQiKpBOnwTfz8g70XaLttkkTSZoFb5gIeACYpLbuOA6awh8tElz5lVeHkTCTQ0YjX9ykcAQwKe5taVs8eD19zKF3X10kb8zggKSgcMgX5Kd9AfU024qGNlfcDQ5G1Lnv0nHlXBYkcrnD5Xm/jgH7g5GJ4iyezNlQa0CYdUh0KNPHR++NKPOOGJxSv16ZIvFSMA/qKvT3bmCWLx9Qc9fbzU+cbgiRTjy3XXgBmPQXyaKYn0oHAIO3BwvbwAqeyJmj2NzXiUSeNBBa4Q9djNJ3prgq558c4FOgqSvU+iUk6aelWI3KF/I5gEJYzD5vrLWlS/zxL3HnUdRzQq8Khi+wFwMwCqSVwhewd2zhgX7VtY/2AuKWNk4Z3NNiqtY0EGuSn8IobD0lnMkzqEfm96ncCFdTAciZgLanb3LffM3WHdRyw5XDLf9kpPJPU0l0VLh71MRJIJrtY9KrAmkC9nwEgPkcCwx4OS/bRwaQiqZD15ZGevB9IcifOnQFt0fTj3G1F9QYgbuOAlkjNLIhWmmX2FV6vMZub6WenOQIIbWFx3fusD0l3P2Pt5/FXc/by4H0XZBcQk82mExKY3NduKUXnm4JtAQ/cp9up9L226YUfTtzrg6G0+0KsPqwusKa5tAT0VX98B+7rg9DwWWtdTD+enL3TzHaxpM+vEjcEmMjhIltCkSrMApV+S6aLj+/++q1AiaWbbqzxWUhz8YOZGz+fcowABgXpCjsAcJ9C6FWBHy3AACCpQa8KH1H9kQ2to14VWAcCcSV1RXOvt3j23I/va3cBzrcE78wj86niaS1pain0VwQ7H39uKgYA70dfO0uU3FYsBjbuJzo/+pkBwK9HX93o7u9S3CpYwFc9FKj7FsgTfY9HU8hAlnT9vBp6L3APh9/4AWYWKBi8M9Xl78umMUAWsmRPOcpcvswCj2jVRx0IBF8g1jbHM7lDivaWG+S//fCXB/88+tKFv3X1dQeRG/Fbo7wX+Dt+x+/4P8b/BgDJaaF9o90vAgAAAABJRU5ErkJggg==","qrPayload":"HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL3ByZXZpZXcuaGlzYXIudGVzdCIsImVtYWlsIjoicHJldmlld0BleGFtcGxlLmNvbSIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ","secretKey":"H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"}),
   forgetNewAccountSecretKey: () => Promise.resolve(),
   listPendingRecovery: () => resolveAfterDelay(previewRecovery.map((entry) => ({ ...entry }))),
   resumePendingRecovery: (_operationID: string, password: string): Promise<SignUpResult> => {
@@ -2108,6 +2133,7 @@ export const previewApi = {
     previewRecovery = [];
     return Promise.resolve();
   },
+  checkMasterPassword: (password: string) => Promise.resolve(checkPreviewMasterPassword(password)),
   changeMasterPassword: (currentPassword: string) =>
     currentPassword.length < 4
       ? Promise.reject(new Error("the master password is not correct"))

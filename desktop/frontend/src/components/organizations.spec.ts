@@ -206,7 +206,9 @@ describe("Organization screen", () => {
     expect(settings.find('[data-testid="organization-teams"]').isVisible()).toBe(true);
     const allVaultName = settings.findAll('[data-testid="team-platform"] [data-testid="team-vault-name"]').map((name) => name.text());
     expect(allVaultName).toEqual(["Deploy", "A vault you can't open"]);
-    expect(settings.find('[data-testid="team-vault-role-platform-deploy"]').attributes("title")).toBe("Readers view items, editors also change them, owners also share, rename and delete the vault.");
+    expect(settings.find('[data-testid="team-vault-role-platform-deploy"]').attributes("aria-describedby")).toBe("organization-role-legend");
+    expect(settings.get("#organization-role-legend").isVisible()).toBe(true);
+    expect(settings.get("#organization-role-legend").text()).toBe("Readers view items, editors also change them, owners also share, rename and delete the vault.");
     await settings.find('[data-testid="organization-segment-invitations"]').trigger("click");
     expect(settings.find('[data-testid="organization-invite"]').isVisible()).toBe(true);
     expect(settings.find('[data-testid="organization-no-invitations"]').text()).toBe("No pending invitations.");
@@ -328,7 +330,8 @@ describe("Organization screen", () => {
     expect(api.addTeamMember).toHaveBeenCalledWith("acme", "ops", "BOB222");
     await settings.find('[data-testid="organization-team-menu-ops"]').trigger("click");
     await settings.find('[data-testid="context-menu-give-vault"]').trigger("click");
-    expect(settings.find('[data-testid="organization-dialog-role"]').attributes("title")).toBe("Readers view items, editors also change them, owners also share, rename and delete the vault.");
+    expect(settings.find('[data-testid="organization-dialog-role"]').attributes("aria-describedby")).toBe("give-vault-role-legend");
+    expect(settings.get("#give-vault-role-legend").text()).toBe("Readers view items, editors also change them, owners also share, rename and delete the vault.");
     expect(settings.find('[data-testid="organization-dialog-give-vault"]').text()).not.toContain("Editors can add and change items");
     await settings.find('[data-testid="organization-dialog-role"]').setValue("reader");
     await settings.find('[data-testid="organization-dialog-give-vault"] form').trigger("submit");
@@ -729,8 +732,9 @@ describe("Organization vault sharing panel", () => {
 
     await panel.find('[data-testid="give-to-team"]').trigger("click");
     for (const role of panel.findAll("select.role-select")) {
-      expect(role.attributes("title")).toBe("Readers view items, editors also change them, owners also share, rename and delete the vault.");
+      expect(role.attributes("aria-describedby")).toBe("sharing-role-legend");
     }
+    expect(panel.get("#sharing-role-legend").text()).toBe("Readers view items, editors also change them, owners also share, rename and delete the vault.");
     expect(panel.text()).not.toContain("Editors can add and change items");
     await panel.find('[data-testid="give-to-team-role"]').setValue("reader");
     await panel.find('[data-testid="give-to-team-form"]').trigger("submit");

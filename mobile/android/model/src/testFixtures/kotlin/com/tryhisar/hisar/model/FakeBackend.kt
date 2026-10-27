@@ -60,6 +60,7 @@ open class FakeBackend : VaultBackend {
     /** While set, listing the devices fails with this sentence. */
     var listAllDeviceErrorMessage: String? = null
     var isMacApprovalAllowedValue = true
+    var isExactHostMatchValue = false
     var isWebsiteIconsEnabledValue = true
     /** The Web Push endpoint the app registered; null before it has one and after it removed it. */
     var webPushEndpoint: String? = null
@@ -608,6 +609,27 @@ open class FakeBackend : VaultBackend {
     override fun generatePassword(length: Int, isDigitIncluded: Boolean, isSymbolIncluded: Boolean): String {
         record("generatePassword")
         return (if (isSymbolIncluded) "!" else if (isDigitIncluded) "1" else "a").repeat(length)
+    }
+
+    override fun ratePassword(password: String): PasswordStrength {
+        record("ratePassword")
+        return rateMasterPassword(password).strength
+    }
+
+    override fun checkMasterPassword(password: String): MasterPasswordFeedback {
+        record("checkMasterPassword")
+        return rateMasterPassword(password)
+    }
+
+    /** core/item's answers for password1234 and the empty password; any other password rates Good. */
+    private fun rateMasterPassword(password: String): MasterPasswordFeedback {
+        val advice = "A few random words you can remember make a strong master password."
+        return when (password) {
+            "" -> MasterPasswordFeedback(message = advice)
+            "password1234" ->
+                MasterPasswordFeedback("weak", "Weak", 8, "This password is too easy to guess. Add a few more words or characters.", isBlocking = true)
+            else -> MasterPasswordFeedback("good", "Good", 60, advice)
+        }
     }
 
     override fun listAllLoginForService(serviceIdentifier: String): List<LoginMatch> {
@@ -1228,6 +1250,13 @@ open class FakeBackend : VaultBackend {
         record("setMacApprovalAllowed")
         macApprovalErrorMessage?.let { throw BackendError(it) }
         isMacApprovalAllowedValue = isAllowed
+    }
+
+    override fun isExactHostMatch(): Boolean = isExactHostMatchValue
+
+    override fun setExactHostMatch(isExact: Boolean) {
+        record("setExactHostMatch")
+        isExactHostMatchValue = isExact
     }
 
     override fun prepareItemIcon(image: ByteString): ByteString {

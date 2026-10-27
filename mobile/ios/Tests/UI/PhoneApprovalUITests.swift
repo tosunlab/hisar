@@ -151,6 +151,9 @@ final class PhoneApprovalUITests: HisarUITestCase {
         openTab("Approvals")
         waitFor(app.staticTexts["No requests waiting"])
         XCTAssertTrue(app.staticTexts["Requests from Hisar on your Mac appear here while this iPhone is unlocked."].exists)
+        app.buttons["approvals-setup"].tap()
+        waitFor(app.switches["mac-approval-toggle"])
+        XCTAssertTrue(app.staticTexts["On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device."].exists)
     }
 
     private func launchPreview(_ kind: String, sensor: String = "Face ID", requiresPassword: Bool = false) {

@@ -13,6 +13,10 @@ The iPhone and Android apps on top of the gomobile-bound `core`. See [Design](..
 - `android/`: the Android app, below.
 - `cmd/hisar-ui-test-mac`: plays the user's Mac in the Android phone approval UI test.
 
+On iPhone and Android, item detail, the login editor and the password generator rate a nonempty password as Weak, Fair,
+Good or Strong. The four-segment meter uses the shared Go estimator. It does not reveal a masked password, and its rating
+does not prevent saving an item or using a generated password.
+
 Signing out another device ends its server session immediately. An offline device can still unlock its downloaded vaults until it next contacts the server, when Hisar removes the account from that device. Both the device list and device-detail confirmations explain this limit.
 
 Device sign-out and Mac-approval changes keep failures next to the initiating control. A failed change leaves the device or saved approval state unchanged and allows another attempt. A sign-out notice appears only after the server accepts revocation.
@@ -57,6 +61,8 @@ they prefill Create account.
 
 Full-screen setup, biometric onboarding, recovery and credential import hide the underlying screen from accessibility.
 Their touch barrier consumes unused pointer events while preserving the tabs' navigation state.
+
+Vaults hides Favorites until an item is starred. Its Tags row shows the number of tags and opens a separate list with each tag's item count.
 
 ### Build and test
 

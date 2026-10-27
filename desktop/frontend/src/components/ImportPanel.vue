@@ -126,7 +126,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <details class="how-to">
           <summary>How to export from your password manager</summary>
           <dl>
-            <div><dt>Hisar</dt><dd>Settings → Export your data on any device. Import the .hisar or .json file here; an encrypted export asks for its passphrase.</dd></div>
+            <div><dt>Hisar</dt><dd>Export from any of your devices (Settings → Import &amp; Export on a Mac, Settings → Account → Export data… on an iPhone or Android phone, or hisar export). Import the .hisar or .json file here; an encrypted export asks for its passphrase.</dd></div>
             <div><dt>1Password</dt><dd>File → Export → choose the account, then the 1PUX format. 1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.</dd></div>
             <div><dt>Bitwarden</dt><dd>Tools → Export vault → File format “.json”, not the encrypted one.</dd></div>
             <div><dt>LastPass</dt><dd>Account options → Advanced → Export, then save the file as CSV.</dd></div>

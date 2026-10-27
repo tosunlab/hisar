@@ -326,7 +326,7 @@ abstract class HisarUITestCase {
     }
 
     companion object {
-        const val MASTER_PASSWORD = "ui test master password"
+        const val MASTER_PASSWORD = "ui test orange cactus harbor"
 
         /** From launching the app to its first screen, while the process and the Go backend start; over 30 seconds when loaded. */
         const val APP_START_TIMEOUT = 60_000L

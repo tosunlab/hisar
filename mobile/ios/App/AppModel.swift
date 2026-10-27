@@ -58,6 +58,7 @@ final class AppModel: ObservableObject {
     private(set) var isNewSecretKeyShown = false
     @Published private(set) var copyCount = 0
     @Published private(set) var isMacApprovalAllowed = true
+    @Published private(set) var isExactHostMatch = false
     @Published private(set) var isWebsiteIconsEnabled = true
     @Published private(set) var isAutoFillEnabled = false
     /// Website icons by domain for this unlock; nil while one loads or when the website has none.
@@ -160,6 +161,7 @@ final class AppModel: ObservableObject {
             let backend = try createBackend()
             self.backend = backend
             isMacApprovalAllowed = backend.isMacApprovalAllowed()
+            isExactHostMatch = backend.isExactHostMatch()
             isWebsiteIconsEnabled = backend.isWebsiteIconsEnabled()
             theme = backend.getTheme()
             applyStatus(backend.getStatus())
@@ -1711,6 +1713,12 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
+    func setExactHostMatch(_ isExact: Bool) async -> Bool {
+        guard await perform(isBusyShown: false, { try $0.setExactHostMatch(isExact) }) != nil else { return false }
+        isExactHostMatch = isExact
+        return true
+    }
+
     func setMacApprovalAllowed(_ isAllowed: Bool) async -> Bool {
         macApprovalErrorMessage = nil
         errorMessage = nil
@@ -1745,6 +1753,20 @@ final class AppModel: ObservableObject {
 
     func generatePassword(length: Int, isDigitIncluded: Bool, isSymbolIncluded: Bool) async -> String? {
         await perform(isBusyShown: false) { try $0.generatePassword(length: length, isDigitIncluded: isDigitIncluded, isSymbolIncluded: isSymbolIncluded) }
+    }
+
+    /// core/item's rating of a password for the strength meter, or the empty rating without a backend.
+    func ratePassword(_ password: String) async -> PasswordStrength {
+        guard let backend, let strength = try? await runInBackground({ try backend.ratePassword(password) }) else { return PasswordStrength() }
+        return strength
+    }
+
+    /// core/item's rule for a new master password; a password it could not rate counts as refused.
+    func checkMasterPassword(_ password: String) async -> MasterPasswordFeedback {
+        guard let backend, let feedback = try? await runInBackground({ try backend.checkMasterPassword(password) }) else {
+            return MasterPasswordFeedback(isBlocking: true)
+        }
+        return feedback
     }
 
     // Phone approvals: the Mac's open requests, listed while unlocked and in the foreground.

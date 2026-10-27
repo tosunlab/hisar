@@ -6,6 +6,8 @@ import com.tryhisar.hisar.model.CredentialChangeResult
 import com.tryhisar.hisar.model.DeletionOrganization
 import com.tryhisar.hisar.model.DeletionVault
 import com.tryhisar.hisar.model.FakeBackend
+import com.tryhisar.hisar.model.MasterPasswordFeedback
+import com.tryhisar.hisar.model.PasswordStrength
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.model.PendingRecovery
 import com.tryhisar.hisar.model.PendingRecoveryExport
@@ -32,18 +34,43 @@ import kotlinx.coroutines.test.runTest
 
 /** Changing the master password, replacing the Secret Key and deleting the account. */
 class AccountLifecycleTests {
+    private val goodFeedback = MasterPasswordFeedback("good", "Good", 60, "A few random words you can remember make a strong master password.")
+
     @Test
     fun testNewPasswordRules() {
-        assertNull(AccountLifecycleLogic.describeNewPasswordProblem("old password", "", ""))
-        assertEquals("Use at least 10 characters.", AccountLifecycleLogic.describeNewPasswordProblem("old password", "short", ""))
+        assertNull(AccountLifecycleLogic.describeNewPasswordProblem("old password", "", "", goodFeedback))
+        assertEquals("Use at least 10 characters.", AccountLifecycleLogic.describeNewPasswordProblem("old password", "short", "", goodFeedback))
         assertEquals(
             "The new master password is the same as the current one.",
-            AccountLifecycleLogic.describeNewPasswordProblem("old password", "old password", ""),
+            AccountLifecycleLogic.describeNewPasswordProblem("old password", "old password", "", goodFeedback),
         )
-        assertEquals("The passwords do not match.", AccountLifecycleLogic.describeNewPasswordProblem("old password", "a new master password", "a new master"))
-        assertFalse(AccountLifecycleLogic.canChangePassword("", "a new master password", "a new master password"))
-        assertFalse(AccountLifecycleLogic.canChangePassword("old password", "a new master password", ""))
-        assertTrue(AccountLifecycleLogic.canChangePassword("old password", "a new master password", "a new master password"))
+        assertEquals(
+            "The passwords do not match.",
+            AccountLifecycleLogic.describeNewPasswordProblem("old password", "a new master password", "a new master", goodFeedback),
+        )
+        assertFalse(AccountLifecycleLogic.canChangePassword("", "a new master password", "a new master password", goodFeedback))
+        assertFalse(AccountLifecycleLogic.canChangePassword("old password", "a new master password", "", goodFeedback))
+        assertTrue(AccountLifecycleLogic.canChangePassword("old password", "a new master password", "a new master password", goodFeedback))
+    }
+
+    @Test
+    fun testWeakMasterPasswordIsRefused() = runTest {
+        val model = AppModelHarness(this).startUnlockedModel()
+        val weakFeedback = model.checkMasterPassword("password1234")
+        assertEquals(PasswordStrength("weak", "Weak", 8), weakFeedback.strength)
+        assertEquals(
+            "This password is too easy to guess. Add a few more words or characters.",
+            AccountLifecycleLogic.describeNewPasswordProblem("old password", "password1234", "password1234", weakFeedback),
+        )
+        assertFalse(AccountLifecycleLogic.canChangePassword("old password", "password1234", "password1234", weakFeedback))
+        assertFalse(AccountLifecycleLogic.isMasterPasswordAccepted("password1234", weakFeedback))
+
+        val allowedWeakFeedback =
+            MasterPasswordFeedback("weak", "Weak", 33, "You can use it, but another word or a few more characters make it much harder to guess.")
+        assertTrue(AccountLifecycleLogic.isMasterPasswordAccepted("orange cactus harbor", allowedWeakFeedback))
+        assertEquals(allowedWeakFeedback.message, AccountLifecycleLogic.describeMasterPasswordHint(allowedWeakFeedback))
+        assertNull(AccountLifecycleLogic.describeMasterPasswordHint(goodFeedback))
+        assertFalse(AccountLifecycleLogic.isMasterPasswordAccepted("orange cactus harbor", null), "refused until core has rated it")
     }
 
     @Test

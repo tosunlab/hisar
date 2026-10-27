@@ -367,6 +367,7 @@ struct ItemDetailView: View {
                         copy: { copy(fieldName: "password", label: "Password") },
                         copyReference: { copyReference(fieldName: "password") }
                     )
+                    ItemPasswordStrengthMeter(password: item.password)
                 }
                 if item.hasOneTimePassword {
                     OneTimeCodeRow(vaultID: vaultID, itemID: item.id) {

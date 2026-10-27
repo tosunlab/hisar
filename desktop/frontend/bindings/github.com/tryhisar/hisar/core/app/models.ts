@@ -729,6 +729,12 @@ export interface RemovedVaultNotice {
     "message": string;
 }
 
+export interface RevealedSecretKey {
+    "secretKey": string;
+    "qrPayload": string;
+    "qrCode": string;
+}
+
 /**
  * SentOrganizationInvitation is a pending invitation to the organization; only admins see them. Times are RFC 3339.
  */

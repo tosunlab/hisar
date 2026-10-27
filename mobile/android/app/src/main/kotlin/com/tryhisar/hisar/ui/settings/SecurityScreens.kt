@@ -153,6 +153,7 @@ fun MacApprovalsScreen(model: AppModel, onBack: () -> Unit) {
                 Text(
                     "Requests from Hisar on your Mac appear in the Approvals tab while Hisar is open and unlocked on this device.",
                 )
+                Text("On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device.")
             },
         ) {
             ToggleRow(

@@ -240,6 +240,28 @@ fun TagItemsScreen(model: AppModel, stack: NavigationStack, tag: String) {
     }
 }
 
+@Composable
+fun TagsScreen(model: AppModel, stack: NavigationStack) {
+    val data by model.unlockedData.collectAsStateWithLifecycle()
+    val allTag = VaultLogic.listAllTag(data.listAllItemReference())
+    PushedListScaffold(
+        title = "Tags",
+        onBack = stack::pop,
+        onRefresh = model::refreshAll,
+        isEmpty = allTag.isEmpty(),
+        emptyContent = { ContentUnavailable("No tags", Icons.Outlined.Sell) },
+    ) {
+        cardSection("tags", allTag, rowKey = { it.name }, dividerStart = { SymbolRowTextStart }) { tag ->
+            NavigationRow(
+                testTag = "tag-${tag.name}",
+                onClick = { stack.push(VaultsDestination.Tag(tag.name)) },
+                badge = tag.itemCount,
+                leading = { RowSymbol(Icons.Outlined.Sell) },
+            ) { Text(tag.name, style = HisarType.body, color = HisarTheme.colors.label) }
+        }
+    }
+}
+
 /** The empty vault, which says who can add items. */
 @Composable
 fun NoItemsYet(isWritable: Boolean) {

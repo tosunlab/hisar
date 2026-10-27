@@ -320,6 +320,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
     <section v-show="activeSegment === 'teams'" id="organization-panel-teams" role="tabpanel" aria-labelledby="organization-tab-teams" tabindex="0">
 
     <div class="settings-block" data-testid="organization-teams">
+      <p id="organization-role-legend" class="muted hint">{{ vaultRoleDescription }}</p>
       <div class="block-heading">
         <p class="section-label">Teams</p>
         <button v-if="organization.isAdmin" class="ghost small-button" data-testid="new-team" @click="dialog = { kind: 'new-team' }">
@@ -403,7 +404,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
               class="role-select"
               :value="teamVault.role"
               :aria-label="`Role of ${team.name} in ${describeTeamVault(teamVault)}`"
-              :title="vaultRoleDescription"
+              aria-describedby="organization-role-legend"
               :disabled="store.isBusy"
               :data-testid="`team-vault-role-${team.id}-${teamVault.vaultId}`"
               @change="changeTeamVaultRole(team, teamVault, $event)"

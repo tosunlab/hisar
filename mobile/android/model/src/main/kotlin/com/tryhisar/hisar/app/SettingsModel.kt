@@ -51,6 +51,11 @@ class SettingsModel(private val context: ModelContext) {
         return true
     }
 
+    suspend fun isExactHostMatch(): Boolean? = context.perform(isBusyShown = false) { it.isExactHostMatch() }
+
+    suspend fun setExactHostMatch(isExact: Boolean): Boolean =
+        context.perform(isBusyShown = false) { it.setExactHostMatch(isExact) } != null
+
     suspend fun loadAllDevice(): List<Device>? = context.perform(isBusyShown = false) { it.listAllDevice() }
 
     suspend fun revokeDevice(device: Device): Boolean = context.runInModel {

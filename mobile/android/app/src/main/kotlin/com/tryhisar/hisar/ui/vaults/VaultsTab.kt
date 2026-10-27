@@ -51,6 +51,7 @@ private fun DestinationScreen(model: AppModel, stack: NavigationStack, destinati
         VaultsDestination.Favorites -> FavoritesItemsScreen(model, stack)
         is VaultsDestination.Category -> CategoryItemsScreen(model, stack, destination.category)
         is VaultsDestination.Tag -> TagItemsScreen(model, stack, destination.tag)
+        VaultsDestination.Tags -> TagsScreen(model, stack)
         is VaultsDestination.Item -> ItemDetailScreen(
             model,
             destination.vaultID,

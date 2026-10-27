@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		001F842336BE420EB0BF42D7 /* PasswordStrengthMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9989C5FE07D2381AD1FC1930 /* PasswordStrengthMeter.swift */; };
 		01A6FE523D8DA1B696665F6B /* OneTimeCodeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52CA41C98B20CCCC570ECDA2 /* OneTimeCodeRow.swift */; };
 		0519427F1A30123623C1514D /* PasswordGeneratorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A031DA382226E9A30A8DA85C /* PasswordGeneratorView.swift */; };
 		0738F234B5FC729D53DFCB1F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F067661397CABF889DA6CF7C /* Theme.swift */; };
@@ -47,6 +48,7 @@
 		33F7B4F14E47CB1D0D4FB0F4 /* PendingRecoveryCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04DFF84B5CF30844AF78FDA /* PendingRecoveryCopy.swift */; };
 		343CD1DE10EC8C27BD57EFD5 /* AutoFillModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */; };
 		36DE9AB043E9FDA932377B5F /* KeychainSecretKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */; };
+		377F927640D888C212875A1C /* ItemPasswordStrengthMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC9C623DBB6766EA5B9CBBF4 /* ItemPasswordStrengthMeter.swift */; };
 		37B8625077147FD073CDEB86 /* PhoneApprovalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51DDBE193CE96E78C6788441 /* PhoneApprovalTests.swift */; };
 		385610A06FAE72AFC83F4F07 /* HisarUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B49F20D7B3678555E885AD /* HisarUITests.swift */; };
 		3A0A7510FED0E3EC64017E68 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 749D535C9C6B489F37C5F4C6 /* AuthenticationServices.framework */; };
@@ -102,6 +104,7 @@
 		7350A151F361786C37515ED8 /* PasskeyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E01C2B3F64259DBAF90B5 /* PasskeyUITests.swift */; };
 		739E3C3C505950494AF65FE2 /* OneTimeCodeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7689BDDB94FD64917944388 /* OneTimeCodeUITests.swift */; };
 		739F4863584CE3912731463A /* SystemCredentialIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FAD214270656E02E761B8B2 /* SystemCredentialIdentityStore.swift */; };
+		74D438A1DDF308D360B70A85 /* ItemPasswordStrengthMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC9C623DBB6766EA5B9CBBF4 /* ItemPasswordStrengthMeter.swift */; };
 		770689DFEAFC62A0A76A43DD /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3766EC2BF71158CD0225F090 /* Models.swift */; };
 		77F75D02E597EDF2C48C3356 /* ImportDestinationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B8829E0702CEA961DE5846 /* ImportDestinationTests.swift */; };
 		7960514E951A2A90C671BA9C /* ItemIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47989259B86D2ABA32773725 /* ItemIcon.swift */; };
@@ -150,6 +153,7 @@
 		B157232134C3DDBFE2774982 /* VaultSharingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F012F76F1EDB1B44FF1082E /* VaultSharingView.swift */; };
 		B2393CCCFBDE641E9D29319E /* BackendFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1346D0E3E68C5BDA1B3344E9 /* BackendFactory.swift */; };
 		B2D87CBBB8635681A36D3B76 /* AutoFillRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB833F7AE4DD1DCE9AB0EEC /* AutoFillRootView.swift */; };
+		B38BAFF0A563BDB8AA9235F2 /* PasswordStrengthMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9989C5FE07D2381AD1FC1930 /* PasswordStrengthMeter.swift */; };
 		B4936FF8BE8C3E0A2812F15E /* CredentialProviderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F31820CE1E2F645F505502A /* CredentialProviderViewController.swift */; };
 		B4F54B86BD901A64012536E5 /* SharingPushTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A7DA85F127A5EB580839A6B /* SharingPushTests.swift */; };
 		B7B6F4D889122435DAB6DD0B /* PendingRecoveryCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04DFF84B5CF30844AF78FDA /* PendingRecoveryCopy.swift */; };
@@ -328,6 +332,7 @@
 		8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockPanel.swift; sourceTree = "<group>"; };
 		932FFDDB9DA6FFA0375B3041 /* PhoneApprovalPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneApprovalPreviewView.swift; sourceTree = "<group>"; };
 		95EF6040E7BF9F0A901826B0 /* PeopleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleView.swift; sourceTree = "<group>"; };
+		9989C5FE07D2381AD1FC1930 /* PasswordStrengthMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordStrengthMeter.swift; sourceTree = "<group>"; };
 		9BCEF508D7F707D9913CFF28 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		9FB833F7AE4DD1DCE9AB0EEC /* AutoFillRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillRootView.swift; sourceTree = "<group>"; };
 		A031DA382226E9A30A8DA85C /* PasswordGeneratorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordGeneratorView.swift; sourceTree = "<group>"; };
@@ -356,6 +361,7 @@
 		E76E121835129E45189D709A /* VaultLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultLogicTests.swift; sourceTree = "<group>"; };
 		E9A5C76E2318A2B55CC5F849 /* HisarKitBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HisarKitBackend.swift; sourceTree = "<group>"; };
 		EAE5AE06D113B40C2B306DCD /* HisarAutoFill.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HisarAutoFill.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		EC9C623DBB6766EA5B9CBBF4 /* ItemPasswordStrengthMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemPasswordStrengthMeter.swift; sourceTree = "<group>"; };
 		ED00276374ABADC314F5DF91 /* AutoFillUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillUITests.swift; sourceTree = "<group>"; };
 		F067661397CABF889DA6CF7C /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		F1B3B016888438454F145B24 /* HisarConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HisarConfiguration.swift; sourceTree = "<group>"; };
@@ -555,12 +561,14 @@
 				104F8941A233F623CBF1EB40 /* ItemDetailView.swift */,
 				58725D5CFD94EED72E93193F /* ItemEditorView.swift */,
 				41FBB5DC69E33D5A27FE6041 /* ItemListView.swift */,
+				EC9C623DBB6766EA5B9CBBF4 /* ItemPasswordStrengthMeter.swift */,
 				56632F6C54EBD5227BCBED2E /* LockView.swift */,
 				FE0912D6FEC796C6B4E10A87 /* NewSecretKeyView.swift */,
 				80117468D27E2887C9AFA79B /* NewVaultView.swift */,
 				52CA41C98B20CCCC570ECDA2 /* OneTimeCodeRow.swift */,
 				01A3E7E65ACA85444F2E4830 /* OrganizationViews.swift */,
 				A031DA382226E9A30A8DA85C /* PasswordGeneratorView.swift */,
+				9989C5FE07D2381AD1FC1930 /* PasswordStrengthMeter.swift */,
 				8377C0BA43756107B7C54F28 /* PendingApprovalSection.swift */,
 				95EF6040E7BF9F0A901826B0 /* PeopleView.swift */,
 				932FFDDB9DA6FFA0375B3041 /* PhoneApprovalPreviewView.swift */,
@@ -950,6 +958,7 @@
 				1F28B9CCD36BFB98A0F6A64F /* ItemEditorView.swift in Sources */,
 				5A3A46DF41106F4DFB78C295 /* ItemIcon.swift in Sources */,
 				19267F53F064187E2BC2F2B7 /* ItemListView.swift in Sources */,
+				377F927640D888C212875A1C /* ItemPasswordStrengthMeter.swift in Sources */,
 				51EDF0E5D9F05E3726D3D785 /* KeychainSecretKeyStore.swift in Sources */,
 				857A6EA56057245495E79843 /* LockView.swift in Sources */,
 				870E80A7AC2AE8E44FF97B2B /* LogoMark.swift in Sources */,
@@ -960,6 +969,7 @@
 				950D694E8B93B33771BC2C7B /* OrganizationLogic.swift in Sources */,
 				AEE6992F275A07E8FF806E7E /* OrganizationViews.swift in Sources */,
 				28F7374E5C1FBBD30F6B6E54 /* PasswordGeneratorView.swift in Sources */,
+				001F842336BE420EB0BF42D7 /* PasswordStrengthMeter.swift in Sources */,
 				A94B4DF0B3BDD0E2EED6122E /* PasteboardClipboard.swift in Sources */,
 				C84A058AFCD826EC5E00DEDA /* PendingApprovalSection.swift in Sources */,
 				33F7B4F14E47CB1D0D4FB0F4 /* PendingRecoveryCopy.swift in Sources */,
@@ -1031,6 +1041,7 @@
 				7B2A4476D3BEE2DAE66AE1BC /* ItemEditorView.swift in Sources */,
 				7960514E951A2A90C671BA9C /* ItemIcon.swift in Sources */,
 				FACA3B7B115CEC55B066CA73 /* ItemListView.swift in Sources */,
+				74D438A1DDF308D360B70A85 /* ItemPasswordStrengthMeter.swift in Sources */,
 				B0D783794A26B0594D271359 /* KeychainSecretKeyStore.swift in Sources */,
 				6B7BC9DF0F93E81A2CF47B21 /* LockView.swift in Sources */,
 				6ADB90127213F9204645DD32 /* LogoMark.swift in Sources */,
@@ -1041,6 +1052,7 @@
 				E67F2A28F8A2CB7524435DE9 /* OrganizationLogic.swift in Sources */,
 				3AE35B263BFA9835802F1A1B /* OrganizationViews.swift in Sources */,
 				0519427F1A30123623C1514D /* PasswordGeneratorView.swift in Sources */,
+				B38BAFF0A563BDB8AA9235F2 /* PasswordStrengthMeter.swift in Sources */,
 				4023A7B395E9788AB14768F7 /* PasteboardClipboard.swift in Sources */,
 				BE45311F50B1B88BFE65824A /* PendingApprovalSection.swift in Sources */,
 				B7B6F4D889122435DAB6DD0B /* PendingRecoveryCopy.swift in Sources */,

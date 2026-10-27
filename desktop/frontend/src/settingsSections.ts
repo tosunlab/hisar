@@ -40,7 +40,7 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "clipboard", title: "Clear copied values after 90 seconds", keywords: "clipboard copy clear" },
       { id: "change-master-password", title: "Change master password", keywords: "password change new rotate" },
       { id: "replace-secret-key", title: "Replace Secret Key", keywords: "secret key rotate new emergency kit leaked compromised" },
-      { id: "emergency-kit", title: "Emergency Kit", keywords: "secret key pdf recovery backup new device" },
+      { id: "emergency-kit", title: "Emergency Kit", keywords: "show copy scan qr secret key pdf recovery backup new device" },
     ],
   },
   {

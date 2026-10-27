@@ -187,7 +187,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                     ServerSection(currentDraft, onChange, allVaultSSHKey)
                 }
                 if (item.isDatabase) DatabaseSection(currentDraft, onChange)
-                LoginSections(currentDraft, onChange, revealed, onRevealedChange, onGeneratePassword = { isGeneratorShown = true }, errorMessage = errorMessage)
+                LoginSections(model, currentDraft, onChange, revealed, onRevealedChange, onGeneratePassword = { isGeneratorShown = true }, errorMessage = errorMessage)
                 OtherFieldsSection(currentDraft, onChange)
             }
         }

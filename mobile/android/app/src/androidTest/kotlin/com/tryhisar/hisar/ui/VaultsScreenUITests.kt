@@ -130,8 +130,8 @@ class VaultsScreenUITests : HisarUITestCase() {
             scrollTo("waiting-vault-key-Acme")
             assertTrue(exists(hasTestTag("waiting-vault-key-Acme")))
             saveScreenshot("vaults-home-vaults")
-            scrollTo("tag-work")
-            val lastRow = composeRule.onNodeWithTag("tag-work").fetchSemanticsNode().boundsInRoot
+            scrollTo("tags")
+            val lastRow = composeRule.onNodeWithTag("tags").fetchSemanticsNode().boundsInRoot
             val tabBar = composeRule.onNodeWithTag("tab-vaults").fetchSemanticsNode().boundsInRoot
             assertTrue("the final row clears the measured tab bar", lastRow.bottom <= tabBar.top)
             saveScreenshot("vaults-home-types-and-tags")
@@ -258,6 +258,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             saveScreenshot("vaults-by-type")
             goBack()
             assertFalse("a type without items is left out", exists(hasTestTag("category-sshKeys")))
+            tap("tags")
             tap("tag-work")
             waitFor("item-AWS")
             type("AWS", "tag-search")
@@ -269,6 +270,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             waitFor("no-results")
             Espresso.closeSoftKeyboard()
             saveScreenshot("vaults-tag")
+            goBack()
             goBack()
             waitFor("vaults-list")
         }
@@ -289,6 +291,55 @@ class VaultsScreenUITests : HisarUITestCase() {
             assertTrue(exists(hasTestTag("open-replace-secret-key")))
             tap("open-change-master-password")
             waitFor("change-password-current")
+        }
+    }
+
+    @Test
+    fun testEmptyFavoritesAreHiddenAndTagsOpenASeparateList() {
+        val backend = buildBackend().apply { allFavoriteRecordID.clear() }
+        launchApp(backend).use {
+            waitFor("vaults-list")
+            scrollTo("tags")
+            assertFalse(exists(hasTestTag("favorites-empty")))
+            assertFalse(exists(hasTestTag("tag-work")))
+            assertFalse(exists(hasTestTag("tag-finance")))
+            tap("tags")
+            waitFor("tag-finance")
+            assertTrue(exists(hasTestTag("tag-work")))
+            tap("tag-work")
+            waitFor("item-AWS")
+            goBack()
+            waitFor("tag-work")
+            goBack()
+            waitFor("vaults-list")
+        }
+    }
+
+    @Test
+    fun testItemPasswordStrengthDoesNotRevealOrRequireAStrongPassword() {
+        val backend = buildBackend()
+        launchApp(backend).use {
+            waitFor("vaults-list")
+            tap("vault-Personal")
+            tap("item-GitHub")
+            waitFor("item-password-strength")
+            assertFalse(exists(hasText("github-password")))
+            tap("edit-item")
+            waitFor("editor-password")
+            waitFor("item-password-strength")
+            composeRule.onNodeWithTag("editor-password").performTextReplacement("")
+            composeRule.waitUntil(5_000) { !exists(hasTestTag("item-password-strength")) }
+            composeRule.onNodeWithTag("editor-password").performTextReplacement("password1234")
+            waitFor("item-password-strength")
+            assertTrue(exists(hasText("Weak")))
+            tap("editor-generate-password")
+            waitFor("generator-use")
+            waitFor("item-password-strength")
+            tap("generator-close")
+            Espresso.closeSoftKeyboard()
+            tap("editor-save")
+            waitFor("edit-item")
+            assertEquals("password1234", backend.getItem("personal", "github").password)
         }
     }
 

@@ -128,9 +128,10 @@ describe("Vault sharing panel", () => {
     expect(bob.text()).not.toContain("you");
     expect((bob.find('[data-testid="role-select-BOB222"]').element as HTMLSelectElement).value).toBe("editor");
     for (const role of panel.findAll("select.role-select")) {
-      expect(role.attributes("title")).toBe("Readers view items, editors also change them, owners also share, rename and delete the vault.");
+      expect(role.attributes("aria-describedby")).toBe("sharing-role-legend");
     }
-    expect(panel.text()).not.toContain("Readers view items");
+    expect(panel.get("#sharing-role-legend").text()).toBe("Readers view items, editors also change them, owners also share, rename and delete the vault.");
+    expect(panel.findAll("#sharing-role-legend")).toHaveLength(1);
     expect(panel.text()).not.toContain("Editors can add and change items");
     store.allVaultMember = [store.allVaultMember[0]!];
     await flushPromises();

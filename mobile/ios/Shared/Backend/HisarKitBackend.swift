@@ -428,6 +428,14 @@ final class HisarKitBackend: VaultBackend {
         try callReturningText { hisar.generatePassword(length, isDigitIncluded: isDigitIncluded, isSymbolIncluded: isSymbolIncluded, error: $0) }
     }
 
+    func ratePassword(_ password: String) throws -> PasswordStrength {
+        try decode(PasswordStrength.self, from: callReturningText { hisar.ratePassword(password, error: $0) })
+    }
+
+    func checkMasterPassword(_ password: String) throws -> MasterPasswordFeedback {
+        try decode(MasterPasswordFeedback.self, from: callReturningText { hisar.checkMasterPassword(password, error: $0) })
+    }
+
     func listAllLoginForService(serviceIdentifier: String) throws -> [LoginMatch] {
         try decode([LoginMatch]?.self, from: callReturningText { hisar.listAllLogin(forService: serviceIdentifier, error: $0) }) ?? []
     }
@@ -587,6 +595,12 @@ final class HisarKitBackend: VaultBackend {
 
     func setMacApprovalAllowed(_ isAllowed: Bool) throws {
         try callReturningNothing { try hisar.setMacApprovalAllowed(isAllowed) }
+    }
+
+    func isExactHostMatch() -> Bool { hisar.isExactHostMatch() }
+
+    func setExactHostMatch(_ isExact: Bool) throws {
+        try callReturningNothing { try hisar.setExactHostMatch(isExact) }
     }
 
     func prepareItemIcon(_ image: Data) throws -> Data {

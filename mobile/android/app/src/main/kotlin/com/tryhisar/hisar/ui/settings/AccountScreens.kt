@@ -69,6 +69,8 @@ import com.tryhisar.hisar.model.AccountDeletionPreview
 import com.tryhisar.hisar.model.AccountLifecycleLogic
 import com.tryhisar.hisar.model.CredentialChangeResult
 import com.tryhisar.hisar.model.EmergencyKitExport
+import com.tryhisar.hisar.model.MasterPasswordFeedback
+import com.tryhisar.hisar.model.PasswordStrength
 import com.tryhisar.hisar.ui.components.ClearSection
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormButtonRow
@@ -76,6 +78,7 @@ import com.tryhisar.hisar.ui.components.FormRow
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.LabeledRow
+import com.tryhisar.hisar.ui.components.PasswordStrengthMeter
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.ProminentButton
 import com.tryhisar.hisar.ui.components.RowDivider
@@ -306,9 +309,19 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
     var newPassword by remember { mutableStateOf("") }
     var repeatedPassword by remember { mutableStateOf("") }
     var isConfirmationShown by remember { mutableStateOf(false) }
-    val problem = AccountLifecycleLogic.describeNewPasswordProblem(currentPassword, newPassword, repeatedPassword)
-    val canSubmit = AccountLifecycleLogic.canChangePassword(currentPassword, newPassword, repeatedPassword) && !isBusy
+    var ratedPassword by remember { mutableStateOf("") }
+    var newPasswordFeedback by remember { mutableStateOf<MasterPasswordFeedback?>(null) }
+    val problem = AccountLifecycleLogic.describeNewPasswordProblem(currentPassword, newPassword, repeatedPassword, newPasswordFeedback)
+    val canSubmit = AccountLifecycleLogic.canChangePassword(
+        currentPassword, newPassword, repeatedPassword, newPasswordFeedback.takeIf { ratedPassword == newPassword },
+    ) && !isBusy
     LaunchedEffect(Unit) { model.errorMessage.value = null }
+    LaunchedEffect(newPassword) {
+        val typedPassword = newPassword
+        val feedback = model.checkMasterPassword(typedPassword)
+        ratedPassword = typedPassword
+        newPasswordFeedback = feedback
+    }
 
     SettingsScreen("Change master password", onBack, isTitleInline = true) {
         FormSection(footer = { Text("Your Secret Key, your Emergency Kit and your items stay the same. Hisar never sends your master password to the server.") }) {
@@ -320,7 +333,12 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
         FormSection(
             header = "New master password",
             footer = {
-                problem?.let { Text(it, color = HisarTheme.colors.destructive, modifier = Modifier.testTag("change-password-problem")) }
+                PasswordStrengthMeter(newPasswordFeedback?.strength ?: PasswordStrength())
+                val hint = AccountLifecycleLogic.describeMasterPasswordHint(newPasswordFeedback)
+                when {
+                    problem != null -> Text(problem, color = HisarTheme.colors.destructive, modifier = Modifier.testTag("change-password-problem"))
+                    hint != null -> Text(hint)
+                }
                 Text("A forgotten master password can't be recovered by anyone, including Hisar.")
             },
         ) {
