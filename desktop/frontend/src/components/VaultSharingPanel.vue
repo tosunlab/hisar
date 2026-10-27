@@ -15,6 +15,8 @@ import {
   takeVaultFromTeam,
 } from "../store";
 import { formatRole, vaultRoleDescription } from "../util";
+import { formatDateTime, formatExpiresIn } from "../util";
+import { useInvitationClock } from "../invitationClock";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
@@ -26,6 +28,7 @@ const removingAccountID = ref("");
 const newMemberEmail = ref("");
 const newMemberRole = ref<VaultRole>("editor");
 const cancellingInvitationID = ref("");
+const now = useInvitationClock();
 
 const vault = computed(() => getSelectedVault());
 const isOwner = computed(() => vault.value?.role === "owner");
@@ -279,9 +282,10 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                   <span class="invitation-icon"><AppIcon name="mail" :size="15" /></span>
                   <div class="member-text">
                     <span class="member-name"><span class="name-text">{{ invitation.email }}</span></span>
-                    <span class="member-email">{{ invitation.requiresConfirmation ? "Accepted · Review recipient identity" : invitation.state === "accepted" ? "Accepted · Hisar is finishing sharing" : "Waiting for them to accept" }}</span>
+                    <span class="member-email invitation-status" :title="formatDateTime(invitation.expiresAt)">{{ invitation.requiresConfirmation ? "Accepted · Review recipient identity" : invitation.state === "accepted" ? "Accepted · Hisar is finishing sharing" : `Waiting for them to accept · ${formatExpiresIn(invitation.expiresAt, now)}` }}</span>
                   </div>
                   <template v-if="cancellingInvitationID !== invitation.id">
+                    <button v-if="invitation.state !== 'accepted' && !invitation.requiresConfirmation" class="ghost" :disabled="store.isBusy" title="Sending again replaces the previous invitation." :data-testid="`resend-invitation-${invitation.id}`" @click="shareVault(invitation.email, invitation.role as VaultRole, invitation.vaultId, invitation.id)">Send again</button>
                     <span class="role-label">{{ formatRole(invitation.role) }}</span>
                     <button
                       class="ghost icon-button remove-button"
@@ -450,6 +454,11 @@ h2 {
 .member-email {
   font-size: var(--font-size-12);
   color: var(--color-text-muted);
+}
+
+.member-email.invitation-status {
+  white-space: normal;
+  overflow: visible;
 }
 
 .code-toggle {

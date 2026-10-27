@@ -1647,14 +1647,14 @@ export function closeSharing(): void {
 }
 
 // shareVault sends a share invitation; the server answers the same whether or not the email has an account.
-export async function shareVault(email: string, role: VaultRole): Promise<boolean> {
-  const vaultID = store.selectedVaultID;
+export async function shareVault(email: string, role: VaultRole, vaultID = store.selectedVaultID, errorKey = "invite"): Promise<boolean> {
   const shared = await runAction(async () => {
     await api.shareVault(vaultID, email, role);
     return true;
-  }, "invite");
+  }, errorKey);
   if (shared) {
-    await loadSharing();
+    if (vaultID === store.selectedVaultID) await loadSharing();
+    else await loadShareInvitationsQuietly();
     showNotice(`Invitation sent to ${email.trim().toLowerCase()}`);
   }
   return shared === true;

@@ -84,6 +84,7 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
                     InvitationRow(
                         text = "${invitation.inviterName} shared a vault with you as ${VaultLogic.describeVaultRole(invitation.role).lowercase()}",
                         email = invitation.invitedByEmail,
+                        expiresAt = invitation.expiresAt,
                         icon = Icons.Filled.Group,
                         testTagPrefix = "",
                         testTagName = "invitation",
@@ -139,6 +140,7 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
                         ) {
                             SentInvitationRow(
                                 invitation, isVaultNameShown = true, testTag = "sent-invitation-${invitation.email}",
+                                model = model, onResent = { load() },
                                 onCancel = { invitationToCancel = invitation },
                                 onConfirm = { snapshot -> scope.launch { if (model.sharing.confirmShareRecipient(snapshot)) load() } },
                             )

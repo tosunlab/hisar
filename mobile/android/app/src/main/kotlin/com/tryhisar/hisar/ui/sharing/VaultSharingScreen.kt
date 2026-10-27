@@ -222,6 +222,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
                         ) {
                             SentInvitationRow(
                                 invitation, isVaultNameShown = false, testTag = "vault-invitation-${invitation.email}",
+                                model = model, onResent = { load() },
                                 onCancel = { invitationToCancel = invitation },
                                 onConfirm = { snapshot -> scope.launch { if (model.sharing.confirmShareRecipient(snapshot)) load() } },
                             )

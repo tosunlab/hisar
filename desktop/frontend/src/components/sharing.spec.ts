@@ -85,6 +85,20 @@ beforeEach(() => {
 });
 
 describe("Vault sharing panel", () => {
+  it("resends the pending row's vault, email and role and keeps failures at that row", async () => {
+    api.shareVault.mockRejectedValueOnce(new Error("Send failed"));
+    const wrapper = await openSharingPanel();
+    const row = wrapper.find('[data-testid="vault-invitation-invitation-to-dave"]');
+    expect(row.text()).toContain("Expires in");
+    expect(row.find('.member-email').attributes("title")).toBeTruthy();
+    await row.find('[data-testid="resend-invitation-invitation-to-dave"]').trigger("click");
+    await flushPromises();
+    expect(api.shareVault).toHaveBeenCalledWith("family", "dave@example.com", "reader");
+    expect(row.find('[role="alert"]').text()).toContain("Send failed");
+    expect(store.errorMessage).toBe("");
+    wrapper.unmount();
+  });
+
   it("keeps invitation failures beside the form without an alert behind the panel", async () => {
     api.shareVault.mockRejectedValueOnce(new Error("The invitation could not be sent."));
     const wrapper = await openSharingPanel();
@@ -453,6 +467,32 @@ describe("Lock screen", () => {
 });
 
 describe("Settings people and devices", () => {
+  it("resends from People using the row's vault rather than the selected vault", async () => {
+    api.shareVault.mockResolvedValue(undefined);
+    store.selectedVaultID = "personal";
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    await wrapper.find('[data-testid="resend-invitation-invitation-to-dave"]').trigger("click");
+    await flushPromises();
+    expect(api.shareVault).toHaveBeenCalledWith("family", "dave@example.com", "reader");
+    expect(api.listAllVaultMember).not.toHaveBeenCalledWith("personal");
+    wrapper.unmount();
+  });
+
+  it("labels expired received invitations and prevents acceptance; accepted sent rows cannot resend", async () => {
+    api.listAllShareInvitation.mockResolvedValue({
+      received: [createReceivedShareInvitation({ expiresAt: new Date(Date.now() - 1000).toISOString() })],
+      sent: [createSentShareInvitation({ state: "accepted", requiresConfirmation: true })], completionError: "",
+    });
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    const received = wrapper.find('[data-testid="received-invitation-invitation-from-carol"]');
+    expect(received.text()).toContain("Expired");
+    expect(received.find('[data-testid="accept-invitation-invitation-from-carol"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.find('[data-testid="resend-invitation-invitation-to-dave"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   beforeEach(() => {
     api.listAllDevice.mockResolvedValue([
       createDevice(),
