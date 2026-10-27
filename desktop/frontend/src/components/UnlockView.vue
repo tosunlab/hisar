@@ -116,6 +116,9 @@ onBeforeUnmount(() => {
               </span>
             </button>
           </label>
+          <p v-if="store.status.biometricEnabled && !store.status.biometricReady && !store.status.biometricSetupError" class="muted" data-testid="biometric-password-reason">
+            {{ store.status.biometricAvailable ? "Enter your master password to use Touch ID again. Hisar requires it after starting and at least every 14 days." : "Touch ID isn't available right now. Enter your master password." }}
+          </p>
           <button class="primary" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Unlocking…" : "Unlock" }}</button>
         </form>
         <p class="muted status" aria-live="polite" data-testid="unlock-status">

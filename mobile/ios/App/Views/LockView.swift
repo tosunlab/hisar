@@ -11,6 +11,8 @@ struct LockView: View {
         UnlockPanel(
             email: model.status.email,
             isBiometricReady: model.status.biometricReady,
+            isBiometricEnabled: model.status.biometricEnabled,
+            isBiometricAvailable: model.status.biometricAvailable,
             lockCount: model.lockCount,
             biometryName: Self.biometryName,
             isBusy: model.isBusy,
