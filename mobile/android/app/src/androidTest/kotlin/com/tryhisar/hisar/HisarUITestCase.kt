@@ -271,6 +271,7 @@ abstract class HisarUITestCase {
             tap(kit.recordTag)
             check(readText("pending-recovery-phase") == kit.phase) { "the prepared recovery changed across process restart" }
         }
+        handOffPendingRecoveryKit(password)
         type(password, "pending-recovery-password")
         tapWhenEnabled("pending-recovery-acknowledge")
         if (kit.phase == "awaiting-kit") {
@@ -279,6 +280,7 @@ abstract class HisarUITestCase {
             type(password, "pending-recovery-password")
             tapWhenEnabled("pending-recovery-resume")
             waitFor(hasTestTag("pending-recovery-phase") and hasText("delivery-pending"), ACCOUNT_KEY_TIMEOUT)
+            handOffPendingRecoveryKit(password)
             type(password, "pending-recovery-password")
             tapWhenEnabled("pending-recovery-acknowledge")
         }
@@ -287,6 +289,15 @@ abstract class HisarUITestCase {
         }
         if (exists(hasTestTag("pending-recovery-phase"))) tap("pending-recovery-later")
         return kit.secretKey
+    }
+
+    /** Acknowledging needs a handoff of the kit shown now; a resume or a new process clears it, so it is prepared again. */
+    private fun handOffPendingRecoveryKit(password: String) {
+        if (!exists(hasTestTag("pending-recovery-share-kit"))) {
+            type(password, "pending-recovery-password")
+            tapWhenEnabled("pending-recovery-export")
+        }
+        handOffEmergencyKit("pending-recovery-share-kit")
     }
 
     /** Signs in to the harness server with an account another device created. */

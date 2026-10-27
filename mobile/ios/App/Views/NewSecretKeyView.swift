@@ -35,13 +35,11 @@ struct NewSecretKeyView: View {
                 }
                 Section {
                     if let export {
-                        ShareLink(item: URL(fileURLWithPath: export.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
-                            Label("Save or Print Emergency Kit", systemImage: "square.and.arrow.up")
-                                .frame(maxWidth: .infinity)
+                        EmergencyKitShareButton(url: URL(fileURLWithPath: export.emergencyKitPath), label: "Save or Print Emergency Kit") {
+                            isKitShared = true
                         }
                         .applyProminentGlassStyle()
                         .controlSize(.large)
-                        .simultaneousGesture(TapGesture().onEnded { isKitShared = true })
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets())
                         .accessibilityIdentifier("new-secret-key-share-kit")
@@ -90,8 +88,14 @@ struct NewSecretKeyView: View {
                     }
                     .applyProminentGlassStyle()
                     .controlSize(.large)
-                    .disabled(export == nil || !(isKitShared || isCopied) || model.isBusy)
+                    .disabled(export == nil || !isKitShared || model.isBusy)
                     .accessibilityIdentifier("new-secret-key-done")
+                    if !isKitShared {
+                        Text("Save or print the Emergency Kit to continue.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("new-secret-key-hint")
+                    }
                     Button("Finish later") {
                         Task { await model.postponeNewSecretKey() }
                     }

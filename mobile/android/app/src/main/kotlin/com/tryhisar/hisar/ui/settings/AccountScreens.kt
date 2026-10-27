@@ -656,9 +656,12 @@ fun PendingRecoveryScreen(model: AppModel) {
                     testTag = "pending-recovery-export",
                     enabled = password.isNotEmpty() && !isBusy && recovery.phase != "outcome-unknown",
                 )
+                var isKitHandedOff by remember(recovery.operationId, export) { mutableStateOf(false) }
                 export?.let {
                     SecretKeyRow(it.secretKey, "pending-recovery-secret-key")
-                    EmergencyKitRows(model, it.path, "pending-recovery-save-kit", "pending-recovery-print-kit", "pending-recovery-share-kit")
+                    EmergencyKitRows(model, it.path, "pending-recovery-save-kit", "pending-recovery-print-kit", "pending-recovery-share-kit") {
+                        isKitHandedOff = true
+                    }
                 }
                 FormButtonRow(
                     "I saved the new Emergency Kit",
@@ -670,9 +673,12 @@ fun PendingRecoveryScreen(model: AppModel) {
                         scope.launch { model.pendingRecovery.acknowledge(recovery.operationId, entered) }
                     },
                     testTag = "pending-recovery-acknowledge",
-                    enabled = password.isNotEmpty() && !isBusy && recovery.kitSaved &&
+                    enabled = password.isNotEmpty() && !isBusy && recovery.kitSaved && isKitHandedOff &&
                         (recovery.phase == "delivery-pending" || recovery.phase == "awaiting-kit"),
                 )
+                if (!isKitHandedOff && (recovery.phase == "delivery-pending" || recovery.phase == "awaiting-kit")) {
+                    FormRow { Text("Save, print or share the Emergency Kit first.", Modifier.testTag("pending-recovery-handoff-hint"), color = HisarTheme.colors.secondaryLabel) }
+                }
                 if (recovery.phase == "awaiting-kit" || recovery.phase == "prepared") {
                     FormButtonRow(
                         "Discard uncommitted setup", { isDiscardConfirmationShown = true }, testTag = "pending-recovery-discard",

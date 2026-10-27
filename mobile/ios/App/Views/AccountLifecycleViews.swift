@@ -390,6 +390,8 @@ struct PendingRecoveryView: View {
     @State private var secretKey = ""
     @State private var priorSecretKey = ""
     @State private var isDiscardConfirmationShown = false
+    // The kit file a share sheet completed a save, print or share of; a new export or another record needs its own.
+    @State private var handedOffKitPath: String?
 
     private func clearCredentials() {
         password = ""
@@ -471,8 +473,9 @@ struct PendingRecoveryView: View {
                                 .font(.body.monospaced())
                                 .textSelection(.enabled)
                                 .accessibilityIdentifier("pending-recovery-secret-key")
-                            ShareLink(item: URL(fileURLWithPath: export.path), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
-                                Label("Save or print Emergency Kit", systemImage: "square.and.arrow.up")
+                            EmergencyKitShareButton(url: URL(fileURLWithPath: export.path), label: "Save or print Emergency Kit", onPresent: model.reportActivity) {
+                                handedOffKitPath = export.path
+                                model.reportActivity()
                             }
                             .accessibilityIdentifier("pending-recovery-share-kit")
                         }
@@ -481,8 +484,15 @@ struct PendingRecoveryView: View {
                             clearCredentials()
                             Task { await model.acknowledgePendingRecovery(operationID: recovery.operationId, password: enteredPassword) }
                         }
-                        .disabled(password.isEmpty || model.isBusy || !recovery.kitSaved || (recovery.phase != "delivery-pending" && recovery.phase != "awaiting-kit"))
+                        .disabled(password.isEmpty || model.isBusy || !recovery.kitSaved || handedOffKitPath == nil || handedOffKitPath != model.pendingRecoveryExport?.path
+                            || (recovery.phase != "delivery-pending" && recovery.phase != "awaiting-kit"))
                         .accessibilityIdentifier("pending-recovery-acknowledge")
+                        if (recovery.phase == "delivery-pending" || recovery.phase == "awaiting-kit") && (handedOffKitPath == nil || handedOffKitPath != model.pendingRecoveryExport?.path) {
+                            Text("Save or print the Emergency Kit to continue.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .accessibilityIdentifier("pending-recovery-handoff-hint")
+                        }
                         if recovery.phase == "awaiting-kit" || recovery.phase == "prepared" {
                             Button("Discard uncommitted setup", role: .destructive) { isDiscardConfirmationShown = true }
                                 .disabled(password.isEmpty || model.isBusy)
