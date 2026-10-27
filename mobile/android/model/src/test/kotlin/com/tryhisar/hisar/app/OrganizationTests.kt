@@ -53,6 +53,18 @@ class OrganizationTests {
     }
 
     @Test
+    fun testRemovingTeamMembershipPreviewsOnlyThatPersonsLosses() {
+        val original = buildAcme(isAdmin = true)
+        val organization = original.copy(allTeam = listOf(original.allTeam[0].copy(
+            allMember = original.allTeam[0].allMember + TeamMember("bob-id", "Bob", "bob@example.com"),
+        ), original.allTeam[1]))
+        assertEquals(listOf("Deploy: Bob's role changes from Editor to Reader."),
+            OrganizationLogic.accessConsequences(organization, OrganizationAccessChange.RemoveTeamMember("platform", "bob-id")))
+        assertEquals(listOf("Deploy: You lose access too."),
+            OrganizationLogic.accessConsequences(organization, OrganizationAccessChange.RemoveTeamMember("platform", "alice-id")))
+    }
+
+    @Test
     fun testTeamRoleChangeKeepsTheStrongestOtherGrant() {
         val original = buildAcme(isAdmin = true)
         val audit = original.allTeam[0]

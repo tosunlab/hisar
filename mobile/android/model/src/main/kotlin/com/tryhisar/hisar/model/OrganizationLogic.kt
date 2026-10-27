@@ -196,7 +196,7 @@ object OrganizationLogic {
             }
             if (effects.isEmpty()) null else "${if (vault.canOpen) vault.name else "A vault you can't open ($vaultID)"}: ${effects.joinToString(" ")}"
         }
-        return lines.ifEmpty { listOf("Everyone keeps their vault access through other teams.") }
+        return lines.ifEmpty { listOf(if (change is OrganizationAccessChange.RemoveTeamMember) "They keep their vault access through other teams." else "Everyone keeps their vault access through other teams.") }
     }
 
     fun describeMemberCount(count: Int): String = if (count == 1) "1 member" else "$count members"

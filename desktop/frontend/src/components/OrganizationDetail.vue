@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { Organization, OrganizationMember, OrganizationRole, SentOrganizationInvitation, Team, TeamVault, VaultRole } from "../api";
+import type { Organization, OrganizationMember, OrganizationRole, SentOrganizationInvitation, Team, TeamMember, TeamVault, VaultRole } from "../api";
 import {
   addTeamMember,
   cancelOrganizationInvitation,
@@ -8,7 +8,6 @@ import {
   giveVaultToTeam,
   inviteToOrganization,
   listAllOrganizationVault,
-  removeTeamMember,
   store,
   takeVaultFromTeam,
 } from "../store";
@@ -101,6 +100,13 @@ function openTeamMenu(team: Team, event: MouseEvent): void {
   }
   allAction.push(null, { id: "delete-team", label: "Delete team…", icon: "trash", isDanger: true, run: () => { dialog.value = { kind: "delete-team", team }; } });
   openActionMenu(event, `Actions for ${team.name}`, allAction);
+}
+
+function openTeamMemberMenu(team: Team, member: TeamMember, event: MouseEvent): void {
+  openActionMenu(event, `Actions for ${member.name || member.email}`, [{
+    id: "remove-team-member", label: `Remove from ${team.name}…`, icon: "trash", isDanger: true,
+    run: () => { dialog.value = { kind: "remove-team-member", team, member }; },
+  }]);
 }
 
 function selectSegment(segment: OrganizationSegment): void {
@@ -336,12 +342,14 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
           <span class="muted team-row-detail">{{ member.email }}</span>
           <button
             v-if="organization.isAdmin"
-            class="ghost"
+            class="ghost icon-button"
+            aria-haspopup="menu"
+            :aria-label="`Actions for ${member.name || member.email} in ${team.name}`"
             :disabled="store.isBusy"
             :data-testid="`remove-team-member-${team.id}-${member.accountId}`"
-            @click="removeTeamMember(organization, team, member)"
+            @click="openTeamMemberMenu(team, member, $event)"
           >
-            Remove
+            <AppIcon name="more" />
           </button>
         </div>
         <form v-if="addingTeamID === team.id" class="settings-group-form team-add" data-testid="team-add-member-form" @submit.prevent="submitAddMember(team)">

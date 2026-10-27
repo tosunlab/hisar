@@ -40,6 +40,15 @@ final class OrganizationTests: XCTestCase {
         return model
     }
 
+    func testRemovingTeamMembershipPreviewsOnlyThatPersonsLosses() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
+        let lines = OrganizationLogic.accessConsequences(organization: organization, change: .removeTeamMember(teamID: "platform", accountID: "bob-id"))
+        XCTAssertEqual(lines, ["Deploy: Bob's role changes from Editor to Reader."])
+        let selfLines = OrganizationLogic.accessConsequences(organization: organization, change: .removeTeamMember(teamID: "platform", accountID: "alice-id"))
+        XCTAssertEqual(selfLines, ["Deploy: You lose access too."])
+    }
+
     func testTeamRoleChangeKeepsTheStrongestOtherGrant() {
         var organization = Self.buildAcme(isAdmin: true)
         organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))

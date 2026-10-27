@@ -249,7 +249,9 @@ enum OrganizationLogic {
                 lines.append("\(name): \(effects.joined(separator: " "))")
             }
         }
-        return lines.isEmpty ? ["Everyone keeps their vault access through other teams."] : lines
+        if !lines.isEmpty { return lines }
+        if case .removeTeamMember = change { return ["They keep their vault access through other teams."] }
+        return ["Everyone keeps their vault access through other teams."]
     }
 
     static func describeMemberCount(_ count: Int) -> String {

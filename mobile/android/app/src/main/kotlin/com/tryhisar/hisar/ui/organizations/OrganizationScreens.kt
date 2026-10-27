@@ -3,6 +3,8 @@ package com.tryhisar.hisar.ui.organizations
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -61,6 +63,7 @@ import com.tryhisar.hisar.app.Refusal
 import com.tryhisar.hisar.app.takeRefusal
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.Organization
+import com.tryhisar.hisar.model.OrganizationAccessChange
 import com.tryhisar.hisar.model.OrganizationInvitation
 import com.tryhisar.hisar.model.OrganizationLoad
 import com.tryhisar.hisar.model.OrganizationLogic
@@ -264,6 +267,8 @@ private sealed interface OrganizationDialog {
 
     data class RemoveMember(val member: Member) : OrganizationDialog
 
+    data class RemoveTeamMember(val team: Team, val member: TeamMember) : OrganizationDialog
+
     data class ChangeRole(val member: Member, val role: String) : OrganizationDialog
 
     data class DeleteTeam(val team: Team) : OrganizationDialog
@@ -374,7 +379,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     }
 
     fun removeFromTeam(member: TeamMember, team: Team) {
-        launchChange("Remove") { model.organizations.removeTeamMember(organizationID, team.id, member.accountID) }
+        dialog = OrganizationDialog.RemoveTeamMember(team, member)
     }
 
     fun takeBack(vault: TeamVault, team: Team) {
@@ -532,6 +537,13 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     }
 
     when (val current = dialog) {
+        is OrganizationDialog.RemoveTeamMember -> OrganizationAccessConfirmation(
+            title = "Remove ${current.member.displayName} from ${current.team.name}?",
+            message = if (current.member.isCurrentUser) "You lose access to vaults this team alone gives you." else "Their vault access changes only where no other team gives the same role.",
+            consequences = organization?.let { OrganizationLogic.accessConsequences(it, OrganizationAccessChange.RemoveTeamMember(current.team.id, current.member.accountID)) }.orEmpty(),
+            confirmLabel = "Remove from ${current.team.name}", confirmTestTag = "confirm-remove-team-member",
+            onConfirm = { launchChange("Remove") { model.organizations.removeTeamMember(organizationID, current.team.id, current.member.accountID) } }, onDismiss = { dialog = null },
+        )
         is OrganizationDialog.ChangeRole -> OrganizationRoleConfirmation(current.member, name,
             onConfirm = { launchChange(if (current.role == OrganizationRole.ADMIN) "Make admin" else "Make member") { model.organizations.setOrganizationMemberRole(organizationID, current.member.accountID, current.role) } },
             onDismiss = { dialog = null })
@@ -919,5 +931,22 @@ private fun OrganizationRoleConfirmation(member: Member, organizationName: Strin
             else "${member.name} can no longer manage members, teams or which teams have which vaults. Another admin can make them an admin again.",
         confirmLabel = if (!isDemotion) "Make admin" else if (member.isCurrentUser) "Make me a member" else "Make member",
         confirmTestTag = "confirm-organization-role", onConfirm = onConfirm, onDismiss = onDismiss, isDestructive = isDemotion,
+    )
+}
+
+@Composable
+internal fun OrganizationAccessConfirmation(title: String, message: String, consequences: List<String>, confirmLabel: String, confirmTestTag: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(message)
+                consequences.forEach { line -> Spacer(Modifier.height(12.dp)); Text(line) }
+            }
+        },
+        confirmButton = { PlainButton(confirmLabel, { onDismiss(); onConfirm() }, testTag = confirmTestTag, color = HisarTheme.colors.destructive) },
+        dismissButton = { PlainButton("Cancel", onDismiss, testTag = "cancel-confirmation") },
+        containerColor = HisarTheme.colors.cellBackground,
     )
 }

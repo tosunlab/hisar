@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { Organization, OrganizationMember, OrganizationRole, Team, TeamVault, VaultRole } from "../api";
+import type { Organization, OrganizationMember, OrganizationRole, Team, TeamMember, TeamVault, VaultRole } from "../api";
 import {
   createTeam,
   deleteOrganization,
@@ -10,6 +10,7 @@ import {
   leaveOrganization,
   listAllOrganizationVault,
   removeOrganizationMember,
+  removeTeamMember,
   renameOrganization,
   renameTeam,
   store,
@@ -23,6 +24,7 @@ import type { IconName } from "./AppIcon.vue";
 export type OrganizationDialogRequest =
   | { kind: "rename-organization" | "delete-organization" | "leave" | "new-team" }
   | { kind: "remove-member"; member: OrganizationMember }
+  | { kind: "remove-team-member"; team: Team; member: TeamMember }
   | { kind: "change-member-role"; member: OrganizationMember; role: OrganizationRole }
   | { kind: "rename-team" | "delete-team" | "give-vault"; team: Team }
   | { kind: "change-team-role"; team: Team; teamVault: TeamVault; role: VaultRole };
@@ -63,6 +65,8 @@ const text = computed<DialogText>(() => {
   const organizationName = props.organization.name;
   const request = props.request;
   switch (request.kind) {
+    case "remove-team-member":
+      return { title: `Remove ${request.member.name || request.member.email} from ${request.team.name}?`, subtitle: request.member.isCurrentUser ? "You lose access to vaults this team alone gives you." : "Their vault access changes only where no other team gives the same role.", icon: "trash", isDanger: true, confirmLabel: `Remove from ${request.team.name}` };
     case "change-member-role": {
       const name = request.member.name || request.member.email;
       const isSelf = request.member.isCurrentUser;
@@ -126,6 +130,9 @@ const text = computed<DialogText>(() => {
 // allLostVaultLine names what goes: the vaults the teams in question have, unopened ones counted together.
 const allLostVaultLine = computed(() => {
   const request = props.request;
+  if (request.kind === "remove-team-member") {
+    return describeOrganizationAccessChange(props.organization, { kind: "remove-team-member", teamID: request.team.id, accountID: request.member.accountId });
+  }
   if (request.kind === "change-team-role") {
     return describeOrganizationAccessChange(props.organization, { kind: "team-role", teamID: request.team.id, vaultID: request.teamVault.vaultId, role: request.role });
   }
@@ -160,6 +167,8 @@ const canSubmit = computed(() => {
 async function runRequest(): Promise<boolean> {
   const request = props.request;
   switch (request.kind) {
+    case "remove-team-member":
+      return removeTeamMember(props.organization, request.team, request.member);
     case "change-member-role":
       return setOrganizationMemberRole(props.organization, request.member, request.role);
     case "change-team-role":

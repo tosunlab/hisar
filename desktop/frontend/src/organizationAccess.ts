@@ -41,7 +41,7 @@ export function describeOrganizationAccessChange(organization: Organization, cha
     }
     if (effects.length) lines.push(`${vault.canOpen ? vault.name : `A vault you can't open (${vaultID})`}: ${effects.join(" ")}`);
   }
-  return lines.length ? lines : ["Everyone keeps their vault access through other teams."];
+  return lines.length ? lines : [change.kind === "remove-team-member" ? "They keep their vault access through other teams." : "Everyone keeps their vault access through other teams."];
 }
 
 export function vaultRoleChangeTitle(name: string, vaultName: string, role: string): string {

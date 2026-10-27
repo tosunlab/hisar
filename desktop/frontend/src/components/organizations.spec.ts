@@ -211,6 +211,23 @@ describe("Organization screen", () => {
     settings.unmount();
   });
 
+  it("confirms a team member removal from its row menu", async () => {
+    const wrapper = await openOrganizationInSettings();
+    await wrapper.find('[data-testid="organization-segment-teams"]').trigger("click");
+    await wrapper.find('[data-testid="remove-team-member-platform-BOB222"]').trigger("click");
+    expect(api.removeTeamMember).not.toHaveBeenCalled();
+    await wrapper.find('[data-testid="context-menu-remove-team-member"]').trigger("click");
+    expect(wrapper.find('[data-testid="organization-dialog-remove-team-member"]').text()).toContain("Bob Stone loses access.");
+    await wrapper.find('[data-testid="organization-dialog-remove-team-member"] button.ghost').trigger("click");
+    expect(api.removeTeamMember).not.toHaveBeenCalled();
+    await wrapper.find('[data-testid="remove-team-member-platform-BOB222"]').trigger("click");
+    await wrapper.find('[data-testid="context-menu-remove-team-member"]').trigger("click");
+    await wrapper.find('[data-testid="organization-dialog-confirm"]').trigger("click");
+    await flushPromises();
+    expect(api.removeTeamMember).toHaveBeenCalledWith("acme", "platform", "BOB222");
+    wrapper.unmount();
+  });
+
   it("confirms self-demotion and preserves the last-admin refusal", async () => {
     const wrapper = await openOrganizationInSettings();
     await wrapper.find('[data-testid="organization-member-menu-ALICE1"]').trigger("click");
