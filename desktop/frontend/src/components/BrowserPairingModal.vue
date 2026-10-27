@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { cancelBrowserPairing, store } from "../store";
+import { useModalFocus } from "../modalFocus";
 import AppIcon from "./AppIcon.vue";
 
 const now = ref(Date.now());
+const panel = ref<HTMLElement | null>(null);
+useModalFocus(panel, cancelBrowserPairing, () => document.querySelector<HTMLButtonElement>('[data-testid="open-favorites"]'));
 let clockTimer: ReturnType<typeof setInterval> | undefined;
 
 const allCodeGroup = computed(() => {
@@ -29,7 +32,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 
 <template>
   <div v-if="store.browserPairing" class="overlay">
-    <div class="card pairing" role="alertdialog" aria-modal="true" aria-labelledby="pairing-title" data-testid="browser-pairing">
+    <div ref="panel" class="card pairing" role="alertdialog" tabindex="-1" aria-modal="true" aria-labelledby="pairing-title" data-testid="browser-pairing">
       <span class="pairing-icon"><AppIcon name="globe" :size="22" /></span>
       <h2 id="pairing-title">Pair {{ store.browserPairing.browser }} with Hisar?</h2>
       <p class="muted">Enter this code in the Hisar extension to let it fill and save logins.</p>
