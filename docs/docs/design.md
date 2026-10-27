@@ -338,6 +338,8 @@ The admin dashboard's setup page (§5.1) runs the same steps in its Web Worker a
 3. Client downloads `encKeyset` and decrypts it with AUK.
 4. The device registers (name, platform, public device key). The account's phones get a security notification (§9.12), and the device shows in every device's list.
 
+The desktop sign-in form focuses its first empty account field on opening, in email, Secret Key and master password order. Revealing Server moves focus to that field.
+
 #### Origin-bound authentication
 
 Login uses `POST /auth/login/v2/start` and `POST /auth/login/v2/finish`. Reauthentication uses `POST /account/reauthenticate/v2`, including credential replacement, account deletion, and admin password checks. The route selects version 2 before KE2. The client builds its context from its configured `apiclient.Client.BaseURL` before KE1. The server builds immutable login and reauthentication configurations at startup from operator-controlled `HISAR_PUBLIC_URL`. Request `Origin`, `Host`, and forwarded host headers never select the authentication origin.

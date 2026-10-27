@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { clearError, dismissSignedOutReason, signIn, signUp, signUpWithoutInvite, store } from "../store";
 import { getMasterPasswordFeedback, getThisDeviceName, isMacPlatform } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
@@ -38,6 +38,22 @@ const inviteCode = ref("");
 const pastedInviteLink = ref("");
 const name = ref("");
 const repeatedPassword = ref("");
+const serverInput = ref<HTMLInputElement | null>(null);
+const emailInput = ref<HTMLInputElement | null>(null);
+const secretKeyInput = ref<HTMLInputElement | null>(null);
+const passwordInput = ref<HTMLInputElement | null>(null);
+
+onMounted(() => {
+  const firstEmpty = [emailInput.value, secretKeyInput.value, passwordInput.value].find((input) => input && !input.value);
+  firstEmpty?.focus();
+});
+
+watch(isServerShown, async (isShown) => {
+  if (isShown) {
+    await nextTick();
+    serverInput.value?.focus();
+  }
+});
 
 const passwordMismatch = computed(
   () => mode.value !== "sign-in" && repeatedPassword.value !== "" && password.value !== repeatedPassword.value,
@@ -194,22 +210,22 @@ async function submitCreateAccount(): Promise<void> {
         <form v-if="mode === 'sign-in'" @submit.prevent="submitSignIn">
           <label v-if="isServerShown">
             <span>Server</span>
-            <span class="input-with-icon"><AppIcon name="globe" /><input v-model="server" name="server" autocomplete="url" required /></span>
+            <span class="input-with-icon"><AppIcon name="globe" /><input ref="serverInput" v-model="server" name="server" autocomplete="url" required /></span>
           </label>
           <label>
             <span>Email</span>
-            <span class="input-with-icon"><AppIcon name="user" /><input v-model="email" name="email" type="email" autocomplete="username" placeholder="you@example.com" required /></span>
+            <span class="input-with-icon"><AppIcon name="user" /><input ref="emailInput" v-model="email" name="email" type="email" autocomplete="username" placeholder="you@example.com" required /></span>
           </label>
           <label>
             <span>Secret Key</span>
             <span class="input-with-icon">
               <AppIcon name="key" />
-              <input v-model="secretKey" name="secretKey" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" required />
+              <input ref="secretKeyInput" v-model="secretKey" name="secretKey" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" required />
             </span>
           </label>
           <label>
             <span>Master password</span>
-            <span class="input-with-icon"><AppIcon name="lock" /><input v-model="password" name="password" type="password" autocomplete="current-password" required /></span>
+            <span class="input-with-icon"><AppIcon name="lock" /><input ref="passwordInput" v-model="password" name="password" type="password" autocomplete="current-password" required /></span>
           </label>
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Signing in…" : "Sign in" }}</button>
           <p class="hint muted" data-testid="secret-key-note">Lost your Secret Key? It's on your Emergency Kit.</p>
@@ -239,7 +255,7 @@ async function submitCreateAccount(): Promise<void> {
           </label>
           <label v-if="isServerShown && !hasInvite">
             <span>Server</span>
-            <span class="input-with-icon"><AppIcon name="globe" /><input v-model="server" name="server" autocomplete="url" required /></span>
+            <span class="input-with-icon"><AppIcon name="globe" /><input ref="serverInput" v-model="server" name="server" autocomplete="url" required /></span>
           </label>
           <div class="two-columns">
             <label>

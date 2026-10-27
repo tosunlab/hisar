@@ -91,6 +91,21 @@ describe("SignInView", () => {
     resetStore();
   });
 
+  it.each(["", "alice@example.com"])("focuses the first empty sign-in field for remembered email %s", (email) => {
+    store.status.email = email;
+    const wrapper = mount(SignInView, { attachTo: document.body });
+    expect(document.activeElement).toBe(wrapper.get(`input[name="${email ? "secretKey" : "email"}"]`).element);
+    wrapper.unmount();
+  });
+
+  it("focuses the server when its disclosure opens", async () => {
+    const wrapper = mount(SignInView, { attachTo: document.body });
+    await wrapper.get('[data-testid="use-different-server"]').trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(wrapper.get('input[name="server"]').element);
+    wrapper.unmount();
+  });
+
   it("submits the sign in form", async () => {
     api.signIn.mockResolvedValue(createStatus("unlocked"));
     api.listAllVault.mockResolvedValue([]);
