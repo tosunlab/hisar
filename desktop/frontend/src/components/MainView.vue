@@ -22,6 +22,7 @@ import {
   openSharing,
   selectFavoriteItem,
   selectFavorites,
+  selectAllItems,
   selectItem,
   selectTag,
   selectVault,
@@ -138,8 +139,10 @@ const itemList = ref<HTMLElement | null>(null);
 const allVisibleItem = computed(() => filterAllItem(store.allItem.filter((item) => !item.readIssue), store.searchQuery, store.selectedTag));
 const unreadableItemCount = computed(() => store.allItem.filter((item) => item.readIssue).length);
 const healthyItemCount = computed(() => store.allItem.length - unreadableItemCount.value);
-const allVisibleFavorite = computed(() => filterAllFavorite(store.allFavorite, store.searchQuery));
-const allTag = computed(() => listAllTag(store.allItem));
+const isReferenceScope = computed(() => store.isFavoritesSelected || store.isAllItemsSelected);
+const scopeReferences = computed(() => store.isAllItemsSelected ? store.allItemReference : store.allFavorite);
+const allVisibleFavorite = computed(() => filterAllFavorite(scopeReferences.value, store.searchQuery).filter((reference) => !store.selectedTag || reference.item.tags?.includes(store.selectedTag)));
+const allTag = computed(() => listAllTag(store.isAllItemsSelected ? store.allItemReference.map((reference) => reference.item) : store.allItem));
 // inbox gathers what does not need the sidebar's room: invitations to answer, shares waiting on someone's Hisar, and
 // organization vault keys on their way. actionCount is what waits for the user, as on Settings' badges; the row opens
 // the Settings section where that is answered first.
@@ -166,7 +169,7 @@ const selectedVault = computed(() => store.allVault.find((vault) => vault.id ===
 // canShareVault: shared and organization vaults have a sharing panel, personal vaults the Private badge.
 const canShareVault = computed(() => selectedVault.value !== undefined && selectedVault.value.type !== "personal");
 const canEdit = computed(() => selectedVault.value !== undefined && selectedVault.value.role !== "reader");
-const canCreate = computed(() => canEdit.value && !store.isFavoritesSelected);
+const canCreate = computed(() => canEdit.value && !isReferenceScope.value);
 // allVaultGroup is the sidebar's vaults: the user's own and shared vaults, then a group per organization by name.
 const allVaultGroup = computed(() => {
   const groupByID = new Map<string, VaultGroup>();
@@ -405,7 +408,7 @@ function listRows(): HTMLElement[] {
 }
 
 function selectRow(index: number): Promise<void> {
-  return store.isFavoritesSelected ? selectFavoriteItem(allVisibleFavorite.value[index]) : selectItem(allVisibleItem.value[index].id);
+  return isReferenceScope.value ? selectFavoriteItem(allVisibleFavorite.value[index]) : selectItem(allVisibleItem.value[index].id);
 }
 
 // focusRow moves the keyboard focus and the selection to the row; the search field is the row above the first.
@@ -429,7 +432,7 @@ function enterList(): void {
 }
 
 async function openRowInEditor(index: number): Promise<void> {
-  const item = store.isFavoritesSelected ? allVisibleFavorite.value[index]?.item : allVisibleItem.value[index];
+  const item = isReferenceScope.value ? allVisibleFavorite.value[index]?.item : allVisibleItem.value[index];
   if (!item) {
     return;
   }
@@ -467,11 +470,11 @@ function copySelectedField(fieldName: "username" | "password", label: string): v
 
 // moveVaultSelection steps through the sidebar's rows: Favorites, then the vaults as listed.
 function moveVaultSelection(step: number): void {
-  const allVaultID = ["", ...allVaultGroup.value.flatMap((group) => group.allVault.map((vault) => vault.id))];
-  const current = store.isFavoritesSelected ? 0 : allVaultID.indexOf(store.selectedVaultID);
+  const allVaultID = ["all", "", ...allVaultGroup.value.flatMap((group) => group.allVault.map((vault) => vault.id))];
+  const current = store.isAllItemsSelected ? 0 : store.isFavoritesSelected ? 1 : allVaultID.indexOf(store.selectedVaultID);
   const next = Math.min(allVaultID.length - 1, Math.max(0, current + step));
   if (next !== current) {
-    void (next === 0 ? selectFavorites() : selectVault(allVaultID[next]));
+    void (next === 0 ? selectAllItems() : next === 1 ? selectFavorites() : selectVault(allVaultID[next]));
   }
 }
 
@@ -540,6 +543,11 @@ onBeforeUnmount(() => {
       <OrganizationBanner />
       <RemovedVaultBanner />
 
+      <nav aria-label="All items">
+        <button class="vault" :class="{ selected: store.isAllItemsSelected }" :aria-current="store.isAllItemsSelected ? 'true' : undefined" data-testid="open-all-items" @click="selectAllItems">
+          <AppIcon name="vault" /><span class="vault-name">All items</span>
+        </button>
+      </nav>
       <nav aria-label="Favorites" class="favorites-nav">
         <button
           class="vault"
@@ -575,8 +583,8 @@ onBeforeUnmount(() => {
             v-for="vault in group.allVault"
             :key="vault.id"
             class="vault"
-            :class="{ selected: !store.isFavoritesSelected && vault.id === store.selectedVaultID }"
-            :aria-current="!store.isFavoritesSelected && vault.id === store.selectedVaultID ? 'true' : undefined"
+            :class="{ selected: !isReferenceScope && vault.id === store.selectedVaultID }"
+            :aria-current="!isReferenceScope && vault.id === store.selectedVaultID ? 'true' : undefined"
             :data-testid="`vault-${vault.id}`"
             @click="selectVault(vault.id)"
             @contextmenu.prevent="openVaultMenuAtPointer(vault.id, $event)"
@@ -654,10 +662,10 @@ onBeforeUnmount(() => {
 
     <section class="list">
       <ReadIssuesPanel />
-      <div v-if="store.isFavoritesSelected" class="title-bar list-title">
+      <div v-if="isReferenceScope" class="title-bar list-title">
         <div>
-          <h2>Favorites</h2>
-          <span class="muted">{{ store.allFavorite.length }} {{ store.allFavorite.length === 1 ? "item" : "items" }} · only you see them</span>
+          <h2>{{ store.isAllItemsSelected ? "All items" : "Favorites" }}</h2>
+          <span class="muted">{{ scopeReferences.length }} {{ scopeReferences.length === 1 ? "item" : "items" }}{{ store.isFavoritesSelected ? " · only you see them" : "" }}</span>
         </div>
       </div>
       <div v-else class="title-bar list-title">
@@ -748,7 +756,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="search">
         <AppIcon name="search" />
-        <input ref="searchInput" v-model="store.searchQuery" name="search" type="search" placeholder="Search" aria-label="Search items" @keydown.down.prevent="enterList" />
+        <input ref="searchInput" v-model="store.searchQuery" name="search" type="search" :placeholder="store.isAllItemsSelected ? 'Search all vaults' : 'Search'" :aria-label="store.isAllItemsSelected ? 'Search all vaults' : 'Search items'" @keydown.down.prevent="enterList" />
         <kbd>{{ shortcutModifier }}F</kbd>
       </div>
       <div v-if="store.selectedTag && !store.isFavoritesSelected" class="tag-filter" data-testid="tag-filter">
@@ -756,11 +764,15 @@ onBeforeUnmount(() => {
         <span class="tag-filter-name">{{ store.selectedTag }}</span>
         <button class="ghost icon-button" aria-label="Show all items" title="Show all items" @click="selectTag(store.selectedTag)"><AppIcon name="close" :size="13" /></button>
       </div>
+      <p v-if="store.isAllItemsSelected && store.allItemsError" role="alert">{{ store.allItemsError }} <button @click="selectAllItems">Retry</button></p>
 
-      <template v-if="store.isFavoritesSelected">
+      <template v-if="isReferenceScope">
         <div v-if="allVisibleFavorite.length === 0" class="list-empty" data-testid="favorites-empty">
           <AppIcon :name="store.searchQuery ? 'search' : 'star'" :size="26" />
-          <template v-if="store.searchQuery">
+          <template v-if="store.isAllItemsSelected">
+            <p>{{ store.allItemsError ? "Search is incomplete. Retry loading your vaults." : store.allVault.some((vault) => vault.readIssues?.length) ? "No readable matches. Some records could not be opened." : store.searchQuery || store.selectedTag ? "No items match your search." : "No items in your vaults." }}</p>
+          </template>
+          <template v-else-if="store.searchQuery">
             <p>No favorites match your search.</p>
           </template>
           <template v-else>
@@ -768,7 +780,7 @@ onBeforeUnmount(() => {
             <p class="muted">Star an item with <AppIcon name="star" :size="12" /> or {{ shortcutModifier }}D to keep it here, across all your vaults and devices. Only you see your favorites.</p>
           </template>
         </div>
-        <ul v-else ref="itemList" role="listbox" aria-label="Favorites" data-testid="favorites-list" @keydown="handleListKey">
+        <ul v-else ref="itemList" role="listbox" :aria-label="store.isAllItemsSelected ? 'All items' : 'Favorites'" :data-testid="store.isAllItemsSelected ? 'all-items-list' : 'favorites-list'" @keydown="handleListKey">
           <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`" role="presentation">
             <button
               class="item"
@@ -835,7 +847,7 @@ onBeforeUnmount(() => {
         <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :vault-type="selectedVault?.type ?? ''" />
         <div v-else class="detail-empty">
           <span class="detail-empty-icon"><AppIcon name="vault" :size="28" /></span>
-          <h3>{{ store.isFavoritesSelected ? "Favorites" : selectedVault ? selectedVault.name : "Hisar" }}</h3>
+          <h3>{{ store.isAllItemsSelected ? "All items" : store.isFavoritesSelected ? "Favorites" : selectedVault ? selectedVault.name : "Hisar" }}</h3>
           <p class="muted">Select an item to see its details.</p>
           <dl class="shortcut-list">
             <div><dt><kbd>{{ shortcutModifier }}N</kbd></dt><dd>New item</dd></div>

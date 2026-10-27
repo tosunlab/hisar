@@ -95,6 +95,10 @@ export interface VaultDialog {
   blockedReason: string;
 }
 
+export interface ItemReference extends FavoriteItem {
+  vaultRole: VaultRole;
+}
+
 // OrganizationAlert: title names the refused action, message is the server's sentence.
 export interface OrganizationAlert {
   title: string;
@@ -121,6 +125,9 @@ export const store = reactive({
   // allFavorite holds the user's starred items of every vault; isFavoritesSelected shows them in the list instead of a vault.
   allFavorite: [] as FavoriteItem[],
   isFavoritesSelected: false,
+  allItemReference: [] as ItemReference[],
+  isAllItemsSelected: false,
+  allItemsError: "",
   editorMode: "view" as EditorMode,
   editorDraft: null as EditorDraft | null,
   discardDraftPrompt: null as DiscardDraftPrompt | null,
@@ -282,6 +289,9 @@ function clearAllVaultData(): void {
   store.selectedItem = null;
   store.allFavorite = [];
   store.isFavoritesSelected = false;
+  store.allItemReference = [];
+  store.isAllItemsSelected = false;
+  store.allItemsError = "";
   store.editorMode = "view";
   store.editorDraft = null;
   store.discardDraftPrompt?.answer(false);
@@ -959,6 +969,10 @@ export async function syncInBackground(): Promise<void> {
     await loadAllShareLinkQuietly();
     await loadAllFavoriteQuietly();
     await refreshOrganizationsQuietly();
+    if (store.isAllItemsSelected) {
+      await loadAllItemReferences();
+      return;
+    }
     if (!allVault.some((vault) => vault.id === store.selectedVaultID)) {
       if (allVault.length > 0) {
         await selectVault(findPersonalVaultID(allVault));
@@ -1007,10 +1021,10 @@ export function selectVault(vaultID: string): Promise<void> {
 
 async function loadVaultItems(vaultID: string, version: number): Promise<void> {
   store.isFavoritesSelected = false;
+  store.isAllItemsSelected = false;
   store.selectedVaultID = vaultID;
   store.selectedItem = null;
   store.editorMode = "view";
-  store.searchQuery = "";
   store.selectedTag = "";
   const allItem = await runAction(() => api.listAllItem(vaultID));
   if (version !== navigationVersion || store.selectedVaultID !== vaultID) {
@@ -1054,9 +1068,10 @@ export function selectFavorites(): Promise<void> {
   return afterDiscardingDraft(async () => {
     navigationVersion++;
     store.isFavoritesSelected = true;
+    store.isAllItemsSelected = false;
+    store.selectedTag = "";
     store.selectedItem = null;
     store.editorMode = "view";
-    store.searchQuery = "";
     const allFavorite = await runAction(() => api.listAllFavoriteItem());
     if (allFavorite) {
       store.allFavorite = allFavorite;
@@ -1084,6 +1099,38 @@ export function filterAllFavorite(allFavorite: FavoriteItem[], query: string): F
   return allFavorite.filter((favorite) => allVisibleItem.includes(favorite.item));
 }
 
+export function selectAllItems(): Promise<void> {
+  return afterDiscardingDraft(async () => {
+    navigationVersion++;
+    store.isAllItemsSelected = true;
+    store.isFavoritesSelected = false;
+    store.selectedItem = null;
+    store.editorMode = "view";
+    store.selectedTag = "";
+    await loadAllItemReferences();
+  });
+}
+
+async function loadAllItemReferences(): Promise<void> {
+  const generation = sessionGeneration;
+  store.allItemsError = "";
+  try {
+    const acquisitions = await Promise.all(store.allVault.map(async (vault) => ({ vault, items: await api.listAllItem(vault.id) })));
+    if (generation !== sessionGeneration || !store.isAllItemsSelected) return;
+    const references: ItemReference[] = [];
+    for (const { vault, items } of acquisitions) {
+      vault.readIssues = [...(vault.readIssues ?? []).filter((issue) => !issue.itemId), ...items.flatMap((item) => item.readIssue ? [item.readIssue] : [])];
+      vault.itemCount = items.filter((item) => !item.readIssue).length;
+      for (const item of items) {
+        if (!item.readIssue) references.push({ vaultId: vault.id, vaultName: vault.name, vaultType: vault.type, vaultRole: vault.role, item });
+      }
+    }
+    store.allItemReference = references.sort((a, b) => a.item.title.localeCompare(b.item.title, undefined, { sensitivity: "base" }));
+  } catch (cause) {
+    if (generation === sessionGeneration && store.isAllItemsSelected) store.allItemsError = `Some vaults could not be loaded. ${getErrorMessage(cause)}`;
+  }
+}
+
 // setItemFavorite stars or unstars an item of vaultID for this user; the people they share the vault with don't see it.
 export async function setItemFavorite(vaultID: string, itemID: string, isFavorite: boolean): Promise<void> {
   const isSaved = await runAction(async () => {
@@ -1099,6 +1146,7 @@ export async function setItemFavorite(vaultID: string, itemID: string, isFavorit
   if (vaultID === store.selectedVaultID) {
     store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === itemID ? { ...vaultItem, isFavorite } : vaultItem));
   }
+  store.allItemReference = store.allItemReference.map((reference) => reference.vaultId === vaultID && reference.item.id === itemID ? { ...reference, item: { ...reference.item, isFavorite } } : reference);
   await loadAllFavoriteQuietly();
   showNotice(isFavorite ? "Added to Favorites" : "Removed from Favorites");
 }
@@ -1172,7 +1220,6 @@ export function selectTag(tag: string): Promise<void> {
     store.selectedTag = nextTag;
     return Promise.resolve();
   }
-  // The filter narrows the selected vault's list, so choosing a tag from Favorites returns to that list.
   return afterDiscardingDraft(() => {
     store.selectedTag = nextTag;
     store.isFavoritesSelected = false;
@@ -1397,6 +1444,7 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
     updateSelectedVaultSummary();
     dropMissingTagFilter();
   }
+  if (store.isAllItemsSelected) await loadAllItemReferences();
   store.selectedItem = saved;
   store.editorMode = "view";
   if (saved.isFavorite) {
@@ -1444,7 +1492,7 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
   store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
   // Opening a favorite makes its vault the selected one but leaves allItem as the vault last listed, so allItem counts the
   // selected vault only outside Favorites.
-  if (vaultID === store.selectedVaultID && !store.isFavoritesSelected) {
+  if (vaultID === store.selectedVaultID && !store.isFavoritesSelected && !store.isAllItemsSelected) {
     updateSelectedVaultSummary();
     dropMissingTagFilter();
   } else {
@@ -1454,6 +1502,7 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
     }
   }
   store.allFavorite = store.allFavorite.filter((favorite) => !(favorite.item.id === itemID && favorite.vaultId === vaultID));
+  store.allItemReference = store.allItemReference.filter((reference) => !(reference.item.id === itemID && reference.vaultId === vaultID));
   if (store.selectedItem?.id === itemID) {
     store.selectedItem = null;
     store.editorMode = "view";
@@ -1464,6 +1513,10 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
 
 // reloadSelectedVaultItems lists the vault on screen again, as summaries without secrets.
 async function reloadSelectedVaultItems(): Promise<void> {
+  if (store.isAllItemsSelected) {
+    await loadAllItemReferences();
+    return;
+  }
   const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
@@ -1474,6 +1527,10 @@ async function reloadSelectedVaultItems(): Promise<void> {
 // retryReads reads every vault and the one on screen again, after a recovery action or when the user retries.
 export async function retryReads(): Promise<void> {
   await loadAllVault();
+  if (store.isAllItemsSelected) {
+    await loadAllItemReferences();
+    return;
+  }
   if (!store.isFavoritesSelected && store.allVault.some((vault) => vault.id === store.selectedVaultID)) {
     await reloadSelectedVaultItems();
   }
@@ -1503,6 +1560,7 @@ export async function moveItem(vaultID: string, itemID: string, targetVaultID: s
     store.editorMode = "view";
   }
   await loadAllFavoriteQuietly();
+  if (store.isAllItemsSelected) await loadAllItemReferences();
   const targetName = store.allVault.find((vault) => vault.id === targetVaultID)?.name ?? "the vault";
   showNotice(`Moved ${moved.title} to ${targetName}`);
   return true;
@@ -1523,6 +1581,7 @@ export async function duplicateItem(vaultID: string, itemID: string): Promise<bo
     store.selectedItem = copied;
     store.editorMode = "view";
   }
+  if (store.isAllItemsSelected) await loadAllItemReferences();
   showNotice(`Duplicated as ${copied.title}`);
   return true;
 }
