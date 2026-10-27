@@ -5,6 +5,9 @@ import com.tryhisar.hisar.autofill.AppWebsiteVerifier
 import com.tryhisar.hisar.autofill.FillTarget
 import com.tryhisar.hisar.autofill.LoginMatcher
 import com.tryhisar.hisar.autofill.MatchedLogin
+import com.tryhisar.hisar.autofill.CredentialLabel
+import com.tryhisar.hisar.autofill.credentialLabel
+import com.tryhisar.hisar.autofill.distinguishCredentialLabels
 import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.StoredPasskey
 import com.tryhisar.hisar.model.VaultBackend
@@ -48,7 +51,7 @@ sealed interface CredentialOffer {
 }
 
 /** A credential and the index of the request option it answers. */
-data class Offered<Value>(val optionIndex: Int, val value: Value)
+data class Offered<Value>(val optionIndex: Int, val value: Value, val displayName: String = "")
 
 /**
  * The rules for Credential Manager callers. A browser on the privileged list may use the relying parties of its page's
@@ -104,14 +107,24 @@ class CredentialAccess(
             status.updateRequired != null -> CredentialOffer.Nothing
             status.state == VaultStatus.STATE_LOCKED -> CredentialOffer.Unlock
             !status.isUnlocked -> CredentialOffer.Nothing
-            else -> CredentialOffer.Entries(
-                allPasskey = allPasskeyRequest.flatMap { (index, request) ->
+            else -> {
+                val vaultNames = backend.listAllVault().associate { it.id to it.name }
+                val passkeys = allPasskeyRequest.flatMap { (index, request) ->
                     backend.listAllPasskeyForRelyingParty(request.relyingPartyID, request.allAllowedCredentialID).map { Offered(index, it) }
-                },
-                allLogin = allPasswordIndex.firstOrNull()?.let { index ->
+                }
+                val logins = allPasswordIndex.firstOrNull()?.let { index ->
                     LoginMatcher(backend, appWebsiteVerifier).listAllMatch(buildFillTarget(caller)).map { Offered(index, it) }
-                }.orEmpty(),
-            )
+                }.orEmpty()
+                val passkeyLabels = distinguishCredentialLabels(passkeys.map {
+                    val passkey = it.value
+                    CredentialLabel(passkey.title, passkey.userName, vaultNames[passkey.vaultID].orEmpty(), passkey.itemID, passkey.credentialID)
+                })
+                val loginLabels = distinguishCredentialLabels(logins.map { it.value.login.credentialLabel() })
+                CredentialOffer.Entries(
+                    allPasskey = passkeys.mapIndexed { index, offer -> offer.copy(displayName = passkeyLabels[index].displayName) },
+                    allLogin = logins.mapIndexed { index, offer -> offer.copy(displayName = loginLabels[index].displayName) },
+                )
+            }
         }
     }
 

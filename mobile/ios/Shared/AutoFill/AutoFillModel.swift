@@ -46,6 +46,7 @@ final class AutoFillModel: ObservableObject {
     @Published private(set) var lockCount = 0
     @Published private(set) var requestKind = RequestKind.password
     @Published private(set) var allMatchingPasskey: [StoredPasskey] = []
+    @Published private(set) var passkeyVaultNames: [String: String] = [:]
     @Published private(set) var passkeyAssertionRequest: PasskeyAssertionRequest?
     @Published private(set) var passkeyRegistrationRequest: PasskeyRegistrationRequest?
     @Published private(set) var passkeyRegistrationOptions: PasskeyRegistrationOptions?
@@ -96,6 +97,11 @@ final class AutoFillModel: ObservableObject {
             let searchable = "\(passkey.title) \(passkey.userName) \(passkey.userDisplayName)".lowercased()
             return allWord.allSatisfy { searchable.contains($0) }
         }
+    }
+
+    func subtitle(for passkey: StoredPasskey) -> String {
+        [passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName, passkeyVaultNames[passkey.vaultID] ?? ""]
+            .filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     var allVisibleMatchingLogin: [LoginMatch] {
@@ -158,6 +164,7 @@ final class AutoFillModel: ObservableObject {
     private func applyStatus(_ newStatus: VaultStatus) {
         if status.isUnlocked && !newStatus.isUnlocked { lockCount += 1 }
         status = newStatus
+        if !newStatus.isUnlocked { passkeyVaultNames = [:] }
         switch newStatus.state {
         case VaultStatus.stateUnlocked: screen = passkeyRegistrationRequest == nil ? .list : .passkeyRegistration
         case VaultStatus.stateLocked: screen = .locked
@@ -177,6 +184,7 @@ final class AutoFillModel: ObservableObject {
         passkeyRegistrationOptions = nil
         selectedRegistrationLoginID = nil
         allMatchingPasskey = []
+        passkeyVaultNames = [:]
     }
 
     func prepareCredentialList(allServiceIdentifier: [String], kind: RequestKind = .password, passkeyRequest: PasskeyAssertionRequest? = nil) async {
@@ -414,9 +422,16 @@ final class AutoFillModel: ObservableObject {
     func loadAllMatchingPasskey() async {
         guard let request = passkeyAssertionRequest else {
             allMatchingPasskey = []
+            passkeyVaultNames = [:]
             return
         }
-        allMatchingPasskey = await perform({ try $0.listAllPasskeyForRelyingParty(relyingPartyID: request.relyingPartyID, allAllowedCredentialID: request.allAllowedCredentialID) }) ?? []
+        let result = await perform { backend in
+            let passkeys = try backend.listAllPasskeyForRelyingParty(relyingPartyID: request.relyingPartyID, allAllowedCredentialID: request.allAllowedCredentialID)
+            let vaultNames = Dictionary(uniqueKeysWithValues: try backend.listAllVault().map { ($0.id, $0.name) })
+            return (passkeys, vaultNames)
+        }
+        allMatchingPasskey = result?.0 ?? []
+        passkeyVaultNames = result?.1 ?? [:]
     }
 
     func loadAllMatchingLogin() async {

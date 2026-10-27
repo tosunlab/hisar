@@ -114,21 +114,21 @@ object CredentialEntries {
                 actions = actions,
             )
             is CredentialOffer.Entries -> BeginGetCredentialResponse(
-                credentialEntries = offer.allPasskey.mapNotNull { (index, passkey) ->
+                credentialEntries = offer.allPasskey.mapNotNull { (index, passkey, displayName) ->
                     val credentialID = Base64URL.decode(passkey.credentialID) ?: return@mapNotNull null
                     PublicKeyCredentialEntry.Builder(
                         context,
                         passkey.userName.ifEmpty { passkey.userDisplayName.ifEmpty { passkey.title } },
                         CredentialPick.buildPendingIntent(context, CredentialPick.Passkey(credentialID)),
                         allOption[index].first as BeginGetPublicKeyCredentialOption,
-                    ).setDisplayName(passkey.title).build()
-                } + offer.allLogin.map { (index, match) ->
+                    ).setDisplayName(displayName).build()
+                } + offer.allLogin.map { (index, match, displayName) ->
                     PasswordCredentialEntry.Builder(
                         context,
                         match.login.username.ifEmpty { match.login.title },
                         CredentialPick.buildPendingIntent(context, CredentialPick.Password(match.login.id)),
                         allOption[index].first as BeginGetPasswordOption,
-                    ).setDisplayName(match.login.title).build()
+                    ).setDisplayName(displayName).build()
                 },
                 actions = actions,
                 authenticationActions = searchGateway,

@@ -162,7 +162,7 @@ private struct AutoFillListView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(passkey.title)
                         .foregroundStyle(.primary)
-                    Text(passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
+                    Text(model.subtitle(for: passkey))
                         .font(.caption)
                         .foregroundStyle(.themeSecondary)
                 }
@@ -173,7 +173,7 @@ private struct AutoFillListView: View {
             }
             .contentShape(Rectangle())
         }
-        
+        .accessibilityLabel("\(passkey.title), \(model.subtitle(for: passkey)), Passkey")
         .accessibilityIdentifier("autofill-passkey-\(passkey.title)")
     }
 

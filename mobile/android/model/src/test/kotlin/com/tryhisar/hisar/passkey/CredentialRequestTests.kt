@@ -49,6 +49,16 @@ class CredentialRequestTests {
     }
 
     @Test
+    fun testLoadsDuplicatePasskeyLabelsWithVaultNames() {
+        backend.seedSignedIn()
+        backend.allPasskey += FakeBackend.gitHubPasskey.copy(vaultID = "family", credentialID = "AgIC")
+        val offer = assertIs<CredentialOffer.Entries>(access.offer(chrome, listOf(passkeyOption("github.com"), CredentialOption.Password)))
+        assertEquals(listOf("GitHub · Personal", "GitHub · Family"), offer.allPasskey.map { it.displayName })
+        assertEquals(listOf("alice", "alice"), offer.allPasskey.map { it.value.userName })
+        assertEquals("GitHub · Personal", offer.allLogin.single().displayName)
+    }
+
+    @Test
     fun testBrowserPageOfAnotherSiteIsRefused() {
         backend.seedSignedIn()
         val evilPage = CredentialCaller.Browser("com.android.chrome", "https://evil.example/")
