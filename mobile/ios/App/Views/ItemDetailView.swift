@@ -286,7 +286,7 @@ struct ItemDetailView: View {
             Section("Server") {
                 if !server.host.isEmpty {
                     SecretFieldRow(
-                        label: ServerFieldName.host, value: server.address, isConcealed: false, isRevealed: true, toggleReveal: nil,
+                        label: ServerFieldName.host, value: server.host, isConcealed: false, isRevealed: true, toggleReveal: nil,
                         copy: { copy(fieldName: ServerFieldName.host, label: ServerFieldName.host) },
                         copyReference: { copyReference(fieldName: ServerFieldName.host) }
                     )

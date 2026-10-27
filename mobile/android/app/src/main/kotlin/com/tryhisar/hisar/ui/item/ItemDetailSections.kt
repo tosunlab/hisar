@@ -398,7 +398,7 @@ private fun SoftwareLicenseSection(license: ItemSoftwareLicense, actions: ItemFi
 @Composable
 private fun ServerSection(server: ItemServer, actions: ItemFieldActions, openSSHKey: (String) -> Unit) {
     RowsSection(header = "Server") {
-        if (server.host.isNotEmpty()) row { FieldRow(actions, ServerFieldName.HOST, ServerFieldName.HOST, server.address, isConcealed = false) }
+        if (server.host.isNotEmpty()) row { FieldRow(actions, ServerFieldName.HOST, ServerFieldName.HOST, server.host, isConcealed = false) }
         if (server.port.isNotEmpty()) row { FieldRow(actions, ServerFieldName.PORT, ServerFieldName.PORT, server.port, isConcealed = false, warning = server.portWarning) }
         if (server.sshKeyID.isNotEmpty()) {
             row {

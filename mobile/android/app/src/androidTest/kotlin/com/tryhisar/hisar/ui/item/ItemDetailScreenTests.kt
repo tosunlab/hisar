@@ -86,6 +86,24 @@ class ItemDetailScreenTests {
     }
 
     @Test
+    fun testServerHostMatchesTheCopiedFieldWithDefaultAndCustomPorts() {
+        val host = openHost()
+        for ((port, id) in listOf("22" to "default-server", "2222" to "custom-server")) {
+            backend.allItemByVaultID.getValue("personal") += ItemDetail(
+                id = id, category = ItemDetail.CATEGORY_SERVER, title = id,
+                server = ItemServer(host = "build.example.com", port = port),
+            )
+            host.show("personal", id)
+            composeRule.waitForTag("Host-value")
+            assertTrue(composeRule.onAllNodes(hasText("build.example.com")).fetchSemanticsNodes().isNotEmpty())
+            assertTrue(composeRule.onAllNodes(hasText(port)).fetchSemanticsNodes().isNotEmpty())
+            composeRule.onNodeWithTag("copy-Host").performClick()
+            composeRule.waitUntil(5_000) { backend.allCopiedField.contains("$id.Host") }
+            dismissNotice()
+        }
+    }
+
+    @Test
     fun testDeletingAPasskeyAsksFirstAndRemovesIt() {
         val host = openHost()
         host.show("personal", "github")

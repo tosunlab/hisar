@@ -33,7 +33,6 @@ import {
   formatDatabaseSummary,
   formatIdentitySummary,
   formatKeyType,
-  formatServerAddress,
   formatServerSummary,
   formatSoftwareLicenseSummary,
   getDomain,
@@ -516,7 +515,7 @@ function maskSecret(secret: string): string {
         <div v-if="server.host" class="field" v-bind="bindFieldRow(serverFieldName.host, serverFieldName.host)">
           <div class="field-copy-target" v-bind="bindCopyTarget()">
           <span class="copy-prefix">Copy </span><span class="field-label">{{ serverFieldName.host }}</span>
-          <span class="field-value monospace" data-testid="server-host">{{ formatServerAddress(server) }}</span>
+          <span class="field-value monospace" data-testid="server-host">{{ server.host }}</span>
           </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy Host" title="Copy" @click="copyField(serverFieldName.host, serverFieldName.host)"><AppIcon name="copy" /></button>

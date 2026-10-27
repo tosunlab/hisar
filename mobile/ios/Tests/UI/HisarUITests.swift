@@ -177,6 +177,21 @@ final class HisarUITests: HisarUITestCase {
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "build.example.com:2222 · deploy")).firstMatch)
         XCTAssertEqual(app.buttons["copy-password"].value as? String, "Hidden", "the password is shown before it is revealed")
+        for port in ["2222", "22"] {
+            if port == "22" {
+                app.buttons["edit-item"].tap()
+                app.textFields["editor-server-port"].tap()
+                app.textFields["editor-server-port"].typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4))
+                type(port, into: app.textFields["editor-server-port"])
+                app.buttons["editor-save"].tap()
+                XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30))
+            }
+            XCTAssertEqual(app.buttons["copy-host"].value as? String, "build.example.com")
+            XCTAssertEqual(app.buttons["copy-port"].value as? String, port)
+            app.buttons["copy-host"].tap()
+            waitFor(app.staticTexts["Host copied. It clears in 90 seconds."])
+            XCTAssertTrue(app.staticTexts["Host copied. It clears in 90 seconds."].waitForNonExistence(timeout: 10))
+        }
         saveScreenshot("server")
         goBack()
 
