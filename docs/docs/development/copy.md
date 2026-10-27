@@ -111,6 +111,16 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet) · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
 
+## Notifications
+
+Both phones open their privacy explanation with "Approval requests and security alerts don't name items or people. Sharing invitations show who invited you and, for an organization, its name, even while Hisar is locked."
+
+The iPhone continues with "To keep them off the lock screen, set Show Previews for Hisar to When Unlocked or Never in iOS Settings. Hisar's push relay and Apple see only the kind of notification; its details are encrypted for this phone."
+
+Android continues with "To keep them off the lock screen, hide sensitive notification content in Android's notification settings. Your UnifiedPush app sees only the kind of notification; its details are encrypted for this phone."
+
+The Hisar server knows the invitation details it encrypts. Do not say that sharing identities need a Hisar unlock or that the server cannot see them.
+
 ## Invites and updates
 
 | Use | Not | Where |
