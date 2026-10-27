@@ -105,7 +105,7 @@ fun ItemRow(model: AppModel, item: ItemDetail, testTag: String, onClick: () -> U
             }
         }
         DropdownMenu(expanded = isMenuOpen, onDismissRequest = { isMenuOpen = false; actions = null }) {
-            if (error != null) Text(error.orEmpty(), color = HisarTheme.colors.destructive, modifier = Modifier.testTag("row-copy-error"))
+            if (error != null) Text(error.orEmpty(), color = HisarTheme.colors.destructiveText, modifier = Modifier.testTag("row-copy-error"))
             else if (actions == null) Text("Loading item actions")
             else if (actions?.isEmpty() == true) Text("No copyable fields are available.")
             actions.orEmpty().forEach { action ->

@@ -76,7 +76,7 @@ enum OrganizationLoad: Equatable {
     case failed
 }
 
-struct VaultDestination: Identifiable, Equatable {
+struct VaultChoice: Identifiable, Equatable {
     var id: String
     var label: String
     var context: String
@@ -85,7 +85,7 @@ struct VaultDestination: Identifiable, Equatable {
 struct VaultDestinationGroup: Identifiable, Equatable {
     var id: String
     var name: String
-    var destinations: [VaultDestination]
+    var destinations: [VaultChoice]
 }
 
 enum OrganizationLogic {
@@ -108,7 +108,7 @@ enum OrganizationLogic {
             while collisions.contains(where: { $0.id != vault.id && $0.id.prefix(length) == vault.id.prefix(length) }) { length += 1 }
             let suffix = collisions.count > 1 ? " (\(vault.id.prefix(length)))" : ""
             let context = vault.isOrganization ? "Shared through teams in \(name)." : vault.type == "personal" ? "Only you have access to this private vault." : "Everyone with access to this shared vault can see the item."
-            let destination = VaultDestination(id: vault.id, label: "\(name) / \(vault.name)\(suffix)", context: context)
+            let destination = VaultChoice(id: vault.id, label: "\(name) / \(vault.name)\(suffix)", context: context)
             if let index = groups.firstIndex(where: { $0.id == id }) {
                 groups[index].destinations.append(destination)
             } else {

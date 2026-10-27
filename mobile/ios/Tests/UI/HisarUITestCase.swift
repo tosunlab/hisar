@@ -306,22 +306,6 @@ class HisarUITestCase: XCTestCase {
         return secretKey
     }
 
-    func handOffEmergencyKit(shareIdentifier: String) {
-        let share = app.buttons[shareIdentifier]
-        scrollTo(share)
-        share.tap()
-        let saveToFiles = app.buttons["Save to Files"]
-        waitForHittable(saveToFiles)
-        saveToFiles.tap()
-        let save = app.navigationBars.buttons["Save"]
-        waitForHittable(save)
-        save.tap()
-        if app.buttons["Replace"].waitForExistence(timeout: 2) {
-            app.buttons["Replace"].tap()
-        }
-        waitForHittable(share)
-    }
-
     @discardableResult
     func finishPendingRecovery(email: String, password: String, restartAfterPreparingKit: Bool = false) -> String {
         let account = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pending-recovery-' AND label CONTAINS %@", email)).firstMatch

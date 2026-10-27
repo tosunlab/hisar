@@ -392,7 +392,7 @@ private fun StoppedSections(report: CredentialImportSheet.Stopped) {
                 Text("Items already saved will stay. The current batch may finish.")
                 if (report.isOutcomeUncertain) Text("The last batch's outcome couldn't be confirmed. Check the destination before retrying.")
                 Text("Keep the source and review the entries below before retrying. The saved count does not describe everything left in the source.")
-                if (report.preview.notice.isNotEmpty()) Text(report.preview.notice, color = HisarTheme.colors.orange)
+                if (report.preview.notice.isNotEmpty()) Text(report.preview.notice, color = HisarTheme.colors.warning)
             }
         }
     }

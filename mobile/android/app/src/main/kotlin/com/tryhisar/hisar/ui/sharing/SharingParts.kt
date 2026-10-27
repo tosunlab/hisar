@@ -265,9 +265,9 @@ fun RecipientReviewDialog(model: AppModel, invitation: SentShareInvitation, onCh
                     Text(invitation.securityCode, style = HisarType.title3Monospaced, modifier = Modifier.testTag("review-security-code"))
                 }
                 Text("To compare codes, ask this person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match this code.")
-                errorMessage?.let { Text(it, color = HisarTheme.colors.destructive, modifier = Modifier.testTag("review-recipient-error")) }
+                errorMessage?.let { Text(it, color = HisarTheme.colors.destructiveText, modifier = Modifier.testTag("review-recipient-error")) }
                 TextButton(onClick = { complete(true) }, enabled = !isWorking, modifier = Modifier.testTag("share-recipient-mismatch")) {
-                    Text("Codes don't match", color = HisarTheme.colors.destructive)
+                    Text("Codes don't match", color = HisarTheme.colors.destructiveText)
                 }
             }
         },

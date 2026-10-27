@@ -176,9 +176,6 @@ struct CredentialImportView: View {
             } header: {
                 Text("Source and destination access")
                     .foregroundStyle(.themeSecondary)
-            } header: {
-                Text("Source and destination access")
-                    .foregroundStyle(.themeSecondary)
             }
             .accessibilityIdentifier("credential-import-access")
         }

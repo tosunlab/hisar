@@ -810,7 +810,7 @@ private struct MoveItemSheet: View {
     private var groups: [VaultDestinationGroup] {
         OrganizationLogic.destinationGroups(model.moveDestinations(vaultID: sourceVaultID), organizations: model.allOrganization)
     }
-    private var selected: VaultDestination? { groups.flatMap(\.destinations).first { $0.id == targetVaultID } }
+    private var selected: VaultChoice? { groups.flatMap(\.destinations).first { $0.id == targetVaultID } }
 
     var body: some View {
         NavigationStack {
@@ -824,13 +824,10 @@ private struct MoveItemSheet: View {
                 Picker("Move to", selection: $targetVaultID) {
                     Text("Choose a vault").tag("")
                     ForEach(groups) { group in
-                        Section {
+                        Section(group.name) {
                             ForEach(group.destinations) { destination in
                                 Text(destination.label).tag(destination.id)
                             }
-                        } header: {
-                            Text(group.name)
-                                .foregroundStyle(.themeSecondary)
                         }
                     }
                 }
@@ -870,6 +867,9 @@ private struct MoveItemSheet: View {
             }
         }
         .interactiveDismissDisabled(model.isBusy)
+    }
+}
+
 struct ItemDetailHeader: View {
     var item: ItemDetail
     var subtitle: String

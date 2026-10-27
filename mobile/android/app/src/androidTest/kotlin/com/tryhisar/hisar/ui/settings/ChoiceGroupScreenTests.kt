@@ -67,7 +67,7 @@ class ChoiceGroupScreenTests {
 
     @Test
     fun testAutoLockChoicesExposeOneSelectedRadio() {
-        show { SecurityScreen(model, {}, {}) }
+        show { SecurityScreen(model) {} }
         assertChoices(groups = 1, options = VaultStatus.allAutoLockSeconds.size, selected = 1)
         composeRule.onNodeWithTag("auto-lock-${model.status.value.autoLockSeconds}").assertIsSelected()
     }

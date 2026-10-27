@@ -478,12 +478,9 @@ struct PendingRecoveryView: View {
                             }
                             .accessibilityIdentifier("pending-recovery-\(recovery.operationId)")
                         }
-                } header: {
+                    } header: {
                         Text("Choose an account")
                             .foregroundStyle(.themeSecondary)
-                    } header: {
-                    Text("Choose an account")
-                        .foregroundStyle(.themeSecondary)
                     }
                 }
                 if let recovery = selected {

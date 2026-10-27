@@ -147,49 +147,47 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean, retryStartup: (
                             Icon(Icons.Outlined.ChevronRight, contentDescription = null, modifier = Modifier.size(20.dp))
                         }
                     }
-                Box(Modifier.weight(1f).padding(top = padding.calculateTopPadding())) {
-                    Box(if (coversBaseScreen) Modifier.clearAndSetSemantics {} else Modifier) {
-                        when (val current = screen) {
-                            Screen.Starting -> StartingScreen()
-                        is Screen.Failed -> StartupFailureScreen(current.message, retryStartup, copyStartupDetails)
-                            is Screen.UpdateRequired -> UpdateRequiredScreen(current.requirement, isCheckingMinimumVersion) {
-                                scope.launch { model.checkMinimumVersion() }
-                            }
-                            Screen.SignedOut -> SignInScreen(model)
-                            Screen.Locked -> LockScreen(model)
-                            Screen.Unlocked -> MainTabs(model)
-                        }
-                    }
-
-                    if (coversBaseScreen) {
-                        Box(
-                            Modifier.fillMaxSize().testTag("full-screen-cover").pointerInput(Unit) {
-                                awaitPointerEventScope {
-                                    while (true) {
-                                        val event = awaitPointerEvent(PointerEventPass.Final)
-                                        event.changes.forEach { it.consume() }
-                                    }
+                    Box(Modifier.weight(1f).padding(top = padding.calculateTopPadding())) {
+                        Box(if (coversBaseScreen) Modifier.clearAndSetSemantics {} else Modifier) {
+                            when (val current = screen) {
+                                Screen.Starting -> StartingScreen()
+                                is Screen.Failed -> StartupFailureScreen(current.message, retryStartup, copyStartupDetails)
+                                is Screen.UpdateRequired -> UpdateRequiredScreen(current.requirement, isCheckingMinimumVersion) {
+                                    scope.launch { model.checkMinimumVersion() }
                                 }
-                            },
-                        ) {
-                            when (val step = newAccountStep) {
-                                is NewAccountStep.SaveSecretKey -> NewSecretKeyScreen(step.secretKey, status.email, status.server, copySecret, model.signIn::finishNewSecretKey)
-                                NewAccountStep.BiometricOffer -> BiometricOfferScreen(model)
-                                null -> Unit
+                                Screen.SignedOut -> SignInScreen(model)
+                                Screen.Locked -> LockScreen(model)
+                                Screen.Unlocked -> MainTabs(model)
                             }
-                            credentialImportSheet?.let { sheet ->
-                                if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) CredentialImportScreen(model, sheet)
+                        }
+
+                        if (coversBaseScreen) {
+                            Box(
+                                Modifier.fillMaxSize().testTag("full-screen-cover").pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Final)
+                                            event.changes.forEach { it.consume() }
+                                        }
+                                    }
+                                },
+                            ) {
+                                when (val step = newAccountStep) {
+                                    is NewAccountStep.SaveSecretKey -> NewSecretKeyScreen(step.secretKey, status.email, status.server, copySecret, model.signIn::finishNewSecretKey)
+                                    NewAccountStep.BiometricOffer -> BiometricOfferScreen(model)
+                                    null -> Unit
+                                }
+                                credentialImportSheet?.let { sheet ->
+                                    if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) CredentialImportScreen(model, sheet)
+                                }
+                                if (isRecoveryShown) PendingRecoveryScreen(model)
                             }
-                            if (isRecoveryShown) PendingRecoveryScreen(model)
+                        }
+                        presentedApproval?.let { approval ->
+                            if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) PhoneApprovalSheet(model, approval)
                         }
                     }
-                    presentedApproval?.let { approval ->
-                        if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) PhoneApprovalSheet(model, approval)
-                    }
-
                 }
-                }
-            }
             }
             }
             if (!lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) PrivacyCover()

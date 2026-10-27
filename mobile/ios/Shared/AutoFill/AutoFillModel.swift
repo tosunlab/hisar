@@ -225,7 +225,7 @@ final class AutoFillModel: ObservableObject {
         allMatchingPasskey = []
         searchText = ""
         serviceIdentifierByLoginID = [:]
-        passkeyRegistrationOptions = nil
+        registrationDestination = .idle
         selectedRegistrationLoginID = nil
         errorMessage = nil
         isBusy = false

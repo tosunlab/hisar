@@ -20,7 +20,6 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.test.performImeAction
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.test.ext.junit.runners.AndroidJUnit4

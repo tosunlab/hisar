@@ -91,13 +91,10 @@ struct ItemEditorView: View {
                     if isNew {
                         Picker("Vault", selection: $chosenVaultID) {
                             ForEach(destinationGroups) { group in
-                                Section {
+                                Section(group.name) {
                                     ForEach(group.destinations) { destination in
                                         Text(destination.label).tag(destination.id)
                                     }
-                                } header: {
-                                    Text(group.name)
-                                        .foregroundStyle(.themeSecondary)
                                 }
                             }
                         }

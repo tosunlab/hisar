@@ -26,7 +26,7 @@ class UnlockPanelFocusTests {
         composeRule.setContent {
             HisarTheme {
                 UnlockPanel(
-                    email = "alice@example.com", isBiometricReady = true, isBusy = false, errorMessage = null,
+                    email = "alice@example.com", isBiometricReady = true, isBiometricEnabled = true, isBiometricAvailable = true, isBusy = false, errorMessage = null,
                     lockCount = lockCount.value, isResumed = resumed.value,
                     isCurrentLock = { true },
                     submitPassword = { false }, submitBiometric = { attempts++; false },
