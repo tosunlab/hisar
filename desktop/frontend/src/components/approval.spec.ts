@@ -238,6 +238,24 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it("opens compact details from the keyboard and focuses the full heading", async () => {
+    const wrapper = mount(SSHApprovalWindow, { attachTo: document.body });
+    sendEvent("ssh-approval", createApprovalEvent({ isCompact: true }));
+    await flushPromises();
+    const details = wrapper.get('[data-testid="show-approval-details"]');
+    expect(details.attributes("aria-expanded")).toBe("false");
+    (details.element as HTMLButtonElement).focus();
+    details.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    await flushPromises();
+    expect(wrapper.find(".compact-card").exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.get("h1").element);
+    expect(wrapper.get('[data-testid="approval-details"]').text()).toContain("git push");
+    pressKey("Escape");
+    await flushPromises();
+    expect(api.respondSSHApproval).toHaveBeenLastCalledWith("request-1", false, false);
+    wrapper.unmount();
+  });
+
   it("unlocks a locked Hisar with Touch ID", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent({ isUnlockRequired: true, keyTitle: "" }));

@@ -48,6 +48,7 @@ const password = ref("");
 const promptSlot = ref<HTMLElement | null>(null);
 const passwordInput = ref<HTMLInputElement | null>(null);
 const denyButton = ref<HTMLButtonElement | null>(null);
+const fullHeading = ref<HTMLHeadingElement | null>(null);
 const contentElement = ref<HTMLElement | null>(null);
 const approval = computed(() => approvalStore.allApproval[0]);
 const now = ref(Date.now());
@@ -327,8 +328,10 @@ function deny(): void {
   }
 }
 
-function expandCompact(): void {
+async function expandCompact(): Promise<void> {
   approvalStore.isExpanded = true;
+  await nextTick();
+  fullHeading.value?.focus();
 }
 
 watch(
@@ -453,6 +456,7 @@ onBeforeUnmount(() => {
             <p v-if="phoneNote" class="compact-subtitle phone-note" data-testid="approval-phone">{{ phoneNote }}</p>
             <p v-if="approvalStore.failureMessage" class="failure" role="alert">{{ approvalStore.failureMessage }}</p>
             <div class="compact-actions">
+              <button class="link" aria-expanded="false" data-testid="show-approval-details" @click.stop="expandCompact">Show details</button>
               <div v-if="isWaitingForTouchID" class="compact-touch-id" data-testid="approval-touch-id">
                 <div ref="promptSlot" class="prompt-slot small">
                   <AppIcon v-if="!api.hasNativeTouchIDView" name="fingerprint" :size="20" />
@@ -485,7 +489,7 @@ onBeforeUnmount(() => {
               <span v-if="isSigning" class="signing-badge" data-testid="approval-signing-badge">
                 <AppIcon name="edit" :size="12" /> {{ approval.purpose === "sign-tag" ? "Sign a tag" : "Sign a commit" }}
               </span>
-              <h1 id="approval-title">
+              <h1 id="approval-title" ref="fullHeading" tabindex="-1">
                 <span v-if="harnessName" data-testid="approval-app">
                   {{ harnessName
                   }}<span v-if="isHarnessSigned" class="checked-name" :title="signedHarnessText" :aria-label="signedHarnessText" data-testid="approval-harness-checked"
