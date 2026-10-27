@@ -41,6 +41,7 @@ data class PhoneApproval(
     val secrets: List<String> = emptyList(),
     @Serializable(with = AppIconSerializer::class) val appIcon: ByteString? = null,
     val appWarning: String = "",
+    val allowance: String = "",
     /** Set when approving can also be remembered on the Mac; the sheet and the Vaults card show it as a switch. */
     val rememberLabel: String = "",
     val isRememberedByDefault: Boolean = false,
@@ -135,6 +136,7 @@ data class PhoneApproval(
                     secretRow,
                     DetailRow("Forwarded from", if (isForwarded) forwardedFromHost else "", true),
                     DetailRow("Terminal", if (terminalName.isEmpty()) "" else "/dev/$terminalName", true),
+                    DetailRow("Allows", allowance, false),
                 )
             }
             return allCandidate.filter { it.value.isNotEmpty() }

@@ -66,6 +66,7 @@ type Description struct {
 	// AppIcon is the app's small PNG icon; AppWarning carries the dialog's app and operation warnings.
 	AppIcon    []byte `json:"appIcon,omitempty"`
 	AppWarning string `json:"appWarning,omitempty"`
+	Allowance  string `json:"allowance,omitempty"`
 	// RememberLabel is set when approving can also be remembered: the sentence for the phone's switch.
 	RememberLabel         string `json:"rememberLabel,omitempty"`
 	IsRememberedByDefault bool   `json:"isRememberedByDefault,omitempty"`

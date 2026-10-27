@@ -36,6 +36,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     var secrets: [String]
     var appIcon: Data?
     var appWarning: String
+    var allowance: String
     // rememberLabel is set when approving can also be remembered on the Mac; the sheet shows it as a switch.
     var rememberLabel: String
     var isRememberedByDefault: Bool
@@ -52,9 +53,10 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case requestID = "requestId"
         case requesterDeviceName, createdAt, expiresAt, kind, appName, purpose, host, commandLine, repositoryPath, projectPath, keyName, isForwarded, forwardedFromHost, terminalName, secrets, appIcon, appWarning, rememberLabel, isRememberedByDefault
+        case allowance
     }
 
-    init(requestID: String, requesterDeviceName: String, createdAt: String = "", expiresAt: String, kind: String, appName: String, purpose: String, host: String = "", commandLine: String = "", repositoryPath: String = "", projectPath: String = "", keyName: String = "", isForwarded: Bool = false, forwardedFromHost: String = "", terminalName: String = "", secrets: [String] = [], appIcon: Data? = nil, appWarning: String = "", rememberLabel: String = "", isRememberedByDefault: Bool = false) {
+    init(requestID: String, requesterDeviceName: String, createdAt: String = "", expiresAt: String, kind: String, appName: String, purpose: String, host: String = "", commandLine: String = "", repositoryPath: String = "", projectPath: String = "", keyName: String = "", isForwarded: Bool = false, forwardedFromHost: String = "", terminalName: String = "", secrets: [String] = [], appIcon: Data? = nil, appWarning: String = "", allowance: String = "", rememberLabel: String = "", isRememberedByDefault: Bool = false) {
         self.requestID = requestID
         self.requesterDeviceName = requesterDeviceName
         self.createdAt = createdAt
@@ -73,6 +75,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         self.secrets = secrets
         self.appIcon = appIcon
         self.appWarning = appWarning
+        self.allowance = allowance
         self.rememberLabel = rememberLabel
         self.isRememberedByDefault = isRememberedByDefault
     }
@@ -97,6 +100,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         secrets = try container.decodeIfPresent([String].self, forKey: .secrets) ?? []
         appIcon = try? container.decodeIfPresent(Data.self, forKey: .appIcon)
         appWarning = try container.decodeIfPresent(String.self, forKey: .appWarning) ?? ""
+        allowance = try container.decodeIfPresent(String.self, forKey: .allowance) ?? ""
         rememberLabel = try container.decodeIfPresent(String.self, forKey: .rememberLabel) ?? ""
         isRememberedByDefault = try container.decodeIfPresent(Bool.self, forKey: .isRememberedByDefault) ?? false
     }
@@ -183,6 +187,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
             secretRow,
             DetailRow(label: "Forwarded from", value: isForwarded ? forwardedFromHost : "", isMonospaced: true),
             DetailRow(label: "Terminal", value: terminalName.isEmpty ? "" : "/dev/\(terminalName)", isMonospaced: true),
+            DetailRow(label: "Allows", value: allowance, isMonospaced: false),
         ]
         return allCandidate.filter { !$0.value.isEmpty }
     }

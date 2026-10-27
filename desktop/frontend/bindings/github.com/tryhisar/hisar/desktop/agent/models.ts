@@ -45,6 +45,7 @@ export interface ApprovalEvent {
      * connection.
      */
     "coverage": string;
+    "allowance"?: string;
     "isUnlockRequired": boolean;
     "isPasswordUnlock": boolean;
     "isPhoneApproval": boolean;

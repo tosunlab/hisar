@@ -936,6 +936,7 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     timeoutMilliseconds: 60_000,
     terminalName: coverage === "terminal-session" ? "ttys003" : "",
     coverage,
+    allowance: "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time.",
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("cliPassword") === "1",
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,

@@ -37,6 +37,7 @@ var scriptedRequests = []scriptedRequest{
 	}},
 	{"Command-line request", approval.Description{
 		Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar",
+		Allowance:   "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time.",
 		CommandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003",
 	}},
 }

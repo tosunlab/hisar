@@ -173,6 +173,16 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(model.allPendingApproval.count, 2)
     }
 
+    func testCommandLineAllowanceIsOptionalAndNotInferredForAgents() throws {
+        let json = """
+        [{"requestId":"cli","kind":"cli","allowance":"Read secrets and one-time codes\\nAdd, change and delete items"},
+         {"requestId":"agent","kind":"cli","appName":"omp"}]
+        """
+        let approvals = try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8))
+        XCTAssertEqual(approvals[0].allDetailRow.first { $0.label == "Allows" }?.value, "Read secrets and one-time codes\nAdd, change and delete items")
+        XCTAssertFalse(approvals[1].allDetailRow.contains { $0.label == "Allows" })
+    }
+
     private func createRememberingApproval(requestID: String = "0123456789abcdef0123456789abcdef", isRememberedByDefault: Bool = true) -> PhoneApproval {
         var approval = createApproval(requestID: requestID)
         approval.rememberLabel = "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks."

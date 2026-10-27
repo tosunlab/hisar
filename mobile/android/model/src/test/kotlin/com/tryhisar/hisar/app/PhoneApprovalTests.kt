@@ -229,6 +229,16 @@ class PhoneApprovalTests {
     }
 
     @Test
+    fun testCommandLineAllowanceIsOptionalAndNotInferredForAgents() {
+        val approvals = decode(
+            """[{"requestId":"cli","kind":"cli","allowance":"Read secrets and one-time codes\nAdd, change and delete items"},
+               {"requestId":"agent","kind":"cli","appName":"omp"}]""",
+        )
+        assertEquals("Read secrets and one-time codes\nAdd, change and delete items", approvals[0].allDetailRow.first { it.label == "Allows" }.value)
+        assertFalse(approvals[1].allDetailRow.any { it.label == "Allows" })
+    }
+
+    @Test
     fun testDecodesTheRememberSwitch() {
         val allApproval = decode(
             """

@@ -315,6 +315,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
                 "cli" -> PhoneApproval(
                     requestID = "preview-cli", requesterDeviceName = mac, expiresAt = expiresAt, kind = PhoneApproval.KIND_COMMAND_LINE,
                     appName = "hisar in Terminal", purpose = "use Hisar", commandLine = "/Applications/Hisar.app/Contents/Helpers/hisar", terminalName = "ttys003",
+                    allowance = "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time.",
                 )
                 "forwarded" -> PhoneApproval(
                     requestID = "preview-forwarded", requesterDeviceName = mac, expiresAt = expiresAt, kind = PhoneApproval.KIND_SSH,

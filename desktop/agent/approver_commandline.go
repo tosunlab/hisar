@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	shareLinkWarning   = "Anyone with the link can read these until it expires or its views run out."
-	plainExportWarning = "The file will hold every password, one-time code secret and SSH private key in plain text."
+	shareLinkWarning     = "Anyone with the link can read these until it expires or its views run out."
+	commandLineAllowance = "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time."
+	plainExportWarning   = "The file will hold every password, one-time code secret and SSH private key in plain text."
 )
 
 func (approver *Approver) buildCommandLineEvent(requestID string, request clisocket.ApprovalRequest) ApprovalEvent {
@@ -24,6 +25,7 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request clisoc
 		ClientPath:        request.ClientPath,
 		TerminalName:      request.TerminalName,
 		Coverage:          string(request.Coverage),
+		Allowance:         commandLineAllowance,
 		IsTouchIDApproval: approver.IsTouchIDApproval(),
 		TimeoutAt:         approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
 		SecretNames:       []string{},
@@ -83,6 +85,7 @@ func (approver *Approver) buildCommandLinePhoneDescription(event ApprovalEvent) 
 		AppName:      appName,
 		AppIcon:      approver.getPhoneAppIcon(event),
 		AppWarning:   strings.TrimSpace(event.AppWarning + " " + event.Warning),
+		Allowance:    event.Allowance,
 		Purpose:      "use Hisar",
 		CommandLine:  event.ClientPath,
 		TerminalName: event.TerminalName,

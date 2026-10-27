@@ -103,6 +103,7 @@ type ApprovalEvent struct {
 	// Coverage is what approving a command-line or launcher request covers: clisocket's terminal-session, app or
 	// connection.
 	Coverage         string `json:"coverage"`
+	Allowance        string `json:"allowance,omitempty"`
 	IsUnlockRequired bool   `json:"isUnlockRequired"`
 	IsPasswordUnlock bool   `json:"isPasswordUnlock"`
 	IsPhoneApproval  bool   `json:"isPhoneApproval"`
