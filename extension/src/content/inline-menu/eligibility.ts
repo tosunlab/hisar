@@ -7,6 +7,7 @@ import { getAutocompleteTokens } from "../detection";
 import { isInputElement, isVisible } from "../dom";
 import { findScopeOfField } from "../fill";
 import { findOneTimeCodeTarget } from "../one-time-code";
+import { isSearchField } from "../search-field";
 import { computeUnionRect, isFieldLargeEnough, type Rect } from "./placement";
 
 export const allOwnHostTagName = ["HISAR-SAVE-BAR", "HISAR-INLINE-MENU", "HISAR-NOTICE"];
@@ -24,7 +25,8 @@ function isInsideOwnHost(field: Element): boolean {
 
 export function findInlineMenuPurpose(document: Document, element: Element, getRect: (element: Element) => Rect): InlineMenuPurpose | undefined {
   if (!isInputElement(element) || element.disabled || element.readOnly || isInsideOwnHost(element)) return undefined;
-  if (!isVisible(element)) return undefined;
+  // A search box takes a query, never a value from the vault, whatever form or page it is in.
+  if (isSearchField(element) || !isVisible(element)) return undefined;
   const hasLayout = document.documentElement.getClientRects().length > 0;
   const allCodeField = findOneTimeCodeTarget(element);
   if (allCodeField) {

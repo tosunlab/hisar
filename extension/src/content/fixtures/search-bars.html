@@ -1,0 +1,29 @@
+<div id="app">
+  <header>
+    <!-- A Turkish shop's header: a plain text box whose words name no search in English. -->
+    <div class="search">
+      <input type="text" id="header-search" name="aramaKutusu" placeholder="Ürün, kategori veya marka ara" autocomplete="off" />
+      <div class="search-button"><svg></svg></div>
+    </div>
+    <!-- A typeahead with no words at all: a combobox over a list of suggestions. -->
+    <input type="text" id="typeahead" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="suggestions" />
+    <!-- A box named with nothing but a datalist. -->
+    <input type="text" id="with-datalist" list="cities" />
+    <datalist id="cities"><option value="Ankara"></option></datalist>
+    <!-- A box named only by its keyboard. -->
+    <input type="text" id="by-keyboard" inputmode="search" enterkeyhint="search" />
+    <!-- The page's search landmark, with a box whose name says nothing. -->
+    <div role="search"><input type="text" id="in-landmark" name="term" /></div>
+    <!-- A filter above a table. -->
+    <input type="text" id="table-filter" placeholder="Filter rows" />
+  </header>
+  <main>
+    <!-- The password step of a sign-in, without a form, whose button is a plain element the scope search cannot see: the
+         scope grows to the whole page, and the header's boxes become candidates for its username. -->
+    <div class="step">
+      <h1>Şifrenizi girin</h1>
+      <div class="field"><input type="password" id="pass" name="pass" /></div>
+      <div class="button" id="go">Giriş yap</div>
+    </div>
+  </main>
+</div>
