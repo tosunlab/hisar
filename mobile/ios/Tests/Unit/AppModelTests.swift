@@ -898,8 +898,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.screen, .locked)
         await model.refreshShareAwaitingUnlock()
         XCTAssertEqual(model.allShareAwaitingUnlock.map(\.message), [
-            "Ada accepted your invitation to a vault — unlock to finish sharing",
-            "bo@example.com accepted your invitation to a vault — unlock to finish sharing",
+            "Ada accepted your invitation to a vault. Unlock to finish sharing.",
+            "bo@example.com accepted your invitation to a vault. Unlock to finish sharing.",
         ])
         XCTAssertNil(model.errorMessage)
 

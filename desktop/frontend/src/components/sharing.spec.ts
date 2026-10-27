@@ -373,8 +373,8 @@ describe("Lock screen", () => {
     await flushPromises();
     const banner = wrapper.find('[data-testid="share-awaiting-unlock"]');
     expect(banner.findAll("li").map((row) => row.text())).toEqual([
-      "Ada accepted your invitation to a vault — unlock to finish sharing",
-      "bo@example.com accepted your invitation to a vault — unlock to finish sharing",
+      "Ada accepted your invitation to a vault. Unlock to finish sharing.",
+      "bo@example.com accepted your invitation to a vault. Unlock to finish sharing.",
     ]);
 
     api.listAllShareAwaitingUnlock.mockResolvedValue([]);
