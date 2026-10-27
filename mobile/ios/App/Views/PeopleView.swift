@@ -2,36 +2,57 @@ import SwiftUI
 
 struct PeopleView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var allPerson: [Member]?
-    @State private var shareInvitations = ShareInvitations()
+    @State private var people: AppModel.PeopleSnapshot?
+    private var allPerson: [Member]? { people?.allPerson }
+    private var shareInvitations: ShareInvitations { people?.invitations ?? ShareInvitations() }
     @State private var isInviteShown = false
     @State private var invitationToCancel: SentShareInvitation?
+    @State private var actionError: String?
 
     var body: some View {
         List {
-            if let errorMessage = model.errorMessage {
+            if let errorMessage = actionError ?? model.errorMessage {
                 Section {
                     ErrorBanner(message: errorMessage)
                 }
             }
-            if !shareInvitations.allReceived.isEmpty {
+            if !shareInvitations.allReceived.isEmpty || !shareInvitations.allWaiting.isEmpty {
                 Section("Invitations for you") {
                     ForEach(shareInvitations.allReceived) { invitation in
                         ReceivedInvitationRow(invitation: invitation) {
                             Task {
+                                actionError = nil
                                 if await model.acceptShareInvitation(invitationID: invitation.id) {
                                     model.showNotice("Accepted. The vault appears once \(invitation.inviterName)'s Hisar finishes sharing.")
                                     await load()
+                                } else {
+                                    actionError = model.errorMessage
                                 }
                             }
                         } decline: {
                             Task {
+                                actionError = nil
                                 if await model.declineShareInvitation(invitationID: invitation.id) {
                                     model.showNotice("Invitation declined.")
                                     await load()
+                                } else {
+                                    actionError = model.errorMessage
                                 }
                             }
                         }
+                    }
+                    ForEach(shareInvitations.allWaiting) { invitation in
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(invitation.describe(now: Date()))
+                                Text(invitation.invitedByEmail).font(.footnote)
+                            }
+                        } icon: {
+                            Image(systemName: "clock")
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(.themeSecondary)
+                        .accessibilityIdentifier("waiting-\(invitation.id)")
                     }
                 }
             }
@@ -98,9 +119,12 @@ struct PeopleView: View {
             Button("Cancel invitation", role: .destructive) {
                 guard let invitation = invitationToCancel else { return }
                 Task {
+                    actionError = nil
                     if await model.cancelShareInvitation(invitationID: invitation.id) {
                         model.showNotice("Invitation to \(invitation.email) cancelled.")
                         await load()
+                    } else {
+                        actionError = model.errorMessage
                     }
                 }
             }
@@ -110,15 +134,13 @@ struct PeopleView: View {
                 .environmentObject(model)
         }
         .task { await load() }
+        .onChange(of: model.remoteChangeCount) { _, _ in
+            Task { await load() }
+        }
     }
 
     private func load() async {
-        model.clearError()
-        allPerson = await model.loadAllPerson() ?? allPerson ?? []
-        if let loadedInvitations = await model.loadShareInvitations() {
-            shareInvitations = loadedInvitations
-        }
-        await model.refreshReceivedInvitationCount()
+        people = await model.loadPeople(previous: people)
     }
 }
 

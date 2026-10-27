@@ -483,6 +483,7 @@ Sharing is person to person: the owner of a shared vault types an email address 
 `PUT /vaults/{id}/access/{accountID}` cannot add a shared-vault member, even after an invitation was accepted. It changes existing access, while organization key delivery remains subject to team entitlements. New shared-vault access requires exact signed completion. Source cancellation and completion serialize under the vault lock, and completion preserves the invitation-before-account key-share lock order used by account deletion.
 
 **People.** `GET /members` returns the caller and every account that shares at least one vault with them, with signed public keys; it is the member source for sharing, role changes, removal and rotation. There is no list of every account anywhere (API, desktop, iOS, CLI, extension); only the operator's `hisar-server` reads the database directly. The desktop's Settings → People shows those people with their security codes, the invitations the user sent (Cancel) and received (Accept, Decline), and the invite form. The **Inbox** row under Favorites counts received invitations and opens Settings → People or Organizations for the waiting invitation.
+The phones reload People after remote-change events as well as pull-to-refresh. A failed background load keeps the last successful people and invitations. Accepted invitations remain under **Invitations for you** with a clock, the inviter's email and the waiting sentence until an authoritative load removes them. Background success does not dismiss a failed action's feedback.
 
 ### 5.9 Share links
 

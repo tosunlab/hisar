@@ -47,6 +47,7 @@ open class FakeBackend : VaultBackend {
     var allVaultMemberByVaultID: MutableMap<String, MutableList<Member>> = mutableMapOf()
     val allInvitedEmail = mutableListOf<String>()
     var shareInvitations = ShareInvitations()
+    var peopleErrorMessage: String? = null
     var allShareAwaitingUnlock: List<ShareAwaitingUnlock> = emptyList()
     var isShareAwaitingUnlockFailing = false
     val allAnsweredInvitation = mutableListOf<String>()
@@ -189,6 +190,7 @@ open class FakeBackend : VaultBackend {
     override fun listAllPerson(): List<Member> {
         record("listAllPerson")
         requireUnlocked()
+        peopleErrorMessage?.let { throw BackendError(it) }
         val allSharedAccountID = allVaultMemberByVaultID.values.filter { members -> members.any { it.isCurrentUser } }
             .flatMap { members -> members.map { it.accountID } }.toSet()
         return allMember.filter { it.isCurrentUser || it.accountID in allSharedAccountID }

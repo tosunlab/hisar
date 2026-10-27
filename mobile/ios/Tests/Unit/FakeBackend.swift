@@ -26,6 +26,7 @@ class FakeBackend: VaultBackend {
     /// Starred items as "vaultID/itemID"; the account keeps them apart from the items.
     var allFavoriteRecordID: Set<String> = []
     var favoriteErrorMessage: String?
+    var peopleErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
     var verifyPasskey: (String) -> Bool = { _ in true }
@@ -171,6 +172,7 @@ class FakeBackend: VaultBackend {
     func listAllPerson() throws -> [Member] {
         record("listAllPerson")
         try requireUnlocked()
+        if let peopleErrorMessage { throw BackendError(message: peopleErrorMessage) }
         let allSharedAccountID = Set(allVaultMemberByVaultID.values.filter { $0.contains { $0.isCurrentUser } }.flatMap { $0.map(\.accountID) })
         return allMember.filter { $0.isCurrentUser || allSharedAccountID.contains($0.accountID) }
     }

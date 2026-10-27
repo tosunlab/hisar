@@ -69,4 +69,25 @@ class SharingRefreshTests {
         compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("member-security-code")).fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("vault-member-bob@example.com").assertDoesNotExist()
     }
+
+    @Test
+    fun testPeopleReloadsRemoteWaitingInvitationsAndKeepsThemOnFailure() {
+        compose.setContent { HisarTheme { com.tryhisar.hisar.ui.sharing.PeopleScreen(model, onBack = {}) } }
+        compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("person-bob@example.com")).fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle {
+            backend.shareInvitations = com.tryhisar.hisar.model.ShareInvitations(allWaiting = listOf(
+                com.tryhisar.hisar.model.WaitingShareInvitation("waiting-1", "work", Member.VAULT_ROLE_READER, "Ada", "ada@example.com", ""),
+            ))
+            model.handleRemoteChange()
+        }
+        compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("waiting-waiting-1")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("waiting-waiting-1").assertTextContains("Waiting for Ada's Hisar to finish sharing", substring = true)
+        compose.runOnIdle {
+            backend.peopleErrorMessage = "Offline"
+            backend.shareInvitations = com.tryhisar.hisar.model.ShareInvitations()
+            model.handleRemoteChange()
+        }
+        compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("Offline", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("waiting-waiting-1").assertExists()
+    }
 }

@@ -35,6 +35,29 @@ class SharingTests {
     }
 
     @Test
+    fun testPeopleReloadKeepsWaitingAndLastSuccessfulData() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        var people = model.sharing.loadPeople(null)
+        assertEquals(2, people?.allPerson?.size)
+        val waiting = com.tryhisar.hisar.model.WaitingShareInvitation("waiting-1", "work", Member.VAULT_ROLE_READER, "Ada", "ada@example.com", "")
+        harness.backend.shareInvitations = ShareInvitations(allWaiting = listOf(waiting))
+        model.handleRemoteChange()
+        people = model.sharing.loadPeople(people)
+        assertEquals(listOf(waiting), people?.invitations?.allWaiting)
+        model.errorMessage.value = "Could not decline the invitation."
+        people = model.sharing.loadPeople(people)
+        assertEquals("Could not decline the invitation.", model.errorMessage.value)
+        harness.backend.peopleErrorMessage = "Offline"
+        harness.backend.shareInvitations = ShareInvitations()
+        people = model.sharing.loadPeople(people)
+        assertEquals(listOf(waiting), people?.invitations?.allWaiting)
+        harness.backend.peopleErrorMessage = null
+        people = model.sharing.loadPeople(people)
+        assertTrue(people?.invitations?.allWaiting?.isEmpty() == true)
+    }
+
+    @Test
     fun testOwnerSendsShareInvitationThenChangesRoleAndRemovesMember() = runTest {
         val harness = AppModelHarness(this)
         val backend = harness.backend
