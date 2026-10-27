@@ -213,12 +213,20 @@ fun VaultsHomeScreen(model: AppModel) {
                             )
                         }
                     } else {
-                        cardSection("favorites", allFavorite, rowKey = { it.id }, header = "Favorites", dividerStart = { ItemRowTextStart }) { reference ->
+                        cardSection("favorites", allFavorite.take(3), rowKey = { it.id }, header = "Favorites", dividerStart = { ItemRowTextStart }) { reference ->
                             FavoriteSwipeRow(model, reference.vaultID, reference.item, isLeading = false) {
                                 ItemRow(model, reference.item, "favorite-${reference.item.title}", vaultName = reference.vaultName, onClick = {
                                     stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
                                 })
                             }
+                        }
+                        cardSection("all-favorites", listOf(Unit), rowKey = { "show-all" }) {
+                            NavigationRow(
+                                testTag = "show-all-favorites",
+                                onClick = { stack.push(VaultsDestination.Favorites) },
+                                badge = allFavorite.size,
+                                leading = { RowSymbol(Icons.Outlined.StarOutline) },
+                            ) { Text("Show all favorites", style = HisarType.body, color = HisarTheme.colors.label) }
                         }
                     }
                 }

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Sell
+import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -25,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
@@ -100,11 +102,42 @@ fun NoSearchResults(searchText: String) {
 }
 
 /** Items of every vault, each row naming its vault. */
-fun LazyListScope.crossVaultRows(model: AppModel, stack: NavigationStack, allReference: List<VaultItemReference>) {
+fun LazyListScope.crossVaultRows(model: AppModel, stack: NavigationStack, allReference: List<VaultItemReference>, isFavorites: Boolean = false) {
     cardSection("items", allReference, rowKey = { it.id }, dividerStart = { ItemRowTextStart }) { reference ->
-        ItemRow(model, reference.item, "item-${reference.item.title}", vaultName = reference.vaultName, onClick = {
-            stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
-        })
+        val row: @Composable () -> Unit = {
+            ItemRow(model, reference.item, "item-${reference.item.title}", vaultName = reference.vaultName, onClick = {
+                stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
+            })
+        }
+        if (isFavorites) FavoriteSwipeRow(model, reference.vaultID, reference.item, isLeading = false, content = row) else row()
+    }
+}
+
+@Composable
+fun FavoritesItemsScreen(model: AppModel, stack: NavigationStack) {
+    val data by model.unlockedData.collectAsStateWithLifecycle()
+    val status by model.status.collectAsStateWithLifecycle()
+    var searchText by rememberSaveable { mutableStateOf("") }
+    val allMatch = VaultLogic.filterAllItem(data.listAllFavoriteReference(), searchText)
+    val damagedVaults = data.allVault.filter { it.readIssues.isNotEmpty() }
+    PushedListScaffold(
+        title = "Favorites",
+        onBack = stack::pop,
+        onRefresh = model::refreshAll,
+        isEmpty = allMatch.isEmpty() && damagedVaults.isEmpty(),
+        emptyContent = {
+            if (searchText.isEmpty()) ContentUnavailable("No favorites yet", Icons.Outlined.StarOutline) else NoSearchResults(searchText)
+        },
+        searchField = { SearchField(searchText, { searchText = it }, "Search favorites", "favorites-search") },
+    ) {
+        if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
+        cardSection("recovery", damagedVaults, rowKey = { it.id }) { vault ->
+            NavigationRow(
+                testTag = "favorites-recovery-${vault.id}",
+                onClick = { stack.push(VaultsDestination.Vault(vault.id)) },
+            ) { Text("${vault.name}: ${vault.readIssues.size} unreadable records. Retry or repair.", color = HisarTheme.colors.warning) }
+        }
+        crossVaultRows(model, stack, allMatch, isFavorites = true)
     }
 }
 

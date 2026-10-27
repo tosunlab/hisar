@@ -13,6 +13,7 @@ import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.test.espresso.Espresso
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.test.performImeAction
@@ -113,6 +114,35 @@ class VaultsScreenUITests : HisarUITestCase() {
             tap("banner-accept-invitation")
             waitForNotice("Accepted. The vault appears once Carol's Hisar finishes sharing.")
             assertFalse(exists(hasTestTag("banner-invitation-text")))
+        }
+    }
+
+    @Test
+    fun testFavoritesPreviewOpensSearchableListWithUndo() {
+        val backend = buildBackend().apply {
+            allFavoriteRecordID = allItemByVaultID.flatMap { (vaultID, items) -> items.map { "$vaultID/${it.id}" } }.toMutableSet()
+        }
+        val total = backend.allFavoriteRecordID.size
+        launchApp(backend).use {
+            waitFor("vaults-list")
+            scrollTo("show-all-favorites")
+            composeRule.onNodeWithTag("show-all-favorites").assertTextContains("$total")
+            assertFalse("the fourth favorite is not in the preview", exists(hasTestTag("favorite-Stripe")))
+            tap("show-all-favorites")
+            type("Netflix", "favorites-search")
+            waitFor("item-Netflix")
+            assertFalse(exists(hasTestTag("item-GitHub")))
+            composeRule.onNodeWithTag("item-Netflix").assertTextContains("Family")
+            composeRule.onNodeWithTag("item-Netflix").performTouchInput { swipeLeft() }
+            tap("unfavorite-Netflix")
+            waitForNotice("Removed from Favorites.")
+            composeRule.onNode(hasText("Undo") and hasAnyAncestor(hasTestTag("notice"))).performClick()
+            waitFor("item-Netflix")
+            Espresso.closeSoftKeyboard()
+            goBack()
+            waitFor("vaults-list")
+            scrollTo("show-all-favorites")
+            composeRule.onNodeWithTag("show-all-favorites").assertTextContains("$total")
         }
     }
 
@@ -350,6 +380,23 @@ class VaultsScreenUITests : HisarUITestCase() {
             composeRule.waitUntil("every change to the search reports activity", 5_000) {
                 backend.countCall("reportActivity") >= countBeforeTyping + 3
             }
+        }
+    }
+
+    @Test
+    fun testVaultsAndFavoritesRemainUsableAtDoubleTextSize() {
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        fun shell(command: String): String =
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(command))
+                .bufferedReader().use { it.readText().trim() }
+        val original = shell("settings get system font_scale")
+        try {
+            shell("settings put system font_scale 2.0")
+            composeRule.waitUntil(5_000) { instrumentation.targetContext.resources.configuration.fontScale >= 1.99f }
+            testVaultsHomeShowsTheIPhonesSections()
+            testFavoritesPreviewOpensSearchableListWithUndo()
+        } finally {
+            shell(if (original == "null") "settings delete system font_scale" else "settings put system font_scale $original")
         }
     }
 }

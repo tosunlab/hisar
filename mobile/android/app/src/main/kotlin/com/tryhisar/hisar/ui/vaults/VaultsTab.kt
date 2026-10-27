@@ -48,6 +48,7 @@ private fun describeStateKey(path: List<VaultsDestination>): String {
 private fun DestinationScreen(model: AppModel, stack: NavigationStack, destination: VaultsDestination) {
     when (destination) {
         is VaultsDestination.Vault -> VaultItemsScreen(model, stack, destination.vaultID)
+        VaultsDestination.Favorites -> FavoritesItemsScreen(model, stack)
         is VaultsDestination.Category -> CategoryItemsScreen(model, stack, destination.category)
         is VaultsDestination.Tag -> TagItemsScreen(model, stack, destination.tag)
         is VaultsDestination.Item -> ItemDetailScreen(
