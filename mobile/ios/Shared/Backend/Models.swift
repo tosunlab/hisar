@@ -1822,6 +1822,11 @@ struct CredentialChangeResult: Codable, Equatable {
     var setupState: String = ""
     var problems: [String] = []
 
+    var isWaitingOnlyForKit: Bool {
+        AccountLifecycleLogic.isWaitingOnlyForKit(setupState: setupState, secretKey: secretKey, problems: problems)
+            && localError.isEmpty && keychainError.isEmpty
+    }
+
     init(status: VaultStatus, secretKey: String = "", signedOutDeviceCount: Int = 0, keychainError: String = "", localError: String = "", emergencyKitPath: String = "", pendingOperationId: String = "", setupState: String = "", problems: [String] = []) {
         self.status = status
         self.secretKey = secretKey

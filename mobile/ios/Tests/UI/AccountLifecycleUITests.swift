@@ -57,9 +57,17 @@ final class AccountLifecycleUITests: HisarUITestCase {
         app.buttons["replace-secret-key-submit"].tap()
         waitFor(secretKeyWarning)
         tapConfirmation(identifier: "replace-secret-key-confirm")
-        let newSecretKey = finishPendingRecovery(email: email, password: Self.newMasterPassword, restartAfterPreparingKit: true)
+        waitFor(app.navigationBars["Save your new Secret Key"], timeout: 60)
+        let newSecretKey = app.staticTexts["new-secret-key-value"].label
+        XCTAssertFalse(app.navigationBars["Account recovery"].exists)
+        waitFor(app.buttons["share-new-emergency-kit"])
         XCTAssertTrue(newSecretKey.hasPrefix("H1-"), newSecretKey)
         saveScreenshot("account-life-new-secret-key\(screenshotSuffix)")
+        let savedKit = app.buttons["replace-secret-key-done"]
+        XCTAssertEqual(savedKit.label, "I saved the new Emergency Kit")
+        savedKit.tap()
+        waitFor(app.buttons["open-replace-secret-key"])
+        openTab("Vaults")
 
         let passwordField = app.secureTextFields["unlock-password"]
         if passwordField.waitForExistence(timeout: 2) {
