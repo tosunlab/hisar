@@ -93,7 +93,7 @@ fun SettingsTab(model: AppModel) {
             null -> SettingsRoot(model, push)
             SettingsDestination.ACCOUNT -> AccountScreen(model, push, pop)
             SettingsDestination.SECRET_KEY -> SecretKeyScreen(model, pop)
-            SettingsDestination.SECURITY -> SecurityScreen(model, push, pop)
+            SettingsDestination.SECURITY -> SecurityScreen(model, pop)
             SettingsDestination.APPEARANCE -> AppearanceScreen(model, pop)
             SettingsDestination.MAC_APPROVALS -> MacApprovalsScreen(model, pop)
             SettingsDestination.NOTIFICATIONS -> NotificationsScreen(model, pop)

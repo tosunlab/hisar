@@ -156,6 +156,24 @@ class VaultsScreenUITests : HisarUITestCase() {
     }
 
     @Test
+    fun testCredentialChangesBelongToAccountNotDeviceSecurity() {
+        launchApp(buildBackend()).use {
+            waitFor("vaults-list")
+            openSettings("open-security")
+            assertFalse(exists(hasTestTag("open-change-master-password")))
+            assertFalse(exists(hasTestTag("open-replace-secret-key")))
+            assertTrue(exists(hasTestTag("biometric-toggle")))
+            assertTrue(exists(hasTestTag("settings-lock-now")))
+            goBack()
+            tap("open-account")
+            assertTrue(exists(hasTestTag("open-change-master-password")))
+            assertTrue(exists(hasTestTag("open-replace-secret-key")))
+            tap("open-change-master-password")
+            waitFor("change-password-current")
+        }
+    }
+
+    @Test
     fun testSettingsRowsRemainReachableAfterNotices() {
         launchApp(buildBackend()).use {
             waitFor("vaults-list")
@@ -169,7 +187,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             tap("sign-out")
             tap("cancel-confirmation")
 
-            tap("open-security")
+            tap("open-account")
             tap("open-change-master-password")
             type(FakeBackend.PASSWORD, "change-password-current")
             type("changed master password", "change-password-new")

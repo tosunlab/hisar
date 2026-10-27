@@ -104,6 +104,9 @@ SHA-256. The copy uses uppercase hex bytes separated by colons, as `apksigner` a
 
 ### Account passwords and exports
 
+Change your master password or replace your Secret Key in Settings → Account on either phone.
+Security contains device protection, including biometric unlock and auto-lock.
+
 The new master password and encrypted-export passphrase forms count extended grapheme clusters for their
 ten-character minimum, like the iPhone app. Combining marks, flags and joined emoji each stay with their character.
 This validation does not normalize the password or change the shared Go checks.
