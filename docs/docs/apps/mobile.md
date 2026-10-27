@@ -13,6 +13,8 @@ The iPhone and Android apps on top of the gomobile-bound `core`. See [Design](..
 - `android/`: the Android app, below.
 - `cmd/hisar-ui-test-mac`: plays the user's Mac in the Android phone approval UI test.
 
+Signing out another device ends its server session immediately. An offline device can still unlock its downloaded vaults until it next contacts the server, when Hisar removes the account from that device. Both the device list and device-detail confirmations explain this limit.
+
 ## Android
 
 Kotlin and Jetpack Compose on top of `HisarKit.aar`, built with the Gradle wrapper in `android/`. Android 10 (API 29)

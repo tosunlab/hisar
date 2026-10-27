@@ -68,7 +68,7 @@ private val DeviceIcon.image: ImageVector
         DeviceIcon.EXTENSION -> Icons.Outlined.Extension
     }
 
-private const val REVOKE_MESSAGE = "It loses access to your vaults at once and needs your Secret Key and master password to sign in again."
+private const val REVOKE_MESSAGE = "It is signed out of the Hisar server now. The next time it connects, Hisar removes your account from it. Until then, it can still be unlocked while offline. To sign in again, it needs your Secret Key and master password."
 
 private fun formatDateTime(date: Instant): String =
     DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withZone(ZoneId.systemDefault()).format(date)

@@ -70,7 +70,7 @@ struct DevicesView: View {
             }
             .accessibilityIdentifier("confirm-revoke-device")
         } message: { _ in
-            Text("It loses access to your vaults at once and needs your Secret Key and master password to sign in again.")
+            Text("It is signed out of the Hisar server now. The next time it connects, Hisar removes your account from it. Until then, it can still be unlocked while offline. To sign in again, it needs your Secret Key and master password.")
         }
         .task { await load() }
     }
@@ -149,7 +149,7 @@ struct DeviceView: View {
             }
             .accessibilityIdentifier("confirm-revoke-device")
         } message: {
-            Text("It loses access to your vaults at once and needs your Secret Key and master password to sign in again.")
+            Text("It is signed out of the Hisar server now. The next time it connects, Hisar removes your account from it. Until then, it can still be unlocked while offline. To sign in again, it needs your Secret Key and master password.")
         }
     }
 }
