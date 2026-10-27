@@ -44,6 +44,17 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("password-generator")
         app.buttons["generator-use"].tap()
         type("dev, work", into: app.textFields["editor-new-tag"])
+        app.textFields["editor-one-time-password"].tap()
+        type("not a secret!", into: app.textFields["editor-one-time-password"])
+        let longNotes = app.textViews["editor-notes"].exists ? app.textViews["editor-notes"] : app.textFields["editor-notes"]
+        type(String(repeating: "A long draft. ", count: 60), into: longNotes)
+        app.buttons["editor-save"].tap()
+        let codeError = app.staticTexts["editor-one-time-code-error"]
+        waitFor(codeError)
+        XCTAssertTrue(codeError.isHittable)
+        XCTAssertTrue(app.textFields["editor-title"].exists)
+        app.textFields["editor-one-time-password"].tap()
+        app.textFields["editor-one-time-password"].typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 13))
         app.buttons["editor-save"].tap()
         // The item under the editor shows the old password until the save finishes and the editor closes.
         XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30), "the editor did not close after saving")

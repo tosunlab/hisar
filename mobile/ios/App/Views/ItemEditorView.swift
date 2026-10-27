@@ -34,6 +34,14 @@ struct ItemEditorView: View {
     @State private var isOldAddressShown = false
     /// The brand of the number last checked: the type follows it until the user picks a different one.
     @State private var numberBrand = ""
+    @State private var saveError: String?
+    @State private var saveFailureCount = 0
+    private enum SaveErrorFocus: Hashable { case summary, oneTimeCode }
+    @AccessibilityFocusState private var focusedSaveError: SaveErrorFocus?
+
+    private var oneTimeCodeError: String? {
+        saveError == "The one-time code is not a valid secret or otpauth:// link" ? saveError : nil
+    }
 
     private var isNew: Bool { originalItem == nil }
 
@@ -50,10 +58,13 @@ struct ItemEditorView: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             Form {
-                if let errorMessage = model.errorMessage {
+                if let errorMessage = saveError ?? model.errorMessage {
                     Section {
                         ErrorBanner(message: errorMessage)
+                            .id("editor-save-error")
+                            .accessibilityFocused($focusedSaveError, equals: .summary)
                     }
                 }
                 Section {
@@ -172,6 +183,14 @@ struct ItemEditorView: View {
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("editor-one-time-password")
+                                .accessibilityHint(oneTimeCodeError ?? "")
+                            if let oneTimeCodeError {
+                                Text(oneTimeCodeError)
+                                    .foregroundStyle(.red)
+                                    .id("editor-one-time-code-error")
+                                    .accessibilityIdentifier("editor-one-time-code-error")
+                                    .accessibilityFocused($focusedSaveError, equals: .oneTimeCode)
+                            }
                         }
                         Section(draft.isServer ? "Admin console" : "Websites") {
                             ForEach(allURLText.indices, id: \.self) { index in
@@ -249,6 +268,11 @@ struct ItemEditorView: View {
             // resets the picker's color and drops a tap in flight.
             .sheet(isPresented: $isIconPickerShown) {
                 IconPickerView(icon: $draft.icon, item: buildIconPreviewItem())
+            }
+            .onChange(of: saveFailureCount) { _, _ in
+                withAnimation { proxy.scrollTo(oneTimeCodeError == nil ? "editor-save-error" : "editor-one-time-code-error", anchor: .center) }
+                focusedSaveError = oneTimeCodeError == nil ? .summary : .oneTimeCode
+            }
             }
         }
         .interactiveDismissDisabled(model.isBusy || hasChanges)
@@ -929,6 +953,10 @@ struct ItemEditorView: View {
                 loadedItem = buildIconPreviewItem()
                 finish(savedItem, vaultID)
                 dismiss()
+            }
+            else {
+                saveError = model.errorMessage
+                saveFailureCount += 1
             }
         }
     }

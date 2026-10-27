@@ -827,7 +827,7 @@ onBeforeUnmount(() => {
     <main class="detail">
       <div class="title-bar"></div>
       <div class="detail-content">
-        <p v-if="store.errorMessage" class="error detail-error" role="alert">
+        <p v-if="store.errorMessage && (store.editorMode === 'view' || store.editorMode === 'create-ssh-key')" class="error detail-error" role="alert">
           <span>{{ store.errorMessage }}</span>
           <button class="ghost icon-button" aria-label="Dismiss" title="Dismiss" data-testid="dismiss-error" @click="clearError"><AppIcon name="close" :size="13" /></button>
         </p>

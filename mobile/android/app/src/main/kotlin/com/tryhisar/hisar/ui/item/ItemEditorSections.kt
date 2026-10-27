@@ -1,6 +1,8 @@
 package com.tryhisar.hisar.ui.item
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,9 +20,12 @@ import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,8 +66,12 @@ fun LoginSections(
     revealed: RevealedSecrets,
     onRevealedChange: (RevealedSecrets) -> Unit,
     onGeneratePassword: () -> Unit,
+    errorMessage: String? = null,
 ) {
     val item = draft.item
+    val oneTimeCodeError = errorMessage?.takeIf { it == "The one-time code is not a valid secret or otpauth:// link" }
+    val codeRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(oneTimeCodeError) { if (oneTimeCodeError != null) codeRequester.bringIntoView() }
     FormSection(header = "Login") {
         EditorField(item.username, { value -> onChange(draft.withItem { it.copy(username = value) }) }, "Username or email", "editor-username", kind = FieldKind.PLAIN)
         RowDivider()
@@ -87,9 +96,11 @@ fun LoginSections(
                 { value -> onChange(draft.withItem { it.copy(oneTimePassword = value) }) },
                 "Setup key or otpauth:// link",
                 "editor-one-time-password",
+                modifier = Modifier.bringIntoViewRequester(codeRequester).semantics { oneTimeCodeError?.let { error(it) } },
                 kind = FieldKind.SECRET,
                 isMonospaced = true,
             )
+            if (oneTimeCodeError != null) Warning(oneTimeCodeError, "editor-one-time-code-error")
         }
         FormSection(header = if (item.isServer) "Admin console" else "Websites") {
             draft.allURLText.forEachIndexed { index, text ->

@@ -27,6 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -111,8 +114,14 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                 GlassTextButton("Save", onClick = ::save, testTag = "editor-save", enabled = currentDraft?.canSave == true, isProminent = true)
             }
         },
+        status = {
+            errorMessage?.let { message ->
+                Box(Modifier.semantics { liveRegion = LiveRegionMode.Assertive; error(message) }.testTag("editor-save-error")) {
+                    ErrorBanner(message)
+                }
+            }
+        },
     ) {
-        errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
         if (currentDraft == null) return@InlineTitleForm
         val item = currentDraft.item
         val onChange: (ItemEditorDraft) -> Unit = { draft = it }
@@ -178,7 +187,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                     ServerSection(currentDraft, onChange, allVaultSSHKey)
                 }
                 if (item.isDatabase) DatabaseSection(currentDraft, onChange)
-                LoginSections(currentDraft, onChange, revealed, onRevealedChange, onGeneratePassword = { isGeneratorShown = true })
+                LoginSections(currentDraft, onChange, revealed, onRevealedChange, onGeneratePassword = { isGeneratorShown = true }, errorMessage = errorMessage)
                 OtherFieldsSection(currentDraft, onChange)
             }
         }
