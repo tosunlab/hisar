@@ -7,11 +7,15 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
@@ -21,6 +25,7 @@ import com.tryhisar.hisar.HisarTestApplication
 import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.VaultStatus
+import com.tryhisar.hisar.model.PendingRecovery
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,6 +38,31 @@ import org.junit.runner.RunWith
 class RootScreenUITests {
     @get:Rule
     val composeRule = createEmptyComposeRule()
+
+    @Test
+    fun testRecoveryCoverHidesAndBlocksTheVaultLockButton() {
+        val backend = FakeBackend().apply {
+            seedSignedIn()
+            allPendingRecovery += PendingRecovery(
+                operationId = "pending-cover", kind = "signup", origin = "https://hisar.test", accountId = "pending-account",
+                email = "pending@example.com", name = "Pending", phase = "delivery-pending", keychainProtected = true,
+            )
+        }
+        launchApp(backend).use {
+            composeRule.waitForTag("pending-recovery-pending-cover")
+            composeRule.onNodeWithTag("lock-now").assertDoesNotExist()
+            composeRule.onNodeWithTag("full-screen-cover").performTouchInput {
+                click(Offset(width - 32.dp.toPx(), 80.dp.toPx()))
+            }
+            composeRule.runOnIdle {
+                assertEquals(VaultStatus.STATE_UNLOCKED, backend.status.state)
+                assertFalse("lock" in backend.allCallName)
+                assertEquals("pending-cover", backend.allPendingRecovery.single().operationId)
+            }
+            composeRule.tap("pending-recovery-later")
+            composeRule.waitForTag("lock-now")
+        }
+    }
 
     @Test
     fun testSignInHidesTheServerUntilAskedFor() {
