@@ -396,12 +396,12 @@ fun BarCapsuleButton(text: String, onClick: () -> Unit, testTag: String, enabled
     val colors = HisarTheme.colors
     Box(
         Modifier
-            .height(44.dp)
+            .heightIn(min = 44.dp)
             .shadow(6.dp, CircleShape)
             .background(colors.cellBackground, CircleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .testTag(testTag)
-            .padding(horizontal = 18.dp),
+            .padding(horizontal = 18.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(

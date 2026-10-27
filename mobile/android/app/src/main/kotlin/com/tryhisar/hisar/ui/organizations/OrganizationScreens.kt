@@ -610,7 +610,8 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     if (givenTeam != null && loaded != null) {
         GiveVaultSheet(
             model = model,
-            title = "Give a vault to ${givenTeam.name}",
+            title = "Give a vault",
+            identity = "To: ${givenTeam.name}, ${loaded.name}",
             choiceTitle = "Vault",
             allChoice = OrganizationLogic.listAllGivableVault(loaded, givenTeam, data.allVault).map {
                 GiveVaultChoice(id = it.vaultID, label = it.displayName, teamID = givenTeam.id, vaultID = it.vaultID, canPreselect = it.canOpen)

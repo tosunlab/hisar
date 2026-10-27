@@ -42,6 +42,7 @@ import com.tryhisar.hisar.ui.sharing.SymbolRowDivider
 import com.tryhisar.hisar.ui.sharing.TitleAndDetail
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.vaults.BarCapsuleButton
+import com.tryhisar.hisar.ui.theme.HisarType
 import com.tryhisar.hisar.ui.vaults.HisarMenu
 import com.tryhisar.hisar.ui.vaults.HisarMenuItem
 import com.tryhisar.hisar.ui.vaults.PickerRow
@@ -60,6 +61,7 @@ data class GiveVaultChoice(val id: String, val label: String, val teamID: String
 fun GiveVaultSheet(
     model: AppModel,
     title: String,
+    identity: String,
     choiceTitle: String,
     allChoice: List<GiveVaultChoice>,
     organizationID: String,
@@ -92,7 +94,7 @@ fun GiveVaultSheet(
         isBusy = isBusy,
         onDismiss = onDismiss,
         bar = {
-            ModalSheetBar(title, onCancel = onDismiss) {
+            ModalSheetBar("", onCancel = onDismiss) {
                 if (isBusy) {
                     CircularProgressIndicator(Modifier.padding(horizontal = 16.dp).size(22.dp), color = HisarTheme.colors.secondaryLabel, strokeWidth = 2.dp)
                 } else {
@@ -101,6 +103,8 @@ fun GiveVaultSheet(
             }
         },
     ) {
+        Text(title, style = HisarType.headline, color = HisarTheme.colors.label, modifier = Modifier.testTag("give-vault-heading"))
+        Text(identity, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.padding(top = 8.dp, bottom = 16.dp).testTag("give-vault-identity"))
         FormSection(footer = { Text("Everyone in the team gets the vault with this role. Someone in several teams gets the strongest of their roles.") }) {
             PickerRow(choiceTitle, choice, allChoice, { it.label }, { choiceID = it.id }, testTag = "give-vault-choice")
             RowDivider()
@@ -199,7 +203,8 @@ fun OrganizationVaultSharingScreen(model: AppModel, vaultID: String, organizatio
     if (isGiveShown && sharing != null) {
         GiveVaultSheet(
             model = model,
-            title = "Give “$vaultName” to a team",
+            title = "Give to a team",
+            identity = "Vault: “$vaultName”\nOrganization: ${sharing.organizationName}",
             choiceTitle = "Team",
             allChoice = sharing.allTeamWithoutVault.map { GiveVaultChoice(id = it.id, label = it.name, teamID = it.id, vaultID = vaultID) },
             organizationID = organizationID,
