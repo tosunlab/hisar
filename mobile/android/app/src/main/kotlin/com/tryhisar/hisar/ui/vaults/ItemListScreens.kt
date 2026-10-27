@@ -148,6 +148,7 @@ fun LazyListScope.crossVaultReadWarning(model: AppModel, stack: NavigationStack,
 @Composable
 fun CategoryItemsScreen(model: AppModel, stack: NavigationStack, category: ItemCategory) {
     val data by model.unlockedData.collectAsStateWithLifecycle()
+    val status by model.status.collectAsStateWithLifecycle()
     val allReference = data.listAllItemReference().filter { category.includes(it.item) }
     PushedListScaffold(
         title = category.title,
@@ -160,6 +161,7 @@ fun CategoryItemsScreen(model: AppModel, stack: NavigationStack, category: ItemC
             }
         },
     ) {
+        if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
         crossVaultReadWarning(model, stack, data.allVault)
         crossVaultRows(model, stack, allReference)
     }
@@ -169,6 +171,7 @@ fun CategoryItemsScreen(model: AppModel, stack: NavigationStack, category: ItemC
 @Composable
 fun TagItemsScreen(model: AppModel, stack: NavigationStack, tag: String) {
     val data by model.unlockedData.collectAsStateWithLifecycle()
+    val status by model.status.collectAsStateWithLifecycle()
     val allReference = VaultLogic.filterAllItemByTag(data.listAllItemReference(), tag)
     PushedListScaffold(
         title = tag,
@@ -181,6 +184,7 @@ fun TagItemsScreen(model: AppModel, stack: NavigationStack, tag: String) {
             }
         },
     ) {
+        if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
         crossVaultReadWarning(model, stack, data.allVault)
         crossVaultRows(model, stack, allReference)
     }

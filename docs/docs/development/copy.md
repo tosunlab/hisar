@@ -82,6 +82,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Add to Favorites, Remove from Favorites (the star's label, the context menu, swipe actions; ⌘D on the Mac) | Favorite, Unfavorite, Star (as a button label) |
 | Added to Favorites · Removed from Favorites (notices; the iPhone ends them with a period) · `Added "GitHub" (Personal) to Favorites.` (`hisar favorite`) | Starred!, Pinned |
 | "No favorites yet" · "Star an item with ★ or ⌘D to keep it here, across all your vaults and devices. Only you see your favorites." (Mac) · "Star an item to keep it here, on all your devices. Only you see your favorites." (Android) · "No favorites yet. Add one with: hisar favorite \<item> [-v vault]" (CLI) | Shared favorites, favorites for the vault |
+| Offline. Showing items saved on this iPhone; changes need a connection. (iPhone) · Offline. Showing items saved on this device; changes need a connection. (Android) | Destination-specific offline wording |
 
 ## Vaults and your data
 

@@ -244,6 +244,7 @@ struct ItemCategoryListView: View {
     var body: some View {
         let allReference = model.listAllItemReference().filter { category.includes($0.item) }
         List {
+            if model.status.isOffline { Section { OfflineNote() } }
             CrossVaultReadWarning()
             if allReference.isEmpty {
                 if model.readIssueSummary.issues.isEmpty {
@@ -272,6 +273,7 @@ struct ItemTagListView: View {
     var body: some View {
         let allReference = VaultLogic.filterAllItem(model.listAllItemReference(), tag: tag)
         List {
+            if model.status.isOffline { Section { OfflineNote() } }
             CrossVaultReadWarning()
             if allReference.isEmpty {
                 if model.readIssueSummary.issues.isEmpty {
@@ -302,6 +304,7 @@ struct SearchView: View {
         NavigationSplitView {
             let allMatch = VaultLogic.filterAllItem(model.listAllItemReference(), searchText: searchText)
             List(selection: $selection) {
+                if model.status.isOffline { Section { OfflineNote() } }
                 CrossVaultReadWarning()
                 if searchText.isEmpty {
                     ContentUnavailableView("Search Hisar", systemImage: "magnifyingglass", description: Text("Find logins, SSH keys and notes in every vault."))

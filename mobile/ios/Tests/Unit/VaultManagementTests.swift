@@ -189,6 +189,18 @@ final class VaultManagementTests: XCTestCase {
         XCTAssertFalse(model.listAllItemReference(vaultID: "personal").contains { $0.item.id == "bad" })
     }
 
+    func testOfflineDisclosuresFollowOnlineStatus() async {
+        backend.isOffline = true
+        let model = await createUnlockedModel()
+        XCTAssertTrue(model.status.isOffline)
+        XCTAssertFalse(model.listAllItemReference().isEmpty)
+        XCTAssertTrue(VaultLogic.filterAllItem(model.listAllItemReference(), searchText: "absent").isEmpty)
+        backend.isOffline = false
+        backend.status.isOffline = false
+        await model.refreshAll()
+        XCTAssertFalse(model.status.isOffline)
+    }
+
     func testCrossVaultReadIssuesRemainVisibleWithHealthyAndEmptyResults() async throws {
         for kind in ["item", "vault-name", "vault-key"] {
             let model = await createUnlockedModel()
