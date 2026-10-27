@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, type OneTimeCode } from "../api";
+import { bindCopyTarget, bindFieldRow } from "../copyrow";
 import { copyField } from "../store";
 import AppIcon from "./AppIcon.vue";
 import SecretReferenceButton from "./SecretReferenceButton.vue";
@@ -60,8 +61,9 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 </script>
 
 <template>
-  <div class="field" data-testid="one-time-code">
-    <span class="field-label">One-time code</span>
+  <div class="field" data-testid="one-time-code" v-bind="oneTimeCode ? bindFieldRow('one-time code', 'One-time code') : {}">
+    <div class="field-copy-target" v-bind="oneTimeCode ? bindCopyTarget() : {}">
+    <span v-if="oneTimeCode" class="copy-prefix">Copy </span><span class="field-label">One-time code</span>
     <span class="field-value code-value">
       <template v-if="oneTimeCode && !isUnavailable">
         <span class="monospace code" data-testid="one-time-code-value">{{ formattedCode }}</span>
@@ -71,8 +73,9 @@ onBeforeUnmount(() => clearInterval(clockTimer));
         </svg>
         <span class="muted seconds" data-testid="one-time-code-seconds">{{ secondsLeft }}s</span>
       </template>
-      <span v-else-if="isUnavailable" class="muted">The one-time password could not be read.</span>
+      <span v-else-if="isUnavailable" class="muted">The one-time code could not be read.</span>
     </span>
+    </div>
     <span class="field-actions">
       <button class="ghost icon-button" aria-label="Copy one-time code" title="Copy" :disabled="!oneTimeCode" @click="copyField('one-time code', 'One-time code')">
         <AppIcon name="copy" />
@@ -83,9 +86,22 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 </template>
 
 <style scoped>
+.field-copy-target {
+  display: grid;
+  grid-column: 1 / span 2;
+  grid-template-columns: subgrid;
+  align-items: center;
+  min-width: 0;
+}
+
+[data-copy-target]:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
 /* The detail panel's scoped row styles reach only this component's root, so the label and actions match them here. */
 .field-label {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 
@@ -97,7 +113,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 }
 
 .field:hover .field-actions,
-.field-actions:focus-within {
+.field:focus-within .field-actions {
   opacity: 1;
 }
 
@@ -108,7 +124,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 }
 
 .code {
-  font-size: 18px;
+  font-size: var(--font-size-17);
   letter-spacing: 0.08em;
 }
 
@@ -135,7 +151,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 }
 
 .seconds {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-variant-numeric: tabular-nums;
 }
 </style>

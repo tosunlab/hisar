@@ -66,7 +66,7 @@ struct PeopleView: View {
                                 Button("Cancel", role: .destructive) { invitationToCancel = invitation }
                             }
                             .contextMenu {
-                                Button("Cancel Invitation", systemImage: "xmark.circle", role: .destructive) { invitationToCancel = invitation }
+                                Button("Cancel invitation", systemImage: "xmark.circle", role: .destructive) { invitationToCancel = invitation }
                             }
                     }
                 } header: {

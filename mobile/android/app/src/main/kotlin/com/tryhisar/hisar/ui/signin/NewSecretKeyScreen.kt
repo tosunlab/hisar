@@ -109,7 +109,7 @@ fun NewSecretKeyScreen(secretKey: String, email: String, server: String, copySec
         FormSection(
             header = "Make an Emergency Kit",
             footer = {
-                Text("The Emergency Kit is a page with your server, email and Secret Key, and a space to write your master password. Save or print it from Settings, Secret Key and Emergency Kit, or write these down now and keep them somewhere safe, away from your devices.")
+                Text("The Emergency Kit is a page with your server, email and Secret Key, and a space to write your master password. Save or print it from Settings → Account → Secret Key and Emergency Kit, or write these down now and keep them somewhere safe, away from your devices.")
             },
         ) {
             LabeledRow("Server", server)

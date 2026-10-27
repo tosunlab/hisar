@@ -14,7 +14,7 @@ import {
   renameTeam,
   store,
 } from "../store";
-import { formatRole } from "../util";
+import { formatRole, vaultRoleDescription } from "../util";
 import AccountDialog from "./AccountDialog.vue";
 import type { IconName } from "./AppIcon.vue";
 
@@ -193,10 +193,9 @@ async function submit(): Promise<void> {
         </label>
         <label>
           <span>Role</span>
-          <select v-model="role" name="organizationDialogRole" data-testid="organization-dialog-role">
+          <select v-model="role" name="organizationDialogRole" :title="vaultRoleDescription" data-testid="organization-dialog-role">
             <option v-for="vaultRole in allVaultRole" :key="vaultRole" :value="vaultRole">{{ formatRole(vaultRole) }}</option>
           </select>
-          <span class="muted hint">Editors can add and change items, readers can only view them, and owners can also rename and delete the vault.</span>
         </label>
       </template>
       <ul v-if="allLostVaultLine.length > 0" class="consequences warning" data-testid="organization-dialog-vaults">
@@ -220,7 +219,7 @@ select {
 label .hint {
   display: block;
   margin: 6px 0 0;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   font-weight: 400;
   color: var(--color-text-muted);
 }

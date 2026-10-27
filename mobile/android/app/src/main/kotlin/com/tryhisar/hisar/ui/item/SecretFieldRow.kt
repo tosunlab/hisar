@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +42,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,39 +52,49 @@ import com.tryhisar.hisar.ui.theme.HisarType
 /** One entry of a row's touch-and-hold menu, as a SwiftUI context menu button. */
 internal class MenuAction(val title: String, val icon: ImageVector, val perform: () -> Unit)
 
-/**
- * A row with a touch-and-hold menu, as SwiftUI's contextMenu. Unlike a clickable row it keeps its fields apart for
- * accessibility and tests, as the iPhone app's rows do: "password-value" stays its own element.
- */
+/** A copyable field merges its text into one button; inner buttons retain their own actions. */
 @Composable
-internal fun MenuRow(allAction: List<MenuAction>, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
+internal fun MenuRow(
+    allAction: List<MenuAction>,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
+    content: @Composable () -> Unit,
+) {
     var isMenuShown by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
+    val hasMenu = allAction.isNotEmpty()
+    val currentOnClick by rememberUpdatedState(onClick)
     Box(
         modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .indication(interactionSource, ripple())
-            .pointerInput(onClick) {
+            .pointerInput(onClick != null, hasMenu) {
                 detectTapGestures(
                     onPress = { offset ->
                         val press = PressInteraction.Press(offset)
                         interactionSource.emit(press)
                         interactionSource.emit(if (tryAwaitRelease()) PressInteraction.Release(press) else PressInteraction.Cancel(press))
                     },
-                    onTap = onClick?.let { { _: Offset -> it() } },
-                    onLongPress = { isMenuShown = true },
+                    onTap = if (onClick != null) ({ _: Offset -> currentOnClick?.invoke() }) else null,
+                    onLongPress = if (hasMenu) ({ isMenuShown = true }) else null,
                 )
             }
-            .semantics {
+            .semantics(mergeDescendants = onClick != null) {
                 if (onClick != null) {
-                    onClick {
-                        onClick()
+                    role = Role.Button
+                    onClickLabel?.let { contentDescription = it }
+                    onClick(onClickLabel) {
+                        currentOnClick?.invoke()
                         true
                     }
                 }
-                onLongClick("Show actions") {
-                    isMenuShown = true
-                    true
+                if (hasMenu) {
+                    onLongClick("Show actions") {
+                        isMenuShown = true
+                        true
+                    }
                 }
             },
     ) {
@@ -92,6 +104,7 @@ internal fun MenuRow(allAction: List<MenuAction>, modifier: Modifier = Modifier,
                 DropdownMenuItem(
                     text = { Text(action.title, style = HisarType.body, color = HisarTheme.colors.label) },
                     trailingIcon = { Icon(action.icon, contentDescription = null, tint = HisarTheme.colors.label) },
+                    modifier = Modifier.testTag("field-action-${action.title}"),
                     onClick = {
                         isMenuShown = false
                         action.perform()
@@ -117,17 +130,18 @@ internal fun SecretFieldRow(
     copy: () -> Unit,
     copyReference: () -> Unit,
     warning: String = "",
+    actionLabel: String = label,
 ) {
     val isHidden = isConcealed && !isRevealed
     val tagName = label.lowercase()
     val allAction = buildList {
-        add(MenuAction("Copy $label", Icons.Outlined.ContentCopy, copy))
-        add(MenuAction("Copy Secret Reference", Icons.Outlined.Terminal, copyReference))
+        add(MenuAction("Copy $actionLabel", Icons.Outlined.ContentCopy, copy))
+        add(MenuAction("Copy secret reference", Icons.Outlined.Terminal, copyReference))
         if (toggleReveal != null) {
             add(MenuAction(if (isRevealed) "Hide" else "Reveal", if (isRevealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, toggleReveal))
         }
     }
-    MenuRow(allAction) {
+    MenuRow(allAction, onClick = copy, onClickLabel = "Copy $actionLabel") {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 11.dp).heightIn(min = 30.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -151,13 +165,13 @@ internal fun SecretFieldRow(
                 if (toggleReveal != null) {
                     FieldIconButton(
                         if (isRevealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                        if (isRevealed) "Hide $label" else "Reveal $label",
+                        if (isRevealed) "Hide $actionLabel" else "Reveal $actionLabel",
                         "reveal-$tagName",
                         toggleReveal,
                         tint = HisarTheme.colors.label,
                     )
                 }
-                FieldIconButton(Icons.Outlined.ContentCopy, "Copy $label", "copy-$tagName", copy, tint = HisarTheme.colors.label)
+                FieldIconButton(Icons.Outlined.ContentCopy, "Copy $actionLabel", "copy-$tagName", copy, tint = HisarTheme.colors.label)
             }
             if (warning.isNotEmpty()) {
                 Spacer(Modifier.size(4.dp))
@@ -172,7 +186,7 @@ internal fun SecretFieldRow(
 internal fun FieldIconButton(icon: ImageVector, contentDescription: String, testTag: String, onClick: () -> Unit, tint: Color = HisarTheme.colors.tint) {
     Box(
         Modifier
-            .size(36.dp)
+            .size(48.dp)
             .clickable(role = Role.Button, onClick = onClick)
             .testTag(testTag),
         contentAlignment = Alignment.Center,

@@ -59,7 +59,8 @@ class FileHandoffUITests : HisarUITestCase() {
     fun testEmergencyKitShareCopyGoesWhenTheScreenCloses() {
         launch()
         signUp(readArgument("HISAR_UI_TEST_FILE_HANDOFF_KIT_INVITE_LINK"), readArgument("HISAR_UI_TEST_FILE_HANDOFF_KIT_EMAIL"), "Android Kit")
-        openSettings("open-secret-key")
+        openSettings("open-account")
+        tap("open-account-secret-key")
         type(MASTER_PASSWORD, "secret-key-password")
         tap("secret-key-reveal")
         waitFor("share-emergency-kit", ACCOUNT_KEY_TIMEOUT)

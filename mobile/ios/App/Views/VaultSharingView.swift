@@ -55,7 +55,7 @@ struct VaultSharingView: View {
                                     Button("Cancel", role: .destructive) { invitationToCancel = invitation }
                                 }
                                 .contextMenu {
-                                    Button("Cancel Invitation", systemImage: "xmark.circle", role: .destructive) { invitationToCancel = invitation }
+                                    Button("Cancel invitation", systemImage: "xmark.circle", role: .destructive) { invitationToCancel = invitation }
                                 }
                         }
                     }
@@ -81,7 +81,7 @@ struct VaultSharingView: View {
                 isPresented: Binding(get: { invitationToCancel != nil }, set: { if !$0 { invitationToCancel = nil } }),
                 titleVisibility: .visible
             ) {
-                Button("Cancel Invitation", role: .destructive) {
+                Button("Cancel invitation", role: .destructive) {
                     guard let invitation = invitationToCancel else { return }
                     Task {
                         if await model.cancelShareInvitation(invitationID: invitation.id) {
@@ -90,7 +90,7 @@ struct VaultSharingView: View {
                     }
                 }
                 .accessibilityIdentifier("confirm-cancel-invitation")
-                Button("Keep Invitation", role: .cancel) {}
+                Button("Keep invitation", role: .cancel) {}
             } message: {
                 Text("Their invitation link stops working. You can invite them again later.")
             }
@@ -138,7 +138,7 @@ struct VaultSharingView: View {
             .accessibilityIdentifier("share-role")
             Button(action: send) {
                 HStack {
-                    Label("Send Invitation", systemImage: "paperplane")
+                    Label("Send invitation", systemImage: "paperplane")
                     if isSending {
                         Spacer()
                         ProgressView()
@@ -208,7 +208,7 @@ struct VaultSharingView: View {
                     Text(describeVaultRole(role)).tag(role)
                 }
             }
-            Button("Remove from Vault", systemImage: "person.badge.minus", role: .destructive) { memberToRemove = member }
+            Button("Remove from vault", systemImage: "person.badge.minus", role: .destructive) { memberToRemove = member }
         }
     }
 
@@ -313,7 +313,7 @@ struct VaultMemberView: View {
                         .accessibilityIdentifier("member-security-code")
                     if member.isCurrentUser {
                         ShareLink(item: "My Hisar security code: \(member.securityCode)") {
-                            Label("Share My Security Code", systemImage: "square.and.arrow.up")
+                            Label("Share my security code", systemImage: "square.and.arrow.up")
                         }
                     }
                 } header: {
@@ -341,7 +341,7 @@ struct VaultMemberView: View {
             }
             if isManageable {
                 Section {
-                    Button("Remove from Vault", systemImage: "person.badge.minus", role: .destructive) {
+                    Button("Remove from vault", systemImage: "person.badge.minus", role: .destructive) {
                         isRemoveConfirmationShown = true
                     }
                     .disabled(model.isBusy)
@@ -413,11 +413,6 @@ struct MemberRow: View {
                 Text(member.email)
                     .font(.caption)
                     .foregroundStyle(.themeSecondary)
-                if !member.securityCode.isEmpty {
-                    Text("Security code \(member.securityCode)")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.themeSecondary)
-                }
                 if member.isKeyChanged {
                     Label("Their key changed since you last shared with them. Check the security code with them before sharing again.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)

@@ -45,7 +45,7 @@ function close(): void {
 <template>
   <AccountDialog
     title="Change master password"
-    subtitle="Your Secret Key and Emergency Kit stay the same."
+    subtitle="Your other devices will be signed out. Sign in on them with the new master password."
     icon="lock"
     :is-closable="!store.isBusy"
     data-testid="change-master-password-dialog"
@@ -64,8 +64,6 @@ function close(): void {
 
     <form v-else novalidate @submit.prevent="submitChange">
       <ul class="consequences warning" data-testid="change-master-password-consequences">
-        <li>Your other devices will be signed out. Sign in on them with the new master password.</li>
-        <li>Your Secret Key and Emergency Kit stay the same. Vaults, items and the people you share with are not affected.</li>
         <li>Nobody can recover a forgotten master password, including Hisar.</li>
       </ul>
       <label>

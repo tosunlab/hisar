@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import type { SentShareInvitation } from "../api";
-import { acceptShareInvitation, cancelShareInvitation, declineShareInvitation, invitePerson, store } from "../store";
+import { acceptShareInvitation, cancelShareInvitation, declineShareInvitation, invitePerson, openFromSettings, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { formatRole } from "../util";
+import { describePerson, formatRole, formatTimeAgo } from "../util";
 import AppIcon from "./AppIcon.vue";
 import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
 import MemberAvatar from "./MemberAvatar.vue";
@@ -12,7 +12,7 @@ const isInviting = defineModel<boolean>("isInviting", { default: false });
 const isRowVisible = useSettingsRowVisibility();
 const inviteEmail = ref("");
 const cancellingInvitationID = ref("");
-const isAlone = computed(() => store.allPerson.length > 0 && store.allPerson.every((person) => person.isCurrentUser));
+const isAlone = computed(() => store.allPerson.every((person) => person.isCurrentUser));
 
 async function submitInvite(): Promise<void> {
   if (await invitePerson(inviteEmail.value.trim())) {
@@ -53,7 +53,12 @@ function describeInviter(name: string, email: string): string {
       </div>
     </div>
 
-    <div v-if="store.shareInvitations.received.length > 0" v-show="isRowVisible('received-invitations')" class="settings-block" data-testid="received-invitations">
+    <div
+      v-if="store.shareInvitations.received.length > 0 || (store.shareInvitations.waiting ?? []).length > 0"
+      v-show="isRowVisible('received-invitations')"
+      class="settings-block"
+      data-testid="received-invitations"
+    >
       <p class="section-label">Invitations for you</p>
       <div class="settings-group">
         <div v-for="invitation in store.shareInvitations.received" :key="invitation.id" class="setting" :data-testid="`received-invitation-${invitation.id}`">
@@ -68,12 +73,28 @@ function describeInviter(name: string, email: string): string {
           <button class="ghost" :disabled="store.isBusy" :data-testid="`decline-invitation-${invitation.id}`" @click="declineShareInvitation(invitation)">Decline</button>
           <button class="primary" :disabled="store.isBusy" :data-testid="`accept-invitation-${invitation.id}`" @click="acceptShareInvitation(invitation)">Accept</button>
         </div>
+        <div v-for="waiting in store.shareInvitations.waiting ?? []" :key="waiting.id" class="setting" :data-testid="`waiting-invitation-${waiting.id}`">
+          <span class="settings-row-icon"><AppIcon name="clock" :size="14" /></span>
+          <div class="setting-text">
+            <strong class="title-line">
+              <span class="title-text">Waiting for {{ describePerson(waiting.invitedByName, waiting.invitedByEmail) }}'s Hisar to finish sharing</span>
+              <span class="tag">{{ formatRole(waiting.role) }}</span>
+            </strong>
+            <p class="muted">Accepted {{ formatTimeAgo(waiting.acceptedAt) }}</p>
+          </div>
+        </div>
       </div>
     </div>
 
     <div v-show="isRowVisible('people')" class="settings-block">
       <p class="section-label">People you share with</p>
-      <p v-if="store.allPerson.length === 0" class="muted empty-note">{{ store.isBusy ? "Loading people…" : "No people to show." }}</p>
+      <p v-if="store.isBusy && store.allPerson.length === 0" class="muted empty-note">Loading people…</p>
+      <div v-else-if="isAlone" class="settings-group">
+        <div class="setting">
+          <p class="muted setting-text" data-testid="people-empty-hint">Nobody yet. Share a vault to see the people you share with here.</p>
+          <button data-testid="people-share-vault" :disabled="store.isBusy" @click="openFromSettings('sharing')">Share vault…</button>
+        </div>
+      </div>
       <div v-else class="settings-group">
         <div v-for="person in store.allPerson" :key="person.accountId" class="setting" :data-testid="`person-${person.accountId}`">
           <MemberAvatar :name="person.name || person.email" />
@@ -94,10 +115,7 @@ function describeInviter(name: string, email: string): string {
           >
         </div>
       </div>
-      <p v-if="isAlone" class="muted settings-note" data-testid="people-empty-hint">
-        People appear here once you share a vault with them. Open a shared vault and choose Share to invite someone by email.
-      </p>
-      <p v-else-if="store.allPerson.length > 0" class="muted settings-note">Compare a security code with that person over a channel you trust.</p>
+      <p v-if="!isAlone" class="muted settings-note">Compare a security code with that person over a channel you trust.</p>
       <p v-if="store.shareInvitations.completionError" class="warning-text settings-note" data-testid="share-completion-error">
         Could not finish sharing: {{ store.shareInvitations.completionError }}
       </p>
@@ -138,12 +156,12 @@ function describeInviter(name: string, email: string): string {
 .invite-explanation {
   margin: 0;
   padding: 10px 14px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .security-code {
   flex: none;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
   user-select: text;
   -webkit-user-select: text;

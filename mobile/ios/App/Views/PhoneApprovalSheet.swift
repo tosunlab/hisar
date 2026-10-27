@@ -5,6 +5,8 @@ struct PhoneApprovalSheet: View {
     var isBusy: Bool
     var isPasswordRequired: Bool
     var errorMessage: String?
+    var biometryName = SettingsView.biometryName
+    var biometrySystemImage = SettingsView.biometrySystemImage
     var approve: (_ isRemembered: Bool) async -> Void
     var approveWithPassword: (_ password: String, _ isRemembered: Bool) async -> Void
     var deny: () async -> Void
@@ -39,7 +41,7 @@ struct PhoneApprovalSheet: View {
                     } header: {
                         Text("Approve with your master password")
                     } footer: {
-                        Text("Face ID is not available, so Hisar checks your master password instead.")
+                        Text("\(biometryName) is not available, so Hisar checks your master password instead.")
                     }
                 }
                 if approval.isRememberable {
@@ -66,19 +68,34 @@ struct PhoneApprovalSheet: View {
                 }
                 Section {
                     ForEach(approval.allDetailRow) { row in
-                        LabeledContent(row.label) {
-                            Text(row.value)
-                                .font(row.isMonospaced ? .system(.subheadline, design: .monospaced) : .subheadline)
-                                .foregroundStyle(.primary)
-                                .multilineTextAlignment(.trailing)
-                                .textSelection(.enabled)
-                                .accessibilityIdentifier("phone-approval-row-\(row.label)")
+                        if row.isMonospaced {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(row.label)
+                                    .font(.caption)
+                                    .foregroundStyle(.themeSecondary)
+                                Text(row.value)
+                                    .font(.system(.subheadline, design: .monospaced))
+                                    .textSelection(.enabled)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("phone-approval-row-\(row.label)")
+                        } else {
+                            LabeledContent(row.label) {
+                                Text(row.value)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.trailing)
+                                    .textSelection(.enabled)
+                                    .accessibilityIdentifier("phone-approval-row-\(row.label)")
+                            }
                         }
                     }
                 } footer: {
-                    Label("End-to-end encrypted. Only your devices can read this request. \(approval.approvalNote)", systemImage: "lock.shield")
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("phone-approval-encryption-note")
+                    Text(approval.lifetime.isEmpty
+                         ? "Approving lets this one request continue; it does not unlock Hisar on your Mac."
+                         : "Approving lets \(approval.appName) use Hisar until it locks on your Mac; it does not unlock Hisar there.")
+                        .accessibilityIdentifier("phone-approval-note")
                 }
             }
             .listStyle(.insetGrouped)
@@ -182,12 +199,20 @@ struct PhoneApprovalSheet: View {
                             if isBusy {
                                 ProgressView()
                             } else {
-                                Label("Approve with Face ID", systemImage: "faceid")
+                                Label {
+                                    Text("Approve with \(biometryName)")
+                                } icon: {
+                                    Image(systemName: biometrySystemImage)
+                                        .accessibilityHidden(false)
+                                        .accessibilityLabel(biometryName)
+                                        .accessibilityIdentifier("phone-approval-biometry-\(biometrySystemImage)")
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .applyProminentGlassStyle()
+                    .accessibilityLabel("Approve with \(biometryName)")
                     .accessibilityIdentifier("phone-approval-approve")
                 }
             }

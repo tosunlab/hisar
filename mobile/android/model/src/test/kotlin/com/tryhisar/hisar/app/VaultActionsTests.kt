@@ -87,7 +87,7 @@ class VaultActionsTests {
         assertEquals(listOf(VaultDeletionRequest(moveToVaultID = "personal")), harness.backend.allDeletionRequest)
         assertNull(model.unlockedData.value.findVault("work"))
         assertEquals(4, model.unlockedData.value.countItem("personal"))
-        assertEquals("Moved 2 items to Personal and deleted Work.", model.notice.value)
+        assertEquals("Moved 2 items to Personal and deleted Work.", model.notice.value?.message)
     }
 
     @Test
@@ -100,7 +100,7 @@ class VaultActionsTests {
         val isDeletedWithName = model.vaults.deleteVault("work", VaultDeletionRequest(isDeletingItems = true, confirmedName = "Work"))
         assertTrue(isDeletedWithName)
         assertNull(model.unlockedData.value.findVault("work"))
-        assertEquals("Deleted Work.", model.notice.value)
+        assertEquals("Deleted Work.", model.notice.value?.message)
     }
 
     @Test
@@ -116,7 +116,7 @@ class VaultActionsTests {
         val isLeft = model.vaults.leaveVault("family")
         assertTrue(isLeft)
         assertNull(model.unlockedData.value.findVault("family"))
-        assertEquals("You left Family.", model.notice.value)
+        assertEquals("You left Family.", model.notice.value?.message)
         assertTrue(model.unlockedData.value.listAllItemReference().all { it.vaultID != "family" })
     }
 

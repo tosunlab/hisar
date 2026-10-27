@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
   api,
   createEmptyAddress,
@@ -29,6 +29,7 @@ import {
   getItemIcon,
   getWebsiteIconURL,
   isCalendarDate,
+  isMacPlatform,
   isKnownDatabaseEngine,
   secureNoteCategory,
   serverCategory,
@@ -288,10 +289,34 @@ async function submitItem(): Promise<void> {
   draft.urls = parseURLText();
   await saveItem({ ...draft });
 }
+
+const form = ref<HTMLFormElement | null>(null);
+const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
+// handleShortcut binds Esc to Cancel and ⌘S or ⌘↩ to Save while the editor, or nothing, has focus. requestSubmit runs the
+// form's checks, such as the required title, before submitItem.
+function handleShortcut(event: KeyboardEvent): void {
+  const target = event.target;
+  if (store.discardDraftPrompt || !(target instanceof Node) || !(target === document.body || form.value?.contains(target))) {
+    return;
+  }
+  const isCommand = event.metaKey || event.ctrlKey;
+  if (isCommand && !event.altKey && !event.shiftKey && (event.key.toLowerCase() === "s" || event.key === "Enter")) {
+    event.preventDefault();
+    if (!store.isBusy) {
+      form.value?.requestSubmit();
+    }
+  } else if (event.key === "Escape" && !isCommand && !event.defaultPrevented) {
+    event.preventDefault();
+    void cancelEditing();
+  }
+}
+
+onMounted(() => window.addEventListener("keydown", handleShortcut));
+onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
 </script>
 
 <template>
-  <form class="item-editor" @submit.prevent="submitItem">
+  <form ref="form" class="item-editor" @submit.prevent="submitItem">
     <header>
       <div class="icon-anchor">
         <button
@@ -635,14 +660,14 @@ async function submitItem(): Promise<void> {
         ></textarea>
       </label>
       <label v-if="!isDatabase" class="last">
-        <span>One-time password</span>
+        <span>One-time code setup key</span>
         <input
           v-model="draft.oneTimePassword"
           name="oneTimePassword"
           class="monospace"
           autocomplete="off"
           spellcheck="false"
-          placeholder="Setup key or otpauth:// link from the site's two-factor setup"
+          placeholder="Setup key or otpauth:// link"
         />
       </label>
     </section>
@@ -713,8 +738,10 @@ async function submitItem(): Promise<void> {
     <div class="row footer">
       <span class="muted"><AppIcon name="shield" :size="12" /> Encrypted on this device before saving</span>
       <div class="spacer"></div>
-      <button type="button" class="ghost" @click="cancelEditing">Cancel</button>
-      <button class="primary" type="submit" :disabled="store.isBusy">{{ isCreating ? "Add item" : "Save" }}</button>
+      <button type="button" class="ghost" data-testid="editor-cancel" @click="cancelEditing">Cancel <kbd>Esc</kbd></button>
+      <button class="primary" type="submit" :disabled="store.isBusy" :title="`${shortcutModifier}S or ${shortcutModifier}↩`">
+        {{ isCreating ? "Add item" : "Save" }} <kbd>{{ shortcutModifier }}S</kbd>
+      </button>
     </div>
   </form>
 </template>
@@ -764,8 +791,8 @@ header {
   padding: 6px 8px;
   border-color: transparent;
   background: transparent;
-  font-size: 20px;
-  font-weight: 650;
+  font-size: var(--font-size-22);
+  font-weight: 600;
 }
 
 .title-input:hover {
@@ -784,7 +811,7 @@ label.last {
 .hint {
   display: block;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .warning-text {
@@ -818,7 +845,7 @@ label.last {
   gap: 8px;
   margin: 0 0 12px;
   padding: 12px 16px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .row input {
@@ -847,7 +874,7 @@ button.active {
 
 .concealed span {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 400;
   color: var(--color-text-secondary);
 }
@@ -890,22 +917,35 @@ button.active {
   padding: 1px 2px 1px 8px;
   border-radius: 10px;
   background: var(--color-selected);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .tag-chip .icon-button {
   padding: 2px;
 }
 
+/* Sticky at the bottom of the detail column, whose 32px bottom padding the margin and padding take back. */
 .footer {
-  margin-top: 4px;
+  position: sticky;
+  bottom: -32px;
+  z-index: 1;
+  margin: 4px 0 -32px;
+  padding: 12px 0 32px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-background);
+}
+
+.footer kbd {
+  border-color: currentColor;
+  color: inherit;
+  opacity: 0.7;
 }
 
 .footer .muted {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 
 .passkey-line {
@@ -917,6 +957,6 @@ button.active {
 
 .passkey-note {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 </style>

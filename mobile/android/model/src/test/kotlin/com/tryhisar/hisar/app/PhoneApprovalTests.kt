@@ -97,6 +97,8 @@ class PhoneApprovalTests {
         assertEquals("MacBook Pro is asking to use Hisar from the command line", approval.bannerTitle)
         assertEquals(listOf("App", "Command", "Secrets", "Terminal"), approval.allDetailRow.map { it.label })
         assertEquals("Personal › GitHub › password\nWork › AWS › access key\nand 3 more", approval.allDetailRow[2].value)
+        assertFalse(approval.allDetailRow[2].isCompact)
+        assertTrue(approval.allDetailRow.first().isCompact)
     }
 
     @Test
@@ -262,14 +264,11 @@ class PhoneApprovalTests {
     @Test
     fun testCardFooterNamesWhatApproveSends() {
         assertEquals(
-            "Also allows Terminal for 1 hour. Tap the request to approve it once. It never unlocks Hisar on your Mac.",
+            "Also allows Terminal for 1 hour.",
             createRememberingApproval("ssh").cardApprovalNote,
         )
-        assertEquals(
-            "Approving answers this one request. It never unlocks Hisar on your Mac.",
-            createRememberingApproval("signing", isRememberedByDefault = false).cardApprovalNote,
-        )
-        assertEquals("Approving answers this one request. It never unlocks Hisar on your Mac.", createApproval("once").cardApprovalNote)
+        assertNull(createRememberingApproval("signing", isRememberedByDefault = false).cardApprovalNote)
+        assertNull(createApproval("once").cardApprovalNote)
     }
 
     @Test
@@ -310,7 +309,7 @@ class PhoneApprovalTests {
         assertEquals(listOf("approve 0123456789abcdef0123456789abcdef"), harness.backend.allApprovalAnswer)
         assertNull(model.approvals.presentedApproval.value)
         assertTrue(model.approvals.allPendingApproval.value.isEmpty())
-        assertEquals("Approved on your Mac", model.notice.value)
+        assertEquals("Approved on your Mac", model.notice.value?.message)
         assertNull(model.approvals.approvalErrorMessage.value)
     }
 
@@ -322,7 +321,7 @@ class PhoneApprovalTests {
         model.approvals.denyPendingApproval()
         assertEquals(listOf("deny 0123456789abcdef0123456789abcdef"), harness.backend.allApprovalAnswer)
         assertNull(model.approvals.presentedApproval.value)
-        assertEquals("Denied on your Mac", model.notice.value)
+        assertEquals("Denied on your Mac", model.notice.value?.message)
     }
 
     @Test
@@ -363,7 +362,7 @@ class PhoneApprovalTests {
         model.approvals.approvePendingApproval(isRemembered = false)
         assertNull(model.approvals.presentedApproval.value)
         assertTrue(model.approvals.allPendingApproval.value.isEmpty())
-        assertEquals("The request is no longer waiting", model.notice.value)
+        assertEquals("The request is no longer waiting", model.notice.value?.message)
     }
 
     @Test

@@ -119,7 +119,7 @@ onBeforeUnmount(() => {
           <button class="primary" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Unlocking…" : "Unlock" }}</button>
         </form>
         <p class="muted status" aria-live="polite" data-testid="unlock-status">
-          {{ isWaitingForTouchID ? "Touch ID is waiting. Or type your master password." : "Enter your master password." }}
+          {{ isWaitingForTouchID ? "Touch ID is waiting. Or type your master password." : "" }}
         </p>
 
         <div class="sign-out">
@@ -156,7 +156,7 @@ onBeforeUnmount(() => {
   border-radius: var(--radius);
   background: var(--color-surface);
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.4;
 }
 
@@ -187,13 +187,13 @@ onBeforeUnmount(() => {
 
 h1 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--font-size-17);
   font-weight: 600;
 }
 
 .heading p {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .unlock-form {
@@ -262,7 +262,7 @@ h1 {
 
 .status {
   margin: -6px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .error {
@@ -273,7 +273,7 @@ h1 {
 .sign-out {
   margin-top: 6px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .confirm {

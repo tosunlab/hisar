@@ -85,8 +85,8 @@ async function run(operation: PendingRecoverySummary, action: "resume" | "save" 
 <style scoped>
 .recovery { display: grid; place-items: center; height: 100%; overflow: auto; padding: 24px; background: var(--color-page); }
 .recovery-card { display: flex; flex-direction: column; gap: 14px; width: min(620px, 100%); }
-h1 { font-size: 22px; }
-h2 { font-size: 15px; }
+h1 { font-size: var(--font-size-22); }
+h2 { font-size: var(--font-size-15); }
 p { margin: 0; }
 article { display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--color-border); border-radius: 8px; }
 </style>

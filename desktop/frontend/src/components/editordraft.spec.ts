@@ -103,8 +103,7 @@ describe("Leaving the item editor", () => {
   it("asks when Cancel or ⌘N would close a changed draft", async () => {
     const wrapper = mount(MainView);
     await wrapper.find('textarea[name="notes"]').setValue("recovery codes");
-    const cancel = wrapper.findAll(".item-editor button").find((button) => button.text() === "Cancel");
-    await cancel?.trigger("click");
+    await wrapper.get('[data-testid="editor-cancel"]').trigger("click");
     await flushPromises();
     expect(dialog(wrapper).exists()).toBe(true);
     await dialog(wrapper).find('[data-testid="keep-editing"]').trigger("click");
@@ -113,6 +112,30 @@ describe("Leaving the item editor", () => {
     await flushPromises();
     expect(dialog(wrapper).exists()).toBe(true);
     expect(store.editorMode).toBe("edit");
+  });
+
+  it("Esc uses the shared prompt, keeps the draft until Discard, and blocks ⌘N behind it", async () => {
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.get('input[name="username"]').setValue("alice@work.example");
+    await wrapper.get('input[name="username"]').trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(dialog(wrapper).find("h2").text()).toBe("Discard changes to “GitHub”?");
+    await dialog(wrapper).get('[data-testid="keep-editing"]').trigger("keydown", { key: "n", metaKey: true });
+    await flushPromises();
+    expect(store.editorMode).toBe("edit");
+    expect(dialog(wrapper).exists()).toBe(true);
+    await dialog(wrapper).get('[data-testid="keep-editing"]').trigger("click");
+    await flushPromises();
+    expect(dialog(wrapper).exists()).toBe(false);
+    expect((wrapper.get('input[name="username"]').element as HTMLInputElement).value).toBe("alice@work.example");
+    await wrapper.get('input[name="username"]').trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    await dialog(wrapper).get('[data-testid="discard-draft"]').trigger("click");
+    await flushPromises();
+    expect(dialog(wrapper).exists()).toBe(false);
+    expect(store.editorMode).toBe("view");
+    expect(store.editorDraft).toBeNull();
+    expect(api.saveItem).not.toHaveBeenCalled();
   });
 
   it("names a new item by its typed title, or asks about the new item", async () => {

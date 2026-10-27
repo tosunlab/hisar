@@ -21,7 +21,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Business
-import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Info
@@ -153,8 +152,6 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
             )
             RowDivider()
             NavigationRow("Notifications", "open-notifications", { push(SettingsDestination.NOTIFICATIONS) }, Icons.Outlined.Notifications)
-            RowDivider()
-            NavigationRow("Secret Key and Emergency Kit", "open-secret-key", { push(SettingsDestination.SECRET_KEY) }, Icons.Outlined.Description)
         }
         FormSection {
             NavigationRow(
@@ -187,7 +184,8 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
             NavigationRow("Help", "open-help", { push(SettingsDestination.HELP) }, Icons.AutoMirrored.Outlined.HelpOutline)
             RowDivider()
             NavigationRow("About Hisar", "open-about", { push(SettingsDestination.ABOUT) }, Icons.Outlined.Info, value = appVersionText(context))
-            RowDivider()
+        }
+        FormSection {
             DestructiveRow("Sign out", { isSignOutConfirmationShown = true }, testTag = "sign-out")
         }
     }

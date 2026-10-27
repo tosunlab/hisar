@@ -42,7 +42,7 @@ func TestOneTimePassword(t *testing.T) {
 		t.Errorf("copied code = %q", copied)
 	}
 
-	if _, err := service.SaveItem(testService.personalID, ItemDetail{ID: saved.ID, Revision: saved.Revision, Title: "GitHub", OneTimePassword: "not a secret", Fields: []ItemField{}}); err == nil || !strings.Contains(err.Error(), "not a valid") {
+	if _, err := service.SaveItem(testService.personalID, ItemDetail{ID: saved.ID, Revision: saved.Revision, Title: "GitHub", OneTimePassword: "not a secret", Fields: []ItemField{}}); err == nil || err.Error() != "the one-time code is not a valid secret or otpauth:// link" {
 		t.Errorf("invalid secret: %v", err)
 	}
 	cleared, err := service.SaveItem(testService.personalID, ItemDetail{ID: saved.ID, Revision: saved.Revision, Title: "GitHub", OneTimePassword: "  ", Fields: []ItemField{}})

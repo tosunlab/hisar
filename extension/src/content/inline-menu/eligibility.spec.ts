@@ -3,6 +3,8 @@ import addressAutocompletePage from "../fixtures/address-autocomplete.html?raw";
 import changePasswordPage from "../fixtures/change-password.html?raw";
 import checkoutLoginMixedPage from "../fixtures/checkout-login-mixed.html?raw";
 import emailFirstStepOnePage from "../fixtures/email-first-step-one.html?raw";
+import marketingEmailFormsPage from "../fixtures/marketing-email-forms.html?raw";
+import searchBarsPage from "../fixtures/search-bars.html?raw";
 import signUpPage from "../fixtures/sign-up.html?raw";
 import simpleLoginPage from "../fixtures/simple-login.html?raw";
 import twoFactorPage from "../fixtures/two-factor.html?raw";
@@ -57,6 +59,21 @@ describe("findInlineMenuPurpose", () => {
     document.body.innerHTML = simpleLoginPage;
     expect(findInlineMenuPurpose(document, getInput("[name=q]"), wideRect)).toBeUndefined();
     expect(findInlineMenuPurpose(document, getInput("[name=newsletter_email]"), wideRect)).toBeUndefined();
+  });
+
+  it("ignores every shape of search box, even where a sign-in's scope grows to hold it", () => {
+    document.body.innerHTML = searchBarsPage;
+    for (const id of ["header-search", "typeahead", "with-datalist", "by-keyboard", "in-landmark", "table-filter"]) {
+      expect(findInlineMenuPurpose(document, getInput(`#${id}`), wideRect), id).toBeUndefined();
+    }
+    expect(findInlineMenuPurpose(document, getInput("#pass"), wideRect)).toBe("login");
+  });
+
+  it("offers an identity, not a login, on a sign-up call to action, and nothing on a footer's email box", () => {
+    document.body.innerHTML = marketingEmailFormsPage;
+    expect(findInlineMenuPurpose(document, getInput("#hero_user_email"), wideRect)).toBe("identity");
+    expect(findInlineMenuPurpose(document, getInput("#guest-email"), wideRect)).toBeUndefined();
+    expect(findInlineMenuPurpose(document, getInput("#email-address"), wideRect)).toBeUndefined();
   });
 
   it("suggests passwords on the new-password fields of sign-up and change-password forms", () => {

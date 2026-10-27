@@ -337,6 +337,9 @@ func TestDialogTheIPhoneCanAnswerWaitsLonger(t *testing.T) {
 	resultChannel := startApproval(approver, context.Background(), createTestRequest())
 	event := waitForApprovalEvent(t, emitter)
 	phone.waitForStart(t)
+	if event.TimeoutMilliseconds != 3000 {
+		t.Errorf("the phone dialog's lifetime is %d ms, want 3000", event.TimeoutMilliseconds)
+	}
 	timeoutAt, err := time.Parse(time.RFC3339, event.TimeoutAt)
 	if err != nil || timeoutAt.Before(startedAt.Add(2*time.Second)) {
 		t.Errorf("the dialog times out at %q", event.TimeoutAt)

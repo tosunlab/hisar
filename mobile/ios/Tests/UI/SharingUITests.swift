@@ -39,8 +39,8 @@ final class SharingUITests: HisarUITestCase {
         _ = signUp(inviteLink: inviteLink, email: email, name: "iOS Sharing")
 
         app.buttons["vault-Personal"].tap()
-        app.buttons["share-vault"].tap()
-        app.alerts["Personal vaults are private"].buttons["OK"].tap()
+        waitFor(app.buttons["add-item"])
+        XCTAssertFalse(app.buttons["share-vault"].exists, "a Personal vault offers Share")
         goBack()
 
         choose("new-vault", from: "new-menu")
@@ -53,6 +53,7 @@ final class SharingUITests: HisarUITestCase {
         app.buttons["share-vault"].tap()
         type(partnerEmail, into: app.textFields["share-email"])
         chooseRole("Reader", in: app.buttons["share-role"])
+        XCTAssertEqual(app.buttons["share-vault-submit"].label, "Send invitation")
         app.buttons["share-vault-submit"].tap()
         waitFor(findText(containing: "Invitation sent to \(partnerEmail)"), timeout: 30)
         saveLightAndDarkScreenshot("sharing-share-sheet")
@@ -69,6 +70,7 @@ final class SharingUITests: HisarUITestCase {
         let partnerRow = findElement("vault-member-\(partnerEmail)")
         waitFor(partnerRow, timeout: 90)
         XCTAssertTrue(partnerRow.label.contains("Reader"), partnerRow.label)
+        XCTAssertFalse(partnerRow.label.contains("Security code"), partnerRow.label)
         let unknownInvitation = findElement("vault-invitation-\(unknownEmail)")
         saveLightAndDarkScreenshot("sharing-members")
 
@@ -76,10 +78,22 @@ final class SharingUITests: HisarUITestCase {
         let cancelAction = app.buttons["Cancel"].firstMatch
         waitForHittable(cancelAction)
         cancelAction.tap()
-        app.buttons["confirm-cancel-invitation"].firstMatch.tap()
+        let confirmation = app.buttons["confirm-cancel-invitation"].firstMatch
+        waitForHittable(confirmation)
+        XCTAssertEqual(confirmation.label, "Cancel invitation")
+        // iOS 26 popovers omit the cancel-role button. Tapping outside keeps the invitation.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
+        XCTAssertTrue(confirmation.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(unknownInvitation.exists, "dismissing the confirmation keeps the invitation")
+        revealSwipeActions(of: unknownInvitation, .left)
+        waitForHittable(cancelAction)
+        cancelAction.tap()
+        waitForHittable(confirmation)
+        confirmation.tap()
         XCTAssertTrue(unknownInvitation.waitForNonExistence(timeout: 30), "the cancelled invitation disappears")
 
         partnerRow.tap()
+        waitFor(app.staticTexts["member-security-code"])
         saveLightAndDarkScreenshot("sharing-member")
         chooseRole("Editor", in: app.buttons["member-role"])
         app.navigationBars["iOS Partner"].buttons.element(boundBy: 0).tap()
@@ -88,10 +102,14 @@ final class SharingUITests: HisarUITestCase {
         findElement("vault-member-\(partnerEmail)").tap()
         saveScreenshot("sharing-member-editor")
         app.swipeUp()
+        XCTAssertEqual(app.buttons["remove-member"].label, "Remove from vault")
         app.buttons["remove-member"].tap()
         app.buttons["confirm-remove-member"].firstMatch.tap()
         XCTAssertTrue(findElement("vault-member-\(partnerEmail)").waitForNonExistence(timeout: 60), "the removed person leaves the members")
         app.buttons["vault-sharing-done"].tap()
+        choose("delete-vault", from: "vault-actions")
+        waitFor(app.navigationBars["Delete “Deploy keys”?"])
+        app.buttons["delete-vault-cancel"].tap()
 
         goBack()
         openSettings("open-people")

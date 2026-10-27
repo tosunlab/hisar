@@ -98,6 +98,7 @@ type ApprovalEvent struct {
 	IsCompact              bool           `json:"isCompact"`
 	IsTouchIDApproval      bool           `json:"isTouchIDApproval"`
 	TimeoutAt              string         `json:"timeoutAt"`
+	TimeoutMilliseconds    int64          `json:"timeoutMilliseconds"`
 	TerminalName           string         `json:"terminalName"`
 	// Coverage is what approving a command-line or launcher request covers: clisocket's terminal-session, app or
 	// connection.
@@ -230,6 +231,7 @@ type Approver struct {
 	authorizing     sync.WaitGroup
 	mutex           sync.Mutex
 	pendingRequests []*pendingApproval
+	expiredNotices  int
 	presenter       presenter
 	// signing is guarded by mutex.
 	signing rememberedSigning

@@ -129,7 +129,7 @@ class AccountLifecycleTests {
         val result = model.settings.changeMasterPassword(FakeBackend.PASSWORD, "a new master password")
         assertEquals(1, result?.signedOutDeviceCount)
         assertEquals(Screen.Unlocked, model.screen.value)
-        assertEquals("Master password changed. 1 other device was signed out.", model.notice.value)
+        assertEquals("Master password changed. 1 other device was signed out.", model.notice.value?.message)
         assertEquals("a new master password", harness.backend.currentPassword)
     }
 
@@ -157,7 +157,7 @@ class AccountLifecycleTests {
         assertTrue(harness.backend.isAccountDeleted)
         assertEquals(Screen.SignedOut, model.screen.value)
         assertTrue(model.unlockedData.value.allVault.isEmpty())
-        assertEquals("Your Hisar account was deleted.", model.notice.value)
+        assertEquals("Your Hisar account was deleted.", model.notice.value?.message)
     }
 
     @Test

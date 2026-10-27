@@ -4,10 +4,11 @@ import emailFirstStepOnePage from "./fixtures/email-first-step-one.html?raw";
 import emailFirstStepTwoPage from "./fixtures/email-first-step-two.html?raw";
 import formlessLoginPage from "./fixtures/formless-login.html?raw";
 import modalAndPageLoginPage from "./fixtures/modal-and-page-login.html?raw";
+import searchBarsPage from "./fixtures/search-bars.html?raw";
 import signUpPage from "./fixtures/sign-up.html?raw";
 import simpleLoginPage from "./fixtures/simple-login.html?raw";
 import unhintedLoginPage from "./fixtures/unhinted-login.html?raw";
-import { captureLogin, findAllLoginScope, findUsernameField, isSubmitLikeButton, pickSubmittedPassword } from "./detection";
+import { captureLogin, findAllLoginScope, findScopeForElement, findUsernameField, isSubmitLikeButton, pickSubmittedPassword } from "./detection";
 
 function loadPage(html: string): void {
   document.body.innerHTML = html;
@@ -194,17 +195,47 @@ describe("captureLogin", () => {
 
 describe("field hints and username-only steps", () => {
   it("knows a username field by its label or by the element that labels it", () => {
-    loadPage(`<form><label for="f1">Email or phone</label><input id="f1" name="f1"><button>Next</button></form>`);
+    loadPage(`<form><h1>Sign in</h1><label for="f1">Email or phone</label><input id="f1" name="f1"><button>Next</button></form>`);
     expect(findAllLoginScope(document)).toMatchObject([{ kind: "username-only", usernameField: getInput("#f1") }]);
     loadPage(`<form><span id="caption">Kullanıcı adı</span><input id="f2" aria-labelledby="caption"><button>Next</button></form>`);
     expect(findAllLoginScope(document)).toMatchObject([{ kind: "username-only", usernameField: getInput("#f2") }]);
   });
 
-  it("keeps the first step of a sign-in without a form beside a form that asks for an email address", () => {
+  it("keeps the first step of a sign-in without a form, and leaves a footer's email box alone", () => {
     loadPage(`<div><input id="user" type="email" autocomplete="username"><div role="button">Next</div></div>
       <footer><form><input id="footer-email" type="email" name="email"><button>Send me offers</button></form></footer>`);
     const allUsernameField = findAllLoginScope(document).map((scope) => scope.usernameField?.id);
-    expect(allUsernameField).toContain("user");
-    expect(allUsernameField).toContain("footer-email");
+    expect(allUsernameField).toEqual(["user"]);
+  });
+
+  it("takes an email field alone for a sign-in step only with a sign of one", () => {
+    const allCase: [string, string, boolean][] = [
+      ["a sign-up call to action", `<form><input id="f" type="email" name="user_email" autocomplete="email"><button>Sign up for GitHub</button></form>`, false],
+      ["a guest checkout", `<form><label for="f">Email address</label><input id="f" type="email" name="email"><button>Continue to shipping</button></form>`, false],
+      ["a form that says sign in", `<form><h2>Sign in to your account</h2><input id="f" type="email" name="email"><button>Continue</button></form>`, true],
+      ["a username under a Next button", `<form><input id="f" type="text" name="username"><button>Next</button></form>`, true],
+      ["an email under a Log in button", `<form><input id="f" type="email" name="email"><button>Log in</button></form>`, true],
+      ["a loose email in a card that says welcome back", `<div><p>Welcome back</p><input id="f" type="email" autocomplete="email"><div role="button">Continue</div></div>`, true],
+      ["a loose email under a subscribe button", `<div><input id="f" type="email" autocomplete="email"><div role="button">Subscribe</div></div>`, false],
+    ];
+    for (const [name, html, isSignIn] of allCase) {
+      loadPage(html);
+      expect(findAllLoginScope(document).some((scope) => scope.usernameField === getInput("#f")), name).toBe(isSignIn);
+    }
+  });
+
+  it("takes an email field alone for a sign-in step on a sign-in page", () => {
+    loadPage(`<form><input id="f" type="email" name="email"><button>Continue</button></form>`);
+    expect(findAllLoginScope(document)).toEqual([]);
+    window.history.replaceState(null, "", "/users/sign_in");
+    expect(findAllLoginScope(document)).toMatchObject([{ kind: "username-only", usernameField: getInput("#f") }]);
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("never takes a search box for a username", () => {
+    loadPage(searchBarsPage);
+    const scope = findScopeForElement(document, getInput("#pass"));
+    expect(scope?.kind).toBe("login");
+    expect(scope?.usernameField).toBeUndefined();
   });
 });

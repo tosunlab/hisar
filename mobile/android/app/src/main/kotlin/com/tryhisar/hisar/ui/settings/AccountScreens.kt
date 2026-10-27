@@ -1,5 +1,7 @@
 package com.tryhisar.hisar.ui.settings
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
@@ -136,7 +138,7 @@ fun AccountScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: 
         }
         FormSection(footer = { Text("Deletes your account and the vaults only you own from the Hisar server. ${AccountLifecycleLogic.EXPORT_ADVICE}") }) {
             NavigationRow(
-                "Delete account", "open-delete-account", { push(SettingsDestination.DELETE_ACCOUNT) }, Icons.Outlined.PersonRemove,
+                "Delete account…", "open-delete-account", { push(SettingsDestination.DELETE_ACCOUNT) }, Icons.Outlined.PersonRemove,
                 color = HisarTheme.colors.destructive,
                 enabled = !status.isOffline,
             )
@@ -162,8 +164,16 @@ private fun SecretKeyRow(secretKey: String, testTag: String) {
 @Composable
 private fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String, printTestTag: String, shareTestTag: String) {
     val context = LocalContext.current
-    val save = rememberFileSaver("application/pdf") { isSaved ->
-        if (isSaved) model.showNotice("Emergency Kit saved") else model.errorMessage.value = SAVE_FAILED_MESSAGE
+    val save = rememberFileSaver("application/pdf") { savedURI ->
+        if (savedURI != null) {
+            model.showNotice("Emergency Kit saved", com.tryhisar.hisar.app.Notice.Action("Open") {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(savedURI, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                } catch (_: ActivityNotFoundException) {
+                    model.errorMessage.value = "No app on this device can open PDF files."
+                }
+            })
+        } else model.errorMessage.value = SAVE_FAILED_MESSAGE
     }
     val share = rememberFileSharer("application/pdf") { model.errorMessage.value = SHARE_FAILED_MESSAGE }
     FormButtonRow("Save Emergency Kit", { save(File(path)) }, testTag = saveTestTag, icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)

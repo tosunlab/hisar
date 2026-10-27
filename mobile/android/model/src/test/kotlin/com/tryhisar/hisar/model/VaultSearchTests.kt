@@ -49,6 +49,21 @@ class VaultSearchTests {
     }
 
     @Test
+    fun testByTypeListsOnlyTypesWithItemsInItsOrder() {
+        val allItem = listOf(
+            makeReference("Recovery codes", category = ItemDetail.CATEGORY_SECURE_NOTE),
+            makeReference("GitHub"),
+            makeReference("Bank"),
+            makeReference("Email", vaultName = "Family"),
+        )
+        assertEquals(
+            listOf(CategorySummary(ItemCategory.LOGINS, 3), CategorySummary(ItemCategory.SECURE_NOTES, 1)),
+            VaultLogic.listAllCategory(allItem),
+        )
+        assertTrue(VaultLogic.listAllCategory(emptyList()).isEmpty())
+    }
+
+    @Test
     fun testSplitTagsDropsBlanksAndRepeats() {
         assertEquals(listOf("work", "dev"), ItemDetail.splitTags(" work, dev ,, work ,"))
         assertEquals(emptyList(), ItemDetail.splitTags("   "))

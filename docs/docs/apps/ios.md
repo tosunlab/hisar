@@ -46,6 +46,9 @@ stack every other iPhone shows. The system does the rest: sheets center on the i
 the side next to the camera on the outer display, and sheets, alerts and menus keep away from the fold. Nothing reads
 `UIScreen.main`, which is ambiguous on two displays.
 
+Vaults keeps one **Tags** row. Its tag list and each tag's items open in the detail column. Choosing another vault,
+item type, favorite, or **Tags** replaces that column's navigation stack.
+
 ![The open iPhone Duo in landscape: the Vaults list on the left, the GitHub login on the right, the toolbar buttons and the tabs in a column beside the camera.](/img/iphone-duo/vaults-and-item.png)
 
 ![Settings beside its Security screen on the open iPhone Duo.](/img/iphone-duo/settings-and-security.png)
@@ -79,9 +82,10 @@ After editing `project.yml` (adding files is enough, sources are folders), run `
 the project; CI fails if the committed project differs.
 
 What the UI tests cover: create an account from an invite and read the new Secret Key, add a login, Favorites (the star in an item,
-the swipe actions and the Favorites section at the top of Vaults), item detail
-(reveal, copy), editing with the password generator, search, lock and unlock with the master password, Settings (the empty Approvals tab, auto-lock, devices, the Secret Key behind the master
-password with the Emergency Kit share), sign out and sign in with the Secret Key, creating a shared vault and seeing its members, inviting someone from Settings → People, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
+the swipe actions and the Favorites section at the top of Vaults), creating every item type through the + menu and its More… submenu, item detail
+(tap a field anywhere to copy, including a concealed field, reveal independently with the eye, and long-press for
+Copy or Copy secret reference from the field's context menu, independently of the page's secret-reference button), editing with the password generator, search, lock and unlock with the master password, Settings (the empty Approvals tab, auto-lock, devices, the Secret Key behind the master
+password with the Emergency Kit share), turning Mac approvals off in Settings and back on from Approvals, sign out and sign in with the Secret Key, creating a shared vault and seeing its members, inviting someone from Settings → People, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
 simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in
 with it, check the attestation and the ES256 signature with CryptoKit, then see and delete it in the item.
 `WideLayoutUITests` checks the split views: beside their list on a wide screen, pushed over it on a compact one, so it
@@ -90,8 +94,9 @@ means something on both the iPhone Duo simulator and the compact one CI uses.
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,
 or denied) is driven through a debug-only preview with a made-up request: launch with `-HisarApprovalPreview ssh` (or
-`cli`, `forwarded`, `signing`, `launcher`, `launcher-share`), plus `-HisarApprovalPreviewPassword` to act as if Face ID
-were unavailable, and `-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
+`cli`, `forwarded`, `signing`, `launcher`, `launcher-share`). Add `-HisarApprovalPreviewTouchID` for Touch ID button
+copy and its symbol, or `-HisarApprovalPreviewPassword` for the master password fallback.
+`-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
 whole flow between a desktop backend and a HisarKit backend in `make test-end-to-end`.
 
 **AutoFill in the simulator.** A simulator build without a development team ("Sign to Run Locally") is registered

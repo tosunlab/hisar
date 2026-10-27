@@ -55,6 +55,7 @@ class BiometricUITests : HisarUITestCase() {
         waitForBiometricToggle(ToggleableState.On)
         saveScreenshot("settings-biometrics")
 
+        dismissNotice()
         tap("settings-lock-now")
         answerOnePrompt()
         waitFor("vault-Personal", 15_000)

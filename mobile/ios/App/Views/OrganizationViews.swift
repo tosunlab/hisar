@@ -812,7 +812,7 @@ struct OrganizationMemberView: View {
                         .accessibilityIdentifier("organization-member-security-code")
                     if member.isCurrentUser {
                         ShareLink(item: "My Hisar security code: \(member.securityCode)") {
-                            Label("Share My Security Code", systemImage: "square.and.arrow.up")
+                            Label("Share my security code", systemImage: "square.and.arrow.up")
                         }
                     }
                 } header: {
