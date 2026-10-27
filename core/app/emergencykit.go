@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
@@ -13,7 +15,38 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 )
 
-const emergencyKitFileName = "Hisar Emergency Kit.pdf"
+func emergencyKitFileName(kit emergencykit.Kit) string {
+	server := kit.Server
+	if parsed, err := url.Parse(server); err == nil && parsed.Host != "" {
+		server = parsed.Host + parsed.EscapedPath()
+	}
+	return fmt.Sprintf("Hisar Emergency Kit - %s - %s - %s.pdf",
+		emergencyKitFilePart(kit.Email, "account"), emergencyKitFilePart(server, "server"),
+		kit.CreatedAt.UTC().Format("2006-01-02-150405.000000000"))
+}
+
+func emergencyKitFilePart(value, fallback string) string {
+	var part strings.Builder
+	part.Grow(48)
+	for _, character := range value {
+		if part.Len() >= 48 {
+			break
+		}
+		switch {
+		case character >= 'a' && character <= 'z', character >= 'A' && character <= 'Z',
+			character >= '0' && character <= '9', character == '.', character == '@', character == '_', character == '-':
+			part.WriteByte(byte(character))
+		default:
+			if part.Len() > 0 && !strings.HasSuffix(part.String(), "-") {
+				part.WriteByte('-')
+			}
+		}
+	}
+	if result := strings.Trim(part.String(), ".@_-"); result != "" {
+		return result
+	}
+	return fallback
+}
 
 var ErrNoNewAccountSecretKey = errors.New("the new account's Secret Key is no longer in memory; save the Emergency Kit from Settings")
 
@@ -147,7 +180,7 @@ func ExportNewAccountEmergencyKitToDirectory(s *Service, directory string) (Emer
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return EmergencyKitFile{}, fmt.Errorf("could not save the Emergency Kit: %w", err)
 	}
-	path := filepath.Join(directory, emergencyKitFileName)
+	path := filepath.Join(directory, emergencyKitFileName(kit))
 	if err := s.savePendingEmergencyKit(entry, kit, path); err != nil {
 		return EmergencyKitFile{}, err
 	}
@@ -173,7 +206,7 @@ func (s *Service) saveEmergencyKitToDirectory(kit emergencykit.Kit, directory st
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return EmergencyKitFile{}, fmt.Errorf("could not save the Emergency Kit: %w", err)
 	}
-	path := filepath.Join(directory, emergencyKitFileName)
+	path := filepath.Join(directory, emergencyKitFileName(kit))
 	if err := s.saveFile(path, document, epoch); err != nil {
 		return EmergencyKitFile{}, err
 	}
@@ -236,7 +269,7 @@ func (s *Service) writeEmergencyKit(kit emergencykit.Kit, epoch uint64) (string,
 	if err != nil {
 		return "", err
 	}
-	path, err := s.config.FileSaver.ChooseSavePath(emergencyKitFileName)
+	path, err := s.config.FileSaver.ChooseSavePath(emergencyKitFileName(kit))
 	if err != nil || path == "" {
 		return "", err
 	}

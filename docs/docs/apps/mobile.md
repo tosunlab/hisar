@@ -85,6 +85,9 @@ Install `android/app/build/outputs/apk/debug/app-debug.apk` with `adb install -r
 run `adb reverse tcp:<port> tcp:<port>` and sign in to `http://127.0.0.1:<port>`. Debug builds accept `http://` servers;
 release builds sign in only over `https://`. The release APK is unsigned.
 
+If **Install the latest Hisar** cannot open a browser, the update screen shows the download URL and **Copy link**.
+**Check again** remains available to ask the server whether the installed version is accepted.
+
 To fill logins, turn on Hisar in Settings → AutoFill → **Turn on Hisar AutoFill**. Chrome fills with Google until you
 choose **Autofill using another service** in Chrome's autofill settings and restart Chrome; the same screen opens them.
 

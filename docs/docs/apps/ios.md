@@ -28,6 +28,13 @@ Saving stores the item in the chosen vault. Canceling or swiping down with unsav
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
 Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
 
+Sign in keeps the server behind **Use a different server…**. The expanded editor labels the URL **Server** and
+keeps **Signs in to \<server>.** visible as the value changes. **Use eu.tryhisar.com** explicitly restores the
+default server and closes the editor. Remembered and scanned servers remain unchanged until the user edits or resets them.
+
+The logo-only privacy cover uses the selected appearance and palette, including its grouped background.
+Each new cover window receives the theme before becoming visible above sheets and alerts.
+
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
 An absent plan version never enables the delete button.

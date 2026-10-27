@@ -96,9 +96,11 @@ struct SignInView: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
                 } footer: {
-                    Text(mode == .signIn ? "Lost your Secret Key? It's on your Emergency Kit." : "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar.")
-                        .padding(.top, 8)
-                        .accessibilityIdentifier(mode == .signIn ? "secret-key-note" : "create-account-note")
+                    if mode == .signIn {
+                        Text("Lost your Secret Key? It's on your Emergency Kit.")
+                            .padding(.top, 8)
+                            .accessibilityIdentifier("secret-key-note")
+                    }
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -154,12 +156,23 @@ struct SignInView: View {
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("sign-in-email")
             if isServerShown {
-                TextField("Server", text: $server, prompt: Text(verbatim: SignInView.defaultServer))
-                    .textContentType(.URL)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("sign-in-server")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Server")
+                        .font(.subheadline)
+                    TextField("Server", text: $server, prompt: Text(verbatim: SignInView.defaultServer))
+                        .textContentType(.URL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("sign-in-server")
+                }
+                if !SignInView.isDefaultServer(server) {
+                    Button("Use eu.tryhisar.com") {
+                        server = Self.defaultServer
+                        isServerShown = false
+                    }
+                    .accessibilityIdentifier("sign-in-use-default-server")
+                }
             } else {
                 Button("Use a different server…") {
                     isServerShown = true
@@ -169,9 +182,7 @@ struct SignInView: View {
         } header: {
             Text("Account")
         } footer: {
-            if !isServerShown {
-                Text(verbatim: "Signs in to \(SignInView.describeServer(server)).")
-            }
+            Text(verbatim: "Signs in to \(SignInView.describeServer(server)).")
         }
         Section("Secret Key and master password") {
             TextField("Secret Key", text: $secretKey, prompt: Text(verbatim: "H1-XXXXXX-XXXXX-…"))
@@ -248,7 +259,8 @@ struct SignInView: View {
                     Text("The passwords do not match.")
                         .foregroundStyle(.red)
                 }
-                Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
+                Text("Choose a master password you can remember. A forgotten master password can't be recovered by anyone, including Hisar.")
+                    .accessibilityIdentifier("create-account-note")
             }
         }
     }

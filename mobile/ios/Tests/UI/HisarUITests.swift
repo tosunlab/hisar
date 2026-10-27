@@ -297,6 +297,15 @@ final class HisarUITests: HisarUITestCase {
         let serverField = app.textFields["sign-in-server"]
         waitFor(serverField)
         XCTAssertEqual(serverField.value as? String, "https://eu.tryhisar.com")
+        XCTAssertTrue(app.staticTexts["Server"].exists)
+        XCTAssertTrue(app.staticTexts["Signs in to eu.tryhisar.com."].exists)
+        type("/hisar", into: serverField)
+        XCTAssertTrue(app.staticTexts["Signs in to eu.tryhisar.com/hisar."].exists)
+        app.buttons["sign-in-use-default-server"].tap()
+        XCTAssertFalse(serverField.exists)
+        XCTAssertTrue(app.staticTexts["Signs in to eu.tryhisar.com."].exists)
+        useDifferentServerButton.tap()
+        XCTAssertEqual(serverField.value as? String, "https://eu.tryhisar.com")
         app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
         XCTAssertFalse(app.staticTexts["Enter the invite code you received, or sign up on a server that lets anyone join."].exists)
         XCTAssertTrue(app.textFields["sign-up-invite-link"].exists)
@@ -307,10 +316,12 @@ final class HisarUITests: HisarUITestCase {
     func testPrivacyCoverHidesContentInTheBackground() throws {
         app.launch()
         waitFor(app.segmentedControls["sign-in-mode"])
-        XCUIDevice.shared.press(.home)
-        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended, timeout: 10))
-        app.activate()
-        waitFor(app.segmentedControls["sign-in-mode"])
-        XCTAssertTrue(app.otherElements["privacy-cover"].waitForNonExistence(timeout: 5), "the cover goes away once the app is active")
+        for _ in 0..<2 {
+            XCUIDevice.shared.press(.home)
+            XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended, timeout: 10))
+            app.activate()
+            waitFor(app.segmentedControls["sign-in-mode"])
+            XCTAssertTrue(app.otherElements["privacy-cover"].waitForNonExistence(timeout: 5), "the cover goes away once the app is active")
+        }
     }
 }

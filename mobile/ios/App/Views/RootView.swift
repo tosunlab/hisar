@@ -126,9 +126,11 @@ struct MainTabView: View {
 }
 
 struct PrivacyCover: View {
+    @Environment(\.themePalette) private var palette
+
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+            palette.groupedBackground.color.ignoresSafeArea()
             LogoMark(size: 88)
         }
         .accessibilityIdentifier("privacy-cover")

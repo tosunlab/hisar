@@ -389,6 +389,10 @@ h1 {
   color: var(--color-text-muted);
 }
 
+.segmented + .subtitle {
+  margin-top: 16px;
+}
+
 .segmented {
   display: grid;
   grid-template-columns: 1fr 1fr;
