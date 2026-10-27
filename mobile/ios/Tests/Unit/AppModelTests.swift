@@ -23,6 +23,18 @@ final class AppModelTests: XCTestCase {
         return await createModel()
     }
 
+
+    func testCustomFieldNameWarningsPreserveDuplicateValues() {
+        let fields = [
+            ItemField(name: "Recovery code", value: "first", concealed: true),
+            ItemField(name: "recovery CODE", value: "second", concealed: true),
+            ItemField(name: "Password", value: "custom", concealed: true)
+        ]
+        XCTAssertEqual(ItemField.nameWarning(fields, index: 0), "Secret references need a unique name.")
+        XCTAssertEqual(ItemField.nameWarning(fields, index: 1), "Secret references need a unique name.")
+        XCTAssertEqual(ItemField.nameWarning(fields, index: 2), "A secret reference with this name reaches the built-in field.")
+        XCTAssertEqual(fields.map(\.value), ["first", "second", "custom"])
+    }
     func testStartsSignedOut() async {
         let model = await createModel()
         XCTAssertEqual(model.screen, .signedOut)

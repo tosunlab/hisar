@@ -167,6 +167,16 @@ struct ItemField: Codable, Hashable {
     var name: String
     var value: String
     var concealed: Bool
+    private static let builtInReferenceNames: Set<String> = ["username", "password", "url", "notes", "one-time code", "public key", "fingerprint", "connection string"]
+
+    static func nameWarning(_ fields: [ItemField], index: Int) -> String {
+        let name = fields[index].name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if builtInReferenceNames.contains(name) {
+            return "A secret reference with this name reaches the built-in field."
+        }
+        return !name.isEmpty && fields.enumerated().contains { $0.offset != index && $0.element.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == name }
+            ? "Secret references need a unique name." : ""
+    }
 }
 
 struct ItemDetail: Codable, Identifiable, Hashable {

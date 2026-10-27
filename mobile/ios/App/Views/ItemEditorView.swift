@@ -847,11 +847,21 @@ struct ItemEditorView: View {
             ForEach(draft.allField.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Name", text: $draft.allField[index].name)
+                        .accessibilityIdentifier("editor-field-\(index)-name")
+                    let nameWarning = ItemField.nameWarning(draft.allField, index: index)
+                    if !nameWarning.isEmpty {
+                        Text(nameWarning)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("editor-field-\(index)-name-warning")
+                    }
                     HStack {
                         if draft.allField[index].concealed {
                             SecureField("Value", text: $draft.allField[index].value)
+                                .accessibilityIdentifier("editor-field-\(index)-value")
                         } else {
                             TextField("Value", text: $draft.allField[index].value)
+                                .accessibilityIdentifier("editor-field-\(index)-value")
                         }
                         Button {
                             draft.allField[index].concealed.toggle()

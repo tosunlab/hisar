@@ -3,6 +3,21 @@ import type { IconName } from "./components/AppIcon.vue";
 // themes.json defines tile0 to tile9 with their text colours for every theme.
 const tileColorCount = 10;
 
+const builtInReferenceNames: Record<string, true> = {
+  username: true, password: true, url: true, notes: true,
+  "one-time code": true, "public key": true, fingerprint: true, "connection string": true,
+};
+
+export function customFieldNameWarning(fields: { name: string }[], index: number): string {
+  const name = fields[index].name.trim().toLowerCase();
+  if (Object.hasOwn(builtInReferenceNames, name)) {
+    return "A secret reference with this name reaches the built-in field.";
+  }
+  return name && fields.some((field, other) => other !== index && field.name.trim().toLowerCase() === name)
+    ? "Secret references need a unique name."
+    : "";
+}
+
 export interface TileColor {
   background: string;
   color: string;

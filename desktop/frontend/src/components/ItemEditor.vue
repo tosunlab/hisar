@@ -20,6 +20,7 @@ import {
   apiCredentialCategory,
   creditCardCategory,
   databaseCategory,
+  customFieldNameWarning,
   describeAPICredentialExpiry,
   describeServerPort,
   identityCategory,
@@ -695,6 +696,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           <input v-model="field.concealed" type="checkbox" /> <span>Secret</span>
         </label>
         <button type="button" class="ghost icon-button" aria-label="Remove field" @click="removeField(index)"><AppIcon name="close" /></button>
+        <small v-if="customFieldNameWarning(draft.fields, index)" class="field-warning" :data-testid="`field-name-warning-${index}`">{{ customFieldNameWarning(draft.fields, index) }}</small>
       </div>
       <button type="button" class="ghost add-field" @click="addField"><AppIcon name="plus" /> Add field</button>
     </section>
@@ -870,6 +872,11 @@ button.active {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.custom-field .field-warning {
+  grid-column: 1 / -1;
+  color: var(--color-warning);
 }
 
 .concealed {

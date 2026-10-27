@@ -15,7 +15,7 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("items")
         app.buttons["item-GitHub"].tap()
         let passwordNotice = app.staticTexts["Password copied. It clears in 90 seconds."]
-        let passwordRow = app.buttons["copy-password"]
+        let passwordRow = app.buttons.matching(identifier: "copy-password").firstMatch
         waitFor(passwordRow)
         XCTAssertEqual(passwordRow.value as? String, "Hidden")
         XCTAssertEqual(passwordRow.label, "Copy password")
@@ -44,10 +44,27 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("password-generator")
         app.buttons["generator-use"].tap()
         type("dev, work", into: app.textFields["editor-new-tag"])
+        for (index, name) in ["Recovery code", "Recovery code", "recovery CODE", "Password"].enumerated() {
+            app.buttons["Add field"].tap()
+            type(name, into: app.textFields["editor-field-\(index)-name"])
+            type("row-secret-\(index)", into: app.textFields["editor-field-\(index)-value"])
+            app.buttons.matching(identifier: "Secret").element(boundBy: index).tap()
+        }
         app.buttons["editor-save"].tap()
         // The item under the editor shows the old password until the save finishes and the editor closes.
         XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
         XCTAssertNotEqual(passwordRow.value as? String, "ui-test-password-1", "the generated password replaced the old one")
+        let customRows = app.buttons.matching(identifier: "copy-recovery code")
+        for index in 0..<3 {
+            customRows.element(boundBy: index).tap()
+            XCTAssertEqual(UIPasteboard.general.string, "row-secret-\(index)")
+        }
+        app.buttons.matching(identifier: "copy-password").element(boundBy: 1).tap()
+        XCTAssertEqual(UIPasteboard.general.string, "row-secret-3")
+        app.buttons.matching(identifier: "reveal-recovery code").element(boundBy: 1).tap()
+        XCTAssertEqual(customRows.element(boundBy: 1).value as? String, "row-secret-1")
+        XCTAssertEqual(customRows.element(boundBy: 0).value as? String, "Hidden")
+        XCTAssertEqual(customRows.element(boundBy: 2).value as? String, "Hidden")
 
         app.buttons["copy-secret-reference"].tap()
         goBack()
