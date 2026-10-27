@@ -6,6 +6,21 @@ final class HisarKitBackend: VaultBackend {
     private let hisar: HisarkitHisar
     private let biometryName: String
     private let allRetainedAdapter: [AnyObject]
+    #if DEBUG
+    private let browseFailureLock = NSLock()
+    private var browseFailureCalls: [String: Int] = [:]
+
+    private func failBrowseActionForUITest(_ action: String, key: String? = nil, skipping: Int = 0) throws {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("-HisarUITest"), arguments.contains("-HisarBrowseFailure-\(action)") else { return }
+        let call = browseFailureLock.withLock {
+            let key = key ?? action
+            browseFailureCalls[key, default: 0] += 1
+            return browseFailureCalls[key, default: 0]
+        }
+        if call == skipping + 1 { throw BackendError(message: "This action couldn't reach the Hisar server. Try again.") }
+    }
+    #endif
 
     init(stateDirectory: URL, secretKeyStore: KeychainSecretKeyStore, biometric: BiometricKeychain?, clipboard: PasteboardClipboard?, eventListener: LockEventRelay?) throws {
         var error: NSError?
@@ -148,6 +163,9 @@ final class HisarKitBackend: VaultBackend {
     }
 
     func acceptShareInvitation(invitationID: String) throws {
+        #if DEBUG
+        try failBrowseActionForUITest("accept")
+        #endif
         try callReturningNothing { try hisar.acceptShareInvitation(invitationID) }
     }
 
@@ -192,7 +210,10 @@ final class HisarKitBackend: VaultBackend {
     }
 
     func renameVault(vaultID: String, name: String) throws -> VaultSummary {
-        try decode(VaultSummary.self, from: callReturningText { hisar.renameVault(vaultID, name: name, error: $0) })
+        #if DEBUG
+        try failBrowseActionForUITest("rename")
+        #endif
+        return try decode(VaultSummary.self, from: callReturningText { hisar.renameVault(vaultID, name: name, error: $0) })
     }
 
     func deleteVault(vaultID: String, request: VaultDeletionRequest) throws -> VaultDeletionResult {
@@ -337,7 +358,10 @@ final class HisarKitBackend: VaultBackend {
     }
 
     func listAllItem(vaultID: String) throws -> [ItemDetail] {
-        try decode([ItemDetail]?.self, from: callReturningText { hisar.listAllItem(vaultID, error: $0) }) ?? []
+        #if DEBUG
+        try failBrowseActionForUITest("refresh", key: vaultID, skipping: 1)
+        #endif
+        return try decode([ItemDetail]?.self, from: callReturningText { hisar.listAllItem(vaultID, error: $0) }) ?? []
     }
 
     func getItem(vaultID: String, itemID: String) throws -> ItemDetail {
@@ -370,6 +394,9 @@ final class HisarKitBackend: VaultBackend {
     }
 
     func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) throws {
+        #if DEBUG
+        try failBrowseActionForUITest("favorite")
+        #endif
         try callReturningNothing { try hisar.setItemFavorite(vaultID, itemID: itemID, isFavorite: isFavorite) }
     }
 

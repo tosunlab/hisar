@@ -28,6 +28,10 @@ Saving stores the item in the chosen vault. Canceling or swiping down with unsav
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
 Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
 
+Vaults and item lists show failed favorite, rename, and invitation actions on the screen where they began.
+A failed refresh keeps the last readable list and offers **Retry**. A failed rename keeps the entered name when
+**Rename** is opened again. Background successes do not dismiss these failures.
+
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
 An absent plan version never enables the delete button.

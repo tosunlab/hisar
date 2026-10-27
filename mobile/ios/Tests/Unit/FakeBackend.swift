@@ -26,6 +26,7 @@ class FakeBackend: VaultBackend {
     /// Starred items as "vaultID/itemID"; the account keeps them apart from the items.
     var allFavoriteRecordID: Set<String> = []
     var favoriteErrorMessage: String?
+    var listItemErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
     var verifyPasskey: (String) -> Bool = { _ in true }
@@ -449,6 +450,7 @@ class FakeBackend: VaultBackend {
     func listAllItem(vaultID: String) throws -> [ItemDetail] {
         record("listAllItem")
         try requireUnlocked()
+        if let listItemErrorMessage { throw BackendError(message: listItemErrorMessage) }
         return (allItemByVaultID[vaultID] ?? []).map { item in
             var summary = item
             summary.isFavorite = allFavoriteRecordID.contains(LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: item.id))

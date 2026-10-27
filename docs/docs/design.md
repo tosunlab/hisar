@@ -1176,6 +1176,8 @@ These are the rules in [`IsURLMatch`](https://github.com/tosunlab/hisar/blob/mai
 On Android, the Vaults home Favorites section previews at most three items, each with its source vault. **Show all favorites**
 shows the total and opens a searchable cross-vault list. Removing a favorite there retains **Undo**. The list preserves
 offline and unreadable-record disclosures, and Back returns to the home preview.
+On iPhone, a failed browse action presents its own refusal, independently of later background successes. A failed
+refresh retains the readable list and offers **Retry**. A failed rename keeps its draft for the next **Rename** attempt.
 
 ### 9.4 CLI
 

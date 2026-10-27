@@ -125,6 +125,7 @@ final class SharingUITests: HisarUITestCase {
         let inviteLink = try readEnvironment("HISAR_UI_TEST_BANNER_INVITE_LINK")
         let email = try readEnvironment("HISAR_UI_TEST_BANNER_EMAIL")
         let partnerEmail = try readEnvironment("HISAR_UI_TEST_SHARING_PARTNER_EMAIL")
+        app.launchArguments += ["-HisarBrowseFailure-accept"]
         app.launch()
         _ = signUp(inviteLink: inviteLink, email: email, name: "iOS Banner")
 
@@ -133,6 +134,11 @@ final class SharingUITests: HisarUITestCase {
         XCTAssertFalse(app.buttons["vault-Infrastructure"].exists, "no access before accepting")
         saveLightAndDarkScreenshot("sharing-invitation-banner")
 
+        acceptButton.tap()
+        waitFor(app.alerts["Accept"])
+        XCTAssertTrue(app.alerts.staticTexts["This action couldn't reach the Hisar server. Try again."].exists)
+        app.buttons["refusal-ok"].tap()
+        XCTAssertTrue(acceptButton.exists, "a failed Accept keeps its invitation")
         acceptButton.tap()
         let sharedVault = app.buttons["vault-Infrastructure"]
         waitFor(sharedVault, timeout: 90)

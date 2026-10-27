@@ -278,7 +278,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func perform<Value>(isBusyShown: Bool = true, _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
+    private func perform<Value>(isBusyShown: Bool = true, onFailure: ((String) -> Void)? = nil, _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
         guard let backend else { return nil }
         if isBusyShown { isBusy = true }
         defer { if isBusyShown { isBusy = false } }
@@ -287,7 +287,9 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             return value
         } catch {
-            errorMessage = describeError(error)
+            let message = describeError(error)
+            errorMessage = message
+            onFailure?(message)
             return nil
         }
     }
@@ -504,23 +506,23 @@ final class AppModel: ObservableObject {
 
     // A remote change that comes while a refresh lists may be missing from its lists, so that refresh lists again, whoever
     // started it: the first refresh, an unlock or a pull to refresh as much as a remote change.
-    func refreshAll() async {
+    func refreshAll(onFailure: ((String) -> Void)? = nil) async {
         repeat {
             isRefreshRequestedAgain = false
-            await refreshAllOnce()
+            await refreshAllOnce(onFailure: onFailure)
         } while isRefreshRequestedAgain && status.isUnlocked
     }
 
     // Listing the share invitations also completes the shares people accepted, and listing the waiting vault keys gives
     // team members the keys of the organization vaults this user owns, as the Mac's sync does. Both run before the vaults
     // are listed, so a vault rotated meanwhile is listed with its new key.
-    private func refreshAllOnce() async {
+    private func refreshAllOnce(onFailure: ((String) -> Void)? = nil) async {
         guard status.isUnlocked else { return }
         startedRefreshCount += 1
         let refresh = startedRefreshCount
         isRefreshing = true
         defer { isRefreshing = false }
-        guard let result = await perform(isBusyShown: false, { backend -> RefreshResult in
+        guard let result = await perform(isBusyShown: false, onFailure: onFailure, { backend -> RefreshResult in
             let shareInvitations = try? backend.listAllShareInvitation()
             let waitingVaultKeys = try? backend.listAllWaitingVaultKey()
             let organizations = try? backend.listAllOrganization()
@@ -607,8 +609,8 @@ final class AppModel: ObservableObject {
 
     /// Lists one vault again. Its summary takes the healthy count and the records that did not open from this listing,
     /// so a record that stopped opening is disclosed even though the item list hides it.
-    func refreshVault(vaultID: String) async {
-        guard let allItem = await perform(isBusyShown: false, { try $0.listAllItem(vaultID: vaultID) }) else {
+    func refreshVault(vaultID: String, onFailure: ((String) -> Void)? = nil) async {
+        guard let allItem = await perform(isBusyShown: false, onFailure: onFailure, { try $0.listAllItem(vaultID: vaultID) }) else {
             refreshStatus()
             return
         }
@@ -639,8 +641,8 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) async -> Bool {
-        guard await perform(isBusyShown: false, { try $0.setItemFavorite(vaultID: vaultID, itemID: itemID, isFavorite: isFavorite) }) != nil else { return false }
+    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool, onFailure: ((String) -> Void)? = nil) async -> Bool {
+        guard await perform(isBusyShown: false, onFailure: onFailure, { try $0.setItemFavorite(vaultID: vaultID, itemID: itemID, isFavorite: isFavorite) }) != nil else { return false }
         if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
             allItemByVaultID[vaultID]?[index].isFavorite = isFavorite
         }
@@ -760,8 +762,8 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func renameVault(vaultID: String, name: String) async -> Bool {
-        guard let renamed = await perform({ try $0.renameVault(vaultID: vaultID, name: name) }) else { return false }
+    func renameVault(vaultID: String, name: String, onFailure: ((String) -> Void)? = nil) async -> Bool {
+        guard let renamed = await perform(onFailure: onFailure, { try $0.renameVault(vaultID: vaultID, name: name) }) else { return false }
         if let index = allVault.firstIndex(where: { $0.id == vaultID }) {
             allVault[index].name = renamed.name
             allVault.sort { Self.sortVault($0, $1) }

@@ -42,6 +42,8 @@ class IosTestParityTest {
     private val notApplicable = run {
         val identityStore = "Android AutoFill asks Hisar for logins at fill time; it has no credential identity store to keep up to date (D3)"
         mapOf(
+            "testRefreshFailureKeepsReadableListAndOperationError" to
+                "The iPhone's operation callback retains browse errors independently of AppModel.errorMessage; Android uses area-model refusals",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

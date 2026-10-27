@@ -202,6 +202,7 @@ struct VaultsView: View {
     @State private var isNewVaultShown = false
     @State private var newItemType: NewItemType?
     @State private var refusal: Refusal?
+    @State private var refreshFailure: String?
 
     private var personalVault: VaultSummary? { model.allVault.first { $0.type == "personal" } }
 
@@ -214,6 +215,13 @@ struct VaultsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
+                if let refreshFailure {
+                    Section {
+                        ErrorBanner(message: refreshFailure)
+                        Button("Retry") { Task { await refresh() } }
+                            .accessibilityIdentifier("browse-refresh-retry")
+                    }
+                }
                 if model.status.isOffline {
                     Section {
                         OfflineNote()
@@ -266,7 +274,7 @@ struct VaultsView: View {
                 }
             }
             .applyThemedListStyle()
-            .refreshable { await model.refreshAll() }
+            .refreshable { await refresh() }
             .navigationTitle("Vaults")
             .refusalAlert($refusal)
             .toolbar {
@@ -345,6 +353,14 @@ struct VaultsView: View {
         }
     }
 
+    private func refresh() async {
+        refreshFailure = nil
+        await model.refreshAll { message in
+            refreshFailure = message
+            model.clearError()
+        }
+    }
+
     @ViewBuilder
     private var invitationSection: some View {
         if !model.allReceivedInvitation.isEmpty || !model.allWaitingInvitation.isEmpty || !model.allOrganizationInvitation.isEmpty {
@@ -354,12 +370,16 @@ struct VaultsView: View {
                         Task {
                             if await model.acceptShareInvitation(invitationID: invitation.id) {
                                 model.showNotice("Accepted. The vault appears once \(invitation.inviterName)'s Hisar finishes sharing.")
+                            } else {
+                                refusal = model.takeRefusal(title: "Accept")
                             }
                         }
                     } decline: {
                         Task {
                             if await model.declineShareInvitation(invitationID: invitation.id) {
                                 model.showNotice("Invitation declined.")
+                            } else {
+                                refusal = model.takeRefusal(title: "Decline")
                             }
                         }
                     }
@@ -406,7 +426,7 @@ struct VaultsView: View {
                         ItemRow(item: reference.item, vaultName: reference.vaultName)
                     }
                     .swipeActions(edge: .trailing) {
-                        FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item)
+                        FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item) { refusal = $0 }
                     }
                     .accessibilityIdentifier("favorite-\(reference.item.title)")
                 }
@@ -513,10 +533,18 @@ struct VaultsDetailView: View {
 
 struct TagListView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var refreshFailure: String?
 
     var body: some View {
         let allTag = VaultLogic.listAllTag(model.listAllItemReference())
         List {
+            if let refreshFailure {
+                Section {
+                    ErrorBanner(message: refreshFailure)
+                    Button("Retry") { Task { await refresh() } }
+                        .accessibilityIdentifier("browse-refresh-retry")
+                }
+            }
             ForEach(allTag) { tag in
                 NavigationLink(value: TagDestination(tag: tag.name)) {
                     Label(tag.name, systemImage: "tag")
@@ -526,8 +554,16 @@ struct TagListView: View {
             }
         }
         .applyThemedListStyle()
-        .refreshable { await model.refreshAll() }
+        .refreshable { await refresh() }
         .navigationTitle("Tags")
+    }
+
+    private func refresh() async {
+        refreshFailure = nil
+        await model.refreshAll { message in
+            refreshFailure = message
+            model.clearError()
+        }
     }
 }
 
@@ -572,12 +608,18 @@ struct VaultRow: View {
 struct FavoriteSwipeButton: View {
     var vaultID: String
     var item: ItemDetail
+    var onRefusal: (Refusal) -> Void
 
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
         Button {
-            Task { await model.setItemFavorite(vaultID: vaultID, itemID: item.id, isFavorite: !item.isFavorite) }
+            Task {
+                await model.setItemFavorite(vaultID: vaultID, itemID: item.id, isFavorite: !item.isFavorite) { message in
+                    onRefusal(Refusal(title: item.isFavorite ? "Remove from Favorites" : "Add to Favorites", message: message))
+                    model.clearError()
+                }
+            }
         } label: {
             Label(item.isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: item.isFavorite ? "star.slash" : "star")
         }

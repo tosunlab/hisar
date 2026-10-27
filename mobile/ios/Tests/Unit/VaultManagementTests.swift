@@ -93,7 +93,8 @@ final class VaultManagementTests: XCTestCase {
         let isRenamed = await model.renameVault(vaultID: "work", name: "  Work 2026 ")
         XCTAssertTrue(isRenamed)
         XCTAssertEqual(model.findVault(vaultID: "work")?.name, "Work 2026")
-        let isRenamedByEditor = await model.renameVault(vaultID: "family", name: "Mine")
+        var renameFailure: String?
+        let isRenamedByEditor = await model.renameVault(vaultID: "family", name: "Mine") { renameFailure = $0 }
         XCTAssertFalse(isRenamedByEditor)
         XCTAssertEqual(model.findVault(vaultID: "family")?.name, "Family")
 
@@ -102,6 +103,24 @@ final class VaultManagementTests: XCTestCase {
         XCTAssertNil(model.findVault(vaultID: "family"))
         XCTAssertEqual(model.noticeMessage, "You left Family.")
         XCTAssertTrue(model.listAllItemReference().allSatisfy { $0.vaultID != "family" })
+        XCTAssertNotNil(renameFailure, "a later successful leave does not erase the rename refusal")
+    }
+
+    func testRefreshFailureKeepsReadableListAndOperationError() async {
+        let model = await createUnlockedModel()
+        let previous = model.listAllItemReference().map(\.id)
+        backend.listItemErrorMessage = "The Hisar server could not be reached."
+        var failure: String?
+        await model.refreshVault(vaultID: "personal") { failure = $0 }
+        XCTAssertEqual(model.listAllItemReference().map(\.id), previous)
+        _ = await model.loadVaultActions(vaultID: "personal")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(failure, "The Hisar server could not be reached.")
+        backend.listItemErrorMessage = nil
+        var retryFailure: String?
+        await model.refreshVault(vaultID: "personal") { retryFailure = $0 }
+        XCTAssertNil(retryFailure)
+        XCTAssertEqual(model.listAllItemReference().map(\.id), previous)
     }
 
     func testRemovedVaultNoticesAreShownOnceAndDismissed() async {
