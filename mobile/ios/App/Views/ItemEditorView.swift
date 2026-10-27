@@ -41,6 +41,7 @@ struct ItemEditorView: View {
     }
 
     private var allWritableVault: [VaultSummary] { model.allVault.filter(AppModel.isWritableVault) }
+    private var destinationGroups: [VaultDestinationGroup] { OrganizationLogic.destinationGroups(allWritableVault, organizations: model.allOrganization) }
 
     private var credentialExpiryWarning: String {
         ItemAPICredential.describeEditedExpiry(draft.apiCredential?.expiry ?? "", saved: originalItem?.apiCredential)
@@ -75,11 +76,21 @@ struct ItemEditorView: View {
                     }
                     if isNew {
                         Picker("Vault", selection: $chosenVaultID) {
-                            ForEach(allWritableVault) { vault in
-                                Text(vault.name).tag(vault.id)
+                            ForEach(destinationGroups) { group in
+                                Section(group.name) {
+                                    ForEach(group.destinations) { destination in
+                                        Text(destination.label).tag(destination.id)
+                                    }
+                                }
                             }
                         }
                         .accessibilityIdentifier("editor-vault")
+                        if let destination = destinationGroups.flatMap(\.destinations).first(where: { $0.id == chosenVaultID }) {
+                            Text(destination.context)
+                                .font(.footnote)
+                                .foregroundStyle(.themeSecondary)
+                                .accessibilityIdentifier("editor-vault-context")
+                        }
                     }
                 }
                 if draft.isSecureNote {

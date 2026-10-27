@@ -239,7 +239,7 @@ describe("The item list's context menu", () => {
     const dialog = wrapper.find('[data-testid="move-item-dialog"]');
     expect(dialog.text()).toContain("Move “GitHub”");
     // Work is read-only for this user, and Personal is where the item already is.
-    expect(dialog.findAll('[data-testid="move-item-target"] option').map((option) => option.text())).toEqual(["Team"]);
+    expect(dialog.findAll('[data-testid="move-item-target"] option').map((option) => option.text())).toEqual(["Shared vault / Team"]);
     await wrapper.find('[data-testid="move-item-confirm"]').trigger("submit");
     await flushPromises();
     expect(api.moveItem).toHaveBeenCalledWith("personal", "github", "team");
@@ -255,10 +255,11 @@ describe("The item list's context menu", () => {
     const deployVault: VaultSummary = { id: "deploy", name: "Deploy", type: "organization", role: "editor", itemCount: 0, organizationId: "acme" };
     const auditVault: VaultSummary = { id: "audit", name: "Audit", type: "organization", role: "reader", itemCount: 0, organizationId: "acme" };
     store.allVault.push({ ...deployVault }, { ...auditVault });
+    store.organizations.organizations = [{ id: "acme", name: "Acme", role: "member", memberCount: 2 }];
     const wrapper = mount(MainView, { attachTo: document.body });
     await openItemMenu(wrapper, "GitHub");
     await wrapper.find('[data-testid="context-menu-move"]').trigger("click");
-    expect(wrapper.findAll('[data-testid="move-item-target"] option').map((option) => option.text())).toEqual(["Team", "Deploy"]);
+    expect(wrapper.findAll('[data-testid="move-item-target"] option').map((option) => option.text())).toEqual(["Acme / Deploy", "Shared vault / Team"]);
     wrapper.unmount();
 
     // A reader organization vault is no target, so with nothing else writable the menu has no Move to….

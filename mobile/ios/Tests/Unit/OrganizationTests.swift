@@ -98,6 +98,21 @@ final class OrganizationTests: XCTestCase {
         XCTAssertEqual(grouping.allGroup[1].waitingMessage, "Waiting for the owners of 2 vaults in Globex to give you their keys")
         XCTAssertEqual(grouping.allGroup[2].allVault.map(\.id), ["audit", "deploy"])
         XCTAssertEqual(grouping.allGroup[2].waitingMessage, "Waiting for an owner of a vault in Northwind to give you its key", "a vault that arrived no longer waits")
+        var sharedA = family
+        sharedA.name = "Production"
+        var sharedB = sharedA
+        sharedB.id = "family-other"
+        var northwind = deploy
+        northwind.name = "Production"
+        var acme = ledger
+        acme.name = "Production"
+        let destinations = OrganizationLogic.destinationGroups([sharedA, sharedB, northwind, acme], organizations: allOrganization)
+        XCTAssertEqual(destinations.map(\.name), ["acme", "Northwind", "Shared vault"])
+        XCTAssertEqual(destinations.flatMap(\.destinations).map(\.label), [
+            "acme / Production", "Northwind / Production", "Shared vault / Production (family)", "Shared vault / Production (family-o)",
+        ])
+        XCTAssertEqual(destinations[1].destinations.first?.id, "deploy")
+        XCTAssertEqual(destinations[1].destinations.first?.context, "Shared through teams in Northwind.")
     }
 
     func testKeyWarningsSayWhatHisarCouldNotDo() {
