@@ -227,6 +227,7 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/devices", s.requireSession, s.handleListDevices)
 	apiGroup.Delete("/devices/:id", s.requireSession, s.handleRevokeDevice)
 	apiGroup.Get("/push/config", s.requireSession, s.handleGetPushConfig)
+	apiGroup.Get("/push/keys", s.requireSession, s.handleListPushKeys)
 	apiGroup.Put("/devices/current/push", s.requireSession, s.handleSetDevicePush)
 	apiGroup.Delete("/devices/current/push", s.requireSession, s.handleDeleteDevicePush)
 

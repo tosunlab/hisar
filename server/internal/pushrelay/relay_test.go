@@ -149,7 +149,7 @@ func TestAPNsPushCarriesOnlyTheKindAndASignedProviderToken(t *testing.T) {
 	}
 	var payload map[string]any
 	json.Unmarshal(fake.allBody[0], &payload)
-	want := `{"aps":{"alert":{"loc-key":"push.approval"},"sound":"default","thread-id":"approval"},"kind":"approval"}`
+	want := `{"aps":{"alert":{"loc-key":"push.approval"},"interruption-level":"time-sensitive","sound":"default","thread-id":"approval"},"kind":"approval"}`
 	if got, _ := json.Marshal(payload); string(got) != want {
 		t.Fatalf("payload = %s", got)
 	}

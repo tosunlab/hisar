@@ -156,7 +156,7 @@ func (s *Service) ChangeCredentials(ctx context.Context, actor Actor, request *a
 	s.events.EndStreams(actor.AccountID, actor.TokenHash)
 	s.recordAudit(ctx, actor, auditCredentialsChanged, map[string]any{"change": request.Change, "signedOutDevices": signedOutDeviceCount})
 	// The phones this change signed out still get the alert: it tells them why Hisar asks them to sign in again.
-	s.notifyPhones(actor.AccountID, apitypes.PushMessage{Kind: apitypes.PushKindSecurity}, actor.DeviceID)
+	s.notifyPhones(actor.AccountID, apitypes.PushMessage{Kind: apitypes.PushKindSecurity}, actor.DeviceID, nil)
 	if s.isEmailConfigured() {
 		if account, err := s.store.GetAccountByID(ctx, actor.AccountID); err == nil {
 			message := composeCredentialsChangedEmail(account.Email, request.Change, signedOutDeviceCount, time.Now())

@@ -350,6 +350,13 @@ func (c *Client) SetDevicePush(ctx context.Context, registration apitypes.PushRe
 	return c.sendRequest(ctx, "PUT", "/api/v1/devices/current/push", nil, registration, nil, nil)
 }
 
+// ListPushKeys returns the signed push keys of the account's other phones that want approval pushes. A server older
+// than approval previews answers 404.
+func (c *Client) ListPushKeys(ctx context.Context) (apitypes.DevicePushKeysResponse, error) {
+	var keys apitypes.DevicePushKeysResponse
+	return keys, c.sendRequest(ctx, "GET", "/api/v1/push/keys", nil, nil, &keys, nil)
+}
+
 func (c *Client) DeleteDevicePush(ctx context.Context) error {
 	return c.sendRequest(ctx, "DELETE", "/api/v1/devices/current/push", nil, nil, nil, nil)
 }

@@ -64,6 +64,8 @@ class IosTestParityTest {
                 "Android seals the Secret Key into an AtomicFile, which replaces the old copy in one rename; there is no keychain item to delete first",
             "testListsStayBesideWhatTheyOpenOnAWideScreen" to
                 "The iPhone app lays Vaults, Search and Settings out as split views for the open iPhone Duo; the Android app has one layout for every width so far",
+            "testAnApprovalPreviewVerifiesWithTheAccountsKey" to
+                "Android checks the preview in Go through HisarKit (OpenApprovalPush); core/approval's tests cover the signature",
         )
     }
 

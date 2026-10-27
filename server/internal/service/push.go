@@ -47,13 +47,14 @@ func newWebPushClient() *http.Client {
 }
 
 // GetPushConfig tells a phone which push relay this server sends iPhones' pushes through; an empty URL means push
-// notifications are off. An iPhone may register its payload key with this server.
+// notifications are off. A phone may register its payload key and the account's signature over its key.
 func (s *Service) GetPushConfig() apitypes.PushConfig {
-	return apitypes.PushConfig{RelayURL: s.currentSettings().Push.GetRelayURL(), AcceptsPayloadKey: true}
+	return apitypes.PushConfig{RelayURL: s.currentSettings().Push.GetRelayURL(), AcceptsPayloadKey: true, AcceptsKeySignature: true}
 }
 
 // SetDevicePush saves where the caller's phone gets its pushes, its relay handle or its Web Push subscription, and the
-// kinds it wants.
+// kinds it wants. A key signature must be the account's over this device's key: the server cannot check more, and a
+// Mac checks it again before trusting the key.
 func (s *Service) SetDevicePush(ctx context.Context, actor Actor, registration *apitypes.PushRegistration) error {
 	target, err := parsePushTarget(registration)
 	if err != nil {
@@ -69,6 +70,11 @@ func (s *Service) SetDevicePush(ctx context.Context, actor Actor, registration *
 			allKind = append(allKind, string(kind))
 		}
 	}
+	if registration.KeySignature != "" {
+		if target.KeySignature, err = s.checkPushKeySignature(ctx, actor, target, registration.KeySignature); err != nil {
+			return err
+		}
+	}
 	if err := s.store.SetDevicePush(ctx, actor.AccountID, target, allKind); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return newError(KindInvalid, "Only a signed-in phone receives push notifications.")
@@ -76,6 +82,46 @@ func (s *Service) SetDevicePush(ctx context.Context, actor Actor, registration *
 		return err
 	}
 	return nil
+}
+
+func (s *Service) checkPushKeySignature(ctx context.Context, actor Actor, target store.PushTarget, encodedSignature string) ([]byte, error) {
+	invalid := newError(KindInvalid, "invalid push key signature")
+	p256dh, auth := target.GetMessageKey()
+	signature, err := decodeBase64URL(encodedSignature)
+	if err != nil || p256dh == nil {
+		return nil, invalid
+	}
+	account, err := s.store.GetAccountByID(ctx, actor.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	if crypt.VerifyPushKey(account.SignPub, actor.AccountID, actor.DeviceID, p256dh, auth, signature) != nil {
+		return nil, invalid
+	}
+	return signature, nil
+}
+
+// ListPushKeys lists the keys of the account's other phones that want approval pushes and sent the account's signature
+// over their key, for a Mac to encrypt an approval's preview to.
+func (s *Service) ListPushKeys(ctx context.Context, actor Actor) (apitypes.DevicePushKeysResponse, error) {
+	allTarget, err := s.store.ListPushTargets(ctx, actor.AccountID, string(apitypes.PushKindApproval), actor.DeviceID)
+	if err != nil {
+		return apitypes.DevicePushKeysResponse{}, err
+	}
+	response := apitypes.DevicePushKeysResponse{AllKey: []apitypes.DevicePushKey{}}
+	for _, target := range allTarget {
+		p256dh, auth := target.GetMessageKey()
+		if p256dh == nil || target.KeySignature == nil {
+			continue
+		}
+		response.AllKey = append(response.AllKey, apitypes.DevicePushKey{
+			DeviceID:  target.DeviceID,
+			P256DH:    base64.RawURLEncoding.EncodeToString(p256dh),
+			Auth:      base64.RawURLEncoding.EncodeToString(auth),
+			Signature: base64.RawURLEncoding.EncodeToString(target.KeySignature),
+		})
+	}
+	return response, nil
 }
 
 func parsePushTarget(registration *apitypes.PushRegistration) (store.PushTarget, error) {
@@ -168,8 +214,10 @@ func clipPushName(name string) string {
 
 // notifyPhones sends a push of the message's kind to the account's phones that want it, except exceptDeviceID, after
 // the response. Only the kind travels in the clear; the message itself is encrypted to the phone, and a phone that
-// cannot open it learns the rest from the server once Hisar is unlocked.
-func (s *Service) notifyPhones(accountID string, message apitypes.PushMessage, exceptDeviceID string) {
+// cannot open it learns the rest from the server once Hisar is unlocked. allDeviceMessage are messages another device
+// of the account encrypted to a phone itself (an approval's preview): a phone gets its own instead of message while it
+// still gets pushes with the key it was made for.
+func (s *Service) notifyPhones(accountID string, message apitypes.PushMessage, exceptDeviceID string, allDeviceMessage []apitypes.ApprovalPushMessage) {
 	relayURL := s.currentSettings().Push.GetRelayURL()
 	if relayURL == "" {
 		return
@@ -185,26 +233,55 @@ func (s *Service) notifyPhones(accountID string, message apitypes.PushMessage, e
 			return
 		}
 		for _, target := range allTarget {
+			ciphertext := findDeviceMessage(target, allDeviceMessage)
+			if ciphertext == nil {
+				ciphertext = encryptPushMessage(target, message.Kind, plaintext)
+			}
 			if target.WebPush != nil {
-				s.sendWebPush(ctx, target, message.Kind, plaintext)
+				s.sendWebPush(ctx, target, message.Kind, ciphertext)
 			} else {
-				s.sendRelayPush(ctx, relayURL, target, message.Kind, plaintext)
+				s.sendRelayPush(ctx, relayURL, target, message.Kind, ciphertext)
 			}
 		}
 	})
 }
 
-// sendRelayPush sends an iPhone's push through the relay, with the message encrypted to its payload key when it gave
-// one. A relay older than payloads refuses the field with 400, and then gets the kind alone.
-func (s *Service) sendRelayPush(ctx context.Context, relayURL string, target store.PushTarget, kind apitypes.PushKind, plaintext []byte) {
-	push := apitypes.RelayPushRequest{Handle: target.Handle, Kind: kind}
-	if target.PayloadKey != nil {
-		message, err := crypt.EncryptWebPush(target.PayloadKey.P256DH, target.PayloadKey.Auth, plaintext)
-		if err != nil {
-			log.Printf("push: %s details not encrypted: %v", kind, err)
-		} else if payload := base64.RawURLEncoding.EncodeToString(message); len(payload) <= apitypes.MaximumRelayPushPayload {
-			push.Payload = payload
+// findDeviceMessage returns the target's own message, decoded, if it was encrypted to the key the target has now.
+func findDeviceMessage(target store.PushTarget, allDeviceMessage []apitypes.ApprovalPushMessage) []byte {
+	p256dh, _ := target.GetMessageKey()
+	for _, deviceMessage := range allDeviceMessage {
+		if deviceMessage.DeviceID != target.DeviceID {
+			continue
 		}
+		messageKey, keyErr := decodeBase64URL(deviceMessage.P256DH)
+		ciphertext, messageErr := decodeBase64URL(deviceMessage.Message)
+		if keyErr == nil && messageErr == nil && p256dh != nil && bytes.Equal(messageKey, p256dh) {
+			return ciphertext
+		}
+	}
+	return nil
+}
+
+// encryptPushMessage encrypts the message to the target's key; nil for an iPhone without a payload key.
+func encryptPushMessage(target store.PushTarget, kind apitypes.PushKind, plaintext []byte) []byte {
+	p256dh, auth := target.GetMessageKey()
+	if p256dh == nil {
+		return nil
+	}
+	ciphertext, err := crypt.EncryptWebPush(p256dh, auth, plaintext)
+	if err != nil {
+		log.Printf("push: %s not encrypted: %v", kind, err)
+		return nil
+	}
+	return ciphertext
+}
+
+// sendRelayPush sends an iPhone's push through the relay, with the message encrypted to its payload key when it has
+// one. A relay older than payloads refuses the field with 400, and then gets the kind alone.
+func (s *Service) sendRelayPush(ctx context.Context, relayURL string, target store.PushTarget, kind apitypes.PushKind, ciphertext []byte) {
+	push := apitypes.RelayPushRequest{Handle: target.Handle, Kind: kind}
+	if payload := base64.RawURLEncoding.EncodeToString(ciphertext); ciphertext != nil && len(payload) <= apitypes.MaximumRelayPushPayload {
+		push.Payload = payload
 	}
 	if s.postRelayPush(ctx, relayURL, target, push) == http.StatusBadRequest && push.Payload != "" {
 		push.Payload = ""
@@ -225,18 +302,13 @@ func (s *Service) postRelayPush(ctx context.Context, relayURL string, target sto
 	return s.deliverPush(ctx, s.PushClient, request, target, push.Kind)
 }
 
-// sendWebPush sends the message to an Android phone's UnifiedPush distributor, encrypted to the phone (RFC 8291): the
+// sendWebPush sends the message, encrypted to an Android phone (RFC 8291), to its UnifiedPush distributor: the
 // distributor learns that a message came, not what it says.
-func (s *Service) sendWebPush(ctx context.Context, target store.PushTarget, kind apitypes.PushKind, plaintext []byte) {
-	if !s.Limiters.WebPush.Allow(target.DeviceID + "/" + string(kind)) {
+func (s *Service) sendWebPush(ctx context.Context, target store.PushTarget, kind apitypes.PushKind, ciphertext []byte) {
+	if ciphertext == nil || !s.Limiters.WebPush.Allow(target.DeviceID+"/"+string(kind)) {
 		return
 	}
-	body, err := crypt.EncryptWebPush(target.WebPush.P256DH, target.WebPush.Auth, plaintext)
-	if err != nil {
-		log.Printf("push: %s not sent: %v", kind, err)
-		return
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, target.WebPush.Endpoint, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, target.WebPush.Endpoint, bytes.NewReader(ciphertext))
 	if err != nil {
 		return
 	}

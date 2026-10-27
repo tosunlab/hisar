@@ -57,6 +57,9 @@ type State struct {
 	RecoveryOperationID string            `json:"recoveryOperationId,omitempty"`
 	// Push is this phone's registration with the push relay for the signed-in account; empty until it has one.
 	Push PushRegistration `json:"push,omitzero"`
+	// SigningPublicKey is the signed-in account's public signing key, kept so a locked phone can check the approval
+	// previews a Mac of the account signed (approval.OpenPushPreview).
+	SigningPublicKey []byte `json:"signingPublicKey,omitempty"`
 
 	// BiometricUnlock is the account unlock key sealed with a key kept in the OS keychain.
 	BiometricUnlock      []byte    `json:"biometricUnlock,omitempty"`
