@@ -285,8 +285,15 @@ private struct AutoFillPasskeyRegistrationView: View {
                         .accessibilityIdentifier("autofill-save-passkey")
                     }
                 }
-            } else {
+            } else if model.registrationDestination == .loading {
                 ProgressView().frame(maxWidth: .infinity).listRowBackground(Color.clear)
+            } else if model.registrationDestination == .failed {
+                Section {
+                    Button("Try again") {
+                        Task { await model.loadPasskeyRegistrationOptions() }
+                    }
+                    .accessibilityIdentifier("autofill-passkey-retry")
+                }
             }
         }
         .applyThemedListStyle()

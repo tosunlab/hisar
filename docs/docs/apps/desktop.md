@@ -278,6 +278,8 @@ Hisar is an SSH agent for the SSH keys in your vaults (design: [Design](../desig
 
 The agent listens on `~/.hisar/agent.sock` while the app runs (`HISAR_SSH_AGENT_SOCKET` overrides the path) and offers keys from all your vaults only while Hisar is unlocked. Each use of a key opens the approval dialog, which says who asks for what, like "Terminal wants to push to git.tryhisar.com", with the command and repository, and starts Touch ID at once ("or use your master password" instead). "Don't ask again for Terminal for 1 hour" is checked by default; commit signatures always ask, and requests forwarded from another computer (`ssh -A`) show a red warning and can only be allowed once. While Hisar is locked, the dialog unlocks it. Settings → SSH & Git → **Compact SSH approvals** shows a small card at the top right instead. Unanswered requests are denied after 60 seconds. Preview: `?window=ssh-approval&approval=1` (or `=2` for two waiting, `=signing` for a commit signature), plus `&approvalLocked=1` (Touch ID unlocks), `&approvalPassword=1` (master password unlocks), `&compact=1`, `&forwarded=1`, `&noTouchID=1`.
 
+Browser passkey verification uses the same approval window. Its heading names the website, and its subtitle asks you to confirm it is you in your browser.
+
 ## Keeping Hisar running
 
 `ssh`, `git` and commit signing cannot start Hisar: while the app is not running, `~/.hisar/agent.sock` refuses connections and they

@@ -171,6 +171,8 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 	}
 	if request.Session != nil {
 		event.HarnessName = request.Session.Harness.Name
+		event.HarnessProgramPath = request.Session.Program.Path
+		event.HarnessProgramEntrypoint = request.Session.Program.Entrypoint
 		if directory := request.Session.Directory; directory != "" {
 			event.ProjectName = truncateText(filepath.Base(directory), maximumAgentNameLength)
 			event.ProjectPath = truncateText(describeDirectory(directory, approver.config.HomeDirectory), maximumDirectoryLength)
@@ -189,6 +191,7 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 	if len(event.GrantDurations) > 0 {
 		event.GrantDuration = string(clisocket.AgentGrantOnce)
 		event.GrantScope = describeGrantScope(request)
+		event.GrantHolderScope = string(request.GrantHolderScope)
 	}
 	if signIn := request.SignIn; signIn != nil {
 		event.Website, event.BrowserName = signIn.Website, signIn.BrowserName

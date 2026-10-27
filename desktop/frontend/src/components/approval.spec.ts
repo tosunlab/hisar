@@ -229,6 +229,69 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it("describes browser verification without an SSH or unlock instruction", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ kind: "passkey", appName: "Your browser", action: "use your passkey for github.com", keyTitle: "", target: "", isRememberable: false }));
+    await flushPromises();
+    expect(wrapper.get("h1").text()).toBe("Your browser wants to use your passkey for github.com");
+    expect(wrapper.get(".subtitle").text()).toBe("Confirm it is you to continue in your browser.");
+    wrapper.unmount();
+  });
+
+  it("opens compact details from the keyboard and focuses the full heading", async () => {
+    const wrapper = mount(SSHApprovalWindow, { attachTo: document.body });
+    sendEvent("ssh-approval", createApprovalEvent({ isCompact: true }));
+    await flushPromises();
+    const details = wrapper.get('[data-testid="show-approval-details"]');
+    expect(details.attributes("aria-expanded")).toBe("false");
+    (details.element as HTMLButtonElement).focus();
+    details.element.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+    await flushPromises();
+    expect(wrapper.find(".compact-card").exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.get("h1").element);
+    expect(wrapper.get('[data-testid="approval-details"]').text()).toContain("git push");
+    pressKey("Escape");
+    await flushPromises();
+    expect(api.respondSSHApproval).toHaveBeenLastCalledWith("request-1", false, false);
+    wrapper.unmount();
+  });
+
+  it("leaves Return to the focused grant duration menu", async () => {
+    const wrapper = mount(SSHApprovalWindow, { attachTo: document.body });
+    sendEvent("ssh-approval", createAgentRunApprovalEvent({ isTouchIDApproval: false }));
+    await flushPromises();
+    const menu = wrapper.get('select[name="grantDuration"]').element;
+    const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    const callsBefore = api.respondSSHApproval.mock.calls.length;
+    menu.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(api.respondSSHApproval).toHaveBeenCalledTimes(callsBefore);
+    wrapper.unmount();
+  });
+
+  it.each([false, true])("denies a queued request without changing the active request or its deadline, compact %s", async (isCompact) => {
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ isCompact, timeoutAt: new Date(Date.now() + 60_000).toISOString() }));
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", appName: "Visual Studio Code", timeoutAt: new Date(Date.now() + 30_000).toISOString() }));
+    await flushPromises();
+    const queue = wrapper.get('[data-testid="approval-queue"]');
+    expect(queue.text()).toContain("Visual Studio Code");
+    expect(queue.text()).toContain("push to git.tryhisar.com");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(queue.text()).toContain("Expires in 28 seconds");
+    await queue.get("button").trigger("click");
+    await flushPromises();
+    expect(api.respondSSHApproval).toHaveBeenLastCalledWith("request-2", false, false);
+    expect(api.respondSSHApproval).toHaveBeenCalledTimes(2);
+    expect(approvalStore.isAuthorizing).toBe(true);
+    expect(wrapper.get('[data-testid="approval-app"]').text()).toContain("Terminal");
+    expect(wrapper.find(".compact-card").exists()).toBe(isCompact);
+    expect(wrapper.get('[data-testid="approval-expiry"]').text()).toBe("Expires in 58 seconds");
+    expect(wrapper.find('[data-testid="approval-queue"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("unlocks a locked Hisar with Touch ID", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent({ isUnlockRequired: true, keyTitle: "" }));
@@ -670,6 +733,62 @@ describe("SSHApprovalWindow", () => {
     expect((wrapper.find('[data-testid="approval-grant-duration-menu"]').element as HTMLSelectElement).value).toBe("once");
     expect(wrapper.find('[data-testid="approval-grant-scope"]').text()).toBe("A longer choice covers only reading “Stripe › api key” again, nothing else.");
     expect(wrapper.find('[data-testid="approval-agent-note"]').text()).toBe("Approving also lets Claude Code list and search the vaults available to agents.");
+    wrapper.unmount();
+  });
+
+  it("replaces the phone sending note after failure without restarting Touch ID", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    const event = createAgentRunApprovalEvent({ isPhoneApproval: true, phoneApprovalState: "pending" });
+    sendEvent("ssh-approval", event);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="approval-phone"]').text()).toBe("Sending to your smart device…");
+    await wrapper.get('select[name="grantDuration"]').setValue("hour");
+    const responseCount = api.respondSSHApproval.mock.calls.length;
+    sendEvent("ssh-approval", { ...event, phoneApprovalState: "failed" });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="approval-phone"]').text()).toBe("Could not send this request to your smart device. Approve or deny on this Mac.");
+    expect(approvalStore.grantDuration).toBe("hour");
+    expect(api.respondSSHApproval).toHaveBeenCalledTimes(responseCount);
+    expect(approvalStore.allApproval).toHaveLength(1);
+    await wrapper.get('[data-testid="deny-approval"]').trigger("click");
+    expect(api.respondSSHApproval).toHaveBeenLastCalledWith(event.requestID, false, false);
+    wrapper.unmount();
+  });
+
+  it.each([true, false])("discloses the unsigned agent program without substituting the client path, available %s", async (available) => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createHarnessApprovalEvent({
+      agentNameSource: "process",
+      harnessProgramPath: available ? "/opt/homebrew/bin/bun" : "",
+      harnessProgramEntrypoint: available ? "script:/Users/alice/omp/main.ts" : "",
+    }));
+    await flushPromises();
+    expect(wrapper.get('[data-testid="approval-agent-verification"]').text()).toContain("not a verified signature");
+    expect(wrapper.get('[data-testid="approval-signer"]').text()).toMatch(/^Host app/);
+    const details = wrapper.get('[data-testid="approval-agent-program"]');
+    expect(details.get("summary").text()).toBe("Agent program details");
+    expect(details.text()).not.toContain("/Applications/Hisar.app/Contents/Helpers/hisar");
+    expect(details.text()).toContain(available ? "script:/Users/alice/omp/main.ts" : "details are unavailable");
+    wrapper.unmount();
+  });
+
+  it.each(["harness", "session", "connection"])("describes the selected grant lifetime for its %s holder", async (scope) => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createHarnessApprovalEvent({ grantHolderScope: scope, allGrantDuration: ["once", "hour", "day", "always"] }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-grant-note"]').exists()).toBe(false);
+    await wrapper.get('select[name="grantDuration"]').setValue("hour");
+    const note = wrapper.get('[data-testid="approval-grant-note"]');
+    expect(note.text()).toContain("Locking pauses access");
+    expect(note.text()).toContain("1 hour");
+    expect(note.text()).toContain("Settings → Developer tools → Coding agents → Allowed without asking");
+    if (scope === "harness") {
+      expect(note.text()).toContain("Saved for omp across sessions and Hisar restarts");
+      await wrapper.get('select[name="grantDuration"]').setValue("always");
+      expect(note.text()).toContain("Until you revoke it or sign out.");
+    } else {
+      expect(note.text()).toContain(scope === "session" ? "when this agent session ends" : "when this connection ends");
+    }
     wrapper.unmount();
   });
 

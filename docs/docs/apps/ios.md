@@ -140,6 +140,8 @@ AutoFill" button in the app's Settings, open a login page in Safari, tap the pas
 is set in `Configuration/Local.xcconfig`. That has not been verified yet, and neither has the system passkey flow
 (Safari offering Hisar for a passkey sign-in or "Save passkey"): both need the paid team.
 
+When saving a passkey, a failed destination load stops the spinner and offers **Try again** for the same request. If Hisar locked or signed out, the extension shows its authentication screen instead.
+
 Manual run: open `Hisar.xcodeproj`, choose the **Hisar** scheme and an iPhone simulator, and Run. The simulator
 reaches a server on your Mac at `http://127.0.0.1:<port>`; plain `http` is allowed for local addresses only
 (`NSAllowsLocalNetworking`).

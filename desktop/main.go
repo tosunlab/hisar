@@ -229,6 +229,7 @@ func main() {
 			application.InvokeAsync(func() { placeApprovalWindow(approvalWindow, isCompact, height, false) })
 		},
 	})
+	agentServer.SetMissingAgentKeyListener(func() { wailsApp.Event.Emit(eventMissingAgentKeysChanged, "") })
 	agentContext, stopAgent := context.WithCancel(context.Background())
 	agentStopped := make(chan struct{})
 

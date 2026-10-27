@@ -48,6 +48,7 @@ export interface ApprovalEvent {
     "isUnlockRequired": boolean;
     "isPasswordUnlock": boolean;
     "isPhoneApproval": boolean;
+    "phoneApprovalState": string;
 
     /**
      * IsTooLongForPhone is set instead of IsPhoneApproval when a phone could answer but the request is too long to send.
@@ -73,6 +74,8 @@ export interface ApprovalEvent {
      */
     "harnessName": string;
     "agentNameSource": string;
+    "harnessProgramPath": string;
+    "harnessProgramEntrypoint": string;
     "projectName": string;
     "projectPath": string;
     "workingDirectory": string;
@@ -100,6 +103,7 @@ export interface ApprovalEvent {
     "allGrantDuration": string[] | null;
     "grantDuration": string;
     "grantScope": string;
+    "grantHolderScope": string;
 
     /**
      * Website and BrowserName are where an agent sign-in goes, as Hisar observed it; Logins are the logins saved for

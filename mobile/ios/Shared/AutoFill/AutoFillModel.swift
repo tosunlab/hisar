@@ -14,6 +14,13 @@ final class AutoFillModel: ObservableObject {
         case updateRequired
     }
 
+    enum RegistrationDestination: Equatable {
+        case idle
+        case loading
+        case loaded(PasskeyRegistrationOptions)
+        case failed
+    }
+
     enum RequestKind: Equatable {
         case password
         case oneTimeCode
@@ -56,7 +63,12 @@ final class AutoFillModel: ObservableObject {
     @Published private(set) var allMatchingPasskey: [StoredPasskey] = []
     @Published private(set) var passkeyAssertionRequest: PasskeyAssertionRequest?
     @Published private(set) var passkeyRegistrationRequest: PasskeyRegistrationRequest?
-    @Published private(set) var passkeyRegistrationOptions: PasskeyRegistrationOptions?
+    @Published private(set) var registrationDestination: RegistrationDestination = .idle
+
+    var passkeyRegistrationOptions: PasskeyRegistrationOptions? {
+        if case .loaded(let options) = registrationDestination { return options }
+        return nil
+    }
     @Published var selectedRegistrationLoginID: String?
     // The app's theme, read from the shared state in the app group.
     @Published private(set) var theme = VaultTheme.standard
@@ -219,7 +231,7 @@ final class AutoFillModel: ObservableObject {
         pendingPasskeyCredentialID = nil
         passkeyAssertionRequest = nil
         passkeyRegistrationRequest = nil
-        passkeyRegistrationOptions = nil
+        registrationDestination = .idle
         selectedRegistrationLoginID = nil
         allMatchingPasskey = []
     }
@@ -339,9 +351,25 @@ final class AutoFillModel: ObservableObject {
     }
 
     func loadPasskeyRegistrationOptions() async {
-        guard let request = passkeyRegistrationRequest,
-              let options = await perform({ try $0.preparePasskeyRegistration(relyingPartyID: request.relyingPartyID, allExcludedCredentialID: request.allExcludedCredentialID) }) else { return }
-        passkeyRegistrationOptions = options
+        guard !isBusy, let request = passkeyRegistrationRequest, let backend = prepareBackend() else { return }
+        applyStatus(backend.getStatus())
+        guard screen == .passkeyRegistration else { return }
+        let epoch = requestEpoch
+        registrationDestination = .loading
+        errorMessage = nil
+        let options = await perform { try $0.preparePasskeyRegistration(relyingPartyID: request.relyingPartyID, allExcludedCredentialID: request.allExcludedCredentialID) }
+        guard epoch == requestEpoch else { return }
+        applyStatus(backend.getStatus())
+        guard screen == .passkeyRegistration else {
+            registrationDestination = .idle
+            errorMessage = nil
+            return
+        }
+        guard let options else {
+            registrationDestination = .failed
+            return
+        }
+        registrationDestination = .loaded(options)
         let userName = request.userName.trimmingCharacters(in: .whitespaces)
         selectedRegistrationLoginID = options.allLogin.first { $0.isPersonal && !userName.isEmpty && $0.username.caseInsensitiveCompare(userName) == .orderedSame }?.id
     }

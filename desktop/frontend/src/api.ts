@@ -2,6 +2,7 @@ import { Browser } from "@wailsio/runtime";
 import { ApprovalTouchIDService, SettingsWindowService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
+import type { MissingAgentKey } from "../bindings/github.com/tryhisar/hisar/core/sshagent";
 import { BrowserBridge, InviteLinkService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/core/app";
 import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/core/browserprotocol";
 import { Service as CommandLineService } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
@@ -93,6 +94,7 @@ export type {
   AgentHost,
   AgentSignIn,
   ApprovalEvent,
+  MissingAgentKey,
   RememberedAgentSecret,
   CardDescription,
   CredentialChangeResult,
@@ -442,6 +444,7 @@ const wailsApi = {
   respondSSHApproval: (requestID: string, isAuthorized: boolean, isRemembered: boolean): Promise<void> =>
     AgentService.RespondSSHApproval(requestID, isAuthorized, isRemembered),
   listAllPendingSSHApproval: async (): Promise<ApprovalEvent[]> => (await AgentService.ListPendingSSHApprovals()) ?? [],
+  listMissingAgentKeys: async (): Promise<MissingAgentKey[]> => (await AgentService.ListMissingAgentKeys()) ?? [],
   respondApprovalWithPassword: (requestID: string, password: string, isRemembered: boolean): Promise<void> =>
     AgentService.RespondApprovalWithPassword(requestID, password, isRemembered),
   setSSHApprovalRemembered: (requestID: string, isRemembered: boolean): Promise<void> => AgentService.SetSSHApprovalRemembered(requestID, isRemembered),
