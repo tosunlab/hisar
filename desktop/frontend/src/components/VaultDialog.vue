@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { closeVaultDialog, deleteVault, leaveVault, renameVault, store, type VaultDialog } from "../store";
+import { closeVaultDialog, deleteVault, leaveVault, openShareLinks, renameVault, store, type VaultDialog } from "../store";
 import { formatRole } from "../util";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
@@ -142,6 +142,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <label class="field-label" for="vault-confirm-name">Type {{ vault.name }} to confirm</label>
             <input id="vault-confirm-name" v-model="confirmedName" name="confirmedName" autocomplete="off" spellcheck="false" data-testid="vault-delete-confirm-name" />
             <p class="muted hint">Deleted items can't be restored.</p>
+            <p class="muted hint">Share links are separate copies. Deleting this vault doesn't revoke them. Review them in Shared links.</p>
+            <button type="button" class="ghost" data-testid="vault-review-shared-links" @click="closeVaultDialog(); openShareLinks()">Review shared links</button>
           </div>
         </template>
         <p v-else class="body-text">The vault is empty.</p>

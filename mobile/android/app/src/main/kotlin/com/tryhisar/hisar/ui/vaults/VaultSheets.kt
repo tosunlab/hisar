@@ -307,7 +307,7 @@ fun VaultDeletionScreen(model: AppModel, actions: VaultActions, onClose: () -> U
                         if (isMoving) {
                             "Hisar re-encrypts each item on this device with the other vault's key before it moves. The server never sees them."
                         } else {
-                            "Deleted items can't be restored. Export your data first if you may need them."
+                            "Deleted items can't be restored. Export your data first if you may need them. Share links contain separate copies of item fields. Deleting this vault doesn't revoke them. Review links you created in Shared links on the Mac, or with hisar share-links."
                         },
                     )
                 },

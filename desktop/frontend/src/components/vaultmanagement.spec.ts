@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import type { VaultSummary } from "../api";
 import { createApiMock, createItem, createStatus, createVaultActions, createVaultMember, testBob } from "../testing";
 import ReadIssuesPanel from "./ReadIssuesPanel.vue";
+import ConfirmDeleteDialog from "./ConfirmDeleteDialog.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -109,6 +110,33 @@ describe("vault menu", () => {
 });
 
 describe("delete vault dialog", () => {
+  it("reviews shared links from item deletion without deleting the item", async () => {
+    api.listAllShareLink.mockResolvedValue([]);
+    const wrapper = mount(ConfirmDeleteDialog, { props: { vaultID: "work", itemID: "item-1", title: "GitHub" } });
+    await wrapper.find('[data-testid="item-review-shared-links"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.emitted("close")).toHaveLength(1);
+    expect(api.deleteItem).not.toHaveBeenCalled();
+    expect(store.isShareLinksOpen).toBe(true);
+    store.isShareLinksOpen = false;
+    wrapper.unmount();
+  });
+
+  it("reviews shared links without submitting the deletion", async () => {
+    api.listAllShareLink.mockResolvedValue([]);
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await chooseFromMenu(wrapper, "delete");
+    await wrapper.find('[data-testid="vault-delete-items"]').setValue(true);
+    expect(wrapper.find('[data-testid="vault-dialog-delete"]').text()).toContain("Deleting this vault doesn't revoke them.");
+    await wrapper.find('[data-testid="vault-review-shared-links"]').trigger("click");
+    await flushPromises();
+    expect(api.deleteVault).not.toHaveBeenCalled();
+    expect(store.vaultDialog).toBeNull();
+    expect(store.isShareLinksOpen).toBe(true);
+    store.isShareLinksOpen = false;
+    wrapper.unmount();
+  });
+
   it("lists who loses access and moves the items to the first writable vault by default", async () => {
     api.getVaultActions.mockResolvedValue(createVaultActions({ membersLosingAccess: [createVaultMember({ ...testBob, role: "editor", isCurrentUser: false })] }));
     api.deleteVault.mockResolvedValue({ movedCount: 12, targetVaultName: "Personal" });
