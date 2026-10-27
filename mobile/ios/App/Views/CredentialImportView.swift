@@ -31,6 +31,9 @@ struct CredentialImportView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if model.isHisarExportImport, let fileName = preview?.fileName ?? progress?.fileName {
+                    Section { ImportFileNameRow(fileName: fileName) }
+                }
                 if let progress {
                     progressSections(progress)
                 } else if let preview {
@@ -54,7 +57,7 @@ struct CredentialImportView: View {
                     }
                 }
             }
-            .navigationTitle(preview.map { "Import from \($0.fileName)" } ?? "Import")
+            .navigationTitle(model.isHisarExportImport ? "Import Hisar export" : preview.map { "Import from \($0.fileName)" } ?? "Import")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if isDone {
@@ -282,5 +285,24 @@ struct CredentialImportView: View {
                 }
             }
         }
+    }
+}
+
+struct ImportFileNameRow: View {
+    var fileName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("File name")
+                .font(.footnote)
+                .foregroundStyle(.themeSecondary)
+            Text(fileName)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("credential-import-filename")
     }
 }

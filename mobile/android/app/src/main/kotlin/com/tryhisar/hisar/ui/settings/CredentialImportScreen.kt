@@ -2,6 +2,7 @@ package com.tryhisar.hisar.ui.settings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.CircularProgressIndicator
@@ -76,7 +78,7 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
     // The tabs stay composed under the screen, so it comes back to them as they were; taps must not reach them.
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures() }) {
         SettingsScreen(
-            if (sourceName.isEmpty()) "Import" else "Import from $sourceName",
+            if (credentialImport.sourceFileName != null) "Import Hisar export" else if (sourceName.isEmpty()) "Import" else "Import from $sourceName",
             onBack = null,
             isTitleInline = true,
             bottomInset = 0.dp,
@@ -90,6 +92,9 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
             },
         ) {
             Column(Modifier.testTag("credential-import")) {
+                credentialImport.sourceFileName?.let { fileName ->
+                    FormSection { ImportFileNameRow(fileName) }
+                }
                 when (sheet) {
                     CredentialImportSheet.Receiving -> FormSection {
                         FormRow(Modifier.testTag("credential-import-receiving")) {
@@ -108,6 +113,18 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
                         scope.launch { credentialImport.continueCredentialImport() }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ImportFileNameRow(fileName: String) {
+    FormRow(Modifier.testTag("credential-import-filename")) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("File name", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+            SelectionContainer {
+                Text(fileName, style = HisarType.body, color = HisarTheme.colors.label)
             }
         }
     }

@@ -270,6 +270,7 @@ class CredentialImportTests {
         val sheet = model.credentialImport.sheet.value
         assertTrue(sheet is CredentialImportSheet.EnteringPassphrase, "an encrypted export asks for its passphrase")
         assertEquals("Alice's export.hisar", sheet.fileName)
+        assertEquals("Alice's export.hisar", model.credentialImport.sourceFileName)
         assertNull(model.credentialImport.preview, "there is no preview until the export is opened")
         assertEquals(1, harness.backend.countCall("prepareHisarExportImport"))
         assertEquals(0, harness.backend.countCall("openImportFile"), "nothing is opened before a passphrase is entered")
@@ -291,6 +292,12 @@ class CredentialImportTests {
         model.credentialImport.openImportFile(FakeBackend.HISAR_EXPORT_PASSPHRASE)
         assertEquals("personal", model.credentialImport.preview?.vaultID, "the right passphrase opens the export")
         assertNull(model.errorMessage.value)
+        assertEquals("Alice's export.hisar", model.credentialImport.sourceFileName)
+        model.credentialImport.startCredentialImport(true)
+        runCurrent()
+        assertEquals("Alice's export.hisar", model.credentialImport.sourceFileName)
+        model.credentialImport.closeCredentialImport()
+        assertNull(model.credentialImport.sourceFileName)
     }
 
     @Test
