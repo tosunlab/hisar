@@ -107,6 +107,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | the hisar command-line tool (`hisar`) | the CLI (in app copy), the binary |
 | SSH agent, Use Hisar for SSH | key agent |
 | Approve requests on my smart device (Mac) / Approve requests from my Mac (iPhone, Android) · or approve on your smart device (Mac approval window) · Your smart device can now approve requests | Approve requests on my iPhone, Allow approvals from my iPhone, Allow approving Mac requests |
+| SSH keys, the command-line tool, coding agents and apps | The request kinds listed in Mac approvals settings on all three apps. Notifications use "an SSH key, the command-line tool, a coding agent or an app". |
 | Approve, Deny | Allow, Reject |
 | "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet) · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
