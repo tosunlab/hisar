@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.ui
 
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.test.core.app.ApplicationProvider
@@ -66,6 +67,26 @@ class CredentialImportUITests : HisarUITestCase() {
         tap("credential-import-done")
         composeRule.waitUntil("the import closes", 10_000) { !exists(hasTestTag("credential-import")) }
         assertEquals(1, backend.countCall("cancelImport"))
+    }
+
+    @Test
+    fun testGroupedPreviewKeepsOneSelectorAndRetainsEachDestinationAndAccess() = startImport({
+        CredentialExchangeResult.Received("""[["Docker","Slack"],["Figma"],["Mail"]]""".encodeToByteArray())
+    }) {
+        waitFor("credential-import-start")
+        assertFalse("choices stay collapsed", exists(hasTestTag("credential-import-group-vault-family")))
+        tap("credential-import-group-0-destination")
+        tap("credential-import-group-vault-family")
+        waitFor(hasText("Collection 1 to Family"))
+        assertTrue("members remain in the group card", exists(hasText("bob@example.com", substring = true)))
+        assertTrue(exists(hasText("Imported items are readable by the destination's current members. Access can change later.")))
+        tap("credential-import-group-2-destination")
+        tap("credential-import-group-vault-family")
+        tap("credential-import-group-0-destination")
+        assertTrue("the first choice survives another mapping", exists(hasContentDescription("Chosen")))
+        tap("credential-import-vault-cancel")
+        assertTrue(exists(hasText("Collection 1 to Family")))
+        assertTrue(exists(hasText("Collection 3 to Family")))
     }
 
     @Test

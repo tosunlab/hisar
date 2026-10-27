@@ -2,6 +2,8 @@ package com.tryhisar.hisar.ui.settings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -33,6 +36,7 @@ import com.tryhisar.hisar.app.CredentialImportSheet
 import com.tryhisar.hisar.model.ImportPreview
 import com.tryhisar.hisar.model.ImportProgress
 import com.tryhisar.hisar.model.ImportSkippedEntry
+import com.tryhisar.hisar.model.ImportSourceGroup
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.ui.components.ClearSection
 import com.tryhisar.hisar.ui.components.ErrorBanner
@@ -126,6 +130,11 @@ private fun PreviewSections(
     val scope = rememberCoroutineScope()
     val allVault = model.credentialImport.allVault
     val isGrouped = preview.groups.size > 1
+    var groupToMap by remember { mutableStateOf<ImportSourceGroup?>(null) }
+    fun destinationName(vaultID: String, fallback: String): String {
+        val vault = allVault.firstOrNull { it.id == vaultID } ?: return fallback
+        return if (allVault.count { it.name == vault.name } > 1) "${vault.name} · ${vault.id}" else vault.name
+    }
     val exportOrigin = describeExportOrigin(preview.exportedFrom, preview.exportedAt)
     if (exportOrigin != null || preview.notice.isNotEmpty()) {
         FormSection(modifier = Modifier.testTag("hisar-import-origin")) {
@@ -155,13 +164,13 @@ private fun PreviewSections(
         FormSection(header = "Source and destination access", modifier = Modifier.testTag("credential-import-access")) {
             Text("${group.name} to ${group.vaultName}")
             if (isGrouped) {
-                Text(VaultLogic.describeItemCount(group.itemCount))
-                allVault.forEach { vault ->
-                    RowDivider()
-                    CheckRow(vault.name, vault.id == group.vaultID, {
-                        if (!isWorking && vault.id != group.vaultID) scope.launch { model.credentialImport.mapCredentialImportGroup(group.id, vault.id) }
-                    }, testTag = "credential-import-group-$groupIndex-vault-${vault.id}")
-                }
+                NavigationRow(
+                    "Vault for ${VaultLogic.describeItemCount(group.itemCount)}",
+                    "credential-import-group-$groupIndex-destination",
+                    { groupToMap = group },
+                    value = destinationName(group.vaultID, group.vaultName),
+                    enabled = !isWorking,
+                )
             }
             Text(if (group.isPrivate) "Private or unspecified source" else "Shared source")
             group.members.forEach { member ->
@@ -169,6 +178,24 @@ private fun PreviewSections(
             }
             Text("Imported items are readable by the destination's current members. Access can change later.")
         }
+    }
+    groupToMap?.let { group ->
+        AlertDialog(
+            onDismissRequest = { groupToMap = null },
+            title = { Text("Vault for ${VaultLogic.describeItemCount(group.itemCount)}") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    allVault.forEach { vault ->
+                        CheckRow(destinationName(vault.id, vault.name), vault.id == group.vaultID, {
+                            groupToMap = null
+                            if (!isWorking && vault.id != group.vaultID) scope.launch { model.credentialImport.mapCredentialImportGroup(group.id, vault.id) }
+                        }, testTag = "credential-import-group-vault-${vault.id}")
+                    }
+                }
+            },
+            confirmButton = { PlainButton("Cancel", { groupToMap = null }, testTag = "credential-import-vault-cancel") },
+            containerColor = HisarTheme.colors.cellBackground,
+        )
     }
     val allCountRow = preview.allCountRow
     if (allCountRow.isNotEmpty()) {
