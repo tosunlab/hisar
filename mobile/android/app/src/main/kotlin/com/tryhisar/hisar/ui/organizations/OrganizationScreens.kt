@@ -269,6 +269,8 @@ private sealed interface OrganizationDialog {
 
     data class RemoveTeamMember(val team: Team, val member: TeamMember) : OrganizationDialog
 
+    data class TakeVault(val team: Team, val vault: TeamVault) : OrganizationDialog
+
     data class ChangeRole(val member: Member, val role: String) : OrganizationDialog
 
     data class DeleteTeam(val team: Team) : OrganizationDialog
@@ -383,7 +385,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     }
 
     fun takeBack(vault: TeamVault, team: Team) {
-        launchChange("Take back") { model.organizations.takeVaultFromTeam(organizationID, team.id, vault.vaultID) }
+        dialog = OrganizationDialog.TakeVault(team, vault)
     }
 
     RefreshablePage(
@@ -537,6 +539,13 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     }
 
     when (val current = dialog) {
+        is OrganizationDialog.TakeVault -> OrganizationAccessConfirmation(
+            title = "Take ${current.vault.displayName} back from ${current.team.name}?",
+            message = "Review who loses access or has a reduced role through the remaining teams.",
+            consequences = organization?.let { OrganizationLogic.accessConsequences(it, OrganizationAccessChange.TakeVault(current.team.id, current.vault.vaultID)) }.orEmpty(),
+            confirmLabel = "Take back", confirmTestTag = "confirm-take-back",
+            onConfirm = { launchChange("Take back") { model.organizations.takeVaultFromTeam(organizationID, current.team.id, current.vault.vaultID) } }, onDismiss = { dialog = null },
+        )
         is OrganizationDialog.RemoveTeamMember -> OrganizationAccessConfirmation(
             title = "Remove ${current.member.displayName} from ${current.team.name}?",
             message = if (current.member.isCurrentUser) "You lose access to vaults this team alone gives you." else "Their vault access changes only where no other team gives the same role.",
@@ -721,7 +730,7 @@ private fun TeamSection(
                         onLongClick = if (isAdmin) ({ onMenu(menu) }) else null,
                         menu = {
                             HisarMenu(rowMenu == menu, onDismiss = { onMenu(null) }) {
-                                HisarMenuItem("Take back", "take-back-${vault.displayName}", icon = Icons.AutoMirrored.Outlined.Undo, onClick = {
+                                HisarMenuItem("Take back…", "take-back-${vault.displayName}", icon = Icons.AutoMirrored.Outlined.Undo, isDestructive = true, onClick = {
                                     onMenu(null)
                                     onTakeBack(vault)
                                 })
@@ -734,8 +743,8 @@ private fun TeamSection(
                 }
                 if (isAdmin) {
                     SwipeActionRow(
-                        "Take back", Icons.AutoMirrored.Outlined.Undo, "team-${team.name}-take-back-${vault.displayName}", isLeading = false,
-                        onAction = { onTakeBack(vault) }, actionColor = HisarTheme.colors.secondaryLabel, content = row,
+                        "Take back…", Icons.AutoMirrored.Outlined.Undo, "team-${team.name}-take-back-${vault.displayName}", isLeading = false,
+                        onAction = { onTakeBack(vault) }, actionColor = HisarTheme.colors.destructive, content = row,
                     )
                 } else {
                     row()

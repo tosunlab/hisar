@@ -9,7 +9,6 @@ import {
   inviteToOrganization,
   listAllOrganizationVault,
   store,
-  takeVaultFromTeam,
 } from "../store";
 import { formatCount, formatRole, vaultRoleDescription } from "../util";
 import AppIcon from "./AppIcon.vue";
@@ -385,9 +384,9 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
               class="ghost"
               :disabled="store.isBusy"
               :data-testid="`take-back-${team.id}-${teamVault.vaultId}`"
-              @click="takeVaultFromTeam(organization, team, teamVault)"
+              @click="dialog = { kind: 'take-vault', team, teamVault }"
             >
-              Take back
+              Take back…
             </button>
           </template>
           <span v-else class="tag">{{ formatRole(teamVault.role) }}</span>

@@ -261,6 +261,7 @@ struct OrganizationView: View {
     @State private var isLeaveShown = false
     @State private var memberRoleChange: Member?
     @State private var teamMemberToRemove: TeamMemberRemoval?
+    @State private var vaultToTakeBack: TeamVaultTakeback?
 
     private var name: String {
         organization?.name ?? model.allOrganization.first { $0.id == organizationID }?.name ?? "Organization"
@@ -467,6 +468,20 @@ struct OrganizationView: View {
         } message: {
             Text("You lose the vaults you have through \(name)'s teams.")
         }
+        .sheet(item: $vaultToTakeBack) { takeback in
+            if let organization {
+                OrganizationAccessConfirmation(
+                    title: "Take \(takeback.vault.displayName) back from \(takeback.team.name)?",
+                    message: "Review who loses access or has a reduced role through the remaining teams.",
+                    consequences: OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: takeback.team.id, vaultID: takeback.vault.vaultID)),
+                    confirmLabel: "Take back", confirmID: "confirm-take-back", refusal: $refusal, onCancel: { vaultToTakeBack = nil }
+                ) {
+                    if await change("Take back", { await model.takeVaultFromTeam(organizationID: organizationID, teamID: takeback.team.id, vaultID: takeback.vault.vaultID) }) {
+                        vaultToTakeBack = nil
+                    }
+                }
+            }
+        }
         .sheet(item: $teamMemberToRemove) { removal in
             if let organization {
                 OrganizationAccessConfirmation(
@@ -649,12 +664,12 @@ struct OrganizationView: View {
                 .accessibilityElement(children: .combine)
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     if organization.isAdmin {
-                        Button("Take back") { takeBack(vault, from: team) }
+                        Button("Take back…", role: .destructive) { takeBack(vault, from: team) }
                     }
                 }
                 .contextMenu {
                     if organization.isAdmin {
-                        Button("Take back", systemImage: "arrow.uturn.backward") { takeBack(vault, from: team) }
+                        Button("Take back…", systemImage: "arrow.uturn.backward", role: .destructive) { takeBack(vault, from: team) }
                     }
                 }
                 .accessibilityIdentifier("team-\(team.name)-vault-\(vault.displayName)")
@@ -768,8 +783,14 @@ struct OrganizationView: View {
     }
 
     private func takeBack(_ vault: TeamVault, from team: Team) {
-        Task { await change("Take back") { await model.takeVaultFromTeam(organizationID: organizationID, teamID: team.id, vaultID: vault.vaultID) } }
+        vaultToTakeBack = TeamVaultTakeback(team: team, vault: vault)
     }
+}
+
+private struct TeamVaultTakeback: Identifiable {
+    var team: Team
+    var vault: TeamVault
+    var id: String { "\(team.id)/\(vault.vaultID)" }
 }
 
 private struct TeamMemberRemoval: Identifiable {
@@ -1078,6 +1099,7 @@ struct OrganizationVaultSharingView: View {
     @State private var isGiveShown = false
     @State private var refusal: Refusal?
     @State private var presentationDetent = PresentationDetent.large
+    @State private var teamToTakeBack: Team?
 
     private var vaultName: String { model.findVault(vaultID: vaultID)?.name ?? "Vault" }
     private var sharing: OrganizationVaultSharing? {
@@ -1110,12 +1132,12 @@ struct OrganizationVaultSharingView: View {
                             .accessibilityElement(children: .combine)
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 if sharing.canChangeTeams {
-                                    Button("Take back") { takeBack(from: access.team) }
+                                    Button("Take back…", role: .destructive) { teamToTakeBack = access.team }
                                 }
                             }
                             .contextMenu {
                                 if sharing.canChangeTeams {
-                                    Button("Take back", systemImage: "arrow.uturn.backward") { takeBack(from: access.team) }
+                                    Button("Take back…", systemImage: "arrow.uturn.backward", role: .destructive) { teamToTakeBack = access.team }
                                 }
                             }
                             .accessibilityIdentifier("vault-team-\(access.team.name)")
@@ -1172,6 +1194,16 @@ struct OrganizationVaultSharingView: View {
                     .environmentObject(model)
                 }
             }
+            .sheet(item: $teamToTakeBack) { team in
+                if let organization {
+                    OrganizationAccessConfirmation(
+                        title: "Take \(vaultName) back from \(team.name)?",
+                        message: "Review who loses access or has a reduced role through the remaining teams.",
+                        consequences: OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: team.id, vaultID: vaultID)),
+                        confirmLabel: "Take back", confirmID: "confirm-take-back", refusal: $refusal, onCancel: { teamToTakeBack = nil }
+                    ) { await takeBack(from: team) }
+                }
+            }
             .refusalAlert($refusal)
             .task { await load() }
             .onChange(of: model.remoteChangeCount) { _, _ in
@@ -1192,13 +1224,12 @@ struct OrganizationVaultSharingView: View {
         }
     }
 
-    private func takeBack(from team: Team) {
-        Task {
-            if await model.takeVaultFromTeam(organizationID: organizationID, teamID: team.id, vaultID: vaultID) {
-                await load()
-            } else {
-                refusal = model.takeRefusal(title: "Take back")
-            }
+    private func takeBack(from team: Team) async {
+        if await model.takeVaultFromTeam(organizationID: organizationID, teamID: team.id, vaultID: vaultID) {
+            await load()
+            teamToTakeBack = nil
+        } else {
+            refusal = model.takeRefusal(title: "Take back")
         }
     }
 }

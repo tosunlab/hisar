@@ -12,7 +12,6 @@ import {
   removeVaultMember,
   shareVault,
   store,
-  takeVaultFromTeam,
 } from "../store";
 import { formatRole, vaultRoleDescription } from "../util";
 import { vaultRoleChangeMessage, vaultRoleChangeTitle } from "../organizationAccess";
@@ -180,9 +179,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                   class="ghost take-back-button"
                   :disabled="store.isBusy"
                   :data-testid="`take-back-from-${team.id}`"
-                  @click="organization && takeVaultFromTeam(organization, team, teamVault)"
+                  @click="organizationDialog = { kind: 'take-vault', team, teamVault }"
                 >
-                  Take back
+                  Take back…
                 </button>
               </template>
               <span v-else class="role-label">{{ formatRole(teamVault.role) }}</span>

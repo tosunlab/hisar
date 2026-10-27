@@ -53,6 +53,18 @@ class OrganizationTests {
     }
 
     @Test
+    fun testTakingBackVaultKeepsOtherTeamsAndNamesRoleReductions() {
+        val original = buildAcme(isAdmin = true)
+        val audit = original.allTeam[0].copy(allMember = original.allTeam[0].allMember + TeamMember("bob-id", "Bob", "bob@example.com"))
+        val organization = original.copy(allTeam = listOf(audit, original.allTeam[1]))
+        assertEquals(listOf("Deploy: You lose access too. Bob's role changes from Editor to Reader."),
+            OrganizationLogic.accessConsequences(organization, OrganizationAccessChange.TakeVault("platform", "deploy")))
+        val equalRoles = organization.copy(allTeam = listOf(audit.copy(allVault = audit.allVault.map { if (it.vaultID == "deploy") it.copy(role = "editor") else it }), original.allTeam[1]))
+        assertEquals(listOf("Deploy: Carol loses access."),
+            OrganizationLogic.accessConsequences(equalRoles, OrganizationAccessChange.TakeVault("audit", "deploy")))
+    }
+
+    @Test
     fun testRemovingTeamMembershipPreviewsOnlyThatPersonsLosses() {
         val original = buildAcme(isAdmin = true)
         val organization = original.copy(allTeam = listOf(original.allTeam[0].copy(

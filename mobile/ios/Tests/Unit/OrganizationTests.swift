@@ -40,6 +40,16 @@ final class OrganizationTests: XCTestCase {
         return model
     }
 
+    func testTakingBackVaultKeepsOtherTeamsAndNamesRoleReductions() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: "platform", vaultID: "deploy")),
+                       ["Deploy: You lose access too. Bob's role changes from Editor to Reader."])
+        organization.allTeam[0].allVault[0].role = "editor"
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: "audit", vaultID: "deploy")),
+                       ["Deploy: Carol loses access."])
+    }
+
     func testRemovingTeamMembershipPreviewsOnlyThatPersonsLosses() {
         var organization = Self.buildAcme(isAdmin: true)
         organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))

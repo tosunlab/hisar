@@ -15,6 +15,7 @@ import {
   renameTeam,
   store,
   setOrganizationMemberRole,
+  takeVaultFromTeam,
 } from "../store";
 import { formatRole, vaultRoleDescription } from "../util";
 import { describeOrganizationAccessChange, vaultRoleChangeMessage, vaultRoleChangeTitle } from "../organizationAccess";
@@ -27,6 +28,7 @@ export type OrganizationDialogRequest =
   | { kind: "remove-team-member"; team: Team; member: TeamMember }
   | { kind: "change-member-role"; member: OrganizationMember; role: OrganizationRole }
   | { kind: "rename-team" | "delete-team" | "give-vault"; team: Team }
+  | { kind: "take-vault"; team: Team; teamVault: TeamVault }
   | { kind: "change-team-role"; team: Team; teamVault: TeamVault; role: VaultRole };
 
 interface DialogText {
@@ -65,6 +67,8 @@ const text = computed<DialogText>(() => {
   const organizationName = props.organization.name;
   const request = props.request;
   switch (request.kind) {
+    case "take-vault":
+      return { title: `Take ${describeTeamVault(request.teamVault)} back from ${request.team.name}?`, subtitle: "Review who loses access or has a reduced role through the remaining teams.", icon: "vault", isDanger: true, confirmLabel: "Take back" };
     case "remove-team-member":
       return { title: `Remove ${request.member.name || request.member.email} from ${request.team.name}?`, subtitle: request.member.isCurrentUser ? "You lose access to vaults this team alone gives you." : "Their vault access changes only where no other team gives the same role.", icon: "trash", isDanger: true, confirmLabel: `Remove from ${request.team.name}` };
     case "change-member-role": {
@@ -130,6 +134,9 @@ const text = computed<DialogText>(() => {
 // allLostVaultLine names what goes: the vaults the teams in question have, unopened ones counted together.
 const allLostVaultLine = computed(() => {
   const request = props.request;
+  if (request.kind === "take-vault") {
+    return describeOrganizationAccessChange(props.organization, { kind: "take-vault", teamID: request.team.id, vaultID: request.teamVault.vaultId });
+  }
   if (request.kind === "remove-team-member") {
     return describeOrganizationAccessChange(props.organization, { kind: "remove-team-member", teamID: request.team.id, accountID: request.member.accountId });
   }
@@ -167,6 +174,8 @@ const canSubmit = computed(() => {
 async function runRequest(): Promise<boolean> {
   const request = props.request;
   switch (request.kind) {
+    case "take-vault":
+      return takeVaultFromTeam(props.organization, request.team, request.teamVault);
     case "remove-team-member":
       return removeTeamMember(props.organization, request.team, request.member);
     case "change-member-role":

@@ -662,6 +662,9 @@ describe("Organization vault sharing panel", () => {
     api.takeVaultFromTeam.mockRejectedValue(new Error(ownerTakeBackRefusal));
     const wrapper = await openSharingPanel();
     await wrapper.find('[data-testid="take-back-from-platform"]').trigger("click");
+    expect(api.takeVaultFromTeam).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="organization-dialog-take-vault"]').text()).toContain("You lose access too.");
+    await wrapper.find('[data-testid="organization-dialog-confirm"]').trigger("click");
     await flushPromises();
     expect(api.takeVaultFromTeam).toHaveBeenCalledWith("acme", "platform", "deploy");
     expect(wrapper.find('[data-testid="organization-alert"]').text()).toContain("Take back");
