@@ -116,6 +116,30 @@ struct ReadIssue: Codable, Hashable, Identifiable {
     var canRename: Bool
     var canDelete: Bool
     var id: String { "\(vaultId)/\(itemId ?? "")/\(kind)" }
+    var explanation: String {
+        switch kind {
+        case "vault-name": return "Vault name could not be opened. Its readable items remain available."
+        case "vault-key": return "Vault key could not be opened. Items in this vault cannot be displayed."
+        case "item": return "Item could not be opened. It remains saved."
+        default: return "Saved data could not be opened. It remains saved."
+        }
+    }
+}
+
+struct ReadIssueSummary {
+    var issues: [ReadIssue]
+    var affectedVaultCount: Int { Set(issues.map(\.vaultId)).count }
+    var knownItemCount: Int {
+        Set(issues.filter { $0.kind == "item" }.compactMap { issue in
+            issue.itemId.map { "\(issue.vaultId)/\($0)" }
+        }).count
+    }
+    var text: String {
+        let vaults = "\(affectedVaultCount) affected \(affectedVaultCount == 1 ? "vault" : "vaults")"
+        let items = "\(knownItemCount) known unreadable \(knownItemCount == 1 ? "item" : "items")"
+        let counts = knownItemCount > 0 ? "\(items) in \(vaults)." : "\(vaults)."
+        return issues.contains { $0.kind == "vault-key" } ? "\(counts) Items behind unopened vault keys are not counted." : counts
+    }
 }
 
 struct VaultSummary: Codable, Identifiable, Hashable {

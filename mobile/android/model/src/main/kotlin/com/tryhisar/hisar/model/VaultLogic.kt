@@ -84,8 +84,8 @@ object VaultLogic {
     fun sortAllItem(allItem: List<VaultItemReference>): List<VaultItemReference> =
         allItem.sortedWith(compareBy<VaultItemReference, String>(String.CASE_INSENSITIVE_ORDER) { it.item.title }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.item.username })
 
-    /** The line under an item's title in lists; lists that span vaults name the vault too. */
-    fun describeRow(item: ItemDetail, vaultName: String? = null): String {
+    /** The category-specific summary under an item's title. */
+    fun describeRow(item: ItemDetail): String {
         val detail = when {
             item.isSSHKey -> item.keyType.ifEmpty { "SSH key" }
             item.isSecureNote -> "Secure note"
@@ -98,8 +98,7 @@ object VaultLogic {
             item.isDatabase -> (item.database ?: ItemDatabase()).summary
             else -> item.username
         }
-        if (vaultName == null) return detail
-        return if (detail.isEmpty()) vaultName else "$detail · $vaultName"
+        return detail
     }
 
     fun describeVaultRole(role: String): String = when (role) {
@@ -156,4 +155,29 @@ object VaultLogic {
     }
 
     fun extractHost(text: String): String? = convertToOpenableURL(text)?.host?.lowercase()
+}
+
+data class ItemCopyAction(val fieldName: String, val label: String) {
+    companion object {
+        fun available(item: ItemDetail): List<ItemCopyAction> = buildList {
+            if (item.readIssue != null) return@buildList
+            fun add(field: String, label: String, available: Boolean) {
+                if (available) add(ItemCopyAction(field, label))
+            }
+            add("username", "Username", item.username.isNotEmpty())
+            add("password", "Password", item.password.isNotEmpty())
+            add("one-time code", "One-time code", item.hasOneTimePassword)
+            when {
+                item.isSSHKey -> add("public key", "Public key", item.publicKey.isNotEmpty())
+                item.isSecureNote -> add("notes", "Notes", item.notes.isNotEmpty())
+                item.isCreditCard -> add(CardFieldName.NUMBER, "Card number", !item.card?.number.isNullOrEmpty())
+                item.isAPICredential -> add(APICredentialFieldName.SECRET, "Secret", !item.apiCredential?.secret.isNullOrEmpty())
+                item.isSoftwareLicense -> add(SoftwareLicenseFieldName.LICENSE_KEY, "License key", !item.softwareLicense?.licenseKey.isNullOrEmpty())
+                item.isDatabase -> add(DatabaseFieldName.CONNECTION_STRING, "Connection string", !item.database?.connectionString.isNullOrEmpty())
+                item.isServer -> add(ServerFieldName.HOST, "Host", !item.server?.host.isNullOrEmpty())
+                item.isIdentity -> add(IdentityFieldName.EMAIL, "Email", !item.identity?.email.isNullOrEmpty())
+                item.isAddress -> add(AddressFieldName.STREET, "Street", !item.address?.street.isNullOrEmpty())
+            }
+        }
+    }
 }

@@ -662,3 +662,37 @@ it("keeps committed signup warnings visible after loading the unlocked account",
   expect(store.recoveryFactor?.secretKey).toBe("H1-NEW");
   expect(store.errorMessage).toContain("Recovery progress could not be saved.");
 });
+
+describe("selection in filtered results", () => {
+  beforeEach(() => {
+    resetStore();
+    Object.assign(store, { selectedVaultID: "personal", selectedTag: "", isFavoritesSelected: false, editorDraft: null });
+  });
+
+  it("clears a selection excluded by a tag", async () => {
+    const item = createItem({ id: "github", tags: ["work"] });
+    Object.assign(store, { allItem: [item], selectedItem: item });
+    await storeModule.selectTag("personal");
+    expect(store.selectedItem).toBeNull();
+  });
+
+  it("clears a favorite excluded by search", () => {
+    const item = createItem({ id: "github", title: "GitHub" });
+    Object.assign(store, { isFavoritesSelected: true, allFavorite: [{ vaultId: "personal", vaultName: "Personal", vaultType: "personal", item }], selectedItem: item });
+    store.searchQuery = "Figma";
+    expect(store.selectedItem).toBeNull();
+  });
+
+  it.each([false, true])("does not publish a delayed detail excluded by search in Favorites=%s", async (isFavoritesSelected) => {
+    const item = createItem({ id: "github", title: "GitHub" });
+    const favorite = { vaultId: "personal", vaultName: "Personal", vaultType: "personal", item };
+    Object.assign(store, { allItem: [item], allFavorite: [favorite], isFavoritesSelected });
+    const { promise, resolve } = Promise.withResolvers<typeof item>();
+    api.getItem.mockReturnValueOnce(promise);
+    const pending = isFavoritesSelected ? storeModule.selectFavoriteItem(favorite) : storeModule.selectItem(item.id);
+    store.searchQuery = "Figma";
+    resolve(item);
+    await pending;
+    expect(store.selectedItem).toBeNull();
+  });
+});

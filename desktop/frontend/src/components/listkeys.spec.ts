@@ -170,6 +170,36 @@ describe("Copy shortcuts", () => {
     expect(api.copyField).not.toHaveBeenCalled();
   });
 
+  it.each(["Bank", "no matches"])("clears a filtered-out selection without selecting a replacement for %s", async (query) => {
+    store.selectedItem = github;
+    const wrapper = mountView();
+    await wrapper.find('input[name="search"]').setValue(query);
+    pressKey({ key: "C", metaKey: true, shiftKey: true });
+    await flushPromises();
+    expect(store.selectedItem).toBeNull();
+    expect(wrapper.text()).toContain("Select an item to see its details.");
+    expect(api.copyField).not.toHaveBeenCalled();
+    if (query === "Bank") {
+      await wrapper.find('input[name="search"]').trigger("keydown", { key: "ArrowDown" });
+      await flushPromises();
+      expect(store.selectedItem?.id).toBe("bank");
+    }
+  });
+
+  it("preserves the editor when a background filter changes and reconciles on return", async () => {
+    store.selectedItem = github;
+    store.editorMode = "edit";
+    const wrapper = mountView();
+    await wrapper.find('input[name="search"]').setValue("Bank");
+    expect(store.selectedItem?.id).toBe("github");
+    expect(store.editorMode).toBe("edit");
+    expect(wrapper.findComponent({ name: "ItemEditor" }).exists()).toBe(true);
+    store.editorMode = "view";
+    await flushPromises();
+    expect(store.selectedItem).toBeNull();
+    expect(wrapper.text()).toContain("Select an item to see its details.");
+  });
+
   it("lists both shortcuts when no item is selected", () => {
     const wrapper = mountView();
     const allShortcut = wrapper.findAll(".shortcut-list div").map((row) => `${row.find("kbd").text()} ${row.find("dd").text()}`);

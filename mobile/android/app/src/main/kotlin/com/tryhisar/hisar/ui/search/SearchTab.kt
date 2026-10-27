@@ -37,6 +37,9 @@ import com.tryhisar.hisar.ui.vaults.NoSearchResults
 import com.tryhisar.hisar.ui.vaults.SearchField
 import com.tryhisar.hisar.ui.vaults.TabStack
 import com.tryhisar.hisar.ui.vaults.crossVaultRows
+import com.tryhisar.hisar.ui.vaults.crossVaultReadWarning
+import com.tryhisar.hisar.ui.vaults.OfflineNote
+import com.tryhisar.hisar.ui.vaults.cardSection
 
 /** The Search tab: every vault's items by any word, and the item screens it pushes on its own stack. */
 @Composable
@@ -48,6 +51,7 @@ fun SearchTab(model: AppModel) {
 @Composable
 private fun SearchScreen(model: AppModel) {
     val data by model.unlockedData.collectAsStateWithLifecycle()
+    val status by model.status.collectAsStateWithLifecycle()
     var searchText by rememberSaveable { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val allMatch = if (searchText.isEmpty()) emptyList() else VaultLogic.filterAllItem(data.listAllItemReference(), searchText)
@@ -69,20 +73,22 @@ private fun SearchScreen(model: AppModel) {
                             searchText = it
                             model.reportActivity()
                         },
-                        "Logins, keys and notes",
+                        "Search all items",
                         testTag = "search-field",
                         label = "Search all vaults",
                         modifier = Modifier.focusRequester(focusRequester),
                     )
                 }
-                crossVaultRows(model, model.navigation.search, allMatch)
-                item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp)) }
-            }
-            Box(Modifier.padding(top = 120.dp, bottom = TabBarHeight)) {
+                if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
+                crossVaultReadWarning(model, model.navigation.search, data.allVault)
+                item(key = "empty") {
                 when {
                     searchText.isEmpty() -> ContentUnavailable("Search Hisar", Icons.Outlined.Search, Modifier.testTag("search-empty"))
-                    allMatch.isEmpty() -> NoSearchResults(searchText)
+                        allMatch.isEmpty() -> NoSearchResults(searchText, data.readIssueSummary.issues.isNotEmpty())
                 }
+            }
+                crossVaultRows(model, model.navigation.search, allMatch)
+                item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp)) }
             }
         }
     }

@@ -220,7 +220,7 @@ fun VaultsHomeScreen(model: AppModel) {
                     } else {
                         cardSection("favorites", allFavorite.take(3), rowKey = { it.id }, header = "Favorites", dividerStart = { ItemRowTextStart }) { reference ->
                             FavoriteSwipeRow(model, reference.vaultID, reference.item, isLeading = false) {
-                                ItemRow(model, reference.item, "favorite-${reference.item.title}", vaultName = reference.vaultName, onClick = {
+                                ItemRow(model, reference.item, "favorite-${reference.item.title}", vaultID = reference.vaultID, vaultName = reference.vaultName, showsFavorite = false, onClick = {
                                     stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
                                 })
                             }

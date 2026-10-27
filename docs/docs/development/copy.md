@@ -96,6 +96,8 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Add to Favorites, Remove from Favorites (the star's label, the context menu, swipe actions; ⌘D on the Mac) | Favorite, Unfavorite, Star (as a button label) |
 | Added to Favorites · Removed from Favorites (notices; the iPhone ends them with a period) · `Added "GitHub" (Personal) to Favorites.` (`hisar favorite`) | Starred!, Pinned |
 | "No favorites yet" · "Star an item with ★ or ⌘D to keep it here, across all your vaults and devices. Only you see your favorites." (Mac) · "Star an item to keep it here, on all your devices. Only you see your favorites." (Android) · "No favorites yet. Add one with: hisar favorite \<item> [-v vault]" (CLI) | Shared favorites, favorites for the vault |
+| Search all items · Search Hisar · Find items in every vault. (iPhone empty-state description only) | Logins, keys and notes |
+| Offline. Showing items saved on this iPhone; changes need a connection. (iPhone) · Offline. Showing items saved on this device; changes need a connection. (Android) | Destination-specific offline wording |
 
 The one-time code setup and failure copy is shared across the apps.
 
@@ -123,6 +125,18 @@ The one-time code setup and failure copy is shared across the apps.
 | Export with Touch ID… / Export with Face ID / Export with biometrics (Android) · Exported N items from M vaults to \<path>. | — |
 | that passphrase doesn't open this export | wrong password, decryption failed |
 | `.env` import: "Store N values in Personal › shop", "Kept as they are: PORT", "Run a command with them: hisar run --env-file .env -- \<command>" | migrate, vault-ify |
+
+### Read recovery
+
+The apps explain read failures with this table. Item and vault IDs appear only under **Details**.
+
+| Read issue kind | Explanation |
+|---|---|
+| `vault-name` | Vault name could not be opened. Its readable items remain available. |
+| `vault-key` | Vault key could not be opened. Items in this vault cannot be displayed. |
+| `item` | Item could not be opened. It remains saved. |
+
+The summary counts known unreadable items and affected vaults with singular or plural nouns, for example "1 known unreadable item in 1 affected vault." A failed vault key does not establish an item count. Its summary adds "Items behind unopened vault keys are not counted." Show **Retry reads** once above the issue list.
 
 ## Developer tools
 

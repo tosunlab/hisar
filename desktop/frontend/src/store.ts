@@ -1,4 +1,4 @@
-import { nextTick, reactive } from "vue";
+import { nextTick, reactive, watch } from "vue";
 import {
   type AccountDeletionPreview,
   type AgentGrant,
@@ -1033,7 +1033,9 @@ export async function syncInBackground(): Promise<void> {
       const vaultID = store.selectedVaultID;
       const isAvailable = vaultID !== listVaultID || allItem.some((vaultItem) => vaultItem.id === selectedItemID);
       const detail = isAvailable ? await api.getItem(vaultID, selectedItemID) : null;
-      if (version === navigationVersion && store.editorMode === "view") store.selectedItem = detail;
+      if (version === navigationVersion && store.editorMode === "view" && store.selectedVaultID === vaultID && store.selectedItem?.id === selectedItemID) {
+        store.selectedItem = detail && isItemInCurrentResults(vaultID, selectedItemID) ? detail : null;
+      }
     }
   } catch {
     return;
@@ -1132,7 +1134,7 @@ export function selectFavoriteItem(favorite: FavoriteItem): Promise<void> {
   return afterDiscardingDraft(async () => {
     const version = ++navigationVersion;
     const detail = await runAction(() => api.getItem(favorite.vaultId, favorite.item.id));
-    if (detail && version === navigationVersion) {
+    if (detail && version === navigationVersion && isItemInCurrentResults(favorite.vaultId, favorite.item.id)) {
       store.selectedVaultID = favorite.vaultId;
       store.selectedItem = detail;
       store.editorMode = "view";
@@ -1252,6 +1254,24 @@ export function filterAllItem(allItem: ItemDetail[], query: string, tag = "", ca
   });
 }
 
+function isItemInCurrentResults(vaultID: string, itemID: string): boolean {
+  if (store.isFavoritesSelected || store.isAllItemsSelected) {
+    const allReference = store.isAllItemsSelected ? store.allItemReference : store.allFavorite;
+    return filterAllFavorite(allReference, store.searchQuery, store.selectedTag).some((reference) => reference.vaultId === vaultID && reference.item.id === itemID);
+  }
+  return vaultID === store.listVaultID && filterAllItem(store.allItem.filter((item) => !item.readIssue), store.searchQuery, store.selectedTag).some((item) => item.id === itemID);
+}
+
+watch(
+  () => [store.searchQuery, store.selectedTag, store.editorMode],
+  () => {
+    if (store.editorMode === "view" && store.selectedItem && !isItemInCurrentResults(store.selectedVaultID, store.selectedItem.id)) {
+      store.selectedItem = null;
+    }
+  },
+  { flush: "sync" },
+);
+
 export interface TagSummary {
   name: string;
   itemCount: number;
@@ -1304,7 +1324,7 @@ export function selectItem(itemID: string): Promise<void> {
 async function loadSelectedItem(itemID: string, version: number): Promise<void> {
   const vaultID = store.listVaultID;
   const detail = await runAction(() => api.getItem(vaultID, itemID));
-  if (detail && version === navigationVersion && store.listVaultID === vaultID) {
+  if (detail && version === navigationVersion && store.listVaultID === vaultID && isItemInCurrentResults(vaultID, itemID)) {
     store.selectedVaultID = vaultID;
     store.selectedItem = detail;
     store.editorMode = "view";

@@ -226,3 +226,40 @@ enum VaultLogic {
         text.uppercased().filter { !$0.isWhitespace }
     }
 }
+
+struct ItemCopyAction: Identifiable, Equatable {
+    var fieldName: String
+    var label: String
+    var id: String { fieldName }
+
+    static func available(for item: ItemDetail) -> [ItemCopyAction] {
+        guard item.readIssue == nil else { return [] }
+        var actions: [ItemCopyAction] = []
+        func add(_ field: String, _ label: String, when available: Bool) {
+            if available { actions.append(ItemCopyAction(fieldName: field, label: label)) }
+        }
+        add("username", "Username", when: !item.username.isEmpty)
+        add("password", "Password", when: !item.password.isEmpty)
+        add("one-time code", "One-time code", when: item.hasOneTimePassword)
+        if item.isSSHKey {
+            add("public key", "Public key", when: !item.publicKey.isEmpty)
+        } else if item.isSecureNote {
+            add("notes", "Notes", when: !item.notes.isEmpty)
+        } else if item.isCreditCard {
+            add(CardFieldName.number, "Card number", when: !(item.card?.number ?? "").isEmpty)
+        } else if item.isAPICredential {
+            add(APICredentialFieldName.secret, "Secret", when: !(item.apiCredential?.secret ?? "").isEmpty)
+        } else if item.isSoftwareLicense {
+            add(SoftwareLicenseFieldName.licenseKey, "License key", when: !(item.softwareLicense?.licenseKey ?? "").isEmpty)
+        } else if item.isDatabase {
+            add(DatabaseFieldName.connectionString, "Connection string", when: !(item.database?.connectionString ?? "").isEmpty)
+        } else if item.isServer {
+            add(ServerFieldName.host, "Host", when: !(item.server?.host ?? "").isEmpty)
+        } else if item.isIdentity {
+            add(IdentityFieldName.email, "Email", when: !(item.identity?.email ?? "").isEmpty)
+        } else if item.isAddress {
+            add(AddressFieldName.street, "Street", when: !(item.address?.street ?? "").isEmpty)
+        }
+        return actions
+    }
+}

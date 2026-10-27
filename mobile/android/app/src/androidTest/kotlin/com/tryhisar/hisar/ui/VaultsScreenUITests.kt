@@ -6,6 +6,9 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
@@ -35,6 +38,7 @@ import com.tryhisar.hisar.model.ShareInvitations
 import com.tryhisar.hisar.model.Team
 import com.tryhisar.hisar.model.TeamMember
 import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.model.ReadIssue
 import com.tryhisar.hisar.model.WaitingShareInvitation
 import com.tryhisar.hisar.model.WaitingVaultKey
 import com.tryhisar.hisar.model.WaitingVaultKeys
@@ -86,6 +90,27 @@ class VaultsScreenUITests : HisarUITestCase() {
     }
 
     private fun waitForNotice(text: String) = waitFor(hasText(text, substring = true) and hasAnyAncestor(hasTestTag("notice")), 10_000)
+
+    @Test
+    fun testRecoveryShowsFailureScopesAndOneRetry() {
+        val backend = buildBackend()
+        val index = backend.allVault.indexOfFirst { it.id == "work" }
+        backend.allVault[index] = backend.allVault[index].copy(readIssues = listOf(
+            ReadIssue("work", itemId = "bad", kind = "item", canDelete = true),
+            ReadIssue("work", kind = "vault-name", canRename = true),
+        ))
+        backend.allItemByVaultID.getValue("work") += ItemDetail(id = "bad", readIssue = backend.allVault[index].readIssues.first())
+        launchApp(backend).use {
+            tap("vault-Work")
+            waitFor(hasText("1 known unreadable item in 1 affected vault."))
+            assertEquals(1, composeRule.onAllNodesWithTag("retry-unreadable-work").fetchSemanticsNodes().size)
+            assertTrue(exists(hasText("Vault name could not be opened. Its readable items remain available.")))
+            assertTrue(exists(hasText("Item could not be opened. It remains saved.")))
+            assertTrue(exists(hasTestTag("item-AWS")))
+            assertTrue(exists(hasTestTag("repair-vault-name")))
+            assertTrue(exists(hasTestTag("delete-unreadable-bad")))
+        }
+    }
 
     @Test
     fun testVaultsHomeShowsTheIPhonesSections() {
@@ -193,6 +218,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             saveScreenshot("vault-swipe-star")
             tap("favorite-swipe-GitHub")
             waitForNotice("Added to Favorites.")
+            assertTrue(exists(hasTestTag("item-GitHub") and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "In Favorites")))
             type("visa", "vault-search")
             waitFor("item-Visa")
             assertFalse(exists(hasTestTag("item-GitHub")))
@@ -204,6 +230,7 @@ class VaultsScreenUITests : HisarUITestCase() {
 
             dismissNotice()
             scrollTo("favorite-GitHub")
+            assertFalse(exists(hasTestTag("favorite-GitHub") and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "In Favorites")))
             scrollTo("favorite-Netflix")
             composeRule.onNodeWithTag("favorite-Netflix").performTouchInput { swipeLeft() }
             tap("unfavorite-Netflix")
@@ -220,11 +247,27 @@ class VaultsScreenUITests : HisarUITestCase() {
 
             tap("category-creditCards")
             waitFor("item-Visa")
+            type("Visa", "category-search")
+            tap("item-Visa")
+            waitFor("edit-item")
+            goBack()
+            assertTrue(exists(hasTestTag("category-search") and hasText("Visa")))
+            composeRule.onNodeWithTag("category-search").performTextReplacement("absent")
+            waitFor("no-results")
+            Espresso.closeSoftKeyboard()
             saveScreenshot("vaults-by-type")
             goBack()
             assertFalse("a type without items is left out", exists(hasTestTag("category-sshKeys")))
             tap("tag-work")
             waitFor("item-AWS")
+            type("AWS", "tag-search")
+            tap("item-AWS")
+            waitFor("edit-item")
+            goBack()
+            assertTrue(exists(hasTestTag("tag-search") and hasText("AWS")))
+            composeRule.onNodeWithTag("tag-search").performTextReplacement("absent")
+            waitFor("no-results")
+            Espresso.closeSoftKeyboard()
             saveScreenshot("vaults-tag")
             goBack()
             waitFor("vaults-list")
@@ -375,6 +418,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             waitFor("vaults-list")
             tap("tab-search")
             waitFor("search-empty")
+            assertTrue(exists(hasText("Search all items")))
             composeRule.waitUntil("the empty search takes the focus", 5_000) { exists(hasTestTag("search-field") and isFocused()) }
             saveScreenshot("search-empty")
             type("alice", "search-field")
@@ -382,9 +426,32 @@ class VaultsScreenUITests : HisarUITestCase() {
             assertTrue(exists(hasTestTag("item-Bank")))
             assertEquals(false, exists(hasTestTag("search-empty")))
             saveScreenshot("search-results")
+            composeRule.onNodeWithTag("search-field").performTextReplacement("Visa")
+            waitFor("item-Visa")
             composeRule.onNodeWithTag("search-field").performTextReplacement("zzz")
             waitFor("no-results")
             saveScreenshot("search-no-results")
+        }
+    }
+
+    @Test
+    fun testIncompleteSearchKeepsReadableItemsAndRecoveryRoute() {
+        val backend = buildBackend()
+        val index = backend.allVault.indexOfFirst { it.id == "work" }
+        backend.allVault[index] = backend.allVault[index].copy(readIssues = listOf(ReadIssue("work", kind = "vault-name", canRename = true)))
+        launchApp(backend).use {
+            tap("tab-search")
+            waitFor("incomplete-results")
+            type("GitHub", "search-field")
+            waitFor("item-GitHub")
+            assertTrue(exists(hasTestTag("incomplete-results")))
+            composeRule.onNodeWithTag("search-field").performTextReplacement("no readable match")
+            waitFor(hasText("No readable items match this search. Some saved data could not be searched."))
+            assertTrue(exists(hasTestTag("incomplete-results")))
+            Espresso.closeSoftKeyboard()
+            tap("review-affected-vaults")
+            tap("review-vault-work")
+            waitFor("repair-vault-name")
         }
     }
 

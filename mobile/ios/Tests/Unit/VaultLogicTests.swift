@@ -1,10 +1,25 @@
 import CoreImage
 import XCTest
+import SwiftUI
 @testable import Hisar
 
 final class VaultLogicTests: XCTestCase {
     private func makeReference(_ title: String, username: String = "", allURL: [String] = [], category: String = "login", vaultName: String = "Personal") -> VaultItemReference {
         VaultItemReference(vaultID: vaultName.lowercased(), vaultName: vaultName, item: ItemDetail(id: title.lowercased(), category: category, title: title, username: username, allURL: allURL))
+    }
+
+    @MainActor
+    func testCrossVaultRowsReserveSourceLine() {
+        let item = ItemDetail(id: "database", title: "Production", username: String(repeating: "long-host.", count: 20))
+        let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore())
+        for size in [DynamicTypeSize.large, .accessibility3] {
+            let ordinary = UIHostingController(rootView: ItemRow(item: item).environmentObject(model).dynamicTypeSize(size))
+            let personal = UIHostingController(rootView: ItemRow(item: item, vaultName: "Personal").environmentObject(model).dynamicTypeSize(size))
+            let shared = UIHostingController(rootView: ItemRow(item: item, vaultName: "Organization production credentials").environmentObject(model).dynamicTypeSize(size))
+            let proposed = CGSize(width: 280, height: 1000)
+            XCTAssertGreaterThan(personal.sizeThatFits(in: proposed).height, ordinary.sizeThatFits(in: proposed).height)
+            XCTAssertGreaterThanOrEqual(shared.sizeThatFits(in: proposed).height, personal.sizeThatFits(in: proposed).height)
+        }
     }
 
     func testFilterMatchesEveryWordAcrossFields() {
@@ -18,6 +33,33 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "alice github.com").map(\.item.title), ["GitHub"])
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "family").map(\.item.title), ["Netflix"])
         XCTAssertTrue(VaultLogic.filterAllItem(allItem, searchText: "nothing").isEmpty)
+    }
+
+    func testSearchRefinesCategoryAndTagScopes() {
+        var login = makeReference("Production", username: "alice")
+        login.item.allTag = ["work"]
+        var note = makeReference("Production", category: ItemDetail.categorySecureNote)
+        note.item.allTag = ["work"]
+        let other = makeReference("Production", username: "bob")
+        let allItem = [login, note, other]
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem.filter { ItemCategoryDestination.logins.includes($0.item) }, searchText: "alice").map(\.item.username), ["alice"])
+        XCTAssertEqual(VaultLogic.filterAllItem(VaultLogic.filterAllItem(allItem, tag: "work"), searchText: "alice").map(\.item.username), ["alice"])
+        XCTAssertTrue(VaultLogic.filterAllItem(VaultLogic.filterAllItem(allItem, tag: "work"), searchText: "bob").isEmpty)
+    }
+
+    func testQuickCopyOffersOnlyAvailableFields() {
+        var login = ItemDetail(id: "login", username: "alice", password: "secret")
+        login.hasOneTimePassword = true
+        XCTAssertEqual(ItemCopyAction.available(for: login).map(\.fieldName), ["username", "password", "one-time code"])
+        var ssh = ItemDetail(id: "key", category: ItemDetail.categorySSHKey)
+        ssh.publicKey = "ssh-ed25519 public"
+        ssh.allField = [ItemField(name: "private key", value: "never copy", concealed: true)]
+        XCTAssertEqual(ItemCopyAction.available(for: ssh).map(\.fieldName), ["public key"])
+        var card = ItemDetail(id: "card", category: ItemDetail.categoryCreditCard)
+        XCTAssertTrue(ItemCopyAction.available(for: card).isEmpty)
+        card.card = ItemCard()
+        card.card?.number = "4111111111111111"
+        XCTAssertEqual(ItemCopyAction.available(for: card).map(\.fieldName), [CardFieldName.number])
     }
 
     func testTagsAreListedWithCountsAndFilterItems() {

@@ -200,6 +200,20 @@ final class VaultManagementTests: XCTestCase {
             XCTAssertEqual(try Data(contentsOf: received), expected)
         }
     }
+
+    func testRecoveryCountsOnlyKnownItemsAndAffectedVaults() {
+        let item = ReadIssue(vaultId: "personal", itemId: "bad", kind: "item", canRename: false, canDelete: true)
+        let name = ReadIssue(vaultId: "personal", kind: "vault-name", canRename: true, canDelete: false)
+        let key = ReadIssue(vaultId: "work", kind: "vault-key", canRename: false, canDelete: false)
+        XCTAssertEqual(ReadIssueSummary(issues: [item]).text, "1 known unreadable item in 1 affected vault.")
+        XCTAssertEqual(ReadIssueSummary(issues: [item, item, name, key]).knownItemCount, 1)
+        XCTAssertEqual(ReadIssueSummary(issues: [item, name, key]).affectedVaultCount, 2)
+        XCTAssertEqual(ReadIssueSummary(issues: [key]).text, "1 affected vault. Items behind unopened vault keys are not counted.")
+        XCTAssertEqual(name.explanation, "Vault name could not be opened. Its readable items remain available.")
+        XCTAssertEqual(key.explanation, "Vault key could not be opened. Items in this vault cannot be displayed.")
+        XCTAssertEqual(item.explanation, "Item could not be opened. It remains saved.")
+    }
+
     func testUnreadableRecordsRemainExplicitBesideHealthyItems() throws {
         let vault = try JSONDecoder().decode(VaultSummary.self, from: Data(#"{"id":"v","name":"Private","type":"personal","role":"owner","itemCount":1,"readIssues":[{"vaultId":"v","itemId":"bad","revision":"r1","kind":"item","canDelete":true,"canRename":false}]}"#.utf8))
         let items = try JSONDecoder().decode([ItemDetail].self, from: Data(#"[{"id":"healthy","title":"Still available"},{"id":"bad","revision":"r1","title":"Unreadable item bad","readIssue":{"vaultId":"v","itemId":"bad","revision":"r1","kind":"item","canDelete":true,"canRename":false}}]"#.utf8))
@@ -222,6 +236,53 @@ final class VaultManagementTests: XCTestCase {
         XCTAssertEqual(personal.readIssues, [issue])
         XCTAssertEqual(personal.itemCount, healthyCount)
         XCTAssertFalse(model.listAllItemReference(vaultID: "personal").contains { $0.item.id == "bad" })
+    }
+
+    func testQuickCopyUsesSourceIDsAndRefusesLockedOrMissingItems() async {
+        let model = await createUnlockedModel()
+        let detail = await model.loadItem(vaultID: "work", itemID: "aws")
+        XCTAssertEqual(detail.map { ItemCopyAction.available(for: $0).map(\.fieldName) }, ["password"])
+        XCTAssertTrue(backend.allCopiedField.isEmpty, "opening or canceling the chooser must not copy")
+        await model.copyField(vaultID: "work", itemID: "aws", fieldName: "password", label: "Password")
+        XCTAssertEqual(backend.allCopiedField, ["aws.password"])
+        await model.copyField(vaultID: "personal", itemID: "aws", fieldName: "password", label: "Password")
+        XCTAssertEqual(backend.allCopiedField, ["aws.password"])
+        XCTAssertNotNil(model.errorMessage)
+        model.lock()
+        await model.copyField(vaultID: "work", itemID: "aws", fieldName: "password", label: "Password")
+        XCTAssertEqual(backend.allCopiedField, ["aws.password"])
+    }
+
+    func testOfflineDisclosuresFollowOnlineStatus() async {
+        backend.isOffline = true
+        let model = await createUnlockedModel()
+        XCTAssertTrue(model.status.isOffline)
+        XCTAssertFalse(model.listAllItemReference().isEmpty)
+        XCTAssertTrue(VaultLogic.filterAllItem(model.listAllItemReference(), searchText: "absent").isEmpty)
+        backend.isOffline = false
+        backend.status.isOffline = false
+        await model.refreshAll()
+        XCTAssertFalse(model.status.isOffline)
+    }
+
+    func testCrossVaultReadIssuesRemainVisibleWithHealthyAndEmptyResults() async throws {
+        for kind in ["item", "vault-name", "vault-key"] {
+            let model = await createUnlockedModel()
+            let issue = ReadIssue(vaultId: "personal", itemId: kind == "item" ? "bad" : nil, kind: kind, canRename: false, canDelete: false)
+            let index = try XCTUnwrap(backend.allVault.firstIndex { $0.id == "personal" })
+            backend.allVault[index].readIssues = [issue]
+            var unreadable = ItemDetail(id: "bad")
+            unreadable.readIssue = issue
+            if kind == "item" { backend.allItemByVaultID["personal", default: []].append(unreadable) }
+            await model.refreshAll()
+            XCTAssertFalse(model.listAllItemReference().isEmpty)
+            XCTAssertEqual(model.readIssueSummary.affectedVaultCount, 1)
+            XCTAssertEqual(model.readIssueSummary.knownItemCount, kind == "item" ? 1 : 0)
+            for vault in backend.allVault { backend.allItemByVaultID[vault.id] = kind == "item" && vault.id == "personal" ? [unreadable] : [] }
+            await model.refreshAll()
+            XCTAssertTrue(model.listAllItemReference().isEmpty)
+            XCTAssertFalse(model.readIssueSummary.issues.isEmpty)
+        }
     }
 
     func testUnreadableVaultRecoveryNamesTheReviewedRevision() async throws {

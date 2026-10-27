@@ -13,6 +13,19 @@ watch(issues, (entries) => {
     if (!current.has(key)) delete repairNames.value[key];
   }
 }, { deep: true });
+const repairName = ref("");
+const explanationByKind: Record<string, string> = {
+  "vault-name": "Vault name could not be opened. Its readable items remain available.",
+  "vault-key": "Vault key could not be opened. Items in this vault cannot be displayed.",
+  item: "Item could not be opened. It remains saved.",
+};
+const summary = computed(() => {
+  const itemCount = new Set(issues.value.filter(({ issue }) => issue.kind === "item" && issue.itemId).map(({ issue }) => `${issue.vaultId}/${issue.itemId}`)).size;
+  const vaultCount = new Set(issues.value.map(({ issue }) => issue.vaultId)).size;
+  const vaults = `${vaultCount} affected ${vaultCount === 1 ? "vault" : "vaults"}`;
+  const counts = itemCount > 0 ? `${itemCount} known unreadable ${itemCount === 1 ? "item" : "items"} in ${vaults}.` : `${vaults}.`;
+  return issues.value.some(({ issue }) => issue.kind === "vault-key") ? `${counts} Items behind unopened vault keys are not counted.` : counts;
+});
 
 // Each action names the revision on screen; the app refuses it once the record changed, and the retry shows the new one.
 async function remove(): Promise<void> {
@@ -45,16 +58,17 @@ async function rename(vaultID: string, revision: string): Promise<void> {
 <template>
   <section v-if="issues.length" class="read-issues" role="alert" data-testid="read-issues">
     <details>
-      <summary>{{ issues.length }} unreadable vault or item records. Healthy items remain available.</summary>
+      <summary>{{ summary }}</summary>
       <div class="read-issues-body" role="region" aria-label="Unreadable records" tabindex="0" data-testid="read-issues-records">
-        <p>Retry before repairing. An unreadable record is not an empty vault or proof that an item was deleted.</p>
+        <p>Retry before repairing. Unreadable data is not an empty vault or proof that an item was deleted.</p>
         <button @click="retryReads">Retry reads</button>
         <ul>
-        <li v-for="entry in issues" :key="`${entry.issue.vaultId}/${entry.issue.itemId}/${entry.issue.kind}/${entry.issue.revision}`">
-            {{ entry.vault.name }}. {{ entry.issue.kind }}. {{ entry.issue.itemId || entry.issue.vaultId }}
+          <li v-for="entry in issues" :key="`${entry.issue.vaultId}/${entry.issue.itemId}/${entry.issue.kind}/${entry.issue.revision}`">
+            {{ entry.vault.name }}. {{ explanationByKind[entry.issue.kind] ?? "Saved data could not be opened. It remains saved." }}
+            <details><summary>Details</summary>{{ entry.issue.itemId || entry.issue.vaultId }}</details>
             <template v-if="entry.issue.canRename">
-            <input v-model="repairNames[`${entry.issue.vaultId}/${entry.issue.revision ?? ''}`]" :aria-label="`New name for ${entry.issue.vaultId}`" placeholder="New vault name" />
-            <button :disabled="!repairNames[`${entry.issue.vaultId}/${entry.issue.revision ?? ''}`]?.trim()" @click="rename(entry.issue.vaultId, entry.issue.revision ?? '')">Repair name</button>
+              <input v-model="repairNames[`${entry.issue.vaultId}/${entry.issue.revision ?? ''}`]" :aria-label="`New name for ${entry.issue.vaultId}`" placeholder="New vault name" />
+              <button :disabled="!repairNames[`${entry.issue.vaultId}/${entry.issue.revision ?? ''}`]?.trim()" @click="rename(entry.issue.vaultId, entry.issue.revision ?? '')">Repair name</button>
             </template>
             <button v-if="entry.issue.canDelete" @click="pending = entry">Delete unreadable data…</button>
           </li>

@@ -2,6 +2,7 @@ package com.tryhisar.hisar.ui.vaults
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.AnchoredDraggableState
 import androidx.compose.foundation.gestures.DraggableAnchors
 import androidx.compose.foundation.gestures.Orientation
@@ -149,6 +150,7 @@ fun NavigationRow(
     modifier: Modifier = Modifier,
     badge: Int = 0,
     leading: (@Composable () -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     Row(
@@ -156,7 +158,7 @@ fun NavigationRow(
             .fillMaxWidth()
             .heightIn(min = 52.dp)
             .background(HisarTheme.colors.cellBackground)
-            .clickable(role = Role.Button, onClick = onClick)
+            .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick, onLongClickLabel = if (onLongClick != null) "Item actions" else null)
             .testTag(testTag)
             .padding(horizontal = RowInset, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

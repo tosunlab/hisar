@@ -425,8 +425,9 @@ struct VaultsView: View {
             Section {
                 ForEach(allFavorite) { reference in
                     NavigationLink(value: VaultsSelection.item(ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id))) {
-                        ItemRow(item: reference.item, vaultName: reference.vaultName)
+                        ItemRow(item: reference.item, vaultName: reference.vaultName, showsFavorite: false)
                     }
+                    .itemRowActions(vaultID: reference.vaultID, item: reference.item)
                     .swipeActions(edge: .trailing) {
                         FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item) { refusal = $0 }
                     }
@@ -599,7 +600,7 @@ struct VaultRow: View {
     var itemCount: Int
 
     private var subtitle: String {
-        if !vault.readIssues.isEmpty { return "\(vault.readIssues.count) unreadable records. Retry or repair." }
+        if !vault.readIssues.isEmpty { return "\(ReadIssueSummary(issues: vault.readIssues).text) Retry or repair." }
         if vault.isPersonalExtra { return "Legacy Personal vault. Recover items before deleting." }
         switch vault.type {
         case VaultSummary.typePersonal: return "Only you"
@@ -658,13 +659,21 @@ struct FavoriteSwipeButton: View {
 struct ItemRow: View {
     var item: ItemDetail
     var vaultName: String?
+    var showsFavorite = true
 
     var body: some View {
         HStack(spacing: 12) {
             AppItemIcon(item: item)
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .lineLimit(1)
+                HStack {
+                    Text(item.title).lineLimit(1)
+                    if showsFavorite && item.isFavorite {
+                        Image(systemName: "star.fill")
+                            .font(.caption)
+                            .foregroundStyle(.themeSecondary)
+                            .accessibilityHidden(true)
+                    }
+                }
                 let subtitle = buildSubtitle()
                 if !subtitle.isEmpty {
                     Text(subtitle)
@@ -672,9 +681,16 @@ struct ItemRow: View {
                         .foregroundStyle(.themeSecondary)
                         .lineLimit(1)
                 }
+                if let vaultName {
+                    Text(vaultName)
+                        .font(.footnote)
+                        .foregroundStyle(.themeSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityValue(showsFavorite && item.isFavorite ? "In Favorites" : "")
         .accessibilityIdentifier("item-\(item.title)")
     }
 
@@ -701,7 +717,6 @@ struct ItemRow: View {
         } else {
             detail = item.username
         }
-        guard let vaultName else { return detail }
-        return detail.isEmpty ? vaultName : "\(detail) · \(vaultName)"
+        return detail
     }
 }
