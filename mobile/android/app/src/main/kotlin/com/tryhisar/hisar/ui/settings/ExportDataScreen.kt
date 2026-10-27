@@ -111,9 +111,9 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
             }
             if (format == ExportFormat.ENCRYPTED) {
                 FormSection(footer = { Text("At least ${options.minPassphraseLength} characters. You need it to import the file; Hisar can't recover it.") }) {
-                    FormTextField(passphrase, { passphrase = it }, placeholder = "Export passphrase", testTag = "export-passphrase", isSecure = true)
+                    FormTextField(passphrase, { passphrase = it }, placeholder = "Export passphrase", testTag = "export-passphrase", isSecure = true, label = "Export passphrase")
                     RowDivider()
-                    FormTextField(repeatedPassphrase, { repeatedPassphrase = it }, placeholder = "Repeat export passphrase", testTag = "export-passphrase-repeat", isSecure = true)
+                    FormTextField(repeatedPassphrase, { repeatedPassphrase = it }, placeholder = "Repeat export passphrase", testTag = "export-passphrase-repeat", isSecure = true, label = "Repeat export passphrase")
                 }
             } else {
                 FormSection {
@@ -128,7 +128,7 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
             }
             if (isPasswordNeeded) {
                 FormSection {
-                    FormTextField(password, { password = it }, placeholder = "Master password", testTag = "export-password", isSecure = true)
+                    FormTextField(password, { password = it }, placeholder = "Master password", testTag = "export-password", isSecure = true, label = "Master password")
                 }
             }
             val shownError = errorMessage

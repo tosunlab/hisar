@@ -233,7 +233,7 @@ private fun PassphraseSection(credentialImport: CredentialImportModel, errorMess
         footer = { Text("This export is encrypted. Enter the passphrase it was exported with.") },
         modifier = Modifier.testTag("hisar-import-passphrase"),
     ) {
-        FormTextField(passphrase, { passphrase = it }, "Export passphrase", testTag = "hisar-import-passphrase-field", isSecure = true)
+        FormTextField(passphrase, { passphrase = it }, "Export passphrase", testTag = "hisar-import-passphrase-field", isSecure = true, label = "Export passphrase")
     }
     errorMessage?.let { FormSection { ErrorBanner(it) } }
     ClearSection {

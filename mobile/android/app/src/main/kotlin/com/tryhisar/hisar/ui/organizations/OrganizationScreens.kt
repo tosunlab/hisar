@@ -247,6 +247,7 @@ private fun CreateOrganizationSheet(model: AppModel, onDismiss: () -> Unit, onCr
                 modifier = Modifier.focusRequester(focusRequester),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { create() }),
+                label = "Name",
             )
         }
     }
@@ -429,6 +430,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
                         imeAction = ImeAction.Send,
                     ),
                     keyboardActions = KeyboardActions(onSend = { send() }),
+                    label = "Email",
                 )
                 RowDivider()
                 PickerRow("Role", inviteRole, OrganizationRole.all, OrganizationRole::describe, { inviteRole = it }, testTag = "organization-invite-role")
@@ -790,7 +792,7 @@ private fun NameDialog(
                     Spacer(Modifier.height(12.dp))
                 }
                 Box(Modifier.background(HisarTheme.colors.fill, RoundedCornerShape(10.dp))) {
-                    FormTextField(name, { name = it }, placeholder = placeholder, testTag = fieldTestTag)
+                    FormTextField(name, { name = it }, placeholder = placeholder, testTag = fieldTestTag, label = "Name")
                 }
             }
         },

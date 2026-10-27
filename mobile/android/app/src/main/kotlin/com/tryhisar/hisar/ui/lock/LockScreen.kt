@@ -183,6 +183,7 @@ fun UnlockPanel(
                 modifier = Modifier.focusRequester(focusRequester),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { submit() }),
+                label = "Master password",
             )
         }
         ClearSection {

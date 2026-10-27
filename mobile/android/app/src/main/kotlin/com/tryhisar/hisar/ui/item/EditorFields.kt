@@ -67,6 +67,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -219,6 +220,7 @@ fun EditorField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     testTag: String,
+    label: String,
     modifier: Modifier = Modifier,
     kind: FieldKind = FieldKind.TEXT,
     isSecret: Boolean = false,
@@ -257,6 +259,7 @@ fun EditorField(
                     .weight(1f)
                     .padding(vertical = 14.dp)
                     .secretInput(isSecretInput)
+                    .semantics { stateDescription = label }
                     .testTag(testTag),
                 decorationBox = { innerTextField ->
                     Box(contentAlignment = Alignment.CenterStart) {
@@ -393,7 +396,7 @@ fun DateRow(title: String, value: String, onValueChange: (String) -> Unit, testT
     val date = CalendarDate.parse(value)
     when {
         value.isEmpty() -> EditorButtonRow("Add ${title.lowercase()}", Icons.Outlined.CalendarMonth, onClick = { onValueChange(CalendarDate.formatToday()) }, testTag = "$testTag-add")
-        date == null -> EditorField(value, onValueChange, title, testTag)
+        date == null -> EditorField(value, onValueChange, title, testTag, label = title)
         else -> {
             var isPickerShown by remember { mutableStateOf(false) }
             Row(
