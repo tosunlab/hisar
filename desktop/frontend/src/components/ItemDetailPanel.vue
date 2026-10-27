@@ -936,13 +936,6 @@ h2 {
 .field-actions {
   display: flex;
   gap: 2px;
-  opacity: 0.55;
-  transition: opacity 120ms;
-}
-
-.field:hover .field-actions,
-.field:focus-within .field-actions {
-  opacity: 1;
 }
 
 .no-fields {
