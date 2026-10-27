@@ -91,7 +91,7 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.staticTexts["Notes copied. It clears in 90 seconds."])
         notesRow.press(forDuration: 1)
         copyNotesReference.tap()
-        waitFor(app.staticTexts["Secret reference copied."])
+        waitFor(app.staticTexts["Copied hisar://Personal/Recovery%20codes/notes."])
         goBack()
 
         choose("New credit card", from: "new-menu", under: "new-more")

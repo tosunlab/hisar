@@ -77,6 +77,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Item actions (the ⋯ button in the Mac's item header) | Unlabelled ⋯ |
 | Secret (a field hidden until revealed) | Concealed, Hidden |
 | secret reference | secret URI, reference link |
+| "Copied \<reference>." (secret-reference copy notices on all three apps) | "Secret reference copied.", repeated command-line instructions |
 | "\<Field> copied. It clears in 90 seconds." (Mac and iPhone copy notices) | "\<Field> copied, clears in 90 seconds" |
 | Favorites (the list at the top of the sidebar and of Vaults), favorite, star (the icon) | Starred, Pinned, Bookmarks |
 | Add to Favorites, Remove from Favorites (the star's label, the context menu, swipe actions; ⌘D on the Mac) | Favorite, Unfavorite, Star (as a button label) |
