@@ -53,6 +53,7 @@ class FakeBackend: VaultBackend {
     var onListAllPendingApproval: (() -> Void)?
     var allApprovalAnswer: [String] = []
     var allDevice: [Device] = []
+    var deviceListError: String?
     var isMacApprovalAllowedValue = true
     var isWebsiteIconsEnabledValue = true
     var allPushToken: [String] = []
@@ -784,6 +785,7 @@ extension FakeBackend {
     func listAllDevice() throws -> [Device] {
         record("listAllDevice")
         try requireUnlocked()
+        if let deviceListError { throw BackendError(message: deviceListError) }
         return allDevice
     }
 
