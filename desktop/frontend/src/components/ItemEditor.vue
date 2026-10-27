@@ -707,7 +707,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           :aria-label="`Value for ${field.name.trim() ? field.name : `Field ${index + 1}`}`"
         />
         <button v-if="field.concealed" type="button" class="ghost icon-button"
-          :aria-label="`${revealedCustomFields.has(index) ? 'Hide' : 'Show'} ${field.name || 'value'}`"
+          :aria-label="`${revealedCustomFields.has(index) ? 'Hide' : 'Show'} ${field.name.trim() ? field.name : `Field ${index + 1}`}`"
           :title="revealedCustomFields.has(index) ? 'Hide value' : 'Show value'"
           :data-testid="`editor-field-${index}-reveal`" @click="toggleCustomField(index)">
           <AppIcon :name="revealedCustomFields.has(index) ? 'eyeOff' : 'eye'" />

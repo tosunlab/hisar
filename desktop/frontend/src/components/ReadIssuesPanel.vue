@@ -13,7 +13,6 @@ watch(issues, (entries) => {
     if (!current.has(key)) delete repairNames.value[key];
   }
 }, { deep: true });
-const repairName = ref("");
 const explanationByKind: Record<string, string> = {
   "vault-name": "Vault name could not be opened. Its readable items remain available.",
   "vault-key": "Vault key could not be opened. Items in this vault cannot be displayed.",

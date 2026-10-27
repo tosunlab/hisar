@@ -21,7 +21,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(store, {
     status: createStatus("unlocked"), allVault: [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 1 }],
-    selectedVaultID: "personal", allItem: [createItem({ id: "one", title: "One" })], selectedItem: null,
+    listVaultID: "personal", selectedVaultID: "personal", allItem: [createItem({ id: "one", title: "One" })], selectedItem: null,
     isFavoritesSelected: false, editorMode: "view", editorDraft: null, discardDraftPrompt: null,
     isAllItemsSelected: false, allItemReference: [], allItemsError: "",
     searchQuery: "", selectedTag: "", isBusy: false, isSettingsOpen: false, isSharingOpen: false,
@@ -84,7 +84,7 @@ describe("Type filtering", () => {
     expect(wrapper.find('[data-testid="type-filter"]').exists()).toBe(false);
     expect(wrapper.findAll('[role="option"]')).toHaveLength(2);
     await filter.setValue("credit-card");
-    store.selectedVaultID = "another";
+    store.listVaultID = "another";
     store.allItem = [];
     await flushPromises();
     expect((filter.element as HTMLSelectElement).value).toBe("");

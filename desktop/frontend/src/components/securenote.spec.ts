@@ -56,6 +56,7 @@ describe("Creating a secure note", () => {
     ] });
     store.editorMode = "edit";
     api.saveItem.mockImplementation(async (_vault, item) => item);
+    api.listAllItem.mockImplementation(async () => (store.selectedItem ? [store.selectedItem] : []));
     const wrapper = mount(ItemEditor);
     await wrapper.find('[data-testid="editor-field-0-reveal"]').trigger("click");
     expect(wrapper.find('input[name="fieldValue0"]').attributes("type")).toBe("text");

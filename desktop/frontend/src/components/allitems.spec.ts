@@ -19,7 +19,7 @@ const two = createItem({ id: "same", title: "Work credential", password: "", not
 beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(store, { status: createStatus("unlocked"), allVault: [{ ...personal }, { ...work }], allItem: [one],
-    selectedVaultID: "personal", selectedItem: null, isAllItemsSelected: false, allItemReference: [], allItemsError: "", isFavoritesSelected: false,
+    listVaultID: "personal", selectedVaultID: "personal", selectedItem: null, isAllItemsSelected: false, allItemReference: [], allItemsError: "", isFavoritesSelected: false,
     editorMode: "view", editorDraft: null, discardDraftPrompt: null, searchQuery: "credential", selectedTag: "", isBusy: false,
     isSettingsOpen: false, isSharingOpen: false, isImportOpen: false, isShareLinksOpen: false, shareLinkDialog: null, vaultDialog: null, itemDetailDialog: null });
   mock.listAllItem.mockImplementation(async (id) => id === "personal" ? [one] : [two]);
@@ -58,7 +58,7 @@ describe("All-vault browsing", () => {
     store.searchQuery = "not found";
     const wrapper = mount(MainView);
     expect(wrapper.get('[data-testid="offline-notice"]').text()).toContain("copy saved on this device");
-    expect(wrapper.get('[data-testid="read-issues"]').text()).toContain("1 unreadable");
+    expect(wrapper.get('[data-testid="read-issues"]').text()).toContain("1 known unreadable item in 1 affected vault.");
     expect(wrapper.get(".list-empty").text()).toContain("No readable matches");
     expect(store.allItemReference).toHaveLength(2);
   });

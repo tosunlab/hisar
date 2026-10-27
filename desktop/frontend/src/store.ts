@@ -1553,7 +1553,7 @@ export async function convertToSecureNote(): Promise<void> {
     return;
   }
   if (store.selectedVaultID === store.listVaultID) {
-  store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === converted.id ? { ...vaultItem, category: converted.category, revision: converted.revision, canConvertToSecureNote: false } : vaultItem));
+    store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === converted.id ? { ...vaultItem, category: converted.category, revision: converted.revision, canConvertToSecureNote: false } : vaultItem));
   }
   if (store.selectedItem?.id === converted.id) {
     store.selectedItem = converted;

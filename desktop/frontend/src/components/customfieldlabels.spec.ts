@@ -31,16 +31,16 @@ it("names each custom field group and its individual controls, including empty n
     expect(rows[index].attributes("aria-label")).toBe(name);
     expect(rows[index].get(`input[name="fieldValue${index}"]`).attributes("aria-label")).toBe(`Value for ${name}`);
     expect(rows[index].get('input[type="checkbox"]').attributes("aria-label")).toBe(`Keep ${name} secret`);
-    expect(rows[index].get("button").attributes("aria-label")).toBe(`Remove ${name}`);
+    expect(rows[index].findAll("button").at(-1)?.attributes("aria-label")).toBe(`Remove ${name}`);
   }
   await rows[0].get('input[name="fieldName0"]').setValue("Backup SSH token");
   expect(rows[0].attributes("aria-label")).toBe("Backup SSH token");
   expect(rows[0].get('input[name="fieldValue0"]').attributes("aria-label")).toBe("Value for Backup SSH token");
   expect(rows[0].get('input[type="checkbox"]').attributes("aria-label")).toBe("Keep Backup SSH token secret");
-  expect(rows[0].get("button").attributes("aria-label")).toBe("Remove Backup SSH token");
+  expect(rows[0].findAll("button").at(-1)?.attributes("aria-label")).toBe("Remove Backup SSH token");
   await rows[1].get('input[type="checkbox"]').setValue(true);
   expect(rows[1].get('input[name="fieldValue1"]').attributes("type")).toBe("password");
-  await rows[1].get("button").trigger("click");
+  await rows[1].findAll("button").at(-1)?.trigger("click");
   expect(wrapper.findAll('.custom-field[role="group"]')).toHaveLength(2);
   wrapper.unmount();
 });
