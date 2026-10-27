@@ -555,9 +555,13 @@ onBeforeUnmount(() => {
                   name="signInLogin"
                   :value="index"
                   :checked="approvalStore.loginIndex === index"
+                  :aria-label="[login.username, `${login.vaultName} › ${login.title}`].filter(Boolean).join(', ')"
                   @change="setSignInLogin(approval.requestID, index)"
                 />
-                <span class="login-text">{{ login.vaultName }} › {{ login.title }}, {{ login.username }}</span>
+                <span class="login-text">
+                  <span v-if="login.username" class="login-username">{{ login.username }}</span>
+                  <span class="login-item">{{ login.vaultName }} › {{ login.title }}</span>
+                </span>
               </label>
             </div>
             <p class="muted sign-in-note" data-testid="approval-sign-in-note">{{ signInNote }}</p>
@@ -1098,12 +1102,12 @@ h1 {
 .login-choice {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .login-option {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 9px;
   margin: 0 0 0 2px;
   font-size: var(--font-size-13);
@@ -1114,14 +1118,24 @@ h1 {
 .login-option input {
   width: auto;
   flex: none;
-  margin: 0;
+  margin: 2px 0 0;
 }
 
 .login-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.login-username {
+  font-weight: 500;
+}
+
+.login-item {
+  font-size: var(--font-size-12);
+  color: var(--color-text-muted);
 }
 
 .sign-in-note {

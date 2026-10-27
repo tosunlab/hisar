@@ -690,22 +690,26 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
-  it("lets the user pick the login when several are saved for the website", async () => {
+  it("lets the user pick the login when several are saved for the website, by username first", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent(
       "ssh-approval",
       createSignInApprovalEvent({
         allLogin: [
-          { vaultName: "Agents", title: "Tosun Lab", username: "user@example.com" },
-          { vaultName: "Agents", title: "Tosun Lab admin", username: "ops@example.com" },
+          { vaultName: "Production engineering and infrastructure operations", title: "Tosun Lab administrator", username: "first-admin@example.com" },
+          { vaultName: "Production engineering and infrastructure operations", title: "Tosun Lab administrator", username: "second-admin@example.com" },
         ],
       }),
     );
     await flushPromises();
-    expect(wrapper.findAll('[data-testid^="approval-login-"] .login-text').map((login) => login.text())).toEqual([
-      "Agents › Tosun Lab, user@example.com",
-      "Agents › Tosun Lab admin, ops@example.com",
+    expect(wrapper.findAll('[data-testid^="approval-login-"] .login-username').map((line) => line.text())).toEqual(["first-admin@example.com", "second-admin@example.com"]);
+    expect(wrapper.findAll('[data-testid^="approval-login-"] .login-item').map((line) => line.text())).toEqual([
+      "Production engineering and infrastructure operations › Tosun Lab administrator",
+      "Production engineering and infrastructure operations › Tosun Lab administrator",
     ]);
+    expect(wrapper.find('[data-testid="approval-login-1"] input').attributes("aria-label")).toBe(
+      "second-admin@example.com, Production engineering and infrastructure operations › Tosun Lab administrator",
+    );
     expect((wrapper.find('[data-testid="approval-login-0"] input').element as HTMLInputElement).checked).toBe(true);
     await wrapper.find('[data-testid="approval-login-1"] input').setValue(true);
     expect(api.setSSHApprovalLogin).toHaveBeenCalledWith("sign-in-1", 1);
