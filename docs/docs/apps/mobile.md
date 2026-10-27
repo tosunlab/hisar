@@ -35,6 +35,8 @@ the browser: `java.net.IDN` is IDNA2003, which would turn `faß.de` into the dif
 server validation and invite app links share this URI parsing, and invite links keep the original server origin when
 they prefill Create account.
 
+Vaults hides Favorites until an item is starred. Its Tags row shows the number of tags and opens a separate list with each tag's item count.
+
 ### Build and test
 
 You need Go, JDK 21 (the Gradle daemon asks for it in `android/gradle/gradle-daemon-jvm.properties`), and the Android

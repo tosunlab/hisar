@@ -93,7 +93,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             scrollTo("waiting-vault-key-Acme")
             assertTrue(exists(hasTestTag("waiting-vault-key-Acme")))
             saveScreenshot("vaults-home-vaults")
-            scrollTo("tag-work")
+            scrollTo("tags")
             saveScreenshot("vaults-home-types-and-tags")
 
             tap("dismiss-removed-vault-old")
@@ -147,9 +147,32 @@ class VaultsScreenUITests : HisarUITestCase() {
             saveScreenshot("vaults-by-type")
             goBack()
             assertFalse("a type without items is left out", exists(hasTestTag("category-sshKeys")))
+            tap("tags")
             tap("tag-work")
             waitFor("item-AWS")
             saveScreenshot("vaults-tag")
+            goBack()
+            goBack()
+            waitFor("vaults-list")
+        }
+    }
+
+    @Test
+    fun testEmptyFavoritesAreHiddenAndTagsOpenASeparateList() {
+        val backend = buildBackend().apply { allFavoriteRecordID.clear() }
+        launchApp(backend).use {
+            waitFor("vaults-list")
+            scrollTo("tags")
+            assertFalse(exists(hasTestTag("favorites-empty")))
+            assertFalse(exists(hasTestTag("tag-work")))
+            assertFalse(exists(hasTestTag("tag-finance")))
+            tap("tags")
+            waitFor("tag-finance")
+            assertTrue(exists(hasTestTag("tag-work")))
+            tap("tag-work")
+            waitFor("item-AWS")
+            goBack()
+            waitFor("tag-work")
             goBack()
             waitFor("vaults-list")
         }
