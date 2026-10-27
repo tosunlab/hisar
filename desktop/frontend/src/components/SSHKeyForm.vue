@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { SSHKeyType } from "../api";
 import { cancelEditing, generateSSHKey, importSSHKey, store } from "../store";
+import { isMacPlatform } from "../util";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
 
@@ -12,6 +13,26 @@ const title = ref("");
 const keyType = ref<SSHKeyType>("ed25519");
 const privateKeyText = ref("");
 const passphrase = ref("");
+const form = ref<HTMLFormElement | null>(null);
+const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
+
+function handleShortcut(event: KeyboardEvent): void {
+  const target = event.target;
+  if (store.discardDraftPrompt || !(target instanceof Node) || !(target === document.body || form.value?.contains(target))) {
+    return;
+  }
+  const isCommand = event.metaKey || event.ctrlKey;
+  if (isCommand && !event.altKey && !event.shiftKey && (event.key.toLowerCase() === "s" || event.key === "Enter")) {
+    event.preventDefault();
+    if (!store.isBusy) form.value?.requestSubmit();
+  } else if (event.key === "Escape" && !isCommand && !event.defaultPrevented) {
+    event.preventDefault();
+    if (!store.isBusy) void cancelEditing();
+  }
+}
+
+onMounted(() => window.addEventListener("keydown", handleShortcut));
+onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
 
 const allKeyTypeOption: { value: SSHKeyType; label: string; description: string }[] = [
   { value: "ed25519", label: "Ed25519", description: "Recommended. Small, fast and supported by current servers and GitHub." },
@@ -19,6 +40,7 @@ const allKeyTypeOption: { value: SSHKeyType; label: string; description: string 
 ];
 
 async function submitKey(): Promise<void> {
+  if (store.isBusy || !title.value.trim() || (mode.value === "import" && !privateKeyText.value.trim())) return;
   if (mode.value === "generate") {
     await generateSSHKey(title.value, keyType.value);
     return;
@@ -31,7 +53,7 @@ async function submitKey(): Promise<void> {
 </script>
 
 <template>
-  <form class="ssh-key-form" @submit.prevent="submitKey">
+  <form ref="form" class="ssh-key-form" @submit.prevent="submitKey">
     <header>
       <ItemTile :title="title || 'SSH key'" :size="52" icon="key" />
       <input v-model="title" class="title-input" name="title" placeholder="SSH key title" aria-label="Title" required autofocus />
@@ -78,9 +100,9 @@ async function submitKey(): Promise<void> {
     <div class="row footer">
       <span class="muted"><AppIcon name="shield" :size="12" /> The private key never leaves Hisar's encrypted vault</span>
       <div class="spacer"></div>
-      <button type="button" class="ghost" @click="cancelEditing">Cancel</button>
-      <button class="primary" type="submit" :disabled="store.isBusy || !title.trim() || (mode === 'import' && !privateKeyText.trim())">
-        {{ mode === "generate" ? "Generate key" : "Import key" }}
+      <button type="button" class="ghost" :disabled="store.isBusy" @click="cancelEditing">Cancel <kbd>Esc</kbd></button>
+      <button class="primary" type="submit" :disabled="store.isBusy || !title.trim() || (mode === 'import' && !privateKeyText.trim())" :title="`${shortcutModifier}S or ${shortcutModifier}↩`">
+        {{ mode === "generate" ? "Generate key" : "Import key" }} <kbd>{{ shortcutModifier }}S</kbd>
       </button>
     </div>
   </form>

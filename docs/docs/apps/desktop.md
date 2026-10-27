@@ -107,6 +107,7 @@ The item editor keeps Cancel and Save visible in a sticky footer. Esc uses the s
 and navigation to another item, vault, Favorites, or a tag from Favorites. If the draft changed, the shared dialog
 offers **Keep editing** and **Discard**. Locking keeps the draft in memory and restores it after unlock.
 ⌘S and ⌘↩ save after the form passes validation.
+SSH key Generate and Import use the same shortcuts, validation, and draft cancellation guard.
 
 In **Other fields**, each row is an accessible group named after its field, or its position while unnamed.
 Value, secrecy, and removal controls include that name and update when you rename the field.
