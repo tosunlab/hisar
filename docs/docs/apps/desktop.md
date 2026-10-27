@@ -103,6 +103,9 @@ On macOS, Settings (⌘,) opens in its own window (`settingsWindowOptions` in `w
 
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 
+Settings → Security offers auto-lock after 30 seconds, 1 minute, 5 minutes, 10 minutes, 1 hour, 12 hours or 24 hours.
+There is no Never choice. This setting does not change the phone selectors.
+
 The item editor keeps Cancel and Save visible in a sticky footer. Esc uses the same draft guard as Cancel, ⌘N,
 and navigation to another item, vault, Favorites, or a tag from Favorites. If the draft changed, the shared dialog
 offers **Keep editing** and **Discard**. Locking keeps the draft in memory and restores it after unlock.
@@ -330,9 +333,15 @@ An Approve button alone would let an agent that controls the screen approve itse
   The phone cannot choose a duration, so its approval is for this time only.
 - Settings → Developer tools → Coding agents → **Allowed without asking** lists every grant with who holds it (a harness, "this
   session" or "while connected"), its expiry and **Revoke**. Signing out ends them all. Session-scoped and connection-scoped
-  grants also end with their session or connection. Locking keeps grants, but Hisar must unlock before using them.
+  grants also end with their session or connection. Locking keeps grants, but Hisar must unlock before using them by default.
   If a saved grant cannot be removed while locked or its removal cannot be saved, Hisar drops all saved grants and reports any
   storage error.
+- **Use Always permissions while Hisar is locked** is off by default and appears only with a usable saved-grant store.
+  Turning it on keeps only Always-approved secrets in process memory when Hisar locks, until it quits.
+  Fully covered runs, reveals, one-time codes and website sign-ins from the same agent program need no unlock dialog.
+  Other requests still ask. Unlock, switch-off, revoke and sign-out erase the retained values.
+  Values are from the moment Hisar locked; changes on another device take effect after the next unlock.
+  The approval dialog explains the current behavior when you choose **Always**.
 - **Website sign-in** (off by default, Hisar for Mac only): "Let agents sign in to websites in your browser". Turning it on asks
   macOS for the Accessibility permission; while it is missing the row says so, with **Open System Settings**, and it checks again
   when Hisar's window comes back to the front. An agent then calls `sign_in` with a browser window's `pid` and `window_id`
