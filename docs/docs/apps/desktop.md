@@ -146,6 +146,8 @@ Design: [Design](../design.md) §6. The Emergency Kit (email, server and Secret 
 - **Lost Secret Key**: it is on the Emergency Kit. Settings → Security → Emergency Kit saves a new kit after the master password, and the sign-in screen says where to find it.
 - **Forgotten master password**: nobody can recover it, including Hisar. The Create account form and the Secret Key screen after sign up say so.
 
+Canceling Save Emergency Kit or Turn on Touch ID clears the entered master password. Leaving Security or hiding the form with Settings search also closes the form and clears its value.
+
 ## Secure notes
 
 Design: [Design](../design.md) §4.5 (categories).
