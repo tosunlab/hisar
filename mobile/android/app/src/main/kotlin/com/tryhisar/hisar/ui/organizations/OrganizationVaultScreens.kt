@@ -101,7 +101,7 @@ fun GiveVaultSheet(
             }
         },
     ) {
-        FormSection(footer = { Text("Everyone in the team gets the vault with this role. Someone in several teams gets the strongest of their roles.") }) {
+        FormSection(footer = { Text("${VaultLogic.describeTeamVaultRoleAbility(role)} Everyone in the team gets the vault with this role. Someone in several teams gets the strongest of their roles.") }) {
             PickerRow(choiceTitle, choice, allChoice, { it.label }, { choiceID = it.id }, testTag = "give-vault-choice")
             RowDivider()
             PickerRow("Role", role, Member.allVaultRole, VaultLogic::describeVaultRole, { role = it }, testTag = "give-vault-role")

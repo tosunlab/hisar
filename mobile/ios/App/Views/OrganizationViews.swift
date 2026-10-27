@@ -922,7 +922,7 @@ struct GiveVaultSheet: View {
                     }
                     .accessibilityIdentifier("give-vault-role")
                 } footer: {
-                    Text("Everyone in the team gets the vault with this role. Someone in several teams gets the strongest of their roles.")
+                    Text("\(describeTeamVaultRoleAbility(role)) Everyone in the team gets the vault with this role. Someone in several teams gets the strongest of their roles.")
                 }
             }
             .navigationTitle(title)
@@ -1101,4 +1101,11 @@ struct OrganizationVaultSharingView: View {
             }
         }
     }
+}
+
+func describeTeamVaultRoleAbility(_ role: String) -> String {
+    if role == Member.vaultRoleOwner {
+        return "Owners view and change items, share, rename and delete the vault. Access is managed through the organization's teams."
+    }
+    return describeVaultRoleAbility(role)
 }

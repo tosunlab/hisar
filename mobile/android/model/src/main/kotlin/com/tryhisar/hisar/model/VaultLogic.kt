@@ -116,6 +116,13 @@ object VaultLogic {
         else -> ""
     }
 
+    fun describeTeamVaultRoleAbility(role: String): String =
+        if (role == Member.VAULT_ROLE_OWNER) {
+            "Owners view and change items, share, rename and delete the vault. Access is managed through the organization's teams."
+        } else {
+            describeVaultRoleAbility(role)
+        }
+
     /** Whether the user may add and change items in [vault]: their Personal vault, or one they edit or own whose key opened. */
     fun isWritable(vault: VaultSummary): Boolean =
         vault.readIssues.none { it.kind == "vault-key" } && (vault.type == VaultSummary.TYPE_PERSONAL || vault.role != Member.VAULT_ROLE_READER)
