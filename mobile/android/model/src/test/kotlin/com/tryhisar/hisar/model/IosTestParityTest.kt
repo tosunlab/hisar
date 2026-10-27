@@ -46,6 +46,8 @@ class IosTestParityTest {
                 "Checks the iOS Form error position with its keyboard; Android uses a separate Compose form",
             "testSignInModesScaleAtAccessibilitySizes" to
                 "Checks the iOS Dynamic Type replacement for its unscaled segmented control; Android has scaled Compose mode buttons",
+            "testCameraAuthorizationChoosesActionableScannerState" to
+                "Covers AVFoundation camera authorization and the iOS app Settings route",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

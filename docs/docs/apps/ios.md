@@ -32,6 +32,8 @@ At accessibility text sizes, the lock screen keeps the account email on one line
 VoiceOver reads the full address.
 Sign-in and create-account failures appear immediately above their submit button, without clearing the entered fields.
 At accessibility text sizes, sign-in modes use stacked buttons and a wrapping heading instead of a segmented control.
+The Emergency Kit scanner explains denied or restricted camera access. **Open Settings** is available for denied access.
+Returning from Settings rechecks permission before starting the camera.
 
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
