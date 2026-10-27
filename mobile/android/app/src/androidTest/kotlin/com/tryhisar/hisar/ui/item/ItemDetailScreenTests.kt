@@ -146,7 +146,7 @@ class ItemDetailScreenTests {
         composeRule.onNodeWithTag("website-https://github.com").performScrollTo().performTouchInput { longClick() }
         composeRule.onNodeWithTag("field-action-Copy").performClick()
         composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
-        assertEquals("Website copied. It clears in about 2 minutes.", host.model.notice.value?.message)
+        composeRule.waitUntil(5_000) { host.model.notice.value?.message == "Website copied. It clears in about 2 minutes." }
     }
 
     @Test
@@ -161,7 +161,7 @@ class ItemDetailScreenTests {
         composeRule.onNodeWithTag("field-action-Copy certificate").performClick()
         composeRule.waitForTagToGo("field-action-Copy certificate")
         composeRule.waitUntil(5_000) { clipboard.allCopiedPlain == listOf(certificate) }
-        assertEquals("Certificate copied", host.model.notice.value?.message)
+        composeRule.waitUntil(5_000) { host.model.notice.value?.message == "Certificate copied" }
     }
 
     @Test
@@ -188,7 +188,7 @@ class ItemDetailScreenTests {
         composeRule.waitUntil(5_000) { backend.allCopiedField == listOf("github.username") }
         composeRule.onNode(hasClickLabel("Copy password")).performClick()
         composeRule.waitUntil(5_000) { backend.allCopiedField == listOf("github.username", "github.password") }
-        assertEquals("Password copied. It clears in about 2 minutes.", host.model.notice.value?.message)
+        composeRule.waitUntil(5_000) { host.model.notice.value?.message == "Password copied. It clears in about 2 minutes." }
         assertEquals("a tap copies without revealing", hiddenPassword, composeRule.onNodeWithTag("password-value", useUnmergedTree = true).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString(""))
 
         composeRule.tap("reveal-password")
