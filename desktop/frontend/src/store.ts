@@ -1802,18 +1802,23 @@ export async function loadOrganizations(): Promise<void> {
 }
 
 // loadAllOrganizationQuietly loads every organization with its teams, for the new-vault form's Where.
-export async function loadAllOrganizationQuietly(): Promise<void> {
+export async function loadAllOrganizationQuietly(): Promise<string> {
   try {
     const organizations = await api.listAllOrganization();
     if (store.status.state !== "unlocked") {
-      return;
+      return "Hisar is locked.";
+    }
+    const allOrganization = await Promise.all(organizations.organizations.map((organization) => api.getOrganization(organization.id)));
+    if (store.status.state !== "unlocked") {
+      return "Hisar is locked.";
     }
     applyOrganizations(organizations);
-  } catch {
-    return;
-  }
-  for (const organization of store.organizations.organizations) {
-    await loadOrganizationQuietly(organization.id);
+    for (const organization of allOrganization) {
+      store.organizationByID = { ...store.organizationByID, [organization.id]: organization };
+    }
+    return "";
+  } catch (error) {
+    return getErrorMessage(error);
   }
 }
 
