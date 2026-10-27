@@ -10,6 +10,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -92,6 +93,12 @@ func convertAccountDeletionError(err error) error {
 		return errors.New(apiError.Message)
 	}
 	return convertAccountError(err)
+}
+
+// CheckMasterPassword rates a new master password for Create account and Change master password, with the one sentence
+// to show under it; the forms refuse a password whose feedback is blocking.
+func (s *Service) CheckMasterPassword(password string) item.MasterPasswordFeedback {
+	return item.CheckMasterPassword(password)
 }
 
 // ChangeMasterPassword keeps the Secret Key; every other device is signed out and must sign in with the new password.

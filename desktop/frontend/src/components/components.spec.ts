@@ -223,19 +223,23 @@ describe("SignInView", () => {
     expect(api.signIn).toHaveBeenCalledWith("http://127.0.0.1:8080", "alice@example.com", "H1-KEY", "master password");
   });
 
-  it("rates the new master password and blocks only clearly weak ones", async () => {
+  it("rates the new master password with the backend's rule and blocks only clearly weak ones", async () => {
     const wrapper = mount(SignInView);
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
     const submitButton = () => wrapper.find('button[type="submit"]');
     const feedback = () => wrapper.find('[data-testid="password-feedback"]');
     expect(wrapper.find('[data-testid="strength-meter"]').exists()).toBe(false);
 
     await wrapper.find('input[name="password"]').setValue("hunter2");
+    await flushPromises();
     expect(feedback().text()).toBe("Use at least 10 characters.");
     expect(submitButton().attributes("disabled")).toBeDefined();
 
     await wrapper.find('input[name="password"]').setValue("password1234");
     await wrapper.find('input[name="repeatedPassword"]').setValue("password1234");
+    await flushPromises();
+    expect(api.checkMasterPassword).toHaveBeenCalledWith("password1234");
     expect(wrapper.find('[data-testid="strength-meter"]').text()).toContain("Weak");
     expect(feedback().text()).toBe("This password is too easy to guess. Add a few more words or characters.");
     expect(submitButton().attributes("disabled")).toBeDefined();
@@ -244,15 +248,23 @@ describe("SignInView", () => {
 
     await wrapper.find('input[name="password"]').setValue("orange cactus harbor");
     await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor");
+    await flushPromises();
     expect(wrapper.find('[data-testid="strength-meter"]').text()).toContain("Weak");
     expect(feedback().text()).toBe("You can use it, but another word or a few more characters make it much harder to guess.");
     expect(submitButton().attributes("disabled")).toBeUndefined();
 
     await wrapper.find('input[name="password"]').setValue("orange cactus harbor lantern");
     await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor lantern");
+    await flushPromises();
     expect(wrapper.find('[data-testid="strength-meter"]').text()).toContain("Fair");
     expect(feedback().text()).toBe("A few random words you can remember make a strong master password.");
     expect(submitButton().attributes("disabled")).toBeUndefined();
+
+    api.checkMasterPassword.mockReturnValueOnce(new Promise(() => undefined));
+    await wrapper.find('input[name="password"]').setValue("orange cactus harbor lanterns");
+    await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor lanterns");
+    await flushPromises();
+    expect(submitButton().attributes("disabled")).toBeDefined();
   });
 
   it("turns a pasted invite link into its code and signs up with the link", async () => {
