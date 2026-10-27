@@ -184,6 +184,7 @@ ct_part  = XChaCha20-Poly1305(key=K_vault, nonce=random24, aad, plaintext=JSON(p
 **One-time passwords (TOTP).** `details.oneTimePassword` holds an `otpauth://totp` URI, in the encrypted details part.
 
 - **Saving:** a pasted setup key or link is normalized into the URI (`core/totp`): base32 secret, SHA-1/256/512, 6–8 digits, a period of 1–300 s. Anything else is refused.
+- **Editing:** the saved setup key starts concealed on the Mac, iPhone and Android. Its own reveal control does not reveal the login password, and closing or locking the editor resets visibility.
 - **Codes:** `core/totp` generates them per RFC 6238 and is tested against its Appendix B vectors.
 - **Desktop:** `GetOneTimeCode` returns the code with its expiry, and the item shows it with a countdown and asks for the next one when it expires. `CopyField("one-time code")` copies it. Item lists only carry `hasOneTimePassword`, never the secret.
 - **CLI:** `hisar get <item> -f code`, or the secret reference `hisar://<vault>/<item>/otp` with `hisar read` and `hisar run` (§9.4.1).

@@ -38,6 +38,7 @@ import com.tryhisar.hisar.ui.theme.HisarType
 /** Which secrets the editor shows in the clear; each section has its own eye, as on the iPhone. */
 data class RevealedSecrets(
     val isPassword: Boolean = false,
+    val isSetupKey: Boolean = false,
     val isCard: Boolean = false,
     val isDocument: Boolean = false,
     val isCredentialSecret: Boolean = false,
@@ -77,15 +78,19 @@ fun LoginSections(
         }
     }
     if (!item.isDatabase) {
-        FormSection(header = "One-time password") {
+        FormSection(header = "One-time code") {
             EditorField(
                 item.oneTimePassword,
                 { value -> onChange(draft.withItem { it.copy(oneTimePassword = value) }) },
                 "Setup key or otpauth:// link",
                 "editor-one-time-password",
                 kind = FieldKind.SECRET,
+                isSecret = true,
+                isRevealed = revealed.isSetupKey,
                 isMonospaced = true,
-            )
+            ) {
+                RevealButton(revealed.isSetupKey, "setup key") { onRevealedChange(revealed.copy(isSetupKey = !revealed.isSetupKey)) }
+            }
         }
         FormSection(header = if (item.isServer) "Admin console" else "Websites") {
             draft.allURLText.forEachIndexed { index, text ->

@@ -18,6 +18,7 @@ struct ItemEditorView: View {
     @State private var loadedItem = ItemDetail()
     @State private var isDiscardConfirmationShown = false
     @State private var isPasswordRevealed = false
+    @State private var isSetupKeyRevealed = false
     @State private var isGeneratorShown = false
     @State private var isIconPickerShown = false
     @State private var isDeleteConfirmationShown = false
@@ -155,11 +156,29 @@ struct ItemEditorView: View {
                     }
                     if !draft.isDatabase {
                         Section("One-time code") {
-                            TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
+                            HStack {
+                                Group {
+                                    if isSetupKeyRevealed {
+                                        TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
+                                    } else {
+                                        SecureField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
+                                    }
+                                }
                                 .font(.system(.body, design: .monospaced))
+                                .textContentType(.oneTimeCode)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("editor-one-time-password")
+                                Button {
+                                    isSetupKeyRevealed.toggle()
+                                } label: {
+                                    Image(systemName: isSetupKeyRevealed ? "eye.slash" : "eye")
+                                        .iconButtonHitArea()
+                                }
+                                .buttonStyle(.borderless)
+                                .foregroundStyle(.themeSecondary)
+                                .accessibilityLabel(isSetupKeyRevealed ? "Hide setup key" : "Reveal setup key")
+                            }
                         }
                         Section(draft.isServer ? "Admin console" : "Websites") {
                             ForEach(allURLText.indices, id: \.self) { index in
