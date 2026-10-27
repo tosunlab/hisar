@@ -85,10 +85,12 @@ type serviceState struct {
 	signer                      *signin.Signer
 	agentSignInCancels          map[uint64]context.CancelFunc
 	lastAgentSignInID           uint64
-	// pushPlatform and pushToken are what an iPhone's OS gave for push notifications at this launch, and webPush the
-	// subscription an Android phone's UnifiedPush distributor gave; never saved.
+	// pushPlatform and pushToken are what an iPhone's OS gave for push notifications at this launch, pushPayloadKey
+	// the key its notification service extension opens push details with, and webPush the subscription an Android
+	// phone's UnifiedPush distributor gave; never saved.
 	pushPlatform        apitypes.PushPlatform
 	pushToken           string
+	pushPayloadKey      *apitypes.PushPayloadKey
 	webPush             *apitypes.WebPushSubscription
 	isPushServerSending bool
 	pushErrorMessage    string

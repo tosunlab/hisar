@@ -57,15 +57,27 @@ final class PushNotificationsModel: ObservableObject {
     private let registerForRemoteNotifications: @MainActor () -> Void
     private let getBackend: @MainActor () -> VaultBackend?
     private let pushPlatform: String
+    /// providePayloadKey returns this device's Web Push subscription key, created and kept in the shared keychain, or
+    /// nil when the keychain is unavailable; the app sends it before the token so the server can encrypt push details.
+    private let providePayloadKey: @Sendable () -> (p256dh: String, auth: String)?
 
     init(
         center: NotificationScheduling, registerForRemoteNotifications: @escaping @MainActor () -> Void,
-        getBackend: @escaping @MainActor () -> VaultBackend?, pushPlatform: String = PushNotificationsModel.currentPushPlatform
+        getBackend: @escaping @MainActor () -> VaultBackend?, pushPlatform: String = PushNotificationsModel.currentPushPlatform,
+        providePayloadKey: @escaping @Sendable () -> (p256dh: String, auth: String)? = PushNotificationsModel.loadPayloadKey
     ) {
         self.center = center
         self.registerForRemoteNotifications = registerForRemoteNotifications
         self.getBackend = getBackend
         self.pushPlatform = pushPlatform
+        self.providePayloadKey = providePayloadKey
+    }
+
+    /// loadPayloadKey reads or creates the device's push subscription key in the shared keychain.
+    nonisolated static func loadPayloadKey() -> (p256dh: String, auth: String)? {
+        let accessGroup = HisarConfiguration.current.keychainAccessGroup
+        guard let key = try? PushPayloadKeyStore(accessGroup: accessGroup).loadOrCreate() else { return nil }
+        return (Base64URL.encode(key.publicKeyData), Base64URL.encode(key.auth))
     }
 
     /// A development build gets its token from APNs's development environment.
@@ -109,6 +121,11 @@ final class PushNotificationsModel: ObservableObject {
         guard let backend = getBackend() else { return }
         let hexToken = token.map { String(format: "%02x", $0) }.joined()
         let platform = pushPlatform
+        let payloadKey = providePayloadKey()
+        // The payload key goes first, so the server can encrypt a push's details to it; a failure never blocks the token.
+        if let payloadKey {
+            try? await runInBackground { try backend.setPushPayloadKey(p256dh: payloadKey.p256dh, auth: payloadKey.auth) }
+        }
         do {
             try await runInBackground { try backend.setPushToken(platform: platform, token: hexToken) }
             errorMessage = nil

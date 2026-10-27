@@ -35,6 +35,20 @@
                ReferencedContainer = "container:Hisar.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "A8381DE0150C2F30093AE407"
+               BuildableName = "HisarNotificationService.appex"
+               BlueprintName = "HisarNotificationService"
+               ReferencedContainer = "container:Hisar.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

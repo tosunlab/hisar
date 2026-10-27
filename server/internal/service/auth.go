@@ -296,7 +296,7 @@ func (s *Service) LoginFinish(ctx context.Context, actor Actor, request *apitype
 	}
 	s.recordAudit(ctx, Actor{AccountID: pending.accountID, DeviceID: device.ID, IP: actor.IP}, auditLogin, map[string]string{"device": device.Name, "platform": device.Platform})
 	// Every sign-in is a new device, which the account's phones hear about.
-	s.notifyPhones(pending.accountID, apitypes.PushKindSecurity, device.ID)
+	s.notifyPhones(pending.accountID, apitypes.PushMessage{Kind: apitypes.PushKindSecurity}, device.ID)
 	return apitypes.SessionResponse{Token: token, AccountID: pending.accountID, DeviceID: device.ID}, nil
 }
 

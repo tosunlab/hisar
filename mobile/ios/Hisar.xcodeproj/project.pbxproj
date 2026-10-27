@@ -16,13 +16,17 @@
 		11F465CF048D4B7EACF71385 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA215E0ABDBB6E239127F971 /* SettingsView.swift */; };
 		14374DD058E143DF2B26B1C3 /* AccountLifecycleViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BAE818AB33EBE7BEE32E52C /* AccountLifecycleViews.swift */; };
 		14694E88C6EF151B9842335E /* CredentialImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0158729B27F998FBB7B0EF3F /* CredentialImportView.swift */; };
+		1517D9AC08F51C8B4B6254D8 /* HisarConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B3B016888438454F145B24 /* HisarConfiguration.swift */; };
 		180EDCB93895A51FA8AA8123 /* AutoFillRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB833F7AE4DD1DCE9AB0EEC /* AutoFillRootView.swift */; };
 		19267F53F064187E2BC2F2B7 /* ItemListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FBB5DC69E33D5A27FE6041 /* ItemListView.swift */; };
 		1BDECDA716425CA17E65D9B5 /* ApprovalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D229776194136FF1A6650A2D /* ApprovalsView.swift */; };
 		1C4C0438B2CF7BD2FB18DCC6 /* DevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */; };
+		1C8DFC381A299FC74ABC0696 /* WebPushDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7F01A8C316E01D46E510AD /* WebPushDecryptor.swift */; };
 		1E6F174F2382C5574842C6E0 /* UnlockPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */; };
 		1F28B9CCD36BFB98A0F6A64F /* ItemEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58725D5CFD94EED72E93193F /* ItemEditorView.swift */; };
+		1F7290AC6F10333AE09BC264 /* PushPayloadKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDD150DB904FF34A7EE81FC /* PushPayloadKeyStore.swift */; };
 		1FC014BDA52438E0C24285E3 /* PhoneApprovalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7C541FAC5348577EADDE35 /* PhoneApprovalSheet.swift */; };
+		208B3AD9466D298F33D2433E /* WebPushDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7F01A8C316E01D46E510AD /* WebPushDecryptor.swift */; };
 		21CB8A2B084894417B395E0D /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A27E1D1B8F40B6BD8851EA2 /* SignInView.swift */; };
 		236F343E99EBEB565B80E597 /* DevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */; };
 		25B3DE446BCBA48722D21164 /* VaultManagementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62FB24F76BEE115AC930EC61 /* VaultManagementTests.swift */; };
@@ -35,6 +39,7 @@
 		2ACD8335D0C90EBFBAAE7ED7 /* HisarKitBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9A5C76E2318A2B55CC5F849 /* HisarKitBackend.swift */; };
 		2B02847600E4E0D13A901785 /* VaultSharingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F012F76F1EDB1B44FF1082E /* VaultSharingView.swift */; };
 		2FBA7146D16249529857A81C /* PasteboardClipboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E496D0D5FF4AB3425759E1B7 /* PasteboardClipboard.swift */; };
+		3215617CE6E265FB93CC351F /* HisarNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 83D724DF7FA615B453AF712E /* HisarNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		32E0A462D6387F2868226186 /* HisarKitBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9A5C76E2318A2B55CC5F849 /* HisarKitBackend.swift */; };
 		3322F7AF5EC4923637DF5F93 /* FavoritesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E0374FBF44BF5778ED2846 /* FavoritesTests.swift */; };
 		343CD1DE10EC8C27BD57EFD5 /* AutoFillModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */; };
@@ -52,6 +57,7 @@
 		4023A7B395E9788AB14768F7 /* PasteboardClipboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E496D0D5FF4AB3425759E1B7 /* PasteboardClipboard.swift */; };
 		4113E21A404A66886093F774 /* BiometricKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC328A5FA6A28DF1ACC5DC64 /* BiometricKeychain.swift */; };
 		42C127E62FE50AF707B5E685 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3766EC2BF71158CD0225F090 /* Models.swift */; };
+		4317F5760951956EDE6A68E9 /* PushPayloadKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDD150DB904FF34A7EE81FC /* PushPayloadKeyStore.swift */; };
 		448AAFCEB46C192B0288335D /* PushNotificationsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68D14A831312CE53174AE269 /* PushNotificationsModel.swift */; };
 		44D71E2E820F7EC28962690B /* VaultManagementPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B033299FD6E753ABEC665FC2 /* VaultManagementPreviewView.swift */; };
 		4524704887E10E781B02A8BC /* PhoneApprovalPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 932FFDDB9DA6FFA0375B3041 /* PhoneApprovalPreviewView.swift */; };
@@ -69,11 +75,13 @@
 		5E555F44D126AB82C96B9857 /* CredentialImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 485ED95656DCEAE23CB924CE /* CredentialImportTests.swift */; };
 		5F2B5FFC40071F1CAA638654 /* EmergencyKitScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFB5B60894F52BB5DA1D9AA /* EmergencyKitScanner.swift */; };
 		5FAD076390F8BED3236B811C /* AppItemIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5CAE9257D26523B30362ACC /* AppItemIcon.swift */; };
+		60BC059CB8EEF534D4E80D19 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39AF9C7A8AC83BDA2D126267 /* NotificationService.swift */; };
 		6384BDCCFB9C112662CE3350 /* NewSecretKeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0912D6FEC796C6B4E10A87 /* NewSecretKeyView.swift */; };
 		641117B1BC86ED26F0DAF500 /* AppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D54C09BE6FCF29F969C4E18 /* AppModelTests.swift */; };
 		65FDAEF0EF071906451A6DBC /* BiometricKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC328A5FA6A28DF1ACC5DC64 /* BiometricKeychain.swift */; };
 		6610DBC1CEA9F590010FEE67 /* HisarConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B3B016888438454F145B24 /* HisarConfiguration.swift */; };
 		67B2BB15FFBD0D47BE1D6F36 /* PhoneApproval.swift in Sources */ = {isa = PBXBuildFile; fileRef = A128DD342FC95DBB54C289C6 /* PhoneApproval.swift */; };
+		6A143AACAAE2105BF0E57AAD /* WebPushDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7F01A8C316E01D46E510AD /* WebPushDecryptor.swift */; };
 		6ADB90127213F9204645DD32 /* LogoMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = A238D14B92DA27E1CCAE99DA /* LogoMark.swift */; };
 		6B73DB90468A4C6048929D5D /* HisarKitBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9A5C76E2318A2B55CC5F849 /* HisarKitBackend.swift */; };
 		6B7BC9DF0F93E81A2CF47B21 /* LockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56632F6C54EBD5227BCBED2E /* LockView.swift */; };
@@ -132,6 +140,7 @@
 		B2393CCCFBDE641E9D29319E /* BackendFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1346D0E3E68C5BDA1B3344E9 /* BackendFactory.swift */; };
 		B2D87CBBB8635681A36D3B76 /* AutoFillRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB833F7AE4DD1DCE9AB0EEC /* AutoFillRootView.swift */; };
 		B4936FF8BE8C3E0A2812F15E /* CredentialProviderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F31820CE1E2F645F505502A /* CredentialProviderViewController.swift */; };
+		B4F54B86BD901A64012536E5 /* SharingPushTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A7DA85F127A5EB580839A6B /* SharingPushTests.swift */; };
 		BA22AA3DF1A43D357843EA5E /* FaceIDUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5829FBCBCC42B40AFEF68F3 /* FaceIDUITests.swift */; };
 		BA6171A70EA73110EBB2B069 /* BackendFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1346D0E3E68C5BDA1B3344E9 /* BackendFactory.swift */; };
 		BAF1C19FBEBFD77B4E6D5B1E /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 477BEA6CA38721F987A7FA77 /* AppModel.swift */; };
@@ -142,11 +151,13 @@
 		BF07224F98A23FD5B69A160E /* VaultLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D65DF64FDB4E5B1567D1A3 /* VaultLogic.swift */; };
 		BF1A86ECA4563E56069C5DB0 /* VaultBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3573A4BEA82AFBD320C27A14 /* VaultBackend.swift */; };
 		BF4F3F027E347231B1760F19 /* HisarAutoFill.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = EAE5AE06D113B40C2B306DCD /* HisarAutoFill.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C25CF2A328EDD75B1054EF0B /* SharingPushText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8013EEA324E335AC3F584E9 /* SharingPushText.swift */; };
 		C84A058AFCD826EC5E00DEDA /* PendingApprovalSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8377C0BA43756107B7C54F28 /* PendingApprovalSection.swift */; };
 		C869199A9D7D7DBC3309E97B /* HisarKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15377A521C283EA5723954C2 /* HisarKit.xcframework */; };
 		C9B332C8EDAC479E1EC33EC5 /* AccountLifecycleLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 601EF17B716B840E1BB373D8 /* AccountLifecycleLogic.swift */; };
 		CBEB741DFF41754709623CEC /* VaultLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D65DF64FDB4E5B1567D1A3 /* VaultLogic.swift */; };
 		CD13D5C1F809E78A136237D9 /* PhoneApprovalUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2035F9DF60C25E43AE30712 /* PhoneApprovalUITests.swift */; };
+		D3D6814132E7D47B5B0D44DD /* WebPushDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7F01A8C316E01D46E510AD /* WebPushDecryptor.swift */; };
 		D56B02E1ABB457B9EA3EF575 /* AutoFillRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB833F7AE4DD1DCE9AB0EEC /* AutoFillRootView.swift */; };
 		D8B60AD1151D258B33E8B762 /* VaultManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64E051721EA2F755340973BE /* VaultManagementView.swift */; };
 		D91E3C9808D23679AB7812A0 /* VaultLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D65DF64FDB4E5B1567D1A3 /* VaultLogic.swift */; };
@@ -166,17 +177,29 @@
 		E8C11A58A19298A04B15CA33 /* PeopleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95EF6040E7BF9F0A901826B0 /* PeopleView.swift */; };
 		EA403583ED6D74A774246CAD /* ItemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 104F8941A233F623CBF1EB40 /* ItemDetailView.swift */; };
 		EAD1315A96CEAD8897ECE413 /* NewVaultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80117468D27E2887C9AFA79B /* NewVaultView.swift */; };
+		ECBA7372AFB77CBCAF2A5AE4 /* PushPayloadKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDD150DB904FF34A7EE81FC /* PushPayloadKeyStore.swift */; };
 		EF2E5A93BBA6F019569EF8B9 /* VaultManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64E051721EA2F755340973BE /* VaultManagementView.swift */; };
 		F0E60FB94814A89C2A03DCB0 /* NewVaultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80117468D27E2887C9AFA79B /* NewVaultView.swift */; };
 		F25607D6F2F0D4C5EB519890 /* AccountLifecycleViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BAE818AB33EBE7BEE32E52C /* AccountLifecycleViews.swift */; };
 		F26CDD2A7EAD0D8AFEEBD93F /* SystemCredentialIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FAD214270656E02E761B8B2 /* SystemCredentialIdentityStore.swift */; };
 		F351B9DFAD04210C125CB4A4 /* HisarConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B3B016888438454F145B24 /* HisarConfiguration.swift */; };
 		F356AB3E0A6D6C3696AF12BF /* PlatformAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87494AA5EEAF759118A7882 /* PlatformAdapterTests.swift */; };
+		F51E96AB09998823E5D15348 /* SharingPushText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8013EEA324E335AC3F584E9 /* SharingPushText.swift */; };
+		F561FA6067514C58A1DB06AE /* PushPayloadKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDD150DB904FF34A7EE81FC /* PushPayloadKeyStore.swift */; };
+		F632837BC959472265FBBF3A /* SharingPushText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8013EEA324E335AC3F584E9 /* SharingPushText.swift */; };
+		F82E0381927174EE0F8DF321 /* SharingPushText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8013EEA324E335AC3F584E9 /* SharingPushText.swift */; };
 		FACA3B7B115CEC55B066CA73 /* ItemListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FBB5DC69E33D5A27FE6041 /* ItemListView.swift */; };
 		FBAAABA2E41B51B57EA5BA70 /* IconPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170839CF56DF8848503FCD67 /* IconPickerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		0FF6BDEC1D2DB09C09B7A5B8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4B7AEB77759728BAE658FFBD /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A8381DE0150C2F30093AE407;
+			remoteInfo = HisarNotificationService;
+		};
 		23977A7790C38537B2738E4D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 4B7AEB77759728BAE658FFBD /* Project object */;
@@ -208,6 +231,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				BF4F3F027E347231B1760F19 /* HisarAutoFill.appex in Embed Foundation Extensions */,
+				3215617CE6E265FB93CC351F /* HisarNotificationService.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -230,6 +254,7 @@
 		14136704A8F8FCE442B63B00 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		15377A521C283EA5723954C2 /* HisarKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = HisarKit.xcframework; path = ../build/HisarKit.xcframework; sourceTree = "<group>"; };
 		170839CF56DF8848503FCD67 /* IconPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconPickerView.swift; sourceTree = "<group>"; };
+		1BDD150DB904FF34A7EE81FC /* PushPayloadKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPayloadKeyStore.swift; sourceTree = "<group>"; };
 		1F212ED91E908E08BA7BE7C2 /* OrganizationLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrganizationLogic.swift; sourceTree = "<group>"; };
 		1F31820CE1E2F645F505502A /* CredentialProviderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialProviderViewController.swift; sourceTree = "<group>"; };
 		22698CECCF02525330145455 /* AutoFillPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillPreviewView.swift; sourceTree = "<group>"; };
@@ -242,7 +267,9 @@
 		3573A4BEA82AFBD320C27A14 /* VaultBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultBackend.swift; sourceTree = "<group>"; };
 		36F2BE095F513A43A814C85D /* HisarUITestCase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HisarUITestCase.swift; sourceTree = "<group>"; };
 		3766EC2BF71158CD0225F090 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		39AF9C7A8AC83BDA2D126267 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		3A27E1D1B8F40B6BD8851EA2 /* SignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInView.swift; sourceTree = "<group>"; };
+		3B7F01A8C316E01D46E510AD /* WebPushDecryptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPushDecryptor.swift; sourceTree = "<group>"; };
 		41FBB5DC69E33D5A27FE6041 /* ItemListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemListView.swift; sourceTree = "<group>"; };
 		471AA1F2DD9D249D4D8BDF4B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		477BEA6CA38721F987A7FA77 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -270,10 +297,12 @@
 		6A0557C083DC71D33D7D838B /* PrivacyShield.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyShield.swift; sourceTree = "<group>"; };
 		6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePalettes.swift; sourceTree = "<group>"; };
 		749D535C9C6B489F37C5F4C6 /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
+		7A7DA85F127A5EB580839A6B /* SharingPushTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharingPushTests.swift; sourceTree = "<group>"; };
 		7ACF599EDF05A1F19E55537F /* AutoFillModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillModel.swift; sourceTree = "<group>"; };
 		7B2774C869B2E88A54905C78 /* FakeBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeBackend.swift; sourceTree = "<group>"; };
 		80117468D27E2887C9AFA79B /* NewVaultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewVaultView.swift; sourceTree = "<group>"; };
 		8377C0BA43756107B7C54F28 /* PendingApprovalSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingApprovalSection.swift; sourceTree = "<group>"; };
+		83D724DF7FA615B453AF712E /* HisarNotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HisarNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockPanel.swift; sourceTree = "<group>"; };
 		932FFDDB9DA6FFA0375B3041 /* PhoneApprovalPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneApprovalPreviewView.swift; sourceTree = "<group>"; };
 		95EF6040E7BF9F0A901826B0 /* PeopleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleView.swift; sourceTree = "<group>"; };
@@ -307,7 +336,9 @@
 		F1B3B016888438454F145B24 /* HisarConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HisarConfiguration.swift; sourceTree = "<group>"; };
 		F297FE1735F4AB352B1A037C /* UpdateRequiredView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateRequiredView.swift; sourceTree = "<group>"; };
 		F3BABA9BC4C53A440760BE78 /* SharingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharingUITests.swift; sourceTree = "<group>"; };
+		F8013EEA324E335AC3F584E9 /* SharingPushText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharingPushText.swift; sourceTree = "<group>"; };
 		F87494AA5EEAF759118A7882 /* PlatformAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformAdapterTests.swift; sourceTree = "<group>"; };
+		F914A44A3B431E7D1DD036DB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F9D65DF64FDB4E5B1567D1A3 /* VaultLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultLogic.swift; sourceTree = "<group>"; };
 		FE0912D6FEC796C6B4E10A87 /* NewSecretKeyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSecretKeyView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -399,6 +430,7 @@
 				638CB2695BA8F4AE274882D3 /* AutoFill */,
 				28D0435553327148EE146709 /* Backend */,
 				33B80A44A2444B77519C3A7D /* Platform */,
+				602D237E00B3E813CC656F0A /* Push */,
 				65AFAEE504A2C0112F4A78DD /* Views */,
 			);
 			path = Shared;
@@ -431,11 +463,22 @@
 				AD80974C6CCE8F7764B02738 /* App */,
 				AA454E90FD9C2AA13A6A58FC /* AutoFill */,
 				2BB05F3EEC6536B2194EE667 /* Configuration */,
+				872953390BB78374FA9F85E1 /* NotificationService */,
 				3099D26DF6C93EFE631E68C2 /* Shared */,
 				189696741388953F1BCDB737 /* Tests */,
 				51CD14EEA504E8703E0DB6A0 /* Frameworks */,
 				9868FD70C551A7566CF14392 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		602D237E00B3E813CC656F0A /* Push */ = {
+			isa = PBXGroup;
+			children = (
+				1BDD150DB904FF34A7EE81FC /* PushPayloadKeyStore.swift */,
+				F8013EEA324E335AC3F584E9 /* SharingPushText.swift */,
+				3B7F01A8C316E01D46E510AD /* WebPushDecryptor.swift */,
+			);
+			path = Push;
 			sourceTree = "<group>";
 		};
 		638CB2695BA8F4AE274882D3 /* AutoFill */ = {
@@ -457,6 +500,15 @@
 				8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		872953390BB78374FA9F85E1 /* NotificationService */ = {
+			isa = PBXGroup;
+			children = (
+				F914A44A3B431E7D1DD036DB /* Info.plist */,
+				39AF9C7A8AC83BDA2D126267 /* NotificationService.swift */,
+			);
+			path = NotificationService;
 			sourceTree = "<group>";
 		};
 		8A8EB428E6BC1E8162B5E6D2 /* Views */ = {
@@ -512,6 +564,7 @@
 				F87494AA5EEAF759118A7882 /* PlatformAdapterTests.swift */,
 				05FD21A08E8BC2D460524C72 /* PushNotificationTests.swift */,
 				2289AA6C11E524DBE81EBD95 /* SettingsModelTests.swift */,
+				7A7DA85F127A5EB580839A6B /* SharingPushTests.swift */,
 				E76E121835129E45189D709A /* VaultLogicTests.swift */,
 				62FB24F76BEE115AC930EC61 /* VaultManagementTests.swift */,
 			);
@@ -523,6 +576,7 @@
 			children = (
 				0832CF4AF5A266E6EA5E69F8 /* Hisar.app */,
 				EAE5AE06D113B40C2B306DCD /* HisarAutoFill.appex */,
+				83D724DF7FA615B453AF712E /* HisarNotificationService.appex */,
 				27EDFCA29649DDE3B235B5A9 /* HisarPersonal.app */,
 				30A647C9592D0839BD485353 /* HisarTests.xctest */,
 				5C081C11B996ABE21B047D8D /* HisarUITests.xctest */,
@@ -630,6 +684,23 @@
 			productReference = EAE5AE06D113B40C2B306DCD /* HisarAutoFill.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		A8381DE0150C2F30093AE407 /* HisarNotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8C98AA5E6DEE6A27951B11E7 /* Build configuration list for PBXNativeTarget "HisarNotificationService" */;
+			buildPhases = (
+				B19C5FEE7B30C3F34483B0D4 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HisarNotificationService;
+			packageProductDependencies = (
+			);
+			productName = HisarNotificationService;
+			productReference = 83D724DF7FA615B453AF712E /* HisarNotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		B555FAB9B81DA5077D2F789A /* Hisar */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 288C972E901471088D8A00F4 /* Build configuration list for PBXNativeTarget "Hisar" */;
@@ -643,6 +714,7 @@
 			);
 			dependencies = (
 				5BCD8DE5BC3B8421E18ED8EC /* PBXTargetDependency */,
+				ED647928BD092747D2212D4C /* PBXTargetDependency */,
 			);
 			name = Hisar;
 			packageProductDependencies = (
@@ -677,6 +749,10 @@
 						DevelopmentTeam = 589NVZWDWZ;
 						ProvisioningStyle = Manual;
 					};
+					A8381DE0150C2F30093AE407 = {
+						DevelopmentTeam = 589NVZWDWZ;
+						ProvisioningStyle = Manual;
+					};
 					B555FAB9B81DA5077D2F789A = {
 						DevelopmentTeam = 589NVZWDWZ;
 						ProvisioningStyle = Manual;
@@ -700,6 +776,7 @@
 				B555FAB9B81DA5077D2F789A /* Hisar */,
 				4FE52CB921DE322A3DEEE476 /* HisarPersonal */,
 				708AE130EA6721ADE65864B2 /* HisarAutoFill */,
+				A8381DE0150C2F30093AE407 /* HisarNotificationService */,
 				450842A21E2C437565C96DF0 /* HisarTests */,
 				4A2D090AE9B9EF2FA49E5D28 /* HisarUITests */,
 			);
@@ -768,12 +845,15 @@
 				42C127E62FE50AF707B5E685 /* Models.swift in Sources */,
 				2FBA7146D16249529857A81C /* PasteboardClipboard.swift in Sources */,
 				A53ECFFE1EB70418DBB8B0DA /* PhoneApproval.swift in Sources */,
+				F561FA6067514C58A1DB06AE /* PushPayloadKeyStore.swift in Sources */,
+				C25CF2A328EDD75B1054EF0B /* SharingPushText.swift in Sources */,
 				ACE02F265676FD23578DF04F /* SystemCredentialIdentityStore.swift in Sources */,
 				0738F234B5FC729D53DFCB1F /* Theme.swift in Sources */,
 				3EC79E5E6E77169906986CDC /* ThemePalettes.swift in Sources */,
 				90EB584A6FAAE235E13B0C90 /* UnlockPanel.swift in Sources */,
 				A4D79E48A346ADB339EDAF08 /* VaultBackend.swift in Sources */,
 				D91E3C9808D23679AB7812A0 /* VaultLogic.swift in Sources */,
+				1C8DFC381A299FC74ABC0696 /* WebPushDecryptor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -794,6 +874,7 @@
 				F356AB3E0A6D6C3696AF12BF /* PlatformAdapterTests.swift in Sources */,
 				A694859A09422750E798E031 /* PushNotificationTests.swift in Sources */,
 				2AAA715EA41E132781CB35EF /* SettingsModelTests.swift in Sources */,
+				B4F54B86BD901A64012536E5 /* SharingPushTests.swift in Sources */,
 				6DB05471C2C91B766AE077F9 /* VaultLogicTests.swift in Sources */,
 				25B3DE446BCBA48722D21164 /* VaultManagementTests.swift in Sources */,
 			);
@@ -844,8 +925,10 @@
 				1FC014BDA52438E0C24285E3 /* PhoneApprovalSheet.swift in Sources */,
 				AAECE1D2035800767C3F33E1 /* PrivacyShield.swift in Sources */,
 				448AAFCEB46C192B0288335D /* PushNotificationsModel.swift in Sources */,
+				ECBA7372AFB77CBCAF2A5AE4 /* PushPayloadKeyStore.swift in Sources */,
 				848341F8DAA3EB113A0F4436 /* RootView.swift in Sources */,
 				AF33590B3B67B6BA9B2F0ABC /* SettingsView.swift in Sources */,
+				F51E96AB09998823E5D15348 /* SharingPushText.swift in Sources */,
 				0A578F219707B0B5B090842E /* SignInView.swift in Sources */,
 				739F4863584CE3912731463A /* SystemCredentialIdentityStore.swift in Sources */,
 				481FE0BCCD0D2166F4469760 /* Theme.swift in Sources */,
@@ -857,6 +940,19 @@
 				44D71E2E820F7EC28962690B /* VaultManagementPreviewView.swift in Sources */,
 				D8B60AD1151D258B33E8B762 /* VaultManagementView.swift in Sources */,
 				2B02847600E4E0D13A901785 /* VaultSharingView.swift in Sources */,
+				6A143AACAAE2105BF0E57AAD /* WebPushDecryptor.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B19C5FEE7B30C3F34483B0D4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1517D9AC08F51C8B4B6254D8 /* HisarConfiguration.swift in Sources */,
+				60BC059CB8EEF534D4E80D19 /* NotificationService.swift in Sources */,
+				4317F5760951956EDE6A68E9 /* PushPayloadKeyStore.swift in Sources */,
+				F632837BC959472265FBBF3A /* SharingPushText.swift in Sources */,
+				208B3AD9466D298F33D2433E /* WebPushDecryptor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -905,8 +1001,10 @@
 				DC437EC3B993DFF73DC99246 /* PhoneApprovalSheet.swift in Sources */,
 				D9D6621F9568AC3A3CDBED9D /* PrivacyShield.swift in Sources */,
 				E15765B760EDA1721127E469 /* PushNotificationsModel.swift in Sources */,
+				1F7290AC6F10333AE09BC264 /* PushPayloadKeyStore.swift in Sources */,
 				0D867B76B6AB8BC768789633 /* RootView.swift in Sources */,
 				11F465CF048D4B7EACF71385 /* SettingsView.swift in Sources */,
+				F82E0381927174EE0F8DF321 /* SharingPushText.swift in Sources */,
 				21CB8A2B084894417B395E0D /* SignInView.swift in Sources */,
 				F26CDD2A7EAD0D8AFEEBD93F /* SystemCredentialIdentityStore.swift in Sources */,
 				9F882321D31A78F3C1903304 /* Theme.swift in Sources */,
@@ -918,6 +1016,7 @@
 				7140BC4E572564EACC949006 /* VaultManagementPreviewView.swift in Sources */,
 				EF2E5A93BBA6F019569EF8B9 /* VaultManagementView.swift in Sources */,
 				B157232134C3DDBFE2774982 /* VaultSharingView.swift in Sources */,
+				D3D6814132E7D47B5B0D44DD /* WebPushDecryptor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -938,6 +1037,11 @@
 			isa = PBXTargetDependency;
 			target = B555FAB9B81DA5077D2F789A /* Hisar */;
 			targetProxy = 23977A7790C38537B2738E4D /* PBXContainerItemProxy */;
+		};
+		ED647928BD092747D2212D4C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A8381DE0150C2F30093AE407 /* HisarNotificationService */;
+			targetProxy = 0FF6BDEC1D2DB09C09B7A5B8 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1058,6 +1162,28 @@
 			};
 			name = Release;
 		};
+		18C416D682E66E2BD9CD8C98 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Configuration/HisarNotificationService.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				INFOPLIST_FILE = NotificationService/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_NOTIFICATION_SERVICE_BUNDLE_IDENTIFIER)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "HisarNotificationService App Store";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		1DFDC14C0851D0CC940C630A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1126,6 +1252,28 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_APP_BUNDLE_IDENTIFIER)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Hisar Development";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		9ACCC09D0D4B910B87EAFA44 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Configuration/HisarNotificationService.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				INFOPLIST_FILE = NotificationService/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_NOTIFICATION_SERVICE_BUNDLE_IDENTIFIER)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "HisarNotificationService Development";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -1324,6 +1472,15 @@
 			buildConfigurations = (
 				8BF3E684AE3C1FB80C3D32DC /* Debug */,
 				F80A0440C2604A1878CDABFC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		8C98AA5E6DEE6A27951B11E7 /* Build configuration list for PBXNativeTarget "HisarNotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9ACCC09D0D4B910B87EAFA44 /* Debug */,
+				18C416D682E66E2BD9CD8C98 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

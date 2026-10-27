@@ -272,7 +272,7 @@ func (s *Service) notifyOrganizationInvitation(ctx context.Context, inviter *sto
 			return
 		}
 		s.publishOrganizationsChanged(recipient.ID)
-		s.notifyPhones(recipient.ID, apitypes.PushKindSharing, "")
+		s.notifyPhones(recipient.ID, createInvitationPush(inviter, apitypes.PushInvitationOrganization, organizationName, role), "")
 		if emailConfigured {
 			s.sendEmail(ctx, composeOrganizationInvitationEmail(inviter, email, organizationName, role))
 		}

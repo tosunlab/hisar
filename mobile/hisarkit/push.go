@@ -6,6 +6,12 @@ func (hisar *Hisar) SetPushToken(platform, token string) error {
 	return hisar.service.SetPushToken(platform, token)
 }
 
+// SetPushPayloadKey takes the public key and authentication secret, base64url, that the iPhone's notification service
+// extension opens push details with. Call it before SetPushToken, off the main thread: it may reach the server.
+func (hisar *Hisar) SetPushPayloadKey(p256dh, auth string) error {
+	return hisar.service.SetPushPayloadKey(p256dh, auth)
+}
+
 // SetPushKindEnabled turns one kind of notification ("approval", "security", "sharing") on or off for this phone.
 func (hisar *Hisar) SetPushKindEnabled(kind string, isEnabled bool) error {
 	return hisar.service.SetPushKindEnabled(kind, isEnabled)

@@ -27,9 +27,10 @@ const (
 	pushInterval = 30 * time.Second
 )
 
-// Sender delivers a push of a kind to one push service token.
+// Sender delivers a push of a kind to one push service token, with payload, the details encrypted to the phone, when
+// the server sent them.
 type Sender interface {
-	Send(ctx context.Context, platform apitypes.PushPlatform, token string, kind apitypes.PushKind) error
+	Send(ctx context.Context, platform apitypes.PushPlatform, token string, kind apitypes.PushKind, payload string) error
 }
 
 type Relay struct {
@@ -102,7 +103,7 @@ func (relay *Relay) handleRegister(writer http.ResponseWriter, request *http.Req
 
 func (relay *Relay) handlePush(writer http.ResponseWriter, request *http.Request) {
 	var body apitypes.RelayPushRequest
-	if err := readJSON(request, &body); err != nil || !apitypes.IsValidPushKind(body.Kind) {
+	if err := readJSON(request, &body); err != nil || !apitypes.IsValidPushKind(body.Kind) || len(body.Payload) > apitypes.MaximumRelayPushPayload {
 		http.Error(writer, "invalid request", http.StatusBadRequest)
 		return
 	}
@@ -121,7 +122,7 @@ func (relay *Relay) handlePush(writer http.ResponseWriter, request *http.Request
 		writer.WriteHeader(http.StatusAccepted)
 		return
 	}
-	switch err := sender.Send(request.Context(), platform, token, body.Kind); {
+	switch err := sender.Send(request.Context(), platform, token, body.Kind, body.Payload); {
 	case errors.Is(err, ErrUnregistered):
 		http.Error(writer, "unregistered", http.StatusGone)
 	case err != nil:

@@ -56,6 +56,8 @@ class IosTestParityTest {
             "testLockedStartKeepsAutoFillIdentities" to identityStore,
             "testALaunchAfterNotificationsWereAllowedAsksForThisLaunchsToken" to
                 "the UnifiedPush distributor hands HisarPushService its endpoint by itself; there is no APNs registration to ask for",
+            "testAPushPayloadDecryptsWithThePhonesKey" to
+                "the UnifiedPush connector decrypts the Web Push message itself before HisarPushService sees it, so there is no payload for Hisar to decrypt",
             "testExportDatesReachTheBackendAsSecondsSince1970" to
                 "Android receives the Credential Exchange JSON as the exporter wrote it; only iOS decodes it into Dates first",
             "testReplacingTheSecretKeyUpdatesTheStoredItemInPlace" to

@@ -111,19 +111,24 @@ func padTo32(value *big.Int) []byte {
 }
 
 // apnsPayload is the alert: its text is the app's own localized sentence for the kind, so the push carries no words.
-func apnsPayload(kind apitypes.PushKind) []byte {
-	payload, _ := json.Marshal(map[string]any{
-		"aps": map[string]any{
-			"alert":     map[string]string{"loc-key": "push." + string(kind)},
-			"sound":     "default",
-			"thread-id": string(kind),
-		},
-		"kind": string(kind),
-	})
-	return payload
+// With a payload, the details encrypted to the phone, the app's notification service extension may replace the text
+// (mutable-content); APNs and the relay cannot read it.
+func apnsPayload(kind apitypes.PushKind, payload string) []byte {
+	aps := map[string]any{
+		"alert":     map[string]string{"loc-key": "push." + string(kind)},
+		"sound":     "default",
+		"thread-id": string(kind),
+	}
+	message := map[string]any{"aps": aps, "kind": string(kind)}
+	if payload != "" {
+		aps["mutable-content"] = 1
+		message["payload"] = payload
+	}
+	encoded, _ := json.Marshal(message)
+	return encoded
 }
 
-func (sender *APNsSender) Send(ctx context.Context, platform apitypes.PushPlatform, token string, kind apitypes.PushKind) error {
+func (sender *APNsSender) Send(ctx context.Context, platform apitypes.PushPlatform, token string, kind apitypes.PushKind, payload string) error {
 	baseURL := sender.config.BaseURL
 	if platform == apitypes.PushPlatformAPNsSandbox {
 		baseURL = sender.config.SandboxBaseURL
@@ -132,7 +137,7 @@ func (sender *APNsSender) Send(ctx context.Context, platform apitypes.PushPlatfo
 	if err != nil {
 		return err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/3/device/"+token, bytes.NewReader(apnsPayload(kind)))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/3/device/"+token, bytes.NewReader(apnsPayload(kind, payload)))
 	if err != nil {
 		return err
 	}
