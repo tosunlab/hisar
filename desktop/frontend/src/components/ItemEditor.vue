@@ -674,19 +674,19 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
 
     <section v-if="!isSSHKey" class="card editor-card">
       <p class="section-label">Other fields</p>
-      <div v-for="(field, index) in draft.fields" :key="index" class="custom-field">
-        <input v-model="field.name" :name="`fieldName${index}`" placeholder="Name" aria-label="Field name" />
+      <div v-for="(field, index) in draft.fields" :key="index" class="custom-field" role="group" :aria-label="field.name.trim() ? field.name : `Field ${index + 1}`">
+        <input v-model="field.name" :name="`fieldName${index}`" placeholder="Name" :aria-label="`Name for ${field.name.trim() ? field.name : `Field ${index + 1}`}`" />
         <input
           v-model="field.value"
           :name="`fieldValue${index}`"
           :type="field.concealed ? 'password' : 'text'"
           placeholder="Value"
-          aria-label="Field value"
+          :aria-label="`Value for ${field.name.trim() ? field.name : `Field ${index + 1}`}`"
         />
         <label class="concealed" :title="'Hide this value until revealed'">
-          <input v-model="field.concealed" type="checkbox" /> <span>Secret</span>
+          <input v-model="field.concealed" type="checkbox" :aria-label="`Keep ${field.name.trim() ? field.name : `Field ${index + 1}`} secret`" /> <span>Secret</span>
         </label>
-        <button type="button" class="ghost icon-button" aria-label="Remove field" @click="removeField(index)"><AppIcon name="close" /></button>
+        <button type="button" class="ghost icon-button" :aria-label="`Remove ${field.name.trim() ? field.name : `Field ${index + 1}`}`" @click="removeField(index)"><AppIcon name="close" /></button>
       </div>
       <button type="button" class="ghost add-field" @click="addField"><AppIcon name="plus" /> Add field</button>
     </section>

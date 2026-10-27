@@ -108,6 +108,9 @@ and navigation to another item, vault, Favorites, or a tag from Favorites. If th
 offers **Keep editing** and **Discard**. Locking keeps the draft in memory and restores it after unlock.
 ⌘S and ⌘↩ save after the form passes validation.
 
+In **Other fields**, each row is an accessible group named after its field, or its position while unnamed.
+Value, secrecy, and removal controls include that name and update when you rename the field.
+
 Item and Favorites lists are listboxes with keyboard navigation and `aria-selected` on each option.
 The item list's accessible name is its vault's name. The selected sidebar vault or Favorites entry has `aria-current="true"`.
 
