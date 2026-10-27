@@ -4,15 +4,15 @@ import { acknowledgePendingRecovery, discardPreparedRecovery, resumePendingRecov
 import type { PendingRecoverySummary } from "../api";
 import HisarLogo from "./HisarLogo.vue";
 
-const password = ref("");
-const secretKey = ref("");
-const priorSecretKey = ref("");
+type RecoveryFactors = { password: string; secretKey: string; priorSecretKey: string; needsPriorSecretKey: boolean };
+const factorsByOperation = ref<Record<string, RecoveryFactors>>({});
 const savedOperationID = ref("");
 const isSavedConfirmed = ref<Record<string, boolean>>({});
+function factorsFor(operation: PendingRecoverySummary): RecoveryFactors {
+  return factorsByOperation.value[operation.operationId] ??= { password: "", secretKey: "", priorSecretKey: "", needsPriorSecretKey: false };
+}
 function clearFactors(): void {
-  password.value = "";
-  secretKey.value = "";
-  priorSecretKey.value = "";
+  factorsByOperation.value = {};
 }
 onUnmounted(() => { clearFactors(); store.recoveryFactor = null; });
 watch(() => store.recoveryEpoch, () => {
@@ -22,13 +22,19 @@ watch(() => store.recoveryEpoch, () => {
 });
 
 async function run(operation: PendingRecoverySummary, action: "resume" | "save" | "acknowledge" | "discard"): Promise<void> {
-  if (!password.value || store.isBusy) return;
-  const enteredPassword = password.value;
-  const enteredKey = secretKey.value;
-  const enteredPriorKey = priorSecretKey.value;
-  clearFactors();
+  const factors = factorsFor(operation);
+  if (!factors.password || store.isBusy) return;
+  const enteredPassword = factors.password;
+  const enteredKey = factors.secretKey;
+  const enteredPriorKey = factors.priorSecretKey;
+  factors.password = "";
+  factors.secretKey = "";
+  factors.priorSecretKey = "";
   if (action === "resume") {
-    await resumePendingRecovery(operation.operationId, enteredPassword, enteredKey, enteredPriorKey);
+    const resumed = await resumePendingRecovery(operation.operationId, enteredPassword, enteredKey, enteredPriorKey);
+    if (!resumed && operation.kind === "replacement" && store.errorMessage === "enter the previous Secret Key to resume this interrupted replacement") {
+      factors.needsPriorSecretKey = true;
+    }
   } else if (action === "save") {
     if (await savePendingRecoveryKit(operation.operationId, enteredPassword)) {
       savedOperationID.value = operation.operationId;
@@ -50,9 +56,6 @@ async function run(operation: PendingRecoverySummary, action: "resume" | "save" 
       <h1>Finish saving your account recovery</h1>
       <p>Choose the operation you want to finish. Nothing is resumed automatically.</p>
       <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
-      <label><span>Master password for this operation</span><input v-model="password" name="pendingRecoveryPassword" type="password" autocomplete="current-password" :disabled="store.isBusy" /></label>
-      <label><span>Secret Key from the saved Emergency Kit, if this app restarted</span><input v-model="secretKey" name="pendingRecoverySecretKey" type="password" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
-      <label><span>Previous Secret Key, only if requested for an interrupted replacement</span><input v-model="priorSecretKey" name="pendingRecoveryPriorSecretKey" type="password" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
       <article v-for="operation in store.pendingRecovery" :key="operation.operationId" data-testid="pending-operation">
         <h2>{{ operation.kind === 'signup' ? 'Account setup' : 'Secret Key replacement' }} · {{ operation.email }}</h2>
         <p class="muted">{{ operation.origin }}</p>
@@ -66,15 +69,18 @@ async function run(operation: PendingRecoverySummary, action: "resume" | "save" 
         <p class="hint">Verify and resume signs in to this account. If a different account is open, it will be replaced only when you choose this action.</p>
         <p v-if="!operation.keychainProtected" class="hint">This device does not persist the new Secret Key. After a restart, enter the Secret Key from your saved kit to resume. If you closed the app before saving an uncommitted kit, discard that setup and start again.</p>
         <p v-for="problem in operation.problems" :key="problem" class="error">{{ problem }}</p>
+        <label><span>Master password for this operation</span><input v-model="factorsFor(operation).password" name="pendingRecoveryPassword" type="password" autocomplete="current-password" :disabled="store.isBusy" /></label>
+        <label v-if="operation.manualUnlock || !operation.keychainProtected"><span>Secret Key from the saved Emergency Kit</span><input v-model="factorsFor(operation).secretKey" name="pendingRecoverySecretKey" type="text" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
+        <label v-if="operation.kind === 'replacement' && factorsFor(operation).needsPriorSecretKey"><span>Previous Secret Key</span><input v-model="factorsFor(operation).priorSecretKey" name="pendingRecoveryPriorSecretKey" type="text" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
         <div class="row">
-          <button :disabled="store.isBusy || !password || operation.phase === 'awaiting-kit'" @click="run(operation, 'resume')">Verify and resume</button>
-          <button :disabled="store.isBusy || !password || operation.phase === 'outcome-unknown'" @click="run(operation, 'save')">Save recovery Emergency Kit…</button>
+          <button :disabled="store.isBusy || !factorsFor(operation).password || operation.phase === 'awaiting-kit'" @click="run(operation, 'resume')">Verify and resume</button>
+          <button :disabled="store.isBusy || !factorsFor(operation).password || operation.phase === 'outcome-unknown'" @click="run(operation, 'save')">Save recovery Emergency Kit…</button>
         </div>
         <template v-if="savedOperationID === operation.operationId || operation.kitSaved">
           <label class="check-row"><input v-model="isSavedConfirmed[operation.operationId]" name="pendingRecoveryKitSaved" type="checkbox" /><span>I saved the Emergency Kit somewhere safe</span></label>
-          <button class="primary" :disabled="store.isBusy || !password || !isSavedConfirmed[operation.operationId] || (operation.phase !== 'delivery-pending' && operation.phase !== 'awaiting-kit')" @click="run(operation, 'acknowledge')">Confirm saved</button>
+          <button class="primary" :disabled="store.isBusy || !factorsFor(operation).password || !isSavedConfirmed[operation.operationId] || (operation.phase !== 'delivery-pending' && operation.phase !== 'awaiting-kit')" @click="run(operation, 'acknowledge')">Confirm saved</button>
         </template>
-        <button v-if="operation.phase === 'awaiting-kit' || operation.phase === 'prepared'" class="ghost" :disabled="store.isBusy || !password" @click="run(operation, 'discard')">Discard uncommitted setup</button>
+        <button v-if="operation.phase === 'awaiting-kit' || operation.phase === 'prepared'" class="ghost" :disabled="store.isBusy || !factorsFor(operation).password" @click="run(operation, 'discard')">Discard uncommitted setup</button>
       </article>
       <button class="ghost" :disabled="store.isBusy" @click="store.isRecoveryOpen = false">Finish later</button>
       <p class="hint muted">Finishing later keeps the recovery record. You can reopen recovery from this window.</p>

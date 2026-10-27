@@ -163,6 +163,29 @@ func TestCredentialChangeReportsACachedAccountItCouldNotReplace(t *testing.T) {
 	}
 }
 
+func TestInterruptedReplacementRequestsThePreviousSecretKey(t *testing.T) {
+	account := createCredentialTestAccount(t, []byte("current master password"))
+	ctx := context.Background()
+	var pending PendingFactor
+	stopped := errors.New("stopped before sending")
+	_, err := account.session.ReplaceSecretKeyWithRecovery(ctx, account.password, account.secretKey, func(value PendingFactor) error {
+		pending = value
+		return stopped
+	})
+	if !errors.Is(err, stopped) {
+		t.Fatal(err)
+	}
+	pending.PriorSecretKey = ""
+	account.server.isUnavailable = true
+	_, _, err = ResumePendingFactor(ctx, account.session.Client, account.server.account.Email, account.password, pending, apitypes.DeviceInfo{})
+	if err == nil || err.Error() != "enter the previous Secret Key to resume this interrupted replacement" {
+		t.Fatalf("missing prior factor was not requested: %v", err)
+	}
+	if account.server.changeCount != 0 {
+		t.Fatal("a request was sent before the staged operation was resumed")
+	}
+}
+
 func TestReplacingTheSecretKeySucceedsWhenOnlyTheAnswerWasLost(t *testing.T) {
 	account := createCredentialTestAccount(t, []byte("current master password"))
 	ctx := context.Background()
