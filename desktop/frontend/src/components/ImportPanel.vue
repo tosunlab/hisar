@@ -192,6 +192,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         </section>
         <h3 data-testid="import-headline">{{ formatCount(importCount) }} to import into {{ store.importPreview.vaultName }}</h3>
         <p v-if="allCount.length > 0" class="category-counts muted" data-testid="import-category-counts">
+          Before skipping duplicates: {{ formatCount(store.importPreview.itemCount) }}.
           <template v-for="(countEntry, index) in allCount" :key="countEntry.testID">
             <template v-if="index > 0"> · </template>
             <span :data-testid="`import-count-${countEntry.testID}`">{{ countEntry.count }} {{ countEntry.label }}</span>
