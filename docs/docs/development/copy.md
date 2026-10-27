@@ -96,6 +96,14 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Added to Favorites · Removed from Favorites (notices; the iPhone ends them with a period) · `Added "GitHub" (Personal) to Favorites.` (`hisar favorite`) | Starred!, Pinned |
 | "No favorites yet" · "Star an item with ★ or ⌘D to keep it here, across all your vaults and devices. Only you see your favorites." (Mac) · "Star an item to keep it here, on all your devices. Only you see your favorites." (Android) · "No favorites yet. Add one with: hisar favorite \<item> [-v vault]" (CLI) | Shared favorites, favorites for the vault |
 
+The one-time code setup and failure copy is shared across the apps.
+
+| Surface | Mac | iPhone and Android |
+|---|---|---|
+| Editor heading or field label | One-time code setup key | One-time code |
+| Setup placeholder | Setup key or otpauth:// link | Setup key or otpauth:// link |
+| Unreadable code | The one-time code could not be read. | The one-time code could not be read. |
+
 ## Vaults and your data
 
 | Use | Not |

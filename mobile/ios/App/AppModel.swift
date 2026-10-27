@@ -296,7 +296,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func perform<Value>(isBusyShown: Bool = true, ignoredErrorCodes: Set<String> = [], _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
+    private func perform<Value>(isBusyShown: Bool = true, ignoredErrorCodes: Set<String> = [], onFailure: ((String) -> Void)? = nil, _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
         guard let backend else { return nil }
         lastErrorCode = nil
         if isBusyShown { isBusy = true }
@@ -310,7 +310,9 @@ final class AppModel: ObservableObject {
             if let code = (error as? BackendError)?.code, ignoredErrorCodes.contains(code) {
                 errorMessage = nil
             } else {
-            errorMessage = describeError(error)
+                let message = describeError(error)
+                errorMessage = message
+                onFailure?(message)
             }
             return nil
         }
@@ -677,8 +679,8 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) async -> Bool {
-        guard await perform(isBusyShown: false, { try $0.setItemFavorite(vaultID: vaultID, itemID: itemID, isFavorite: isFavorite) }) != nil else { return false }
+    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool, onFailure: ((String) -> Void)? = nil) async -> Bool {
+        guard await perform(isBusyShown: false, onFailure: onFailure, { try $0.setItemFavorite(vaultID: vaultID, itemID: itemID, isFavorite: isFavorite) }) != nil else { return false }
         if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
             allItemByVaultID[vaultID]?[index].isFavorite = isFavorite
         }
@@ -1338,8 +1340,8 @@ final class AppModel: ObservableObject {
         return try? await runInBackground { try backend.describeCard(number: number, expiry: expiry) }
     }
 
-    func convertToSecureNote(vaultID: String, itemID: String) async -> ItemDetail? {
-        guard let convertedItem = await perform({ try $0.convertToSecureNote(vaultID: vaultID, itemID: itemID) }) else { return nil }
+    func convertToSecureNote(vaultID: String, itemID: String, onFailure: ((String) -> Void)? = nil) async -> ItemDetail? {
+        guard let convertedItem = await perform(onFailure: onFailure, { try $0.convertToSecureNote(vaultID: vaultID, itemID: itemID) }) else { return nil }
         if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
             allItemByVaultID[vaultID]?[index].category = convertedItem.category
             allItemByVaultID[vaultID]?[index].revision = convertedItem.revision
@@ -1349,8 +1351,8 @@ final class AppModel: ObservableObject {
         return convertedItem
     }
 
-    func deletePasskey(vaultID: String, itemID: String, credentialID: String) async -> ItemDetail? {
-        guard let updatedItem = await perform({ try $0.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: credentialID) }) else { return nil }
+    func deletePasskey(vaultID: String, itemID: String, credentialID: String, onFailure: ((String) -> Void)? = nil) async -> ItemDetail? {
+        guard let updatedItem = await perform(onFailure: onFailure, { try $0.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: credentialID) }) else { return nil }
         if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
             allItemByVaultID[vaultID]?[index].allPasskey = updatedItem.allPasskey
         }
@@ -1365,14 +1367,14 @@ final class AppModel: ObservableObject {
         return try? await runInBackground { try backend.getOneTimeCode(vaultID: vaultID, itemID: itemID) }
     }
 
-    func copyField(vaultID: String, itemID: String, fieldName: String, label: String) async {
-        guard await perform(isBusyShown: false, { try $0.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
+    func copyField(vaultID: String, itemID: String, fieldName: String, label: String, onFailure: ((String) -> Void)? = nil) async {
+        guard await perform(isBusyShown: false, onFailure: onFailure, { try $0.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
         copyCount += 1
         showNotice("\(label) copied. It clears in 90 seconds.")
     }
 
-    func copySecretReference(vaultID: String, itemID: String, fieldName: String) async {
-        guard await perform(isBusyShown: false, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
+    func copySecretReference(vaultID: String, itemID: String, fieldName: String, onFailure: ((String) -> Void)? = nil) async {
+        guard await perform(isBusyShown: false, onFailure: onFailure, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
         copyCount += 1
         showNotice("Secret reference copied.")
     }
@@ -1663,15 +1665,12 @@ final class AppModel: ObservableObject {
 
     static let unreadablePhotoMessage = "Hisar can't read this photo. Choose another one."
 
-    /// prepareItemIcon turns a chosen photo into the icon image an item keeps, or shows why it can't. Photos come as the
-    /// library keeps them (HEIC from the camera, TIFF, PNG…), which the backend does not all read, so the phone decodes
-    /// and shrinks the photo first and hands it a PNG or JPEG.
-    func prepareItemIcon(_ photo: Data) async -> Data? {
+    func prepareItemIcon(_ photo: Data) async throws -> Data {
         guard let upload = Self.convertPhotoForIcon(photo) else {
-            errorMessage = Self.unreadablePhotoMessage
-            return nil
+            throw BackendError(message: Self.unreadablePhotoMessage)
         }
-        return await perform { try $0.prepareItemIcon(upload) }
+        guard let backend else { throw BackendError(message: "Hisar is not ready. Try again.") }
+        return try await runInBackground { try backend.prepareItemIcon(upload) }
     }
 
     /// convertPhotoForIcon decodes any image UIKit reads, applies its orientation, scales it down to maxSide and encodes

@@ -62,6 +62,8 @@ class IosTestParityTest {
                 "Only iOS registers an APNs token when notification authorization changes; Android receives its UnifiedPush endpoint separately.",
             "testInvitationEmailWrapsLiteralCharactersAtAccessibilitySizes" to
                 "UIKit-specific regression for iOS automatic hyphenation and selectable UITextView Dynamic Type wrapping; Android does not use UIKit",
+            "testIconPhotoPreparationRejectsStaleResults" to
+                "iOS PhotosPicker uses an asynchronous transfer and conversion task; this test covers its generation guard and sheet dismissal",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

@@ -66,6 +66,21 @@ class ItemDetailClipboardTests : HisarUITestCase() {
     }
 
     @Test
+    fun testFullValueCopyUsesTheProtectedAndroidClipboard() {
+        val secret = "0123456789abcdef".repeat(160) + "COMPLETE-END"
+        backend.saveItem("personal", backend.getItem("personal", "github").copy(password = secret))
+        openHost().show("personal", "github")
+        waitFor("reveal-password")
+        tap("reveal-password")
+        scrollTo("view-full-password")
+        tap("view-full-password")
+        waitFor("full-value-text")
+        tap("full-value-copy")
+        waitUntil(10_000, "the clipboard holds the complete secret") { clipboardText == secret }
+        assertTrue("the full-value view uses Hisar's sensitive clipboard path", clipboardManager.primaryClipDescription?.extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true)
+    }
+
+    @Test
     fun testCertificateMenuCopiesToTheAndroidClipboard() {
         val certificate = "14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5"
         backend.addAndroidApp("personal", "bank", "com.bank.app", certificate)

@@ -11,6 +11,7 @@ struct ItemDetailView: View {
     @State private var allRevealedFieldName = Set<String>()
     @State private var isEditorShown = false
     @State private var passkeyToDelete: ItemPasskey?
+    @State private var actionErrorMessage: String?
 
     private var vault: VaultSummary? { model.findVault(vaultID: vaultID) }
 
@@ -80,6 +81,14 @@ struct ItemDetailView: View {
         } message: { passkey in
             Text("You can no longer sign in to \(passkey.relyingPartyID) as \(passkey.userName) with it.")
         }
+        .alert("Could not complete the action", isPresented: Binding(
+            get: { actionErrorMessage != nil },
+            set: { if !$0 { actionErrorMessage = nil } }
+        )) {
+            Button("OK") { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
         .task { await loadItem() }
         .onDisappear {
             item = nil
@@ -88,7 +97,7 @@ struct ItemDetailView: View {
     }
 
     private func toggleFavorite(_ shownItem: ItemDetail) async {
-        if await model.setItemFavorite(vaultID: vaultID, itemID: shownItem.id, isFavorite: !shownItem.isFavorite) {
+        if await model.setItemFavorite(vaultID: vaultID, itemID: shownItem.id, isFavorite: !shownItem.isFavorite, onFailure: { actionErrorMessage = $0 }) {
             item?.isFavorite = !shownItem.isFavorite
         }
     }
@@ -533,7 +542,7 @@ struct ItemDetailView: View {
     }
 
     private func convertToSecureNote() async {
-        guard let item, let convertedItem = await model.convertToSecureNote(vaultID: vaultID, itemID: item.id) else { return }
+        guard let item, let convertedItem = await model.convertToSecureNote(vaultID: vaultID, itemID: item.id, onFailure: { actionErrorMessage = $0 }) else { return }
         self.item = convertedItem
     }
 
@@ -621,17 +630,21 @@ struct ItemDetailView: View {
 
     private func deletePasskey(_ passkey: ItemPasskey) async {
         passkeyToDelete = nil
-        if let updatedItem = await model.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: passkey.credentialID) {
+        if let updatedItem = await model.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: passkey.credentialID, onFailure: { actionErrorMessage = $0 }) {
             item = updatedItem
         }
     }
 
     private func copy(fieldName: String, label: String) {
-        Task { await model.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName, label: label) }
+        Task {
+            await model.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName, label: label, onFailure: { actionErrorMessage = "Could not copy \(label). \($0)" })
+        }
     }
 
     private func copyReference(fieldName: String) {
-        Task { await model.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }
+        Task {
+            await model.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName, onFailure: { actionErrorMessage = "Could not copy the secret reference. \($0)" })
+        }
     }
 }
 

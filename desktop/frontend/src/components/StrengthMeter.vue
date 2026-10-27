@@ -25,6 +25,8 @@ const filledSegmentCount = computed(() => ({ empty: 0, weak: 1, fair: 2, good: 3
 
 .segment {
   width: 28px;
+  flex: 0 1 28px;
+  min-width: 0;
   height: 4px;
   border-radius: 2px;
   background: var(--color-border);
@@ -45,6 +47,8 @@ const filledSegmentCount = computed(() => ({ empty: 0, weak: 1, fair: 2, good: 3
 
 .label {
   margin-left: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }

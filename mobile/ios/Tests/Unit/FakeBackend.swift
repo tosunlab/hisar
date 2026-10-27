@@ -28,6 +28,7 @@ class FakeBackend: VaultBackend {
     var favoriteErrorMessage: String?
     var peopleErrorMessage: String?
     var cancelShareInvitationErrorMessage: String?
+    var deletePasskeyErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
     var biometricUnlockError: BackendError?
@@ -736,6 +737,7 @@ extension FakeBackend {
 
     func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail {
         record("deletePasskey")
+        if let deletePasskeyErrorMessage { throw BackendError(message: deletePasskeyErrorMessage) }
         var item = try getItem(vaultID: vaultID, itemID: itemID)
         guard item.allPasskey.contains(where: { $0.credentialID == credentialID }) else { throw BackendError(message: "passkey not found") }
         item.allPasskey.removeAll { $0.credentialID == credentialID }

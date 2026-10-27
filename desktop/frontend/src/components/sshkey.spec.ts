@@ -45,6 +45,8 @@ function resetStore(): void {
     errorMessage: "",
     noticeMessage: "",
     isBusy: false,
+    editorDraft: null,
+    discardDraftPrompt: null,
     isSettingsOpen: false,
     isCommitSigningSetupOpen: false,
     commitSigningItemID: "",
@@ -171,10 +173,75 @@ describe("SSHKeyForm", () => {
     await wrapper.find('input[name="title"]').setValue("Laptop");
     expect(submitButton().attributes("disabled")).toBeUndefined();
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
-    expect(submitButton().text()).toBe("Import key");
+    expect(submitButton().text()).toContain("Import key");
     expect(submitButton().attributes("disabled")).toBeDefined();
     await findButton(wrapper, "Cancel").trigger("click");
     expect(store.editorMode).toBe("view");
+  });
+
+  it.each(["generate", "import"])("submits %s with Command-S and Command-Return", async (mode) => {
+    for (const key of ["s", "Enter"]) {
+      store.editorMode = "create-ssh-key";
+      const created = createSSHKeyItem();
+      api.generateSSHKey.mockResolvedValue(created);
+      api.importSSHKey.mockResolvedValue(created);
+      api.listAllItem.mockResolvedValue([created]);
+      const wrapper = mount(SSHKeyForm, { attachTo: document.body });
+      await wrapper.get('input[name="title"]').setValue("Deploy");
+      if (mode === "import") {
+        await wrapper.findAll('[role="tab"]')[1].trigger("click");
+        await wrapper.get('textarea[name="privateKey"]').setValue("private-key");
+      }
+      const target = wrapper.get(mode === "import" ? "textarea" : 'input[name="title"]');
+      const event = new KeyboardEvent("keydown", { key, metaKey: true, bubbles: true, cancelable: true });
+      target.element.dispatchEvent(event);
+      await flushPromises();
+      expect(event.defaultPrevented).toBe(true);
+      expect(mode === "import" ? api.importSSHKey : api.generateSSHKey).toHaveBeenCalled();
+      expect(store.editorMode).toBe("view");
+      wrapper.unmount();
+    }
+  });
+
+  it("validates shortcuts and ignores saving or cancellation while busy", async () => {
+    store.editorMode = "create-ssh-key";
+    const wrapper = mount(SSHKeyForm, { attachTo: document.body });
+    const press = async (key: string, metaKey = true) => {
+      wrapper.get('input[name="title"]').element.dispatchEvent(new KeyboardEvent("keydown", { key, metaKey, bubbles: true, cancelable: true }));
+      await flushPromises();
+    };
+    await press("s");
+    expect(api.generateSSHKey).not.toHaveBeenCalled();
+    await wrapper.get('input[name="title"]').setValue("Deploy");
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await press("Enter");
+    expect(api.importSSHKey).not.toHaveBeenCalled();
+    await wrapper.get("textarea").setValue("key");
+    store.isBusy = true;
+    await press("s");
+    await press("Escape", false);
+    expect(api.importSSHKey).not.toHaveBeenCalled();
+    expect(store.editorMode).toBe("create-ssh-key");
+    wrapper.unmount();
+  });
+
+  it("routes Escape through the shared dirty-draft confirmation", async () => {
+    store.editorMode = "create-ssh-key";
+    const wrapper = mount(SSHKeyForm, { attachTo: document.body });
+    await wrapper.get('input[name="title"]').setValue("Deploy");
+    store.editorDraft = { mode: "create-ssh-key", vaultID: "personal", itemID: "", item: createItem({ title: "Deploy" }), urlText: "", isDirty: true };
+    wrapper.get('input[name="title"]').element.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await flushPromises();
+    expect(store.discardDraftPrompt?.title).toBe("Deploy");
+    store.discardDraftPrompt?.answer(false);
+    await flushPromises();
+    expect(store.editorMode).toBe("create-ssh-key");
+    wrapper.get('input[name="title"]').element.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await flushPromises();
+    store.discardDraftPrompt?.answer(true);
+    await flushPromises();
+    expect(store.editorMode).toBe("view");
+    wrapper.unmount();
   });
 });
 

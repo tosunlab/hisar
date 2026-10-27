@@ -92,7 +92,7 @@ internal fun OneTimeCodeRow(model: AppModel, vaultID: String, itemID: String, co
                 val code = oneTimeCode
                 when {
                     code != null -> RollingCode(code.formattedCode)
-                    isUnavailable -> Text("The one-time password could not be read.", style = HisarType.body, color = HisarTheme.colors.secondaryLabel)
+                    isUnavailable -> Text("The one-time code could not be read.", style = HisarType.body, color = HisarTheme.colors.secondaryLabel)
                     else -> CircularProgressIndicator(Modifier.size(20.dp), color = HisarTheme.colors.secondaryLabel, strokeWidth = 2.dp)
                 }
             }
