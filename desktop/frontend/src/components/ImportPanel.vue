@@ -457,8 +457,8 @@ section {
 
 .entry-list li {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  flex-direction: column;
+  gap: 3px;
   padding: 7px 12px;
   border-bottom: 1px solid var(--color-border);
   font-size: var(--font-size-12);
@@ -469,19 +469,16 @@ section {
 }
 
 .entry-list strong {
-  flex: none;
-  max-width: 45%;
-  overflow: hidden;
+  min-width: 0;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .entry-list span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  line-height: normal;
+  overflow-wrap: anywhere;
 }
 
 .checkbox-row {

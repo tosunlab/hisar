@@ -211,6 +211,22 @@ describe("Import store", () => {
 });
 
 describe("Import panel", () => {
+  it("shows complete explanations for omissions, duplicates and save failures", async () => {
+    const reason = "Bitwarden asked for the master password again before showing this item. Hisar shows and fills it while unlocked.";
+    const duplicateDetail = "This login has a different password. Keep the source until you have checked which password you want to keep.";
+    const wrapper = await openPreview({
+      allSkipped: [{ title: "Long omission", reason }],
+      allDuplicate: [{ title: "Long duplicate", detail: duplicateDetail }],
+    });
+    expect(wrapper.get('[data-testid="import-skipped"] .entry-list span').text()).toBe(reason);
+    expect(wrapper.get('[data-testid="import-duplicates"] .entry-list span').text()).toBe(duplicateDetail);
+    const failure = "This vault's access changed while importing. Keep the source file and preview it again to review who can read these items.";
+    store.store.importProgress = createImportProgress({ isDone: true, allFailed: [{ title: "Failed item", reason: failure }] });
+    store.store.importStep = "done";
+    await flushPromises();
+    expect(wrapper.get('[data-testid="import-failed"] .entry-list span').text()).toBe(failure);
+  });
+
   it("offers editable vaults and starts with Personal even when a shared vault is selected", async () => {
     store.store.selectedVaultID = "work";
     await store.openImport();
