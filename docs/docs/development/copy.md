@@ -43,6 +43,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
 | Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
+| "\<name> is removed from \<vault>, and Hisar encrypts the vault again with a new key for the people who remain. \<name> can still read copies their devices already downloaded. Change any password or secret they should no longer know." | Removal confirmations name the person, falling back to email. Both removal entry points use the same wording. Never imply downloaded copies can be revoked or infer pronouns from a name. |
 
 ## Organizations
 

@@ -248,8 +248,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <div v-if="removingAccountID === member.accountId" class="member-detail confirm" data-testid="remove-confirmation">
               <AppIcon name="refresh" class="detail-icon" />
               <p>
-                Removing {{ getFirstName(member) }} re-encrypts this vault with a new key.
-                <span class="muted">Copies they already downloaded stay readable to them.</span>
+                {{ getDisplayName(member) }} is removed from “{{ vault?.name }}”, and Hisar encrypts the vault again with a new key for the people who remain.
+                <span class="muted">{{ getDisplayName(member) }} can still read copies their devices already downloaded. Change any password or secret they should no longer know.</span>
               </p>
               <button class="ghost" :disabled="store.isBusy" @click="removingAccountID = ''">Cancel</button>
               <button class="danger-solid" :disabled="store.isBusy" data-testid="confirm-remove-member" @click="confirmRemove(member)">Remove</button>

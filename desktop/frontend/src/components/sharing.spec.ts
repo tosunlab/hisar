@@ -170,7 +170,8 @@ describe("Vault sharing panel", () => {
     const wrapper = await openSharingPanel();
     await wrapper.find('[data-testid="remove-member-BOB222"]').trigger("click");
     const confirmation = wrapper.find('[data-testid="remove-confirmation"]');
-    expect(confirmation.text()).toContain("Removing Bob re-encrypts this vault with a new key");
+    expect(confirmation.text()).toContain("Bob Jansen is removed from “Family”");
+    expect(confirmation.text()).toContain("Bob Jansen can still read copies their devices already downloaded");
     expect(api.removeVaultMember).not.toHaveBeenCalled();
 
     await confirmation.find("button.ghost").trigger("click");

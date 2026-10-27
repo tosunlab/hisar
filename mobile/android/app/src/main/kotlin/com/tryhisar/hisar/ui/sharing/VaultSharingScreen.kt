@@ -41,8 +41,10 @@ import com.tryhisar.hisar.ui.vaults.PickerRow
 import com.tryhisar.hisar.ui.vaults.SwipeActionRow
 import kotlinx.coroutines.launch
 
-private const val REMOVAL_EXPLANATION =
-    "Hisar encrypts the vault again with a new key that only the remaining members get. Copies they already downloaded stay readable to them."
+private fun describeVaultMemberRemoval(member: Member, vaultName: String): String {
+    val name = member.name.ifEmpty { member.email }
+    return "$name is removed from “$vaultName”, and Hisar encrypts the vault again with a new key for the people who remain. $name can still read copies their devices already downloaded. Change any password or secret they should no longer know."
+}
 
 /**
  * A shared vault's sheet from the vault's actions menu: owners invite by email, see who is invited and manage members; others
@@ -245,8 +247,8 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
     }
     memberToRemove?.let { member ->
         ConfirmationDialog(
-            title = "Remove ${member.name} from “$vaultName”?",
-            message = REMOVAL_EXPLANATION,
+            title = "Remove ${member.name.ifEmpty { member.email }} from “$vaultName”?",
+            message = describeVaultMemberRemoval(member, vaultName),
             confirmLabel = "Remove",
             confirmTestTag = "confirm-remove-member",
             onConfirm = { scope.launch { if (model.sharing.removeVaultMember(vaultID, member.accountID)) load() } },
@@ -323,8 +325,8 @@ private fun VaultMemberScreen(
 
     if (isRemoveConfirmationShown) {
         ConfirmationDialog(
-            title = "Remove ${member.name} from “$vaultName”?",
-            message = REMOVAL_EXPLANATION,
+            title = "Remove ${member.name.ifEmpty { member.email }} from “$vaultName”?",
+            message = describeVaultMemberRemoval(member, vaultName),
             confirmLabel = "Remove",
             confirmTestTag = "confirm-remove-member",
             onConfirm = {

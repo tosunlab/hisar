@@ -95,7 +95,7 @@ struct VaultSharingView: View {
                 Text("Their invitation link stops working. You can invite them again later.")
             }
             .confirmationDialog(
-                "Remove \(memberToRemove?.name ?? "") from “\(vaultName)”?",
+                "Remove \(memberToRemove.map { $0.name.isEmpty ? $0.email : $0.name } ?? "") from “\(vaultName)”?",
                 isPresented: Binding(get: { memberToRemove != nil }, set: { if !$0 { memberToRemove = nil } }),
                 titleVisibility: .visible
             ) {
@@ -108,7 +108,7 @@ struct VaultSharingView: View {
                     }
                 }
             } message: {
-                Text(removalExplanation)
+                Text(describeVaultMemberRemoval(member: memberToRemove, vaultName: vaultName))
             }
             .task { await load() }
             .onChange(of: model.remoteChangeCount) { _, _ in
@@ -194,10 +194,6 @@ struct VaultSharingView: View {
                  ? "Everyone here can open the items in this vault. Tap a person to compare their security code, change their role or remove them."
                  : "Everyone here can open the items in this vault. Only its owners can share it or change who has access.")
         }
-    }
-
-    private var removalExplanation: String {
-        "Hisar encrypts the vault again with a new key that only the remaining members get. Copies they already downloaded stay readable to them."
     }
 
     @ViewBuilder
@@ -363,7 +359,7 @@ struct VaultMemberView: View {
                 }
             }
         }
-        .confirmationDialog("Remove \(member.name) from “\(vaultName)”?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
+        .confirmationDialog("Remove \(member.name.isEmpty ? member.email : member.name) from “\(vaultName)”?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
                 Task {
                     if await model.removeVaultMember(vaultID: vaultID, accountID: member.accountID) {
@@ -374,7 +370,7 @@ struct VaultMemberView: View {
             }
             .accessibilityIdentifier("confirm-remove-member")
         } message: {
-            Text("Hisar encrypts the vault again with a new key that only the remaining members get. Copies they already downloaded stay readable to them.")
+            Text(describeVaultMemberRemoval(member: member, vaultName: vaultName))
         }
     }
 }
@@ -427,4 +423,9 @@ struct MemberRow: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
     }
+}
+
+func describeVaultMemberRemoval(member: Member?, vaultName: String) -> String {
+    let name = member.map { $0.name.isEmpty ? $0.email : $0.name } ?? ""
+    return "\(name) is removed from “\(vaultName)”, and Hisar encrypts the vault again with a new key for the people who remain. \(name) can still read copies their devices already downloaded. Change any password or secret they should no longer know."
 }
