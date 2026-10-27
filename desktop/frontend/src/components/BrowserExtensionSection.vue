@@ -7,6 +7,10 @@ import AppIcon from "./AppIcon.vue";
 
 const isRowVisible = useSettingsRowVisibility();
 
+// The Chrome Web Store item serves every Chromium browser; Firefox installs the signed .xpi from the newest extension release.
+const chromeWebStoreURL = "https://chromewebstore.google.com/detail/hisar/mmipiffoogblblocokimpemdopmdjghf";
+const firefoxReleasesURL = "https://github.com/tosunlab/hisar/releases?q=%22Hisar+extension%22&expanded=true";
+
 const removingInstanceID = ref("");
 
 const allRegisteredBrowser = computed(() => store.browserStatus?.allInstallation ?? []);
@@ -30,6 +34,10 @@ onMounted(loadBrowserStatus);
           <div class="setting-text">
             <strong>Browser extension</strong>
             <p class="muted">Works in Chrome, Firefox, Brave, Edge, Arc, Dia, Vivaldi and Opera.</p>
+            <p class="muted" data-testid="install-extension">
+              Install it from the <a :href="chromeWebStoreURL" target="_blank" data-testid="chrome-web-store-link">Chrome Web Store</a>, or get the
+              <a :href="firefoxReleasesURL" target="_blank" data-testid="firefox-add-on-link">Firefox add-on</a> from GitHub.
+            </p>
             <div v-if="allRegisteredBrowser.length > 0" class="registered-browsers" data-testid="registered-browsers">
               <span class="muted">Ready in</span>
               <ul class="browser-list">
@@ -42,7 +50,7 @@ onMounted(loadBrowserStatus);
           </div>
         </div>
         <p v-if="allPairedBrowser.length === 0" v-show="isRowVisible('paired-browsers')" class="setting muted pairing-hint" data-testid="no-paired-browser">
-          Install the Hisar extension and click its icon to pair it. Hisar shows a code to enter in the extension.
+          Click the extension's icon to pair it. Hisar shows a code to enter in the extension.
         </p>
         <div v-for="pairedBrowser in allPairedBrowser" v-show="isRowVisible('paired-browsers')" :key="pairedBrowser.instanceID" class="setting" data-testid="paired-browser">
           <span class="settings-row-icon"><AppIcon name="laptop" :size="14" /></span>
