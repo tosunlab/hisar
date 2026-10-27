@@ -20,6 +20,7 @@ import { startThemeSync } from "../theme";
 import { getThisDeviceName } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
+import ApprovalQueue from "./ApprovalQueue.vue";
 
 const allCompactAction: Record<string, string> = {
   push: "Push",
@@ -60,6 +61,12 @@ const expiryText = computed(() =>
     ? `No answer in ${Math.ceil((approval.value?.timeoutMilliseconds ?? 0) / 1000)} seconds.`
     : `Expires in ${secondsLeft.value} ${secondsLeft.value === 1 ? "second" : "seconds"}`,
 );
+const queuedApprovals = computed(() => approvalStore.allApproval.slice(1).map((pending) => ({
+  requestID: pending.requestID,
+  requester: pending.isForwarded ? pending.forwardedFromHost || "Another computer" : pending.agentName || pending.appName,
+  purpose: [pending.action || "use Hisar", pending.kind === "ssh-key" ? pending.target : ""].filter(Boolean).join(" "),
+  seconds: Math.max(0, Math.ceil((Date.parse(pending.timeoutAt) - now.value) / 1000)),
+})));
 let countdownTimer: ReturnType<typeof setInterval> | undefined;
 const isCommandLine = computed(() => approval.value?.kind === "command-line");
 const isAgent = computed(() => approval.value?.kind === "agent");
@@ -466,6 +473,7 @@ onBeforeUnmount(() => {
               <button v-else class="link" data-testid="authorize-approval" @click.stop="startAuthorizing">Try Touch ID again</button>
               <button class="compact-deny" data-testid="deny-approval" @click.stop="deny">Deny</button>
             </div>
+            <ApprovalQueue :requests="queuedApprovals" @deny="denyApproval" @resize="fitWindow" />
           </div>
         </section>
 
@@ -650,10 +658,11 @@ onBeforeUnmount(() => {
               <button v-if="canChoosePassword" class="link" data-testid="use-password" @click="usePassword">or use your master password</button>
             </div>
             <span v-else class="footer-spacer"></span>
-            <span v-if="approvalStore.allApproval.length > 1" class="muted waiting">{{ approvalStore.allApproval.length - 1 }} more waiting</span>
             <button ref="denyButton" :class="{ primary: isForwarded }" data-testid="deny-approval" @click="deny">Deny</button>
           </footer>
+          <ApprovalQueue :requests="queuedApprovals" @deny="denyApproval" @resize="fitWindow" />
         </section>
+        <ApprovalQueue v-if="isExpired" :requests="queuedApprovals" @deny="denyApproval" @resize="fitWindow" />
       </template>
       <p v-else class="muted no-request">No requests waiting.</p>
     </div>
@@ -1213,10 +1222,6 @@ h1 {
 
 .request-text > .phone-note {
   margin: 6px 0 0;
-}
-
-.waiting {
-  font-size: var(--font-size-12);
 }
 
 .compact-card {

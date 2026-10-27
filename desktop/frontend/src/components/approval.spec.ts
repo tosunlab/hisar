@@ -269,6 +269,29 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it.each([false, true])("denies a queued request without changing the active request or its deadline, compact %s", async (isCompact) => {
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ isCompact, timeoutAt: new Date(Date.now() + 60_000).toISOString() }));
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", appName: "Visual Studio Code", timeoutAt: new Date(Date.now() + 30_000).toISOString() }));
+    await flushPromises();
+    const queue = wrapper.get('[data-testid="approval-queue"]');
+    expect(queue.text()).toContain("Visual Studio Code");
+    expect(queue.text()).toContain("push to git.tryhisar.com");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(queue.text()).toContain("Expires in 28 seconds");
+    await queue.get("button").trigger("click");
+    await flushPromises();
+    expect(api.respondSSHApproval).toHaveBeenLastCalledWith("request-2", false, false);
+    expect(api.respondSSHApproval).toHaveBeenCalledTimes(2);
+    expect(approvalStore.isAuthorizing).toBe(true);
+    expect(wrapper.get('[data-testid="approval-app"]').text()).toContain("Terminal");
+    expect(wrapper.find(".compact-card").exists()).toBe(isCompact);
+    expect(wrapper.get('[data-testid="approval-expiry"]').text()).toBe("Expires in 58 seconds");
+    expect(wrapper.find('[data-testid="approval-queue"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("unlocks a locked Hisar with Touch ID", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent({ isUnlockRequired: true, keyTitle: "" }));
