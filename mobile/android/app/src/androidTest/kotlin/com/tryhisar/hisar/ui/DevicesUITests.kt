@@ -47,4 +47,48 @@ class DevicesUITests : HisarUITestCase() {
             saveScreenshot("devices-refresh-failed")
         }
     }
+
+    @Test
+    fun testOpenedDeviceShowsSignOutFailureAndAllowsRetry() {
+        val backend = FakeBackend().apply {
+            seedSignedIn()
+            allDevice = mutableListOf(Device("mac", "MacBook", "macos/desktop"))
+            revokeDeviceErrorMessage = "Could not reach the Hisar server."
+        }
+        launchApp(backend).use {
+            waitFor("vaults-list")
+            openSettings("open-devices")
+            tap("device-MacBook")
+            tap("revoke-device")
+            waitFor(hasText("Until then, it can still be unlocked while offline.", substring = true))
+            tap("confirm-revoke-device")
+            waitFor(hasText("Could not reach the Hisar server."))
+            assertTrue(exists(hasTestTag("revoke-device")))
+            assertTrue(backend.allDevice.any { it.id == "mac" })
+            backend.revokeDeviceErrorMessage = null
+            tap("revoke-device")
+            tap("confirm-revoke-device")
+            waitFor(hasText("No other device is signed in to your account."))
+        }
+    }
+
+    @Test
+    fun testMacApprovalsShowsFailureAndAllowsRetry() {
+        val backend = FakeBackend().apply {
+            seedSignedIn()
+            macApprovalErrorMessage = "Could not save Mac approvals."
+        }
+        launchApp(backend).use {
+            waitFor("vaults-list")
+            openSettings("open-mac-approvals")
+            val previous = backend.isMacApprovalAllowedValue
+            tap("mac-approval-toggle")
+            waitFor(hasText("Could not save Mac approvals."))
+            assertTrue(backend.isMacApprovalAllowedValue == previous)
+            backend.macApprovalErrorMessage = null
+            tap("mac-approval-toggle")
+            composeRule.waitUntil { backend.isMacApprovalAllowedValue != previous }
+            assertTrue(!exists(hasText("Could not save Mac approvals.")))
+        }
+    }
 }

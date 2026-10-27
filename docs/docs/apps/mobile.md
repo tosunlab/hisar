@@ -15,6 +15,8 @@ The iPhone and Android apps on top of the gomobile-bound `core`. See [Design](..
 
 Signing out another device ends its server session immediately. An offline device can still unlock its downloaded vaults until it next contacts the server, when Hisar removes the account from that device. Both the device list and device-detail confirmations explain this limit.
 
+Device sign-out and Mac-approval changes keep failures next to the initiating control. A failed change leaves the device or saved approval state unchanged and allows another attempt. A sign-out notice appears only after the server accepts revocation.
+
 ## Android
 
 Kotlin and Jetpack Compose on top of `HisarKit.aar`, built with the Gradle wrapper in `android/`. Android 10 (API 29)
