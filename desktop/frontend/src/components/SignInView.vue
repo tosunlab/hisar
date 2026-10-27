@@ -215,6 +215,7 @@ async function submitCreateAccount(): Promise<void> {
           <p class="hint muted" data-testid="secret-key-note">Lost your Secret Key? It's on your Emergency Kit.</p>
           <p v-if="!isServerShown" class="hint">
             <span class="muted" data-testid="sign-in-server">Signs in to {{ server }}.</span>
+            {{ ' ' }}
             <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>
           </p>
         </form>
@@ -267,6 +268,7 @@ async function submitCreateAccount(): Promise<void> {
           <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://eu.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://eu.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
           <p v-if="!isServerShown && !hasInvite" class="hint">
             <span class="muted" data-testid="create-account-server">Creates the account on {{ server }}.</span>
+            {{ ' ' }}
             <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>
           </p>
         </form>
