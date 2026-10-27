@@ -284,11 +284,16 @@ class SignInModelTests {
         val model = AppModelHarness(this).startModel()
         model.signIn.isScannerShown.value = true
         model.signIn.openScannedEmergencyKit("hisar://invite/abc")
-        assertFalse(model.signIn.isScannerShown.value, "the first code closes the scanner")
+        assertTrue(model.signIn.isScannerShown.value, "an invalid code keeps the scanner open")
         assertNull(model.signIn.pendingInviteLink.value, "an invite is no Emergency Kit")
         assertEquals("This QR code is not from a Hisar Emergency Kit.", model.signIn.scannerMessage.value)
+        model.signIn.openScannedEmergencyKit("hisar://sign-in?email=ignored")
+        assertNull(model.signIn.pendingSignInLink.value, "scanning stays paused until Try again")
+        model.signIn.scannerMessage.value = null
         model.signIn.openScannedEmergencyKit("hisar://sign-in?server=https%3A%2F%2Fhisar.example.com&email=alice%40example.com&secretKey=H1-ABC123")
         assertEquals(SignInLink(server = "https://hisar.example.com", email = "alice@example.com", secretKey = "H1-ABC123"), model.signIn.pendingSignInLink.value)
+        assertFalse(model.signIn.isScannerShown.value, "a valid kit closes the scanner")
+        assertNull(model.signIn.scannerMessage.value)
     }
 
     @Test

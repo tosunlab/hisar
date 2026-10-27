@@ -11,7 +11,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.QrCodeScanner
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,7 +40,6 @@ import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.GroupedForm
 import com.tryhisar.hisar.ui.components.LogoMark
-import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.ProminentButton
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.components.SegmentedControl
@@ -165,7 +163,7 @@ fun SignInScreen(model: AppModel) {
         errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
         when (mode) {
             SignInMode.SIGN_IN -> SignInSections(
-                scanEmergencyKit = { signIn.isScannerShown.value = true },
+                scanEmergencyKit = { signIn.scannerMessage.value = null; signIn.isScannerShown.value = true },
                 email = email, onEmailChange = { email = it },
                 server = server, onServerChange = { server = it },
                 isServerShown = isServerShown, showServer = { isServerShown = true },
@@ -201,14 +199,11 @@ fun SignInScreen(model: AppModel) {
     }
 
     if (isScannerShown) {
-        EmergencyKitScannerSheet(onScanned = signIn::openScannedEmergencyKit, onCancel = { signIn.isScannerShown.value = false })
-    }
-    scannerMessage?.let { message ->
-        AlertDialog(
-            onDismissRequest = { signIn.scannerMessage.value = null },
-            title = { Text("Scan Emergency Kit") },
-            text = { Text(message) },
-            confirmButton = { PlainButton("OK", { signIn.scannerMessage.value = null }, testTag = "scanner-message-ok") },
+        EmergencyKitScannerSheet(
+            onScanned = signIn::openScannedEmergencyKit,
+            onCancel = { signIn.isScannerShown.value = false; signIn.scannerMessage.value = null },
+            errorMessage = scannerMessage,
+            onRetry = { signIn.scannerMessage.value = null },
         )
     }
 }

@@ -22,7 +22,6 @@ struct SignInView: View {
     @FocusState private var isRepeatPasswordFocused: Bool
     @State private var hasValidatedRepeatedPassword = false
     @State private var isScannerShown = false
-    @State private var scannerMessage: String?
 
     private var isPasswordMismatch: Bool {
         mode == .createAccount && hasValidatedRepeatedPassword && password != repeatedPassword
@@ -126,19 +125,10 @@ struct SignInView: View {
         .onChange(of: model.pendingSignInLink) { _, _ in applyPendingSignInLink() }
         .onChange(of: model.pendingInviteLink) { _, _ in applyPendingInviteLink() }
         .sheet(isPresented: $isScannerShown) {
-            EmergencyKitScannerSheet { scannedText in
+            EmergencyKitScannerSheet { link in
+                model.pendingSignInLink = link
                 isScannerShown = false
-                if let link = SignInLink.parse(scannedText) {
-                    model.pendingSignInLink = link
-                } else {
-                    scannerMessage = "This QR code is not from a Hisar Emergency Kit."
-                }
             }
-        }
-        .alert("Scan Emergency Kit", isPresented: Binding(get: { scannerMessage != nil }, set: { if !$0 { scannerMessage = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(scannerMessage ?? "")
         }
     }
 
