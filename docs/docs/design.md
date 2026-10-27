@@ -388,6 +388,8 @@ Password policy and presentation:
 - CLI dispatch uses a request-scoped service view with the original epoch and the same shared state and mutex as the app. The unlocked-session guard checks that epoch inside each operation's mutex hold, before selecting keys or performing account mutations. Wails method signatures do not change.
   Callbacks and goroutines that outlive a request retain only shared state, never its request-scoped epoch. The auto-lock timer follows this rule.
 
+Sign-out removes this device's saved Secret Key, biometric unlock and offline vault copy. Its Account and locked-screen confirmations disclose local removal and say that signing in again needs the master password and the Secret Key from an Emergency Kit or another signed-in device. The locked-screen message advises canceling, unlocking and saving a kit first, with the platform's Settings route. Unlocked Mac Account also opens the existing Security kit form through **Save Emergency Kit…**, without signing out. This cleanup does not remove the separately protected unfinished-setup recovery journal (§5.2).
+
 ### 5.6 Public key authenticity
 
 Sharing a vault means wrapping `K_vault` to the recipient's KEM public key, which the server delivers. A malicious server could substitute its own key. Mitigations:

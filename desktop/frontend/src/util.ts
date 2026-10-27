@@ -144,6 +144,15 @@ export function getThisDeviceName(): string {
   return isMacPlatform() ? "this Mac" : "this computer";
 }
 
+export function getSignOutCopy(isLocked: boolean): { title: string; message: string } {
+  const device = getThisDeviceName();
+  const message = `Hisar removes ${device}'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.`;
+  return {
+    title: `Sign out of Hisar on ${device}?`,
+    message: isLocked ? `${message} If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Security.` : message,
+  };
+}
+
 // getTrayName is where Hisar stays while its window is closed.
 export function getTrayName(): string {
   return isMacPlatform() ? "menu bar" : "system tray";

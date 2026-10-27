@@ -5,6 +5,9 @@ enum AccountLifecycleLogic {
     static let passwordChangeWarning = "Your other devices will be signed out. Sign in on them with the new master password."
     static let secretKeyReplacementWarning = "Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit. Your old Emergency Kit stops working."
     static let exportAdvice = "Export your items first in Settings → Account → Export data."
+    static let signOutTitle = "Sign out of Hisar on this iPhone?"
+    static let signOutMessage = "Hisar removes this iPhone's saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device."
+    static let lockedSignOutMessage = signOutMessage + " If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit."
 
     static func isWaitingOnlyForKit(setupState: String, secretKey: String, problems: [String]) -> Bool {
         setupState == "delivery-pending" && !secretKey.isEmpty && problems.isEmpty

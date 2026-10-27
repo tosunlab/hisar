@@ -42,6 +42,12 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(AccountLifecycleLogic.describeSignedOutDevices(0), "No other devices were signed in.")
     }
 
+    func testSignOutConfirmationExplainsLocalRemoval() {
+        XCTAssertEqual(AccountLifecycleLogic.signOutTitle, "Sign out of Hisar on this iPhone?")
+        XCTAssertEqual(AccountLifecycleLogic.signOutMessage, "Hisar removes this iPhone's saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.")
+        XCTAssertEqual(AccountLifecycleLogic.lockedSignOutMessage, AccountLifecycleLogic.signOutMessage + " If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit.")
+    }
+
     func testEmailConfirmationIgnoresCaseAndSpaces() {
         XCTAssertTrue(AccountLifecycleLogic.isEmailMatching(typedEmail: " Alice@Example.com ", accountEmail: "alice@example.com"))
         XCTAssertFalse(AccountLifecycleLogic.isEmailMatching(typedEmail: "bob@example.com", accountEmail: "alice@example.com"))

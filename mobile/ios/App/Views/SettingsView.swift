@@ -147,12 +147,12 @@ struct SettingsView: View {
             }
             .applyThemedListStyle()
             .navigationTitle("Settings")
-            .confirmationDialog("Sign out of Hisar on this iPhone?", isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
+            .confirmationDialog(AccountLifecycleLogic.signOutTitle, isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     Task { await model.signOut() }
                 }
             } message: {
-                Text("You will need your Secret Key and master password to sign in again.")
+                Text(AccountLifecycleLogic.signOutMessage)
             }
             .task {
                 isAutoFillEnabled = await AutoFillSettings.checkIsEnabled()

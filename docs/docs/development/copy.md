@@ -32,6 +32,22 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Delete account…, Delete account (the confirm button, after typing the email) | Close account, Remove account, Deactivate |
 | "Export your items first in Settings → Import & Export." (Mac), "… in Settings → Account → Export data." (iPhone, Android), "… with `hisar export`" (CLI) | Back up your data |
 
+### Sign-out confirmations
+
+The Account and locked-screen confirmations share this table. The title is "Sign out of Hisar on \<device>?"
+The message is "Hisar removes \<device>'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device."
+
+| Platform | Device | Emergency Kit route |
+|---|---|---|
+| Mac | this Mac | Settings, Security |
+| Linux | this computer | Settings, Security |
+| iPhone | this iPhone | Settings, Account, Secret Key and Emergency Kit |
+| Android | this device | Settings, Account |
+
+The locked-screen confirmation adds "If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in \<route>."
+Keep **Cancel** and destructive **Sign out**. Unlocked Mac Account also offers **Save Emergency Kit…**, which opens the Security kit form without signing out.
+Sign-out removes the active account's local data, not separately protected unfinished-setup recovery records.
+
 ## People and sharing
 
 | Use | Meaning |
