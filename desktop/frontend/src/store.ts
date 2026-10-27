@@ -91,6 +91,7 @@ export type VaultDialogMode = "rename" | "delete" | "leave" | "blocked";
 // VaultDialog: blockedReason explains why the chosen action is not possible, in the "blocked" mode.
 export interface VaultDialog {
   mode: VaultDialogMode;
+  requestedAction: Exclude<VaultDialogMode, "blocked">;
   actions: VaultActions;
   blockedReason: string;
 }
@@ -846,7 +847,7 @@ export async function openVaultDialog(vaultID: string, mode: Exclude<VaultDialog
   } else if (mode === "rename" && !actions.canRename) {
     blockedReason = "Only an owner of this vault can rename it.";
   }
-  store.vaultDialog = { mode: blockedReason ? "blocked" : mode, actions, blockedReason };
+  store.vaultDialog = { mode: blockedReason ? "blocked" : mode, requestedAction: mode, actions, blockedReason };
 }
 
 export function closeVaultDialog(): void {

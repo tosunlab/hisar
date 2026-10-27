@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useModalFocus } from "../modalFocus";
-import { closeVaultDialog, deleteVault, leaveVault, renameVault, store, type VaultDialog } from "../store";
+import { closeVaultDialog, deleteVault, leaveVault, openSharing, openVaultDialog, renameVault, selectVault, store, type VaultDialog } from "../store";
 import { formatRole } from "../util";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
@@ -28,8 +28,17 @@ const title = computed(() => {
     case "delete":
       return `Delete “${vault.value.name}”?`;
   }
-  return `“${vault.value.name}”`;
+  return `You can't ${props.dialog.requestedAction} “${vault.value.name}”`;
 });
+const canOpenSharing = computed(() => props.dialog.requestedAction === "leave" && vault.value.type === "shared" && vault.value.role === "owner" && !props.dialog.actions.canLeave);
+const canOfferLeave = computed(() => props.dialog.requestedAction === "delete" && vault.value.type === "shared" && vault.value.role !== "owner" && props.dialog.actions.canLeave);
+
+async function remedyThroughSharing(): Promise<void> {
+  const vaultID = vault.value.id;
+  closeVaultDialog();
+  await selectVault(vaultID);
+  await openSharing();
+}
 
 const canSubmitDeletion = computed(() => {
   if (!hasItems.value) {
@@ -78,7 +87,9 @@ useModalFocus(panel, closeVaultDialog);
       <template v-if="dialog.mode === 'blocked'">
         <p class="body-text" data-testid="vault-blocked-reason">{{ dialog.blockedReason }}</p>
         <div class="actions">
-          <button class="primary" @click="closeVaultDialog">OK</button>
+          <button v-if="canOpenSharing" class="ghost" data-testid="vault-blocked-sharing" @click="remedyThroughSharing">Open sharing…</button>
+          <button v-if="canOfferLeave" class="ghost" data-testid="vault-blocked-leave" @click="openVaultDialog(vault.id, 'leave')">Leave vault…</button>
+          <button class="primary" data-dialog-initial-focus @click="closeVaultDialog">OK</button>
         </div>
       </template>
 
