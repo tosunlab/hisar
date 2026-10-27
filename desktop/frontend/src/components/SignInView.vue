@@ -187,7 +187,7 @@ async function submitCreateAccount(): Promise<void> {
         <div v-if="store.status.signedOutReason" class="signed-out-notice" role="status" data-testid="signed-out-reason">
           <AppIcon name="shield" />
           <p>{{ store.status.signedOutReason }}</p>
-          <button type="button" class="ghost" aria-label="Dismiss" data-testid="dismiss-signed-out-reason" @click="dismissSignedOutReason">OK</button>
+          <button type="button" class="ghost" data-testid="dismiss-signed-out-reason" @click="dismissSignedOutReason">OK</button>
         </div>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
 
