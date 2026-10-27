@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import iosSettingsSource from "../../../../mobile/ios/App/Views/SettingsView.swift?raw";
+import androidAccountSource from "../../../../mobile/android/app/src/main/kotlin/com/tryhisar/hisar/ui/settings/AccountScreens.kt?raw";
+import androidNewKeySource from "../../../../mobile/android/app/src/main/kotlin/com/tryhisar/hisar/ui/signin/NewSecretKeyScreen.kt?raw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createApiMock, createStatus } from "../testing";
@@ -36,12 +38,11 @@ describe("Emergency Kit after sign up", () => {
   it("describes device copies without claiming exclusive possession on every key screen", () => {
     const wrapper = mount(SecretKeyView);
     expect(wrapper.text()).toContain("Hisar keeps a copy on this Mac. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults.");
-    for (const [path, device] of [
-      ["mobile/ios/App/Views/SettingsView.swift", "this iPhone"],
-      ["mobile/android/app/src/main/kotlin/com/tryhisar/hisar/ui/settings/AccountScreens.kt", "this device"],
-      ["mobile/android/app/src/main/kotlin/com/tryhisar/hisar/ui/signin/NewSecretKeyScreen.kt", "this device"],
+    for (const [source, device] of [
+      [iosSettingsSource, "this iPhone"],
+      [androidAccountSource, "this device"],
+      [androidNewKeySource, "this device"],
     ]) {
-      const source = readFileSync(`../../${path}`, "utf8");
       expect(source).toContain(`Hisar keeps a copy on ${device}. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults.`);
       expect(source).not.toContain("nobody else has a copy");
     }

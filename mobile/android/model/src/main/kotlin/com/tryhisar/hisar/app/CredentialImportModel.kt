@@ -41,7 +41,7 @@ sealed interface CredentialImportSheet {
     /** An encrypted Hisar export is open: the user enters its export passphrase and openImportFile opens it. */
     data class EnteringPassphrase(val fileName: String) : CredentialImportSheet
 
-    data class Importing(val progress: ImportProgress) : CredentialImportSheet
+    data class Importing(val progress: ImportProgress, val preview: ImportPreview? = null) : CredentialImportSheet
 }
 
 /**
@@ -238,7 +238,7 @@ class CredentialImportModel(private val context: ModelContext) {
             val current = session
             val progress = context.perform(isBusyShown = false) { it.startImport(preview.vaultID, isSkippingDuplicate) } ?: return
             if (session != current) return
-            mutableSheet.value = CredentialImportSheet.Importing(progress)
+            mutableSheet.value = CredentialImportSheet.Importing(progress, preview)
             continueUntilDone(current)
         } finally {
             mutableIsImporting.value = false
@@ -270,7 +270,8 @@ class CredentialImportModel(private val context: ModelContext) {
                 context.errorMessage.value = null
                 return
             }
-            mutableSheet.value = CredentialImportSheet.Importing(nextProgress ?: return)
+            val reviewed = (sheet.value as? CredentialImportSheet.Importing)?.preview
+            mutableSheet.value = CredentialImportSheet.Importing(nextProgress ?: return, reviewed)
         }
     }
 

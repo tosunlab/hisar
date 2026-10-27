@@ -48,6 +48,11 @@ const progressPercent = computed(() => {
   }
   return Math.round(((progress.savedCount + progress.allFailed.length) / progress.totalCount) * 100);
 });
+const remainingEntries = computed(() => store.importProgress?.allSkipped?.length ? store.importProgress.allSkipped : store.importPreview?.allSkipped ?? []);
+
+function dismissWithoutReview(): void {
+  if (store.importStep !== "done") closeImport();
+}
 // exportedLine names the account and date a Hisar export came from; it omits the part that is missing.
 const exportedLine = computed(() => {
   const preview = store.importPreview;
@@ -81,7 +86,7 @@ async function changeVault(event: Event): Promise<void> {
 }
 
 function closeOnEscape(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
+  if (event.key === "Escape" && store.importStep !== "done") {
     closeImport();
   }
 }
@@ -91,7 +96,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 </script>
 
 <template>
-  <div class="overlay" @click.self="closeImport">
+  <div class="overlay" @click.self="dismissWithoutReview">
     <div class="card panel" role="dialog" aria-modal="true" aria-labelledby="import-title" data-testid="import-panel">
       <header class="panel-header">
         <span class="panel-icon"><AppIcon name="import" :size="18" /></span>
@@ -99,7 +104,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <h2 id="import-title">Import items</h2>
           <p class="muted">From a Hisar export, 1Password, Bitwarden, LastPass, or a CSV file from your browser</p>
         </div>
-        <button class="ghost icon-button" aria-label="Close" :disabled="store.isBusy" @click="closeImport"><AppIcon name="close" /></button>
+        <button v-if="store.importStep !== 'done'" class="ghost icon-button" aria-label="Close" :disabled="store.isBusy" @click="closeImport"><AppIcon name="close" /></button>
       </header>
 
       <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
@@ -255,7 +260,31 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <strong data-testid="import-result">Imported {{ formatCount(store.importProgress.savedCount) }} into {{ store.importProgress.vaultName }}</strong>
           </div>
         </div>
-        <section v-if="store.importProgress.allFailed.length > 0" data-testid="import-failed">
+        <div class="completion-report" data-testid="import-completion-report">
+          <p v-if="exportedLine" class="muted hint" data-testid="import-result-exported-from">{{ exportedLine }}</p>
+          <p v-if="store.importPreview?.notice" class="warning" data-testid="import-result-notice">{{ store.importPreview.notice }}</p>
+          <p v-if="store.importPreview?.format === '1pux'" class="warning">1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.</p>
+          <section v-if="remainingEntries.length" data-testid="import-result-skipped">
+            <p class="section-label">Not imported · {{ remainingEntries.length }}</p>
+            <p class="muted hint">These are omission entries, not counts of whole missing items. Some name fields or credentials from items that were imported.</p>
+            <ul class="entry-list">
+              <li v-for="(entry, index) in remainingEntries" :key="index"><strong>{{ entry.title }}</strong><span class="muted">{{ entry.reason }}</span></li>
+            </ul>
+          </section>
+          <section v-if="store.importPreview?.allDuplicate.length" data-testid="import-result-reviewed-duplicates">
+            <p class="section-label">Reviewed duplicate matches</p>
+            <ul class="entry-list">
+              <li v-for="(entry, index) in store.importPreview.allDuplicate" :key="index"><strong>{{ entry.title }}</strong><span class="muted">{{ entry.detail || entry.username }}</span></li>
+            </ul>
+          </section>
+          <section v-if="store.importProgress.allDuplicateOutcomes?.length" data-testid="import-result-duplicates">
+            <p class="section-label">Duplicate outcomes · {{ store.importProgress.allDuplicateOutcomes.length }}</p>
+            <ul class="entry-list">
+              <li v-for="(entry, index) in store.importProgress.allDuplicateOutcomes" :key="index"><strong>{{ entry.title }}</strong><span class="muted">{{ entry.reason }}</span></li>
+            </ul>
+          </section>
+        </div>
+        <section v-if="store.importProgress.allFailed.length > 0" class="completion-report" data-testid="import-failed">
           <p class="section-label">Could not be saved · {{ store.importProgress.allFailed.length }}</p>
           <ul class="entry-list">
             <li v-for="(failed, index) in store.importProgress.allFailed" :key="index">
@@ -273,7 +302,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             </p>
             <p class="monospace file-path">{{ store.importProgress.filePath }}</p>
             <div class="row confirm-actions">
-              <button class="ghost" :disabled="store.isBusy" @click="closeImport">Keep file</button>
+              <button class="ghost" :disabled="store.isBusy" @click="closeImport">Done, keep file</button>
               <button class="danger-solid" data-testid="delete-import-file" :disabled="store.isBusy" @click="deleteImportFile">Delete file</button>
             </div>
           </div>
@@ -475,6 +504,21 @@ section {
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.completion-report .entry-list li {
+  display: block;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.completion-report .entry-list strong,
+.completion-report .entry-list span {
+  display: block;
+  max-width: none;
+  overflow: visible;
+  white-space: normal;
 }
 
 .entry-list span {

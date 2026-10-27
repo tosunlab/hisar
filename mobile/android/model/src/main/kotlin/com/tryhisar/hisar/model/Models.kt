@@ -1453,6 +1453,9 @@ data class ImportProgress(
     val totalCount: Int = 0,
     val isDone: Boolean = false,
     val allFailed: List<ImportSkippedEntry> = emptyList(),
+    val leftBehindCount: Int = 0,
+    val allSkipped: List<ImportSkippedEntry> = emptyList(),
+    val allDuplicateOutcomes: List<ImportSkippedEntry> = emptyList(),
     /** The source is kept rather than offered for deletion, see [ImportPreview.isSourceKept]. */
     val isSourceKept: Boolean = false,
 )

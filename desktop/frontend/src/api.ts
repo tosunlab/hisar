@@ -266,12 +266,14 @@ function normalizeImportPreview(boundPreview: BoundImportPreview): ImportPreview
   return { ...boundPreview, groups: boundPreview.groups ?? [], allSkipped: boundPreview.allSkipped ?? [], allDuplicate: boundPreview.allDuplicate ?? [] };
 }
 
-export interface ImportProgress extends Omit<BoundImportProgress, "allFailed"> {
+export interface ImportProgress extends Omit<BoundImportProgress, "allFailed" | "allSkipped" | "allDuplicateOutcomes"> {
   allFailed: ImportSkippedEntry[];
+  allSkipped: ImportSkippedEntry[];
+  allDuplicateOutcomes: ImportSkippedEntry[];
 }
 
 function normalizeImportProgress(boundProgress: BoundImportProgress): ImportProgress {
-  return { ...boundProgress, allFailed: boundProgress.allFailed ?? [] };
+  return { ...boundProgress, allFailed: boundProgress.allFailed ?? [], allSkipped: boundProgress.allSkipped ?? [], allDuplicateOutcomes: boundProgress.allDuplicateOutcomes ?? [] };
 }
 
 export interface AccountDeletionPreview extends Omit<BoundAccountDeletionPreview, "ownedVaults" | "memberVaults" | "organizations"> {

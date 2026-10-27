@@ -10,6 +10,10 @@ import com.tryhisar.hisar.app.CredentialExchangeReceiver
 import com.tryhisar.hisar.app.CredentialExchangeResult
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.FakeBackend
+import com.tryhisar.hisar.model.ImportPreview
+import com.tryhisar.hisar.model.ImportProgress
+import com.tryhisar.hisar.model.ImportSkippedEntry
+import com.tryhisar.hisar.model.ImportDuplicate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -67,6 +71,40 @@ class CredentialImportUITests : HisarUITestCase() {
         composeRule.waitUntil("the import closes", 10_000) { !exists(hasTestTag("credential-import")) }
         assertEquals(1, backend.countCall("cancelImport"))
     }
+    @Test
+    fun testImportCompletionReportShowsRemainingEntries() {
+        backend.importPreviewOverride = ImportPreview(fileName = "Passwords", vaultID = "personal", vaultName = "Personal", itemCount = 4,
+            notice = "This is a cached partial export.", exportedFrom = "owner@example.com", exportedAt = "2026-10-20T12:00:00Z",
+            allDuplicate = listOf(ImportDuplicate(title = "GitHub", username = "alice", detail = "alice · github.com · different password")))
+        backend.importProgressOverride = ImportProgress(fileName = "Passwords", vaultID = "personal", vaultName = "Personal",
+            savedCount = 2, totalCount = 3, isDone = true, leftBehindCount = 3,
+            allSkipped = listOf(
+                ImportSkippedEntry("GitHub", "Unsupported extension data."),
+                ImportSkippedEntry("GitHub", "Different recovery code remains only in the source."),
+            ),
+            allDuplicateOutcomes = listOf(
+                ImportSkippedEntry("GitHub", "Added 1 new passkey to the existing login in Hisar."),
+                ImportSkippedEntry("Slack", "Identical duplicate already present in Hisar."),
+                ImportSkippedEntry("Docker", "Included the duplicate as another item."),
+            ),
+            allFailed = listOf(ImportSkippedEntry("Figma", "Save refused.")))
+        startImport({ CredentialExchangeResult.Received(exportedTitles.encodeToByteArray()) }) {
+            waitFor("credential-import-start")
+            tap("credential-import-start")
+            waitFor("credential-import-finished")
+            for (text in listOf(
+                "This is a cached partial export.", "Unsupported extension data.",
+                "Different recovery code remains only in the source.",
+                "alice · github.com · different password",
+                "Added 1 new passkey to the existing login in Hisar.",
+                "Identical duplicate already present in Hisar.", "Included the duplicate as another item.",
+                "Save refused.", "Keep the other app or source file until you have checked these entries.",
+            )) assertTrue(text, exists(hasText(text)))
+            tap("credential-import-done")
+            waitForGone("credential-import")
+        }
+    }
+
 
     @Test
     fun testFailedTransferExplainsAndCloses() = startImport({ CredentialExchangeResult.Failed("No app on this device offered its passwords and passkeys to Hisar.") }) {

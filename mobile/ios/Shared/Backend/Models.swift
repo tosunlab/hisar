@@ -1782,11 +1782,15 @@ struct ImportProgress: Codable, Equatable {
     var totalCount: Int
     var isDone: Bool
     var allFailed: [ImportSkippedEntry] = []
+    var leftBehindCount = 0
+    var allSkipped: [ImportSkippedEntry] = []
+    var allDuplicateOutcomes: [ImportSkippedEntry] = []
     /// isSourceKept: the file is not offered for deletion, as in ImportPreview.
     var isSourceKept = false
 
     enum CodingKeys: String, CodingKey {
         case fileName, filePath, vaultName, savedCount, totalCount, isDone, allFailed, isSourceKept
+        case leftBehindCount, allSkipped, allDuplicateOutcomes
         case vaultID = "vaultId"
     }
 
@@ -1811,6 +1815,9 @@ struct ImportProgress: Codable, Equatable {
         isDone = try container.decodeIfPresent(Bool.self, forKey: .isDone) ?? false
         allFailed = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allFailed) ?? []
         isSourceKept = try container.decodeIfPresent(Bool.self, forKey: .isSourceKept) ?? false
+        leftBehindCount = try container.decodeIfPresent(Int.self, forKey: .leftBehindCount) ?? 0
+        allSkipped = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allSkipped) ?? []
+        allDuplicateOutcomes = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allDuplicateOutcomes) ?? []
     }
 }
 

@@ -926,6 +926,8 @@ export function createImportProgress(overrides: Partial<ImportProgress> = {}): I
     leftBehindCount: 0,
     isDone: false,
     allFailed: [],
+    allSkipped: [],
+    allDuplicateOutcomes: [],
     isSourceKept: false,
     ...overrides,
   };

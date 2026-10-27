@@ -483,10 +483,11 @@ final class AppModel: ObservableObject {
     }
 
     func refreshExternalSetupStatus() async {
-        let wasEnabled = isAutoFillEnabled
-        isAutoFillEnabled = await checkAutoFillEnabled()
+        let enabled = await checkAutoFillEnabled()
+        let becameEnabled = !isAutoFillEnabled && enabled
+        isAutoFillEnabled = enabled
         await notifications.refresh()
-        if !wasEnabled && isAutoFillEnabled && status.isUnlocked { await refreshAll() }
+        if becameEnabled && status.isUnlocked { await refreshAll() }
     }
 
     func handleWillEnterForeground() {

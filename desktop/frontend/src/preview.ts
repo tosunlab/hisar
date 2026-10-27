@@ -1464,6 +1464,8 @@ function buildPreviewImportProgress(): ImportProgress {
     leftBehindCount: allPreviewImportSkipped.length,
     isDone: previewImportRun.allQueued.length === 0,
     allFailed: [],
+    allSkipped: allPreviewImportSkipped,
+    allDuplicateOutcomes: [],
     isSourceKept: false,
   };
 }

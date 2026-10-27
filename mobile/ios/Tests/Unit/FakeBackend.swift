@@ -104,6 +104,8 @@ class FakeBackend: VaultBackend {
     var continueImportErrorMessage: String?
     /// What prepareHisarExportImport returns; the default is an encrypted export that waits for its passphrase.
     var hisarExportPreview = FakeBackend.encryptedHisarExportPreview()
+    var importPreviewOverride: ImportPreview?
+    var importProgressOverride: ImportProgress?
     /// What openImportFile returns once hisarExportPassphrase opens the waiting export.
     var openedHisarExportPreview = FakeBackend.plainHisarExportPreview()
     /// The passphrase that opens the waiting encrypted export.
@@ -911,7 +913,7 @@ extension FakeBackend {
         var preview = ImportPreview(fileName: "Other Manager", vaultID: commonVault?.id ?? "", vaultName: commonVault?.name ?? "the mapped vaults", itemCount: itemCount,
                                     loginCount: itemCount, allDuplicate: allDuplicate)
         preview.groups = allSourceGroup
-        return preview
+        return importPreviewOverride ?? preview
     }
 
     /// prepareCredentialExchangeImport reads credentialData as the titles of the logins to import, or as one list of
@@ -1020,6 +1022,7 @@ extension FakeBackend {
 
     private func buildImportProgress() -> ImportProgress {
         let vaultName = allVault.first { $0.id == pendingImportVaultID }?.name ?? "the mapped vaults"
+        if allQueuedImport.isEmpty, let importProgressOverride { return importProgressOverride }
         return ImportProgress(fileName: "Other Manager", vaultID: pendingImportVaultID, vaultName: vaultName, savedCount: importSavedCount,
                               totalCount: importSavedCount + allQueuedImport.count, isDone: allQueuedImport.isEmpty)
     }

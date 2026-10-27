@@ -401,6 +401,9 @@ struct ExportDataForm: View {
         .onChange(of: errorMessage) { _, error in
             if ExportLogic.isPasswordRequested(error) { authentication = .password }
         }
+        .onChange(of: isBusy) { _, busy in
+            if !busy && ExportLogic.isPasswordRequested(errorMessage) { authentication = .password }
+        }
     }
 }
 

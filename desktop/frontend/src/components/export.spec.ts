@@ -59,7 +59,7 @@ describe("Export section", () => {
     await wrapper.get("form").trigger("submit");
     await flushPromises();
     expect(api.getExportOptions).toHaveBeenCalledTimes(2);
-    expect(wrapper.get('[data-testid="export-master-password"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="export-master-password"]').exists()).toBe(true);
     expect(findSubmit(wrapper).text()).toBe("Export…");
     expect(store.errorMessage).toBe("Touch ID is locked");
   });

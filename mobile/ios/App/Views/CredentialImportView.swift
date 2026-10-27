@@ -53,7 +53,7 @@ struct CredentialImportView: View {
                 }
             }
         }
-        .interactiveDismissDisabled(model.isImportingCredentials)
+        .interactiveDismissDisabled(model.isImportingCredentials || isDone)
         .accessibilityIdentifier("credential-import")
     }
 
@@ -189,7 +189,7 @@ struct CredentialImportView: View {
             .accessibilityIdentifier("credential-import-duplicates")
         }
         if !preview.allSkipped.isEmpty {
-            skippedSection(preview.allSkipped, header: ImportSkippedEntry.heading(count: preview.allSkipped.count), footer: ImportSkippedEntry.explanation)
+            ImportOmissionSection(entries: preview.allSkipped, header: ImportSkippedEntry.heading(count: preview.allSkipped.count), footer: ImportSkippedEntry.explanation)
                 .accessibilityIdentifier("credential-import-skipped")
         }
         if let errorMessage = model.errorMessage {
@@ -222,15 +222,7 @@ struct CredentialImportView: View {
     @ViewBuilder
     private func progressSections(_ progress: ImportProgress) -> some View {
         if progress.isDone {
-            Section {
-                Label {
-                    Text("Imported \(AppModel.describeItemCount(progress.savedCount)) into \(progress.vaultName).")
-                } icon: {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.tint)
-                }
-                .accessibilityIdentifier("credential-import-finished")
-            }
+            ImportCompletionReport(progress: progress, preview: preview)
         } else {
             Section {
                 ProgressView(value: Double(progress.savedCount + progress.allFailed.count), total: Double(max(progress.totalCount, 1))) {
@@ -252,15 +244,77 @@ struct CredentialImportView: View {
                 }
             }
         }
-        if !progress.allFailed.isEmpty {
-            skippedSection(progress.allFailed, header: progress.allFailed.count == 1 ? "1 item couldn't be saved" : "\(progress.allFailed.count) items couldn't be saved")
+        if !progress.isDone && !progress.allFailed.isEmpty {
+            ImportOmissionSection(entries: progress.allFailed, header: progress.allFailed.count == 1 ? "1 item couldn't be saved" : "\(progress.allFailed.count) items couldn't be saved")
                 .accessibilityIdentifier("credential-import-failed")
         }
     }
 
-    private func skippedSection(_ allEntry: [ImportSkippedEntry], header: String, footer: String = "") -> some View {
+}
+
+struct ImportCompletionReport: View {
+    var progress: ImportProgress
+    var preview: ImportPreview?
+
+    var body: some View {
         Section {
-            ForEach(Array(allEntry.enumerated()), id: \.offset) { _, entry in
+            Label("Imported \(AppModel.describeItemCount(progress.savedCount)) into \(progress.vaultName).", systemImage: "checkmark.circle.fill")
+                .accessibilityIdentifier("credential-import-finished")
+        }
+        if let preview, preview.exportedDescription != nil || !preview.notice.isEmpty {
+            Section {
+                if let origin = preview.exportedDescription { Text(origin) }
+                if !preview.notice.isEmpty { Text(preview.notice).foregroundStyle(.themeWarning) }
+            }
+            .accessibilityIdentifier("credential-import-result-provenance")
+        }
+        let entries = progress.allSkipped.isEmpty ? preview?.allSkipped ?? [] : progress.allSkipped
+        if !entries.isEmpty {
+            ImportOmissionSection(entries: entries, header: ImportSkippedEntry.heading(count: entries.count),
+                footer: "Some entries below are fields or credentials from items that were imported.")
+                .accessibilityIdentifier("credential-import-result-skipped")
+        }
+        if let preview, !preview.allDuplicate.isEmpty {
+            Section("Reviewed duplicate matches") {
+                ForEach(preview.allDuplicate.indices, id: \.self) { index in
+                    let entry = preview.allDuplicate[index]
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.title)
+                        Text(entry.detail.isEmpty ? entry.username : entry.detail)
+                            .font(.footnote)
+                            .foregroundStyle(.themeSecondary)
+                    }
+                }
+            }
+            .accessibilityIdentifier("credential-import-result-reviewed-duplicates")
+        }
+        if !progress.allDuplicateOutcomes.isEmpty {
+            ImportOmissionSection(entries: progress.allDuplicateOutcomes, header: "Duplicate outcomes · \(progress.allDuplicateOutcomes.count)")
+                .accessibilityIdentifier("credential-import-result-duplicates")
+        }
+        if !progress.allFailed.isEmpty {
+            ImportOmissionSection(entries: progress.allFailed, header: "Could not be saved · \(progress.allFailed.count)")
+                .accessibilityIdentifier("credential-import-failed")
+        }
+        Section {
+            Text("Keep the other app or source file until you have checked these entries.")
+            if progress.leftBehindCount > 0 {
+                Text("\(progress.leftBehindCount) omission or save-failure entries need review.")
+            }
+        }
+        .accessibilityIdentifier("credential-import-keep-source")
+    }
+}
+
+private struct ImportOmissionSection: View {
+    var entries: [ImportSkippedEntry]
+    var header: String
+    var footer = ""
+
+    var body: some View {
+        Section {
+            ForEach(entries.indices, id: \.self) { index in
+                let entry = entries[index]
                 VStack(alignment: .leading, spacing: 2) {
                     Text(entry.title.isEmpty ? "Untitled" : entry.title)
                     Text(entry.reason)

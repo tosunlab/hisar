@@ -3,6 +3,8 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.ImportPreview
 import com.tryhisar.hisar.model.ImportSkippedEntry
+import com.tryhisar.hisar.model.ImportProgress
+import com.tryhisar.hisar.model.backendJson
 import com.tryhisar.hisar.model.VaultStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -55,6 +57,36 @@ class CredentialImportTests {
         assertEquals("Some entries below are fields or credentials from items that will still be imported.", ImportSkippedEntry.EXPLANATION)
         assertEquals(listOf("GitHub", "GitHub"), preview.allSkipped.map { it.title })
         assertEquals("Provider associations are not imported.", preview.allSkipped.last().reason)
+    }
+
+    @Test
+    fun testCompletionKeepsReviewedPreviewAndFinalOutcomesUntilDone() = runTest {
+        val harness = AppModelHarness(this)
+        val reviewed = ImportPreview(fileName = "Passwords", vaultID = "personal", vaultName = "Personal", itemCount = 4,
+            allSkipped = listOf(ImportSkippedEntry("GitHub", "Unsupported extension data.")),
+            notice = "This is a cached partial export.", exportedFrom = "owner@example.com")
+        val report = backendJson.decodeFromString<ImportProgress>("""
+            {"fileName":"Passwords","vaultId":"personal","vaultName":"Personal","savedCount":2,"totalCount":3,"isDone":true,
+             "leftBehindCount":3,"isSourceKept":true,
+             "allSkipped":[{"title":"GitHub","reason":"Unsupported extension data."},{"title":"GitHub","reason":"Different recovery code remains only in the source."}],
+             "allFailed":[{"title":"Figma","reason":"Save refused."}],
+             "allDuplicateOutcomes":[{"title":"GitHub","reason":"Added 1 new passkey to the existing login in Hisar."},
+               {"title":"Slack","reason":"Identical duplicate already present in Hisar."},{"title":"Docker","reason":"Included the duplicate as another item."}]}
+        """.trimIndent())
+        harness.backend.importPreviewOverride = reviewed
+        harness.backend.importProgressOverride = report
+        val model = harness.startUnlockedModel()
+        receivePreview(model)
+        model.credentialImport.startCredentialImport(true)
+        val completed = model.credentialImport.sheet.value as CredentialImportSheet.Importing
+        assertEquals(reviewed, completed.preview)
+        assertEquals(report, completed.progress)
+        assertEquals(3, completed.progress.leftBehindCount)
+        assertEquals(2, completed.progress.allSkipped.size)
+        assertEquals(3, completed.progress.allDuplicateOutcomes.size)
+        assertEquals("Save refused.", completed.progress.allFailed.single().reason)
+        model.credentialImport.closeCredentialImport()
+        assertNull(model.credentialImport.sheet.value)
     }
 
     @Test

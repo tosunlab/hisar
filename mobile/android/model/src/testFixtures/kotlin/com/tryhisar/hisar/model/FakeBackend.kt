@@ -104,6 +104,8 @@ open class FakeBackend : VaultBackend {
     val allImportedCredentialData = mutableListOf<ByteArray>()
     /** While set, the next continueImport fails with this sentence and saves nothing. */
     var continueImportErrorMessage: String? = null
+    var importPreviewOverride: ImportPreview? = null
+    var importProgressOverride: ImportProgress? = null
     /** Whether the next prepareHisarExportImport reads an encrypted export, which asks for its passphrase first. */
     var isHisarExportEncrypted = true
     /** The logins a Hisar export would import, as one source group named for its vault. */
@@ -944,7 +946,7 @@ open class FakeBackend : VaultBackend {
             ImportSourceGroup(group.id, group.name, true, group.allTitle.size, vault.id, vault.name, allVaultMemberByVaultID[vault.id].orEmpty())
         }
         val itemCount = allGroup.sumOf { it.allTitle.size }
-        return ImportPreview(
+        return importPreviewOverride ?: ImportPreview(
             fileName = "Other Manager", vaultID = commonVault?.id.orEmpty(), vaultName = commonVault?.name ?: "the mapped vaults", itemCount = itemCount,
             loginCount = itemCount, allDuplicate = allDuplicate, groups = allSourceGroup,
         )
@@ -1048,7 +1050,7 @@ open class FakeBackend : VaultBackend {
         return buildImportProgress()
     }
 
-    private fun buildImportProgress(): ImportProgress = ImportProgress(
+    private fun buildImportProgress(): ImportProgress = importProgressOverride?.takeIf { allQueuedImport.isEmpty() } ?: ImportProgress(
         fileName = "Other Manager", vaultID = pendingImportVaultID, vaultName = allVault.firstOrNull { it.id == pendingImportVaultID }?.name ?: "the mapped vaults",
         savedCount = importSavedCount, totalCount = importSavedCount + allQueuedImport.size, isDone = allQueuedImport.isEmpty(),
     )

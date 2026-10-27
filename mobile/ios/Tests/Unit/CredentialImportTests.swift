@@ -70,6 +70,36 @@ final class CredentialImportTests: XCTestCase {
         XCTAssertEqual(preview.allSkipped.last?.reason, "Provider associations are not imported.")
     }
 
+    func testCompletionKeepsReviewedPreviewAndFinalOutcomesUntilDone() async throws {
+        let preview = ImportPreview(fileName: "Passwords", vaultID: "personal", vaultName: "Personal", itemCount: 4,
+            allSkipped: [ImportSkippedEntry(title: "GitHub", reason: "Unsupported extension data.")])
+        var reviewed = preview
+        reviewed.notice = "This is a cached partial export."
+        reviewed.exportedFrom = "owner@example.com"
+        backend.importPreviewOverride = reviewed
+        let report = try JSONDecoder().decode(ImportProgress.self, from: Data(#"""
+        {"fileName":"Passwords","vaultId":"personal","vaultName":"Personal","savedCount":2,"totalCount":3,"isDone":true,
+         "leftBehindCount":3,"isSourceKept":true,
+         "allSkipped":[{"title":"GitHub","reason":"Unsupported extension data."},{"title":"GitHub","reason":"Different recovery code remains only in the source."}],
+         "allFailed":[{"title":"Figma","reason":"Save refused."}],
+         "allDuplicateOutcomes":[{"title":"GitHub","reason":"Added 1 new passkey to the existing login in Hisar."},
+           {"title":"Slack","reason":"Identical duplicate already present in Hisar."},{"title":"Docker","reason":"Included the duplicate as another item."}]}
+        """#.utf8))
+        backend.importProgressOverride = report
+        let model = await createUnlockedModel()
+        await receivePreview(model)
+        await model.startCredentialImport(isSkippingDuplicate: true)
+        XCTAssertEqual(model.credentialImportPreview, reviewed)
+        XCTAssertEqual(model.credentialImportProgress, report)
+        XCTAssertEqual(model.credentialImportProgress?.leftBehindCount, 3)
+        XCTAssertEqual(model.credentialImportProgress?.allSkipped.count, 2)
+        XCTAssertEqual(model.credentialImportProgress?.allDuplicateOutcomes.count, 3)
+        XCTAssertEqual(model.credentialImportProgress?.allFailed.first?.reason, "Save refused.")
+        model.closeCredentialImport()
+        XCTAssertNil(model.credentialImportPreview)
+        XCTAssertNil(model.credentialImportProgress)
+    }
+
     func testExportDatesReachTheBackendAsSecondsSince1970() throws {
         let now = Date(timeIntervalSince1970: 1_791_547_200)
         let exporterSeconds = 1_699_200_000.0
