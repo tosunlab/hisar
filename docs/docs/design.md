@@ -850,6 +850,9 @@ Entity triggers collect one transaction-private delta per affected scope, not on
 ### 8.6 Privacy policy and Terms
 
 `GET /privacy` and `GET /terms` serve two static pages embedded in `hisar-server` (`privacy.html`, `terms.html`), linked from each other, from the store listings and from the desktop app's create-account screen. They describe the hosted service at `eu.tryhisar.com` exactly as this document does: what the server stores (§2.3, §8.1), what it cannot read, the sub-processors (Hetzner Online GmbH in Helsinki, Finland, for hosting; Google for email) and the retention below. The operator is Alper Berber, the contact is support@tryhisar.com, and the terms are under Dutch law. Both pages get the share link page's headers minus scripts: `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'`, cacheable for an hour.
+The desktop create-account screen shows the hosted consent sentence only when the normalized signup target is
+`https://eu.tryhisar.com`. An invite link selects its own origin, a bare code selects the hosted service, and signup without
+an invite uses the selected or remembered server. Self-hosted signup does not link to a third party's consent agreement.
 
 **Retention**, as the pages state it. These are the defaults of the instance settings (§8.3); an operator may change them in the admin dashboard under **Settings → Security**, and the hosted service keeps them, because the privacy page states them:
 

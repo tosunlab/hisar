@@ -86,6 +86,25 @@ describe("App", () => {
 });
 
 describe("SignInView", () => {
+  it("shows hosted consent only for the actual signup target", async () => {
+    const wrapper = mount(SignInView);
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="use-different-server"]').trigger("click");
+    await wrapper.get('input[name="server"]').setValue(" HTTPS://EU.TRYHISAR.COM:443/ ");
+    expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(true);
+    await wrapper.get('input[name="inviteCode"]').setValue("https://hisar.example.org/invite/abc123");
+    expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(false);
+    await wrapper.get('input[name="inviteCode"]').setValue("otherCode");
+    expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(true);
+    await wrapper.get('input[name="inviteCode"]').setValue("");
+    await wrapper.get('input[name="server"]').setValue("http://eu.tryhisar.com");
+    expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(false);
+    await wrapper.get('input[name="inviteCode"]').setValue("https://eu.tryhisar.com/invite/abc123");
+    expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     resetStore();

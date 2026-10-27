@@ -77,11 +77,14 @@ const allCreateAccountFeature: Feature[] = [
 ];
 const allBrandFeature = computed(() => (mode.value === "create-account" ? allCreateAccountFeature : allSignInFeature));
 
-function readInviteCode(): void {
-  const match = inviteCode.value.trim().match(/\/invite\/([A-Za-z0-9_-]+)\/?$/);
+function readInviteCode(event?: Event): void {
+  const entered = event ? (event.target as HTMLInputElement).value : inviteCode.value;
+  const match = entered.trim().match(/\/invite\/([A-Za-z0-9_-]+)\/?$/);
   if (match) {
-    pastedInviteLink.value = inviteCode.value.trim();
+    pastedInviteLink.value = entered.trim();
     inviteCode.value = match[1];
+  } else if (pastedInviteLink.value.match(/\/invite\/([A-Za-z0-9_-]+)\/?$/)?.[1] !== inviteCode.value) {
+    pastedInviteLink.value = "";
   }
 }
 
@@ -95,11 +98,23 @@ const inviteServer = computed(() => {
 });
 
 function getInvite(): string {
-  return pastedInviteLink.value.endsWith(`/invite/${inviteCode.value}`) ? pastedInviteLink.value : inviteCode.value;
+  return pastedInviteLink.value || inviteCode.value;
 }
 
 // Without an invite the account is created on the chosen server, which must have opened registration.
 const hasInvite = computed(() => inviteCode.value.trim() !== "");
+const isHostedSignup = computed(() => {
+  const invite = getInvite().trim();
+  const target = hasInvite.value
+    ? (invite.includes("/invite/") ? invite : `https://${defaultServer}`)
+    : server.value.trim();
+  try {
+    const url = new URL(target.includes("://") ? target : `https://${target}`);
+    return url.origin === `https://${defaultServer}`;
+  } catch {
+    return false;
+  }
+});
 
 // An invite opened through hisar://invite/… arrives as the bare code, or as the invite link on another server.
 watch(
@@ -264,7 +279,7 @@ async function submitCreateAccount(): Promise<void> {
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch || passwordFeedback.isBlocking">
             {{ store.isBusy ? "Creating account…" : "Create account" }}
           </button>
-          <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://eu.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://eu.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
+          <p v-if="isHostedSignup" class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://eu.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://eu.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
           <p v-if="!isServerShown && !hasInvite" class="hint">
             <span class="muted" data-testid="create-account-server">Creates the account on {{ server }}.</span>
             <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>
