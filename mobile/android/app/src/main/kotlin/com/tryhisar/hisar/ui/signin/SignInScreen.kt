@@ -179,6 +179,7 @@ fun SignInScreen(model: AppModel) {
                 password = password, onPasswordChange = { password = it },
                 repeatedPassword = repeatedPassword, onRepeatedPasswordChange = { repeatedPassword = it },
                 isPasswordMismatch = isPasswordMismatch,
+                submit = ::submit,
             )
         }
         ClearSection(
@@ -279,6 +280,7 @@ private fun CreateAccountSections(
     repeatedPassword: String,
     onRepeatedPasswordChange: (String) -> Unit,
     isPasswordMismatch: Boolean,
+    submit: () -> Unit,
 ) {
     FormSection(header = "Invite", footer = { Text("Leave it empty if the server lets anyone sign up.") }) {
         FormTextField(
@@ -326,7 +328,8 @@ private fun CreateAccountSections(
         RowDivider()
         FormTextField(
             repeatedPassword, onRepeatedPasswordChange, placeholder = "Repeat master password", testTag = "sign-up-repeated-password", isSecure = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(onGo = { submit() }),
         )
     }
 }
