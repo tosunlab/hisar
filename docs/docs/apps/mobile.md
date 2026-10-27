@@ -118,3 +118,5 @@ does not roll back saved items or interrupt the current batch. The current batch
 
 The item editor's generator sheet scrolls its options within the available height, including in landscape.
 Close and Use stay above the scrolling content. The Settings generator remains a separate scrolling screen.
+Both use one labelled length slider, with its current value at the end, for whole-number lengths from 8 through 64.
+TalkBack and keyboard users can adjust the same slider.
