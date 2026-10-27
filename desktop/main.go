@@ -396,7 +396,9 @@ func main() {
 	})
 	createMenuBarItem(wailsApp, vaultService, showWindow)
 	if runtime.GOOS == "darwin" {
-		wailsApp.Menu.SetApplicationMenu(createApplicationMenu(hideWindow))
+		wailsApp.Menu.SetApplicationMenu(createApplicationMenu(hideWindow, func() {
+			openSettingsFromMenu(settingsWindowService.Show, settingsWindowService.isUnlocked(), showWindow)
+		}))
 	}
 
 	approvalWindow = wailsApp.Window.NewWithOptions(approvalWindowOptions())
