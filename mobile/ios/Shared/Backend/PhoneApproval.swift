@@ -49,14 +49,6 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         isRememberable && (chosenValue ?? isRememberedByDefault)
     }
 
-    // cardApprovalNote is the Vaults card's footer: the card has no switch, so it says what its Approve sends.
-    var cardApprovalNote: String {
-        if resolveRememberChoice(nil) {
-            return "\(rememberLabel). Tap the request to approve it once."
-        }
-        return "Approving answers this one request."
-    }
-
     enum CodingKeys: String, CodingKey {
         case requestID = "requestId"
         case requesterDeviceName, createdAt, expiresAt, kind, appName, purpose, host, commandLine, repositoryPath, projectPath, keyName, isForwarded, forwardedFromHost, terminalName, secrets, appIcon, appWarning, rememberLabel, isRememberedByDefault
@@ -113,8 +105,6 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
 
     var macName: String { requesterDeviceName.isEmpty ? "your Mac" : requesterDeviceName }
 
-    var title: String { "Approve on \(macName)?" }
-
     var summary: String {
         let requester = isForwarded ? (forwardedFromHost.isEmpty ? "Another computer" : forwardedFromHost) : appName
         return "\(requester) wants to \(purpose)"
@@ -134,6 +124,13 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     // lifetime is set for an approval that outlasts the request: a launcher keeps its approval until Hisar locks on the Mac.
     // A launcher request that names secrets is a share link, which is approved once like any other request.
     var lifetime: String { kind == Self.kindLauncher && secrets.isEmpty ? "Until Hisar locks on \(macName)" : "" }
+
+    var approvalNote: String {
+        if !lifetime.isEmpty {
+            return "Approving lets \(appName) use Hisar until it locks on your Mac; it does not unlock Hisar there."
+        }
+        return "Approving lets this one request continue; it does not unlock Hisar on your Mac."
+    }
 
     var detailLine: String {
         if !keyName.isEmpty {
@@ -169,19 +166,15 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
 
     var allDetailRow: [DetailRow] {
         let appRow = DetailRow(label: "App", value: appName, isMonospaced: false)
-        let warningRow = DetailRow(label: "Warning", value: appWarning, isMonospaced: false)
         let secretRow = DetailRow(label: "Secrets", value: secrets.joined(separator: "\n"), isMonospaced: false)
-        // A launcher's command line is its share link's limit, and its warning is about what the link shares, so the
-        // warning follows the secrets and the limit.
+        // The sheet shows appWarning as a notice of its own, above these rows.
         let allCandidate = kind == Self.kindLauncher ? [
             appRow,
             secretRow,
             DetailRow(label: "Link", value: commandLine, isMonospaced: false),
-            warningRow,
             DetailRow(label: "Lasts", value: lifetime, isMonospaced: false),
         ] : [
             appRow,
-            warningRow,
             DetailRow(label: "Project", value: projectPath, isMonospaced: true),
             DetailRow(label: kind == Self.kindCommandLine && secrets.isEmpty ? "Program" : "Command", value: commandLine, isMonospaced: true),
             DetailRow(label: "Repository", value: isRepositoryTheProject ? "" : repositoryPath, isMonospaced: true),

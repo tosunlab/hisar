@@ -30,7 +30,7 @@ final class PhoneApprovalUITests: HisarUITestCase {
 
     func testDenyCommandLineRequest() {
         launchPreview("cli")
-        waitFor(app.staticTexts["phone-approval-title"])
+        waitFor(app.staticTexts["phone-approval-summary"])
         saveScreenshot("phone-approval-cli")
         app.buttons["phone-approval-deny"].tap()
         checkResult("Denied preview-cli")
@@ -38,7 +38,7 @@ final class PhoneApprovalUITests: HisarUITestCase {
 
     func testApproveLauncherRequest() {
         launchPreview("launcher")
-        waitFor(app.staticTexts["phone-approval-title"])
+        waitFor(app.staticTexts["phone-approval-summary"])
         XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Raycast wants to search Hisar and copy or paste passwords and one-time codes")
         XCTAssertEqual(app.staticTexts["phone-approval-row-App"].label, "App, Raycast")
         XCTAssertEqual(app.staticTexts["phone-approval-row-Lasts"].label, "Lasts, Until Hisar locks on Alper's MacBook Pro")
@@ -54,12 +54,13 @@ final class PhoneApprovalUITests: HisarUITestCase {
 
     func testApproveLauncherShareRequest() {
         launchPreview("launcher-share")
-        waitFor(app.staticTexts["phone-approval-title"])
+        waitFor(app.staticTexts["phone-approval-summary"])
         XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Raycast wants to create a share link for “GitHub”")
         let secrets = app.staticTexts["phone-approval-row-Secrets"].label
         XCTAssertTrue(secrets.contains("username") && secrets.contains("password"), secrets)
         XCTAssertEqual(app.staticTexts["phone-approval-row-Link"].label, "Link, Expires in 7 days · 1 view")
-        XCTAssertEqual(app.staticTexts["phone-approval-row-Warning"].label, "Warning, Anyone with the link can read these until it expires or its views run out.")
+        let warning = app.descendants(matching: .any)["phone-approval-warning"].label
+        XCTAssertTrue(warning.contains("Anyone with the link can read these until it expires or its views run out."), warning)
         XCTAssertFalse(app.staticTexts["phone-approval-row-Lasts"].exists, "a share link is approved once")
         let note = app.descendants(matching: .any)["phone-approval-note"].label
         XCTAssertEqual(note, "Approving lets this one request continue; it does not unlock Hisar on your Mac.")
@@ -70,7 +71,7 @@ final class PhoneApprovalUITests: HisarUITestCase {
 
     func testCodingAgentRequestShowsProject() {
         launchPreview("agent")
-        waitFor(app.staticTexts["phone-approval-title"])
+        waitFor(app.staticTexts["phone-approval-summary"])
         XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "omp in Tern (via hisar) wants to use 2 secrets")
         XCTAssertEqual(app.descendants(matching: .any)["phone-approval-row-Project"].label, "Project, ~/src/acme-web")
         XCTAssertEqual(app.descendants(matching: .any)["phone-approval-row-Command"].label, "Command, npm run db:migrate")
@@ -134,6 +135,9 @@ final class PhoneApprovalUITests: HisarUITestCase {
         waitFor(result)
         XCTAssertEqual(result.label, "Denied preview-cli")
 
+        let cardSwitch = app.switches["pending-approval-remember-preview-ssh"]
+        XCTAssertEqual(cardSwitch.value as? String, "1", "the card's switch starts as the Mac's checkbox does")
+        cardSwitch.switches.firstMatch.tap()
         app.buttons["pending-approval-approve-preview-ssh"].tap()
         let launcherSummary = app.buttons["pending-approval-preview-launcher"]
         waitFor(launcherSummary)
@@ -141,6 +145,7 @@ final class PhoneApprovalUITests: HisarUITestCase {
         XCTAssertFalse(app.buttons["pending-approval-more"].exists, "one request left, nothing more to show")
         saveScreenshot("phone-approval-launcher-card")
 
+        XCTAssertFalse(app.switches["pending-approval-remember-preview-launcher"].exists, "a launcher's approval always lasts until Hisar locks")
         app.buttons["pending-approval-approve-preview-launcher"].tap()
         XCTAssertTrue(header.waitForNonExistence(timeout: 10), "no requests, no card")
         XCTAssertEqual(result.label, "Approved preview-launcher with Face ID")

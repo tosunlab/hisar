@@ -209,7 +209,7 @@ struct VaultsView: View {
                     allApproval: model.allPendingApproval,
                     isBusy: model.isAnsweringApproval,
                     review: { model.reviewApproval($0) },
-                    approve: { approval in Task { await model.approve(approval) } },
+                    approve: { approval, isRemembered in Task { await model.approve(approval, isRemembered: isRemembered) } },
                     deny: { approval in Task { await model.deny(approval) } },
                     showAll: { model.selectedTab = .approvals }
                 )
@@ -316,9 +316,9 @@ struct VaultsView: View {
         }
         .sheet(item: $newItemType) { type in
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: type.category) { savedItem in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: type.category) { savedItem, vaultID in
                     if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
                     }
                 }
                 .environmentObject(model)

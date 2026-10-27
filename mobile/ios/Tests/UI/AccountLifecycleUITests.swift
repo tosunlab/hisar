@@ -35,7 +35,7 @@ final class AccountLifecycleUITests: HisarUITestCase {
         waitFor(app.staticTexts["No requests waiting"])
         XCTAssertTrue(app.staticTexts["Requests from Hisar on your Mac appear here while this iPhone is unlocked."].exists)
 
-        openSettings("open-security")
+        openSettings("open-account")
         app.buttons["open-change-master-password"].tap()
         let passwordWarning = app.staticTexts["Your other devices will be signed out. Sign in on them with the new master password."]
         XCTAssertFalse(passwordWarning.exists)
@@ -70,6 +70,7 @@ final class AccountLifecycleUITests: HisarUITestCase {
         }
         waitFor(app.buttons["vault-Personal"], timeout: 60)
         openSettings("open-account")
+        scrollTo(app.buttons["open-delete-account"])
         app.buttons["open-delete-account"].tap()
         saveScreenshot("account-life-delete-account-preview\(screenshotSuffix)")
         type(Self.newMasterPassword, into: app.secureTextFields["delete-account-password"])

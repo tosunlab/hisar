@@ -23,6 +23,11 @@ Item icons ([Design](../design.md) §4.5): the editor's icon opens `IconPickerVi
 draws the chosen icon, else a login's website icon, which `AppModel.loadWebsiteIcon` loads once per domain through HisarKit.
 Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconpresets_test.go` keeps the list on core's.
 
+New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
+Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
+Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
+Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
+
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
 An absent plan version never enables the delete button.
@@ -74,6 +79,10 @@ or denied) is driven through a debug-only preview with a made-up request: launch
 copy and its symbol, or `-HisarApprovalPreviewPassword` for the master password fallback.
 `-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
 whole flow between a desktop backend and a HisarKit backend in `make test-end-to-end`.
+
+The waiting-request card has a remember switch when the Mac allows remembering. Approve sends the switch's value.
+The sheet puts the request summary first, shows app warnings separately from details, and names the iPhone's biometric
+check on its Approve button.
 
 **AutoFill in the simulator.** A simulator build without a development team ("Sign to Run Locally") is registered
 (`pluginkit` lists the extension), but iOS 26.4 does not list it in Settings → General → AutoFill & Passwords, and

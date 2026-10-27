@@ -1773,7 +1773,7 @@ final class AppModel: ObservableObject {
     }
 
     // Approve asks for Face ID; when the master password is needed instead, the request's sheet opens and asks for it.
-    // The Vaults card has no remember switch, so it approves as the switch starts: remembered when the Mac's checkbox would be.
+    // Without a choice from the remember switch the request's default applies: remembered when the Mac's checkbox would be.
     func approve(_ approval: PhoneApproval, isRemembered: Bool? = nil) async {
         let isApprovalRemembered = approval.resolveRememberChoice(isRemembered)
         await answerApproval(approval, successMessage: "Approved on your Mac") { backend, requestID in

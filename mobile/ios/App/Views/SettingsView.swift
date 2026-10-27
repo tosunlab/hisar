@@ -87,10 +87,6 @@ struct SettingsView: View {
                         Label("Notifications", systemImage: "bell.badge")
                     }
                     .accessibilityIdentifier("open-notifications")
-                    NavigationLink(value: SettingsDestination.secretKey) {
-                        Label("Secret Key and Emergency Kit", systemImage: "doc.text")
-                    }
-                    .accessibilityIdentifier("open-secret-key")
                 }
                 Section {
                     NavigationLink(value: SettingsDestination.appearance) {
@@ -208,9 +204,22 @@ struct AccountView: View {
                     .textSelection(.enabled)
             }
             Section {
+                NavigationLink(value: SettingsDestination.changeMasterPassword) {
+                    Label("Change master password…", systemImage: "key")
+                }
+                .accessibilityIdentifier("open-change-master-password")
+                NavigationLink(value: SettingsDestination.replaceSecretKey) {
+                    Label("Replace Secret Key…", systemImage: "doc.badge.arrow.up")
+                }
+                .accessibilityIdentifier("open-replace-secret-key")
+            } footer: {
+                Text("Both sign out your other devices. They need a connection to the Hisar server.")
+            }
+            Section {
                 NavigationLink(value: SettingsDestination.secretKey) {
                     Label("Secret Key and Emergency Kit", systemImage: "doc.text")
                 }
+                .accessibilityIdentifier("open-secret-key")
             } footer: {
                 Text("To sign in on a new device you need your master password and your Secret Key. The Emergency Kit holds your Secret Key and has a space to write your master password.")
             }
@@ -394,18 +403,6 @@ struct SecurityView: View {
                 Text("Auto-lock after")
             } footer: {
                 Text("Hisar locks after this long without activity. Copied values are cleared after 90 seconds.")
-            }
-            Section {
-                NavigationLink(value: SettingsDestination.changeMasterPassword) {
-                    Label("Change master password…", systemImage: "key")
-                }
-                .accessibilityIdentifier("open-change-master-password")
-                NavigationLink(value: SettingsDestination.replaceSecretKey) {
-                    Label("Replace Secret Key…", systemImage: "doc.badge.arrow.up")
-                }
-                .accessibilityIdentifier("open-replace-secret-key")
-            } footer: {
-                Text("Both sign out your other devices. They need a connection to the Hisar server.")
             }
             Section {
                 Button {
