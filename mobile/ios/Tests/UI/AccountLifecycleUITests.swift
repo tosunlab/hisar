@@ -81,7 +81,8 @@ final class AccountLifecycleUITests: HisarUITestCase {
             app.buttons["unlock-submit"].tap()
         }
         waitFor(app.buttons["vault-Personal"], timeout: 60)
-        openSettings("open-account")
+        openTab("Settings")
+        waitFor(app.navigationBars["Account"])
         scrollTo(app.buttons["open-delete-account"])
         app.buttons["open-delete-account"].tap()
         saveScreenshot("account-life-delete-account-preview\(screenshotSuffix)")
