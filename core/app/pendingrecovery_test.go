@@ -100,6 +100,9 @@ func TestRecoverySurvivesRestartBeforeCommitAndAfterLostRegistrationResponse(t *
 			if err != nil || kit.SecretKey != resumed.SecretKey {
 				t.Fatalf("durable factor was not delivered in its Emergency Kit: %v", err)
 			}
+			if err := restarted.RecordPendingRecoveryEmergencyKitDelivery(kit.ExportID, EmergencyKitSavedByShare); err != nil {
+				t.Fatal(err)
+			}
 			if err := restarted.AcknowledgePendingRecovery(result.PendingOperationID, "recovery master password"); err != nil {
 				t.Fatal(err)
 			}
@@ -148,6 +151,9 @@ func TestUnavailableKeychainRequiresSavedKitBeforeCommitAndNeverPersistsTheFacto
 	kit, err := ExportPendingRecoveryEmergencyKitToDirectory(service, result.PendingOperationID, "manual master password", t.TempDir())
 	if err != nil || kit.SecretKey != result.SecretKey {
 		t.Fatalf("precommit Emergency Kit delivery failed: %v", err)
+	}
+	if err := service.RecordPendingRecoveryEmergencyKitDelivery(kit.ExportID, EmergencyKitSavedByFile); err != nil {
+		t.Fatal(err)
 	}
 	if err := service.AcknowledgePendingRecovery(result.PendingOperationID, "manual master password"); err != nil {
 		t.Fatal(err)
@@ -278,8 +284,14 @@ func TestNewAccountEmergencyKitAndAcknowledgementNeedNoPassword(t *testing.T) {
 	if document, err := os.ReadFile(kit.Path); err != nil || !bytes.HasPrefix(document, []byte("%PDF-")) {
 		t.Fatalf("the saved kit is not a complete PDF: %v", err)
 	}
-	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 1 || !entries[0].KitSaved {
-		t.Fatalf("the kit was not recorded as saved: %+v %v", entries, err)
+	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 1 || entries[0].KitSaved || entries[0].SavedBy != "" {
+		t.Fatalf("writing the kit for sharing recorded a delivery: %+v %v", entries, err)
+	}
+	if err := service.RecordNewAccountEmergencyKitDelivery(kit.ExportID, EmergencyKitSavedByShare); err != nil {
+		t.Fatal(err)
+	}
+	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 1 || !entries[0].KitSaved || entries[0].SavedBy != "share" {
+		t.Fatalf("the shared kit was not recorded: %+v %v", entries, err)
 	}
 	if err := service.AcknowledgeNewAccountRecovery(); err != nil {
 		t.Fatal(err)
@@ -311,7 +323,7 @@ func TestSavedNewAccountEmergencyKitLetsTheMacAcknowledgeTheSignUp(t *testing.T)
 	if path, err := service.SaveNewAccountEmergencyKit(); err != nil || path != fileSaver.path {
 		t.Fatalf("save: %q %v", path, err)
 	}
-	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 1 || !entries[0].KitSaved {
+	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 1 || !entries[0].KitSaved || entries[0].SavedBy != "file" {
 		t.Fatalf("the saved kit was not recorded: %+v %v", entries, err)
 	}
 	if path, err := service.SaveNewAccountEmergencyKit(); err != nil || path != fileSaver.path {

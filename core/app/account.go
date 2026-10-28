@@ -163,7 +163,7 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 	}
 	if credentialChange.SecretKey.Encode() != secretKey.Encode() {
 		newSecretKey := credentialChange.SecretKey
-		s.newAccountSecretKey = &newSecretKey
+		s.setKitGrant(pending.OperationID, newSecretKey, nil)
 		result.SecretKey = newSecretKey.Encode()
 		if err := s.config.SecretKeyStore.StoreSecretKey(newSecretKey); err != nil {
 			result.KeychainError = "the new Secret Key could not be saved to the keychain; save its Emergency Kit from pending recovery"

@@ -82,6 +82,8 @@ func finishSession(currentState *localstate.State, currentSession *session.Sessi
 
 // runSignup creates an account from an invite link, or without one on a server whose admin opened registration: the
 // server from -server, or asked for when neither is given.
+var errSignupNeedsInvitation = errors.New("This server needs an invitation. Run: hisar signup <invite link>")
+
 func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	outputPath := flags.String("o", "Hisar Emergency Kit.pdf", "where to save the new Emergency Kit PDF")
 	isYes := flags.Bool("y", false, "acknowledge the saved Emergency Kit and finish setup without another prompt")
@@ -115,6 +117,19 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	if err := refuseExistingOutput(*outputPath); err != nil {
 		return err
 	}
+	service, err := newRecoveryService(*outputPath)
+	if err != nil {
+		return err
+	}
+	if invite == "" {
+		policy, err := service.GetSignUpPolicy(*server)
+		if err != nil {
+			return err
+		}
+		if policy.Mode == apitypes.RegistrationModeInvite || policy.Mode == apitypes.RegistrationModeSetup {
+			return errSignupNeedsInvitation
+		}
+	}
 
 	email, err := promptRequired("Email", "")
 	if err != nil {
@@ -131,10 +146,6 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	defer clear(password)
 
 	fmt.Fprintln(standardError(), "Preparing account. The new Secret Key must reach the OS keychain or a saved Emergency Kit before registration can finish.")
-	service, err := newRecoveryService(*outputPath)
-	if err != nil {
-		return err
-	}
 	var result app.SignUpResult
 	if invite != "" {
 		result, err = service.SignUp(invite, email, name, string(password))

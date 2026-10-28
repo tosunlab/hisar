@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,7 +20,9 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 )
 
-// PendingRecoverySummary contains no recovery factor or bearer. It is safe to show while signed out.
+// PendingRecoverySummary contains no recovery factor or bearer. It is safe to show while signed out. KitSaved is kept for
+// older apps; SavedBy ("file", "print" or "share") is the delivery a platform confirmed, and only it counts. PostponedAt is
+// when the installed account's kit was first left unsaved, RFC 3339 in UTC.
 type PendingRecoverySummary struct {
 	OperationID       string   `json:"operationId"`
 	Kind              string   `json:"kind"`
@@ -29,6 +32,8 @@ type PendingRecoverySummary struct {
 	Name              string   `json:"name"`
 	Phase             string   `json:"phase"`
 	KitSaved          bool     `json:"kitSaved"`
+	SavedBy           string   `json:"savedBy,omitempty"`
+	PostponedAt       string   `json:"postponedAt,omitempty"`
 	Problems          []string `json:"problems"`
 	ManualUnlock      bool     `json:"manualUnlock"`
 	KeychainProtected bool     `json:"keychainProtected"`
@@ -115,6 +120,7 @@ func (s *Service) stagePendingRecovery(origin, email, name string, password []by
 			return fmt.Errorf("could not durably protect the new Secret Key; no remote change was sent: %w", err)
 		}
 		entry.metadataSnapshot = metadata
+		s.cacheRecoveryRecord(*entry)
 		if !entry.KeychainProtected {
 			s.rememberPendingFactor(entry.OperationID, pending)
 			return session.ErrRecoveryDeliveryRequired
@@ -139,6 +145,7 @@ func (s *Service) updatePendingRecovery(entry *PendingRecoverySummary) error {
 		return err
 	}
 	entry.metadataSnapshot = metadata
+	s.cacheRecoveryRecord(*entry)
 	return nil
 }
 
@@ -161,6 +168,36 @@ func (s *Service) ListPendingRecovery() ([]PendingRecoverySummary, error) {
 		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+var errPendingRecoveryPassword = errors.New("pending-recovery-password: the master password could not open this setup")
+
+// getRecoveryRecord is the summary of operationID without reading the journal again: recoveryRecords, which recoveryMutex
+// guards, is read once and every change through this service updates it.
+func (s *Service) getRecoveryRecord(operationID string) (PendingRecoverySummary, bool) {
+	s.recoveryMutex.Lock()
+	defer s.recoveryMutex.Unlock()
+	if s.recoveryRecords == nil {
+		entries, err := s.ListPendingRecovery()
+		if err != nil {
+			return PendingRecoverySummary{}, false
+		}
+		s.recoveryRecords = make(map[string]PendingRecoverySummary, len(entries))
+		for _, entry := range entries {
+			s.recoveryRecords[entry.OperationID] = entry
+		}
+	}
+	entry, ok := s.recoveryRecords[operationID]
+	return entry, ok
+}
+
+func (s *Service) cacheRecoveryRecord(entry PendingRecoverySummary) {
+	entry.Problems, entry.metadataSnapshot = slices.Clone(entry.Problems), nil
+	s.recoveryMutex.Lock()
+	defer s.recoveryMutex.Unlock()
+	if s.recoveryRecords != nil {
+		s.recoveryRecords[entry.OperationID] = entry
+	}
 }
 
 func (s *Service) loadPendingRecovery(operationID string, password []byte) (*PendingRecoverySummary, session.PendingFactor, error) {
@@ -188,7 +225,7 @@ func (s *Service) loadPendingRecovery(operationID string, password []byte) (*Pen
 	}
 	plaintext, err := crypt.OpenPendingFactor(password, envelope, operationID, entry.Origin, entry.AccountID)
 	if err != nil {
-		return nil, session.PendingFactor{}, errors.New("pending-recovery-password: the master password could not open this setup")
+		return nil, session.PendingFactor{}, errPendingRecoveryPassword
 	}
 	defer clear(plaintext)
 	var pending session.PendingFactor
@@ -260,7 +297,7 @@ func (s *Service) ResumePendingRecoveryWithSecretKey(operationID, password, secr
 		return SignUpResult{Status: s.GetStatus(), PendingOperationID: operationID, SetupState: entry.Phase, Problems: entry.Problems}, nil
 	}
 	if !entry.KeychainProtected {
-		if !entry.KitSaved {
+		if entry.SavedBy == "" {
 			return SignUpResult{}, errors.New("save and acknowledge the Emergency Kit before committing")
 		}
 		if pending.PriorSecretKey == "" {
@@ -358,7 +395,7 @@ func (s *Service) installRecoveredAccount(ctx context.Context, entry *PendingRec
 	if !entry.KeychainProtected {
 		s.rememberPendingFactor(entry.OperationID, session.PendingFactor{SecretKey: key.Encode()})
 	}
-	s.newAccountSecretKey, s.newAccountUnlockKey = &key, unlockKey
+	s.setKitGrant(entry.OperationID, key, unlockKey)
 	s.recordPasswordUnlock()
 	entry.Phase = "delivery-pending"
 	if finishingProblemCount > 0 {
@@ -388,7 +425,12 @@ func (s *Service) pendingEmergencyKit(operationID, password string) (*PendingRec
 	return entry, emergencykit.Kit{Name: entry.Name, Email: entry.Email, Server: entry.Origin, SecretKey: pending.SecretKey, CreatedAt: s.config.Now()}, nil
 }
 
+// SavePendingRecoveryEmergencyKit saves the kit of a recovery operation through the save dialog and records the saved
+// file as its delivery, unless Hisar locked or signed out while the dialog was open.
 func (s *Service) SavePendingRecoveryEmergencyKit(operationID, password string) (string, error) {
+	s.mutex.Lock()
+	epoch := s.sessionEpoch
+	s.mutex.Unlock()
 	entry, kit, err := s.pendingEmergencyKit(operationID, password)
 	if err != nil {
 		return "", err
@@ -400,13 +442,29 @@ func (s *Service) SavePendingRecoveryEmergencyKit(operationID, password string) 
 	if err != nil || path == "" {
 		return path, err
 	}
-	if err := s.savePendingEmergencyKit(entry, kit, path); err != nil {
+	if err := writeNewEmergencyKitFile(kit, path); err != nil {
 		return "", err
 	}
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	err = errSessionEnded
+	if s.sessionEpoch == epoch {
+		entry.KitSaved, entry.SavedBy = true, EmergencyKitSavedByFile
+		err = s.updatePendingRecovery(entry)
+	}
+	if err != nil {
+		return "", errors.Join(err, os.Remove(path))
+	}
+	s.notifyStatusListener()
 	return path, nil
 }
 
+// ExportPendingRecoveryEmergencyKitToDirectory writes a recovery operation's kit into directory for the phone to share;
+// writing it records nothing. Its ExportID is what RecordPendingRecoveryEmergencyKitDelivery takes until the next lock.
 func ExportPendingRecoveryEmergencyKitToDirectory(s *Service, operationID, password, directory string) (EmergencyKitFile, error) {
+	s.mutex.Lock()
+	epoch := s.sessionEpoch
+	s.mutex.Unlock()
 	entry, kit, err := s.pendingEmergencyKit(operationID, password)
 	if err != nil {
 		return EmergencyKitFile{}, err
@@ -415,15 +473,22 @@ func ExportPendingRecoveryEmergencyKitToDirectory(s *Service, operationID, passw
 		return EmergencyKitFile{}, err
 	}
 	path := filepath.Join(directory, emergencyKitFileName(kit))
-	if err := s.savePendingEmergencyKit(entry, kit, path); err != nil {
+	if err := writeNewEmergencyKitFile(kit, path); err != nil {
 		return EmergencyKitFile{}, err
 	}
-	return EmergencyKitFile{SecretKey: kit.SecretKey, Path: path}, nil
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.sessionEpoch != epoch {
+		return EmergencyKitFile{}, errors.Join(errSessionEnded, os.Remove(path))
+	}
+	exportID := uuid.NewString()
+	s.pendingKitExport = &pendingKitExport{id: exportID, operationID: entry.OperationID, epoch: epoch}
+	return EmergencyKitFile{SecretKey: kit.SecretKey, Path: path, ExportID: exportID}, nil
 }
 
-// savePendingEmergencyKit writes the kit to a new file at path and records it as saved. When writing or recording fails
-// it removes the file it created, so the kit is either saved and recorded or absent, and the same path can be tried again.
-func (s *Service) savePendingEmergencyKit(entry *PendingRecoverySummary, kit emergencykit.Kit, path string) error {
+// writeNewEmergencyKitFile writes the kit to a new file at path; when writing fails it removes the file it created, so
+// the same path can be tried again.
+func writeNewEmergencyKitFile(kit emergencykit.Kit, path string) error {
 	document, err := emergencykit.Generate(kit)
 	if err != nil {
 		return err
@@ -433,12 +498,7 @@ func (s *Service) savePendingEmergencyKit(entry *PendingRecoverySummary, kit eme
 		return err
 	}
 	_, writeErr := file.Write(document)
-	err = errors.Join(writeErr, file.Sync(), file.Close())
-	if err == nil {
-		entry.KitSaved = true
-		err = s.updatePendingRecovery(entry)
-	}
-	if err != nil {
+	if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
 		return errors.Join(err, os.Remove(path))
 	}
 	return nil
@@ -455,11 +515,11 @@ func (s *Service) AcknowledgePendingRecovery(operationID, password string) error
 }
 
 func (s *Service) acknowledgeRecovery(entry *PendingRecoverySummary) error {
-	if entry.Phase == "awaiting-kit" && entry.KitSaved {
+	if entry.Phase == "awaiting-kit" && entry.SavedBy != "" {
 		entry.Phase, entry.Problems = "prepared", []string{"Your Emergency Kit is confirmed saved. Continue to send this change."}
 		return s.updatePendingRecovery(entry)
 	}
-	if entry.Phase != "delivery-pending" || !entry.KitSaved {
+	if entry.Phase != "delivery-pending" || entry.SavedBy == "" {
 		return errors.New("finish setup and save your Emergency Kit before confirming it")
 	}
 	if entry.ManualUnlock {
@@ -513,6 +573,7 @@ func (s *Service) removePendingRecovery(entry *PendingRecoverySummary) error {
 	}
 	s.recoveryMutex.Lock()
 	delete(s.pendingRecoveryFactors, entry.OperationID)
+	delete(s.recoveryRecords, entry.OperationID)
 	s.recoveryMutex.Unlock()
 	if store, ok := s.config.SecretKeyStore.(recoveryKeyStore); ok && entry.KeychainProtected {
 		return store.DeleteRecoveryKey(entry.OperationID)

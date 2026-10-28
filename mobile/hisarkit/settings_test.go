@@ -204,7 +204,7 @@ func checkSettingsFlow(t *testing.T, hisar *Hisar, password, secretKey, personal
 		t.Error("Emergency Kit exported with a wrong master password")
 	}
 	kit := decodeJSON[emergencyKitResult](t)(hisar.ExportEmergencyKit(password, kitDirectory))
-	if kit.SecretKey != secretKey || filepath.Dir(kit.EmergencyKitPath) != kitDirectory ||
+	if kit.SecretKey != secretKey || kit.QRCode == "" || filepath.Dir(kit.EmergencyKitPath) != kitDirectory ||
 		!strings.HasPrefix(filepath.Base(kit.EmergencyKitPath), "Hisar Emergency Kit - mobile@example.com - ") {
 		t.Errorf("kit = %+v", kit)
 	}

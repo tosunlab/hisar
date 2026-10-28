@@ -125,7 +125,7 @@ func (s *Service) EnableNewAccountBiometricUnlock() (Status, error) {
 
 func (s *Service) enableBiometricUnlock(password string, isNewAccount bool) (Status, error) {
 	s.mutex.Lock()
-	if isNewAccount && len(s.newAccountUnlockKey) == 0 {
+	if isNewAccount && (s.kitGrant == nil || len(s.kitGrant.unlockKey) == 0) {
 		s.mutex.Unlock()
 		return Status{}, ErrNoNewAccountUnlockKey
 	}
@@ -137,7 +137,7 @@ func (s *Service) enableBiometricUnlock(password string, isNewAccount bool) (Sta
 	server, token, accountCache := s.state.Server, s.state.Token, s.unlockedSession.Cache
 	var accountUnlockKey []byte
 	if isNewAccount {
-		accountUnlockKey = bytes.Clone(s.newAccountUnlockKey)
+		accountUnlockKey = bytes.Clone(s.kitGrant.unlockKey)
 	}
 	s.mutex.Unlock()
 	defer func() { clear(accountUnlockKey) }()
@@ -179,8 +179,7 @@ func (s *Service) enableBiometricUnlock(password string, isNewAccount bool) (Sta
 	s.biometricSetupError = ""
 	s.recordPasswordUnlock()
 	if isNewAccount {
-		clear(s.newAccountUnlockKey)
-		s.newAccountUnlockKey = nil
+		s.dropKitUnlockKey()
 	}
 	return s.buildStatus(), s.state.Save()
 }
@@ -267,29 +266,9 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 
 	s.biometricMutex.Lock()
 	defer s.biometricMutex.Unlock()
-	if !s.isSessionEpoch(epoch) {
-		return Status{}, errUnlockInterrupted
-	}
-
-	if preparer != nil {
-		if err := preparer.PrepareLoadKey(accountID); err != nil {
-			return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the biometric unlock key can no longer be used: %w", err))
-		}
-	}
-	if err := authenticate(); err != nil {
+	accountUnlockKey, err := s.openBiometricUnlockKey(accountID, sealedUnlockKey, epoch, preparer, authenticate)
+	if err != nil {
 		return Status{}, err
-	}
-	wrappingKey, err := s.config.Biometric.LoadKey(accountID)
-	if err != nil {
-		if errors.Is(err, ErrBiometricCancelled) {
-			return Status{}, err
-		}
-		return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the %s key is missing: %w", s.config.BiometricName, err))
-	}
-	defer clear(wrappingKey)
-	accountUnlockKey, err := crypt.Open(wrappingKey, sealedUnlockKey, buildBiometricContext(accountID))
-	if err != nil {
-		return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the %s key does not match", s.config.BiometricName))
 	}
 	defer clear(accountUnlockKey)
 
@@ -315,6 +294,35 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 		return s.buildStatus(), err
 	}
 	return s.buildStatus(), nil
+}
+
+// openBiometricUnlockKey needs biometricMutex: it runs the biometric check and opens the account unlock key that
+// sealedUnlockKey keeps for accountID in the session of epoch. A key the OS no longer has turns biometric unlock off.
+func (s *Service) openBiometricUnlockKey(accountID string, sealedUnlockKey []byte, epoch uint64, preparer BiometricKeyPreparer, authenticate func() error) ([]byte, error) {
+	if !s.isSessionEpoch(epoch) {
+		return nil, errUnlockInterrupted
+	}
+	if preparer != nil {
+		if err := preparer.PrepareLoadKey(accountID); err != nil {
+			return nil, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the biometric unlock key can no longer be used: %w", err))
+		}
+	}
+	if err := authenticate(); err != nil {
+		return nil, err
+	}
+	wrappingKey, err := s.config.Biometric.LoadKey(accountID)
+	if err != nil {
+		if errors.Is(err, ErrBiometricCancelled) {
+			return nil, err
+		}
+		return nil, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the %s key is missing: %w", s.config.BiometricName, err))
+	}
+	defer clear(wrappingKey)
+	accountUnlockKey, err := crypt.Open(wrappingKey, sealedUnlockKey, buildBiometricContext(accountID))
+	if err != nil {
+		return nil, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the %s key does not match", s.config.BiometricName))
+	}
+	return accountUnlockKey, nil
 }
 
 // resetBiometricAfterFailure turns off the biometric unlock that failed, sealedUnlockKey of accountID, unless another

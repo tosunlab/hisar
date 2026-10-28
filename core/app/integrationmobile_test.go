@@ -38,7 +38,7 @@ func TestMobileReplacementContinuationKeepsItsAccount(t *testing.T) {
 	}
 	signInOtherAccount(t, service, other)
 	service.mutex.Lock()
-	service.newAccountSecretKey = &keyB
+	service.setKitGrant("", keyB, nil)
 	service.mutex.Unlock()
 	directory := t.TempDir()
 	kit, err := ExportNewSecretKeyEmergencyKitToDirectory(service, result, directory)

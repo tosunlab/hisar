@@ -9,6 +9,8 @@ import (
 type secretKeyReplacement struct {
 	app.CredentialChangeResult
 	EmergencyKitPath string `json:"emergencyKitPath"`
+	// ExportID is the kit export whose delivery RecordNewAccountEmergencyKitDelivery records.
+	ExportID string `json:"exportId,omitempty"`
 }
 
 // CheckMasterPassword returns item.MasterPasswordFeedback ({"level", "label", "bits", "message", "isBlocking"}) as JSON;
@@ -38,7 +40,7 @@ func (hisar *Hisar) ReplaceSecretKey(password, directory string) (string, error)
 	if kitErr != nil {
 		replacement.LocalError = "Your Secret Key changed, but its Emergency Kit could not be saved. Resume recovery delivery."
 	} else {
-		replacement.EmergencyKitPath = kit.Path
+		replacement.EmergencyKitPath, replacement.ExportID = kit.Path, kit.ExportID
 	}
 	return encodeJSON(replacement, nil)
 }
