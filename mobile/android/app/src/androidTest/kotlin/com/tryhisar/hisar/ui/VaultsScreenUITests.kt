@@ -30,6 +30,7 @@ import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.model.WaitingShareInvitation
 import com.tryhisar.hisar.model.WaitingVaultKey
 import com.tryhisar.hisar.model.WaitingVaultKeys
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -59,10 +60,10 @@ class VaultsScreenUITests : HisarUITestCase() {
             Member("bob-id", "Bob", "bob@example.com", Member.VAULT_ROLE_EDITOR),
         )
         shareInvitations = ShareInvitations(
-            allReceived = listOf(ReceivedShareInvitation("from-carol", "carol-vault", Member.VAULT_ROLE_EDITOR, "Carol", "carol@example.com", "2027-01-22T08:00:00Z")),
+            allReceived = listOf(ReceivedShareInvitation("from-carol", "carol-vault", Member.VAULT_ROLE_EDITOR, "Carol", "carol@example.com", Instant.now().plusSeconds(7 * 86400).toString())),
             allWaiting = listOf(WaitingShareInvitation("from-dave", "dave-vault", Member.VAULT_ROLE_READER, "Dave", "dave@example.com", "2026-10-18T06:00:00Z")),
         )
-        allOrganizationInvitation = mutableListOf(OrganizationInvitation("invitation-9", "globex", "Globex", OrganizationRole.MEMBER, "Ada", "ada@example.com", ""))
+        allOrganizationInvitation = mutableListOf(OrganizationInvitation("invitation-9", "globex", "Globex", OrganizationRole.MEMBER, "Ada", "ada@example.com", Instant.now().plusSeconds(7 * 86400).toString()))
         allOrganization = mutableListOf(
             Organization(
                 id = "acme", name = "Acme", role = OrganizationRole.MEMBER,
