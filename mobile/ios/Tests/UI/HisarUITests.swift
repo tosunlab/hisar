@@ -144,16 +144,20 @@ final class HisarUITests: HisarUITestCase {
         app.buttons["generator-use"].tap()
         let setupKeyField = app.secureTextFields["editor-one-time-password"]
         type("not a secret!", into: setupKeyField)
+        for (index, name) in ["Recovery code", "Recovery code", "recovery CODE", "Password"].enumerated() {
+            scrollTo(app.buttons["Add field"])
+            app.buttons["Add field"].tap()
+            type(name, into: app.textFields["editor-field-\(index)-name"])
+            type("row-secret-\(index)", into: app.textFields["editor-field-\(index)-value"])
+            let secret = app.switches["editor-field-\(index)-secret"]
+            scrollTo(secret)
+            secret.switches.firstMatch.tap()
+            XCTAssertEqual(secret.value as? String, "1")
+        }
         let longDraft = String(repeating: "A long draft. ", count: 60)
         let longNotes = app.textViews["editor-notes"].exists ? app.textViews["editor-notes"] : app.textFields["editor-notes"]
         type(longDraft, into: longNotes)
         type("dev, work", into: app.textFields["editor-new-tag"])
-        for (index, name) in ["Recovery code", "Recovery code", "recovery CODE", "Password"].enumerated() {
-            app.buttons["Add field"].tap()
-            type(name, into: app.textFields["editor-field-\(index)-name"])
-            type("row-secret-\(index)", into: app.textFields["editor-field-\(index)-value"])
-            app.cells.containing(.textField, identifier: "editor-field-\(index)-name").buttons["Secret"].tap()
-        }
         app.buttons["editor-save"].tap()
         let codeError = app.staticTexts["editor-one-time-code-error"]
         waitFor(codeError)
@@ -228,6 +232,7 @@ final class HisarUITests: HisarUITestCase {
         let notesField = app.textViews["editor-notes"].exists ? app.textViews["editor-notes"] : app.textFields["editor-notes"]
         type("4821-9930", into: notesField)
         for index in 0...1 {
+            scrollTo(app.buttons["Add field"])
             app.buttons["Add field"].tap()
             type("Recovery code", into: app.textFields["editor-field-\(index)-name"])
             type("code-\(index)", into: app.textFields["editor-field-\(index)-value"])
