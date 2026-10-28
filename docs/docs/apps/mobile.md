@@ -25,7 +25,8 @@ android/model/     :model, plain JVM: the HisarKit types, VaultBackend, the app 
 android/app/       :app: HisarApplication, MainActivity, HisarKitBackend, the platform adapters (Keystore, biometrics,
                    clipboard, certificates), the Compose screens in ui/<area>, the AutoFill service in autofill/
   src/test/        JVM tests of :app
-  src/androidTest/ instrumented tests: on a FakeBackend, or against a real hisar-server (scripts/test-android-ui.sh)
+  src/androidTest/ instrumented tests: the core journeys against a real hisar-server (scripts/test-android-ui.sh), and
+                   the security checks only a device can make
   src/debug/       PreviewActivity, which shows AutoFill's screens to UI tests
 ```
 
@@ -68,13 +69,28 @@ The script builds both APKs before running instrumentation. It uses `--no-daemon
 `-Pkotlin.compiler.execution.strategy=in-process` for each Gradle invocation so the build's Gradle and Kotlin JVMs
 exit before tests start. Keeping those JVMs alive alongside the emulator can exhaust the CI runner's host memory.
 
+The instrumented tests keep only the journeys a user depends on end to end and the security checks only a device can
+make; the logic behind each screen is in the JVM tests of `:model`. The journeys: an account with a login and a card,
+lock, unlock and signing in again (`AccountItemFlowUITests`, which also checks what the keyboard and autofill are told
+about secret fields and that the invite link stays out of the saved state), changing the master password and Secret Key
+across a process restart and deleting the account (`ui.AccountLifecycleUITests`), biometric unlock
+(`ui.BiometricUITests`), sharing a vault (`SharingUITests`), organizations (`OrganizationUITests`), passkeys through
+Credential Manager (`passkey.PasskeyUITests`), filling a native app and a WebView (`autofill.AutofillServiceUITests`),
+answering a real request from `hisar-ui-test-mac` (`PhoneApprovalUITests`), and saving the Emergency Kit and a plain
+export, whose copies go when their screens close (`FileHandoffUITests`). The device checks: the app switcher and the
+provider windows follow Allow screenshots (`PrivacyUITests`), the Secret Key under a Keystore key and the state out of
+every backup (`platform.KeystoreSecretKeyStoreTests`), the biometric key that a new fingerprint invalidates
+(`platform.BiometricKeystoreTests`), sensitive copies that Hisar clears and never reads another app's copy
+(`platform.ClipboardAdapterTests`), and HisarKit on the device with exactly the device's trusted certificates
+(`backend.HisarKitBackendTests`).
+
 `IosTestParityTest` fails when an iPhone test has no Android test of the same name, a rename or a reason. Port an iPhone
 test under its Swift name and delete its line from
 `android/model/src/test/resources/ios-test-parity-expected-missing.txt`, which lists the tests not ported yet.
 Instrumented test method names start with `test`, so the runner can match every discovered test's logcat file to its XML result.
 
 CI's `android-build` job (`.github/workflows/ci.yml`) builds and lints the app and runs its JVM tests.
-The `android` job runs the instrumented tests in two parts on x86_64 API 36 emulators with Postgres.
+The `android` job runs the instrumented tests in three parts on x86_64 API 36 emulators with Postgres.
 These headless emulators use SwiftShader OpenGL ES with Vulkan disabled. The test script builds both APKs in a
 separate Gradle invocation before running the tests. Every invocation uses `--no-daemon` and in-process Kotlin
 compilation, so idle build JVMs do not retain their compiler heaps while the emulator's host memory grows with

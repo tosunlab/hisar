@@ -25,9 +25,9 @@ class RecordedViewStructure : ViewStructure() {
     /** This node and every node below it. */
     fun listAllNode(): List<RecordedViewStructure> = listOf(this) + allChild.filterNotNull().flatMap { it.listAllNode() }
 
-    /** The node whose autofill value is [text], ignoring the spaces a field groups digits with, as a card number does. */
+    /** The node whose autofill value is [text], ignoring spaces, such as those a card number field groups digits with. */
     fun findNodeWithValue(text: String): RecordedViewStructure? = listAllNode().singleOrNull { node ->
-        node.autofillValue?.takeIf(AutofillValue::isText)?.textValue?.filterNot(Char::isWhitespace)?.toString() == text
+        node.autofillValue?.takeIf(AutofillValue::isText)?.textValue?.filterNot(Char::isWhitespace)?.toString() == text.filterNot(Char::isWhitespace)
     }
 
     override fun setAutofillType(type: Int) {
