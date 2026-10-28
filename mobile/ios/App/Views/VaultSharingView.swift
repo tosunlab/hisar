@@ -62,6 +62,7 @@ struct VaultSharingView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .interactiveDismissDisabled(model.isBusy)
             .refreshable { await load() }
             .navigationTitle(isOwner ? "Share “\(vaultName)”" : "Members")
             .navigationBarTitleDisplayMode(.inline)
@@ -116,7 +117,6 @@ struct VaultSharingView: View {
             }
         }
         .presentationDetents([.medium, .large], selection: $presentationDetent)
-        .interactiveDismissDisabled(model.isBusy)
     }
 
     private var inviteSection: some View {

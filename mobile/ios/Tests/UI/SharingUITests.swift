@@ -57,6 +57,7 @@ final class SharingUITests: HisarUITestCase {
         XCTAssertEqual(app.buttons["share-vault-submit"].label, "Send invitation")
         app.buttons["share-vault-submit"].tap()
         waitFor(findText(containing: "Invitation sent to \(partnerEmail)"), timeout: 30)
+        XCTAssertTrue(app.buttons["share-role"].label.contains("Reader"), "sending an invitation reset the chosen role")
         saveLightAndDarkScreenshot("sharing-share-sheet")
 
         type(unknownEmail, into: app.textFields["share-email"])

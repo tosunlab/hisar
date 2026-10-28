@@ -104,9 +104,11 @@ runs them on two clones of the simulator at once, which is quicker on a Mac with
 Set `HISAR_UI_TEST_SCREENSHOT_DIRECTORY` to save a PNG of each screen.
 
 The sign-up tests save each Emergency Kit under a unique name because the simulator's Files folder survives between tests.
-The helper waits for the Files picker to become tappable and for saving to finish. Formatted fields wait for each character's
-update before typing the next one. Custom-field clipboard checks paste inside Hisar because iOS does not grant the test
-runner access to the app's clipboard.
+The helper waits for the Files picker to become tappable and for saving to finish, then waits for Hisar's share button
+to become tappable again. A missing system activity cell requires searching the remote share sheet's entire
+accessibility tree and can exhaust a wait after the sheet has already closed. The confirmation must still become enabled.
+Formatted fields wait for each character's update before typing the next one. Custom-field clipboard checks paste
+inside Hisar because iOS does not grant the test runner access to the app's clipboard.
 
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.
@@ -126,6 +128,11 @@ means something on both the iPhone Duo simulator and the compact one CI uses.
 `FaceIDUITests` posts matching-face notifications every 500 ms on a background timer, starting before the action that requests authentication. Slow XCTest permission and accessibility queries must not delay the simulated face. The timer stops when that step finishes, and authentication errors still fail the test.
 
 `SharingUITests` scrolls the invitation's Send again action into view before revealing its swipe actions. After a confirmation closes, a partially visible invitation label can still count as hittable while its midpoint is over the home indicator.
+
+The sharing sheet applies its busy-dismissal policy to the list inside its navigation stack. On iOS 27, changing that
+policy on the stack itself can recreate the sheet and discard its form state after an invitation succeeds.
+The UI test checks that the success message and chosen role survive the response.
+
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,
 or denied) is driven through a debug-only preview with a made-up request: launch with `-HisarApprovalPreview ssh` (or
