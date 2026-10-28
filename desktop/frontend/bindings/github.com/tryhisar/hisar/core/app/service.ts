@@ -64,6 +64,20 @@ export function AddTeamMember(organizationID: string, teamID: string, accountID:
     return $Call.ByID(619500911, organizationID, teamID, accountID);
 }
 
+/**
+ * AuthorizeNewAccountEmergencyKit lets this unlock save the owed Emergency Kit after a biometric unlock, with the master password.
+ */
+export function AuthorizeNewAccountEmergencyKit(password: string): $CancellablePromise<void> {
+    return $Call.ByID(851553406, password);
+}
+
+/**
+ * AuthorizeNewAccountEmergencyKitWithBiometric is AuthorizeNewAccountEmergencyKit with the biometric check.
+ */
+export function AuthorizeNewAccountEmergencyKitWithBiometric(): $CancellablePromise<void> {
+    return $Call.ByID(3217638128);
+}
+
 export function CancelImport(): $CancellablePromise<void> {
     return $Call.ByID(368535262);
 }
@@ -393,6 +407,14 @@ export function GetReadIssues(): $CancellablePromise<session$0.ReadIssue[] | nul
     return $Call.ByID(120353839);
 }
 
+/**
+ * GetSignUpPolicy asks server whether it lets anyone create an account, so Create account can ask for an invitation
+ * before anything else. It caches nothing: the policy can change at any time, and the server enforces it at sign-up.
+ */
+export function GetSignUpPolicy(server: string): $CancellablePromise<$models.SignUpPolicy> {
+    return $Call.ByID(652791685, server);
+}
+
 export function GetStatus(): $CancellablePromise<$models.Status> {
     return $Call.ByID(3860301781);
 }
@@ -419,6 +441,13 @@ export function GetWebsiteIcon(rawURL: string): $CancellablePromise<string | nul
  */
 export function GiveVaultToTeam(organizationID: string, teamID: string, vaultID: string, role: string): $CancellablePromise<void> {
     return $Call.ByID(408941764, organizationID, teamID, vaultID, role);
+}
+
+/**
+ * HideEmergencyKitReminder hides the owed kit's reminder until the next lock.
+ */
+export function HideEmergencyKitReminder(): $CancellablePromise<void> {
+    return $Call.ByID(1441656588);
 }
 
 /**
@@ -614,6 +643,13 @@ export function OpenImportFile(passphrase: string): $CancellablePromise<$models.
 }
 
 /**
+ * PostponeNewAccountEmergencyKit is Save later: it records the first postponement and keeps the authorization.
+ */
+export function PostponeNewAccountEmergencyKit(): $CancellablePromise<void> {
+    return $Call.ByID(2609598529);
+}
+
+/**
  * PrepareItemIcon turns an image the user chose into the PNG an item's icon keeps: cropped to a square and scaled down
  * to at most 128 pixels. SaveItem refuses an icon image that did not come from here.
  */
@@ -637,6 +673,22 @@ export function PreviewImport(vaultID: string): $CancellablePromise<$models.Impo
  */
 export function RatePassword(password: string): $CancellablePromise<item$0.PasswordStrength> {
     return $Call.ByID(219966386, password);
+}
+
+/**
+ * RecordNewAccountEmergencyKitDelivery records that the platform confirmed the delivery of the export exportID, made by
+ * ExportNewAccountEmergencyKitToDirectory in this same authorization: method is "file", "print" or "share".
+ */
+export function RecordNewAccountEmergencyKitDelivery(exportID: string, method: string): $CancellablePromise<void> {
+    return $Call.ByID(981095602, exportID, method);
+}
+
+/**
+ * RecordPendingRecoveryEmergencyKitDelivery records that the platform confirmed the delivery of the export exportID, made
+ * by ExportPendingRecoveryEmergencyKitToDirectory since the last lock: method is "file", "print" or "share".
+ */
+export function RecordPendingRecoveryEmergencyKitDelivery(exportID: string, method: string): $CancellablePromise<void> {
+    return $Call.ByID(1360853583, exportID, method);
 }
 
 /**
@@ -716,6 +768,13 @@ export function ResumePendingRecovery(operationID: string, password: string): $C
 
 export function ResumePendingRecoveryWithSecretKey(operationID: string, password: string, secretKey: string, priorSecretKey: string): $CancellablePromise<$models.SignUpResult> {
     return $Call.ByID(201039221, operationID, password, secretKey, priorSecretKey);
+}
+
+/**
+ * RevealNewAccountSecretKey returns the owed kit's Secret Key and sign-in QR code while this unlock is authorized.
+ */
+export function RevealNewAccountSecretKey(): $CancellablePromise<$models.RevealedSecretKey> {
+    return $Call.ByID(1440758648);
 }
 
 /**

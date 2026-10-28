@@ -130,8 +130,7 @@ func (s *Service) RevealSecretKey(password string) (RevealedSecretKey, error) {
 	if err != nil {
 		return RevealedSecretKey{}, err
 	}
-	payload := emergencykit.BuildQRPayload(kit)
-	png, err := qrcode.Encode(payload, qrcode.Medium, 320)
+	revealed, err := revealKit(kit)
 	if err != nil {
 		return RevealedSecretKey{}, err
 	}
@@ -140,14 +139,27 @@ func (s *Service) RevealSecretKey(password string) (RevealedSecretKey, error) {
 	if err := s.requireSessionEpoch(epoch); err != nil {
 		return RevealedSecretKey{}, err
 	}
+	return revealed, nil
+}
+
+// revealKit is the kit's Secret Key with its sign-in QR code, a base64 PNG.
+func revealKit(kit emergencykit.Kit) (RevealedSecretKey, error) {
+	payload := emergencykit.BuildQRPayload(kit)
+	png, err := qrcode.Encode(payload, qrcode.Medium, 320)
+	if err != nil {
+		return RevealedSecretKey{}, err
+	}
 	return RevealedSecretKey{SecretKey: kit.SecretKey, QRPayload: payload, QRCode: base64.StdEncoding.EncodeToString(png)}, nil
 }
 
 // EmergencyKitFile is the kit saved for platforms that share the PDF themselves instead of choosing a save path; the
-// app deletes the file once it is shared.
+// app deletes the file once it is shared. QRCode is the sign-in QR code as a base64 PNG, for Settings. ExportID names a
+// kit export whose delivery the app may record, and only in the authorization that made it.
 type EmergencyKitFile struct {
 	SecretKey string
 	Path      string
+	QRCode    string
+	ExportID  string
 }
 
 // ExportEmergencyKitToDirectory checks the master password, then saves the Emergency Kit PDF into directory.
@@ -161,7 +173,16 @@ func ExportEmergencyKitToDirectory(s *Service, password, directory string) (Emer
 	if err != nil {
 		return EmergencyKitFile{}, err
 	}
-	return s.saveEmergencyKitToDirectory(kit, directory, epoch)
+	revealed, err := revealKit(kit)
+	if err != nil {
+		return EmergencyKitFile{}, err
+	}
+	file, err := s.saveEmergencyKitToDirectory(kit, directory, epoch)
+	if err != nil {
+		return EmergencyKitFile{}, err
+	}
+	file.QRCode = revealed.QRCode
+	return file, nil
 }
 
 // ExportNewSecretKeyEmergencyKitToDirectory saves the kit only for the account and key in the committed replacement.
@@ -319,4 +340,41 @@ func (s *Service) writeEmergencyKit(kit emergencykit.Kit, epoch uint64) (string,
 		return "", err
 	}
 	return path, nil
+}
+
+var errEmergencyKitNotImplemented = errors.New("not implemented yet")
+
+// AuthorizeNewAccountEmergencyKit lets this unlock save the owed Emergency Kit after a biometric unlock, with the master password.
+func (s *Service) AuthorizeNewAccountEmergencyKit(password string) error {
+	return errEmergencyKitNotImplemented
+}
+
+// AuthorizeNewAccountEmergencyKitWithBiometric is AuthorizeNewAccountEmergencyKit with the biometric check.
+func (s *Service) AuthorizeNewAccountEmergencyKitWithBiometric() error {
+	return errEmergencyKitNotImplemented
+}
+
+// RevealNewAccountSecretKey returns the owed kit's Secret Key and sign-in QR code while this unlock is authorized.
+func (s *Service) RevealNewAccountSecretKey() (RevealedSecretKey, error) {
+	return RevealedSecretKey{}, errEmergencyKitNotImplemented
+}
+
+// RecordNewAccountEmergencyKitDelivery records that the platform confirmed the delivery of the export exportID, made by
+// ExportNewAccountEmergencyKitToDirectory in this same authorization: method is "file", "print" or "share".
+func (s *Service) RecordNewAccountEmergencyKitDelivery(exportID, method string) error {
+	return errEmergencyKitNotImplemented
+}
+
+// PostponeNewAccountEmergencyKit is Save later: it records the first postponement and keeps the authorization.
+func (s *Service) PostponeNewAccountEmergencyKit() error {
+	return errEmergencyKitNotImplemented
+}
+
+// HideEmergencyKitReminder hides the owed kit's reminder until the next lock.
+func (s *Service) HideEmergencyKitReminder() {}
+
+// RecordPendingRecoveryEmergencyKitDelivery records that the platform confirmed the delivery of the export exportID, made
+// by ExportPendingRecoveryEmergencyKitToDirectory since the last lock: method is "file", "print" or "share".
+func (s *Service) RecordPendingRecoveryEmergencyKitDelivery(exportID, method string) error {
+	return errEmergencyKitNotImplemented
 }

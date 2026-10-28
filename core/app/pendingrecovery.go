@@ -19,7 +19,9 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 )
 
-// PendingRecoverySummary contains no recovery factor or bearer. It is safe to show while signed out.
+// PendingRecoverySummary contains no recovery factor or bearer. It is safe to show while signed out. KitSaved is kept for
+// older apps; SavedBy ("file", "print" or "share") is the delivery a platform confirmed, and only it counts. PostponedAt is
+// the first Save later of the installed account's kit, RFC 3339 in UTC.
 type PendingRecoverySummary struct {
 	OperationID       string   `json:"operationId"`
 	Kind              string   `json:"kind"`
@@ -29,6 +31,8 @@ type PendingRecoverySummary struct {
 	Name              string   `json:"name"`
 	Phase             string   `json:"phase"`
 	KitSaved          bool     `json:"kitSaved"`
+	SavedBy           string   `json:"savedBy,omitempty"`
+	PostponedAt       string   `json:"postponedAt,omitempty"`
 	Problems          []string `json:"problems"`
 	ManualUnlock      bool     `json:"manualUnlock"`
 	KeychainProtected bool     `json:"keychainProtected"`

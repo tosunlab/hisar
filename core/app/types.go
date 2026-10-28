@@ -34,7 +34,52 @@ type Status struct {
 	SignedOutReason string `json:"signedOutReason"`
 	// UpdateRequired is set once the server refused this version; nothing works until Hisar updates.
 	UpdateRequired *UpdateRequirement `json:"updateRequired"`
+	// EmergencyKit is the Emergency Kit this device still owes for the installed account; nil when none is owed.
+	EmergencyKit *EmergencyKitStatus `json:"emergencyKit,omitempty"`
+	// BiometricOfferAvailable: the optional biometric offer after a new account's kit screen can turn biometric unlock on
+	// without the master password, because this unlock still holds the account unlock key and biometric unlock is off.
+	BiometricOfferAvailable bool `json:"biometricOfferAvailable,omitempty"`
 }
+
+// EmergencyKitStatus is the Emergency Kit this device still owes for the installed account: the account's own sign-up or
+// Secret Key replacement, kept in protected storage, whose kit delivery is not acknowledged yet.
+type EmergencyKitStatus struct {
+	OperationID string `json:"operationId"`
+	// Kind is "signup" or "replace-secret-key".
+	Kind string `json:"kind"`
+	// SavedBy is how the platform confirmed a delivery: "file", "print" or "share"; "" before one.
+	SavedBy string `json:"savedBy"`
+	// PostponedAt is the first Save later, RFC 3339 in UTC; "" before one.
+	PostponedAt string `json:"postponedAt"`
+	// Reminder is "new", "3-days" or "14-days" after PostponedAt.
+	Reminder string `json:"reminder"`
+	// IsAuthorized: this unlock may show the Secret Key, save the kit and acknowledge it without asking again.
+	IsAuthorized bool `json:"isAuthorized"`
+	// IsReminderHidden: Not now hid the reminder until the next lock.
+	IsReminderHidden bool `json:"isReminderHidden"`
+}
+
+const (
+	EmergencyKitSavedByFile  = "file"
+	EmergencyKitSavedByPrint = "print"
+	EmergencyKitSavedByShare = "share"
+
+	EmergencyKitReminderNew          = "new"
+	EmergencyKitReminderThreeDays    = "3-days"
+	EmergencyKitReminderFourteenDays = "14-days"
+)
+
+// SignUpPolicy is who may create an account on a server without an invitation.
+type SignUpPolicy struct {
+	// Server is the canonical server address, with its path prefix, e.g. http://127.0.0.1:19400/sub.
+	Server string `json:"server"`
+	// Host is the server as the forms show it, without https://.
+	Host string `json:"host"`
+	// Mode is "open", "invite", "setup" or "unknown" (a server without the policy route, or a mode this app does not know).
+	Mode string `json:"mode"`
+}
+
+const SignUpModeUnknown = "unknown"
 
 // Biometric is the platform's user-presence check and keychain storage for the biometric unlock key.
 type Biometric interface {

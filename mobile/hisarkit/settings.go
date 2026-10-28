@@ -20,17 +20,20 @@ func (hisar *Hisar) RevokeDevice(deviceID string) error {
 type emergencyKitResult struct {
 	SecretKey        string `json:"secretKey"`
 	EmergencyKitPath string `json:"emergencyKitPath"`
+	QRCode           string `json:"qrCode,omitempty"`
+	ExportID         string `json:"exportId,omitempty"`
 }
 
 // ExportEmergencyKit checks the master password, writes the Emergency Kit PDF into directory and returns
-// {"secretKey", "emergencyKitPath"} as JSON; the app deletes the file once it is shared.
+// {"secretKey", "emergencyKitPath", "qrCode"} as JSON, qrCode being the sign-in QR code as a base64 PNG; the app deletes
+// the file once it is shared.
 func (hisar *Hisar) ExportEmergencyKit(password, directory string) (string, error) {
 	defer releaseMemory()
 	kit, err := app.ExportEmergencyKitToDirectory(hisar.service, password, directory)
 	if err != nil {
 		return "", err
 	}
-	return encodeJSON(emergencyKitResult{SecretKey: kit.SecretKey, EmergencyKitPath: kit.Path}, nil)
+	return encodeJSON(emergencyKitResult{SecretKey: kit.SecretKey, EmergencyKitPath: kit.Path, QRCode: kit.QRCode}, nil)
 }
 
 // CopySecretReference copies hisar://<vault>/<item>/<field> and returns it; fieldName is a built-in field or a custom field's label.

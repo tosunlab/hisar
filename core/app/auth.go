@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/invitelink"
 	"github.com/tryhisar/hisar/core/item"
@@ -186,6 +187,30 @@ func (s *Service) SignUpWithoutInvite(server, email, name, password string) (Sig
 		return SignUpResult{}, err
 	}
 	return s.signUp(server, "", email, name, password)
+}
+
+// GetSignUpPolicy asks server whether it lets anyone create an account, so Create account can ask for an invitation
+// before anything else. It caches nothing: the policy can change at any time, and the server enforces it at sign-up.
+func (s *Service) GetSignUpPolicy(server string) (SignUpPolicy, error) {
+	server, err := resolveServer(server)
+	if err != nil {
+		return SignUpPolicy{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	policy := SignUpPolicy{Server: server, Host: describeServer(server), Mode: SignUpModeUnknown}
+	answer, err := s.createClient(server).GetRegistrationPolicy(ctx)
+	if errors.Is(err, apiclient.ErrRegistrationPolicyUnsupported) {
+		return policy, nil
+	}
+	if err != nil {
+		return SignUpPolicy{}, authenticationError(server, err)
+	}
+	switch answer.Mode {
+	case apitypes.RegistrationModeOpen, apitypes.RegistrationModeInvite, apitypes.RegistrationModeSetup:
+		policy.Mode = answer.Mode
+	}
+	return policy, nil
 }
 
 func (s *Service) signUp(server, token, email, name, password string) (SignUpResult, error) {
