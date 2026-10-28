@@ -15,7 +15,6 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cache"
 	"github.com/tryhisar/hisar/core/clisocket"
-	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/itemicon"
 	"github.com/tryhisar/hisar/core/localstate"
@@ -42,6 +41,7 @@ type serviceState struct {
 	sessionEpoch                 uint64
 	recoveryMutex                sync.Mutex
 	pendingRecoveryFactors       map[string]session.PendingFactor
+	recoveryRecords              map[string]PendingRecoverySummary
 	passkeyEpoch                 atomic.Uint64
 	vaultsByID                   map[string]*session.Vault
 	itemsByVaultID               map[string][]item.Item
@@ -58,8 +58,9 @@ type serviceState struct {
 	biometricClock               biometricPasswordClock
 	biometricSetupError          string
 	biometricSetupRevision       uint64
-	newAccountSecretKey          *crypt.SecretKey
-	newAccountUnlockKey          []byte
+	kitGrant                     *kitGrant
+	pendingKitExport             *pendingKitExport
+	isKitReminderHidden          bool
 	localCache                   *cache.Cache
 	pendingImport                *pendingImport
 	stopEvents                   context.CancelFunc
@@ -240,6 +241,18 @@ func (s *Service) buildStatus() Status {
 			status.BiometricSetupError = fmt.Sprintf("%s needs a password unlock to update its keychain protection. Your master password still unlocks Hisar.", s.config.BiometricName)
 		}
 	}
+	if owed := s.owedEmergencyKit(); owed != nil {
+		status.EmergencyKit = &EmergencyKitStatus{
+			OperationID:      owed.OperationID,
+			Kind:             owed.Kind,
+			SavedBy:          owed.SavedBy,
+			PostponedAt:      owed.PostponedAt,
+			Reminder:         getEmergencyKitReminder(owed.PostponedAt, s.config.Now()),
+			IsAuthorized:     status.State == StateUnlocked && s.kitGrant != nil && s.kitGrant.secretKey != nil && s.kitGrant.operationID == owed.OperationID,
+			IsReminderHidden: s.isKitReminderHidden,
+		}
+	}
+	status.BiometricOfferAvailable = status.State == StateUnlocked && s.kitGrant != nil && len(s.kitGrant.unlockKey) > 0 && s.isBiometricOfferPossible()
 	status.AutoLockSeconds = int(s.getAutoLockAfter() / time.Second)
 	status.UpdateRequired = s.getUpdateRequirement()
 	return status

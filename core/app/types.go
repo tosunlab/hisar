@@ -49,7 +49,8 @@ type EmergencyKitStatus struct {
 	Kind string `json:"kind"`
 	// SavedBy is how the platform confirmed a delivery: "file", "print" or "share"; "" before one.
 	SavedBy string `json:"savedBy"`
-	// PostponedAt is the first Save later, RFC 3339 in UTC; "" before one.
+	// PostponedAt is when the kit was first left unsaved, RFC 3339 in UTC: the first Save later, or the first unlock that
+	// found it still owed; "" before either.
 	PostponedAt string `json:"postponedAt"`
 	// Reminder is "new", "3-days" or "14-days" after PostponedAt.
 	Reminder string `json:"reminder"`

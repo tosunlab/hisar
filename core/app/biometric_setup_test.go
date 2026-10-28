@@ -65,7 +65,7 @@ func prepareBiometricSetupTest(t *testing.T, isNewAccount bool) (unlockedTestSer
 		t.Fatal(err)
 	}
 	if isNewAccount {
-		s.newAccountUnlockKey = bytes.Clone(key)
+		s.kitGrant = &kitGrant{unlockKey: bytes.Clone(key)}
 	}
 	return fixture, key
 }
@@ -93,7 +93,10 @@ func TestBiometricSetupCannotBlockLockOrPublishAcrossSessionChanges(t *testing.T
 					release := sync.OnceFunc(func() { close(b.resume) })
 					t.Cleanup(release)
 					s.config.Biometric = b
-					originalKey := s.newAccountUnlockKey
+					var originalKey []byte
+					if s.kitGrant != nil {
+						originalKey = s.kitGrant.unlockKey
+					}
 					type result struct {
 						status Status
 						err    error

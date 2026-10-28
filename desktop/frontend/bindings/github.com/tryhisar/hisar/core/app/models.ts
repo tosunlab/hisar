@@ -182,7 +182,8 @@ export interface EmergencyKitStatus {
     "savedBy": string;
 
     /**
-     * PostponedAt is the first Save later, RFC 3339 in UTC; "" before one.
+     * PostponedAt is when the kit was first left unsaved, RFC 3339 in UTC: the first Save later, or the first unlock that
+     * found it still owed; "" before either.
      */
     "postponedAt": string;
 
@@ -699,7 +700,7 @@ export interface PasswordConfig {
 /**
  * PendingRecoverySummary contains no recovery factor or bearer. It is safe to show while signed out. KitSaved is kept for
  * older apps; SavedBy ("file", "print" or "share") is the delivery a platform confirmed, and only it counts. PostponedAt is
- * the first Save later of the installed account's kit, RFC 3339 in UTC.
+ * when the installed account's kit was first left unsaved, RFC 3339 in UTC.
  */
 export interface PendingRecoverySummary {
     "operationId": string;

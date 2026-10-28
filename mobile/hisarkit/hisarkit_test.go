@@ -256,8 +256,14 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	// which ends the pending recovery operation.
 	kitDirectory := t.TempDir()
 	kit := decodeJSON[emergencyKitResult](t)(hisar.ExportNewAccountEmergencyKit(kitDirectory))
-	if !strings.HasPrefix(kit.EmergencyKitPath, kitDirectory) || kit.SecretKey != signUp.SecretKey {
+	if !strings.HasPrefix(kit.EmergencyKitPath, kitDirectory) || kit.SecretKey != signUp.SecretKey || kit.ExportID == "" {
 		t.Fatalf("sign-up Emergency Kit: %+v", kit)
+	}
+	if err := hisar.AcknowledgeNewAccountRecovery(); err == nil {
+		t.Fatal("writing the kit for the share sheet confirmed it")
+	}
+	if err := hisar.RecordNewAccountEmergencyKitDelivery(kit.ExportID, "share"); err != nil {
+		t.Fatal(err)
 	}
 	if err := hisar.AcknowledgeNewAccountRecovery(); err != nil {
 		t.Fatal(err)

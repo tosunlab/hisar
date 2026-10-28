@@ -36,9 +36,8 @@ export function AcceptShareInvitation(invitationID: string): $CancellablePromise
 }
 
 /**
- * AcknowledgeNewAccountRecovery ends the pending sign-up operation of the account just created once its kit was saved,
- * as AcknowledgePendingRecovery does with the master password. Only the retained new Secret Key proves it, so it fails
- * for any other pending operation, after a lock and once onboarding ended.
+ * AcknowledgeNewAccountRecovery is "I saved my Emergency Kit": it needs this unlock's authorization and a recorded
+ * delivery, removes the recovery record and drops the Secret Key. The account unlock key stays for the biometric offer.
  */
 export function AcknowledgeNewAccountRecovery(): $CancellablePromise<void> {
     return $Call.ByID(1945039949);
@@ -65,14 +64,16 @@ export function AddTeamMember(organizationID: string, teamID: string, accountID:
 }
 
 /**
- * AuthorizeNewAccountEmergencyKit lets this unlock save the owed Emergency Kit after a biometric unlock, with the master password.
+ * AuthorizeNewAccountEmergencyKit lets this unlock save the owed Emergency Kit after a biometric unlock, with the master
+ * password. It keeps the account unlock key for the biometric offer only when that offer could turn biometric unlock on.
  */
 export function AuthorizeNewAccountEmergencyKit(password: string): $CancellablePromise<void> {
     return $Call.ByID(851553406, password);
 }
 
 /**
- * AuthorizeNewAccountEmergencyKitWithBiometric is AuthorizeNewAccountEmergencyKit with the biometric check.
+ * AuthorizeNewAccountEmergencyKitWithBiometric is AuthorizeNewAccountEmergencyKit with the biometric check that unlocks
+ * Hisar: the account unlock key it opens must open this account, whose Secret Key is then read from the keychain.
  */
 export function AuthorizeNewAccountEmergencyKitWithBiometric(): $CancellablePromise<void> {
     return $Call.ByID(3217638128);
@@ -342,7 +343,8 @@ export function ForgetAgentHost(path: string, teamID: string): $CancellablePromi
 }
 
 /**
- * ForgetNewAccountSecretKey drops the sign-up Secret Key and account unlock key once onboarding is done.
+ * ForgetNewAccountSecretKey answers the biometric offer with Not now: it drops the account unlock key kept for it. An
+ * owed kit stays authorized until the next lock.
  */
 export function ForgetNewAccountSecretKey(): $CancellablePromise<void> {
     return $Call.ByID(727937916);
@@ -444,7 +446,7 @@ export function GiveVaultToTeam(organizationID: string, teamID: string, vaultID:
 }
 
 /**
- * HideEmergencyKitReminder hides the owed kit's reminder until the next lock.
+ * HideEmergencyKitReminder is the reminder's Not now: it hides the owed kit's reminder until the next lock.
  */
 export function HideEmergencyKitReminder(): $CancellablePromise<void> {
     return $Call.ByID(1441656588);
@@ -677,7 +679,8 @@ export function RatePassword(password: string): $CancellablePromise<item$0.Passw
 
 /**
  * RecordNewAccountEmergencyKitDelivery records that the platform confirmed the delivery of the export exportID, made by
- * ExportNewAccountEmergencyKitToDirectory in this same authorization: method is "file", "print" or "share".
+ * ExportNewAccountEmergencyKitToDirectory in this same authorization: method is "file", "print" or "share". It refuses an
+ * export of an earlier unlock and one a newer export replaced.
  */
 export function RecordNewAccountEmergencyKitDelivery(exportID: string, method: string): $CancellablePromise<void> {
     return $Call.ByID(981095602, exportID, method);
@@ -826,13 +829,18 @@ export function SaveItem(vaultID: string, detail: $models.ItemDetail): $Cancella
 }
 
 /**
- * SaveNewAccountEmergencyKit saves the kit right after sign up or replacing the Secret Key; it returns the saved path, or "" when cancelled.
- * After a sign-up it also records the kit as saved in the sign-up's pending operation, which AcknowledgeNewAccountRecovery requires.
+ * SaveNewAccountEmergencyKit saves the kit after sign-up, a Secret Key replacement or an authorized unlock, and records
+ * the saved file as its delivery; it returns the saved path, or "" when cancelled. A save dialog that outlives its
+ * authorization, even across a new unlock, records nothing.
  */
 export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
     return $Call.ByID(3118509742);
 }
 
+/**
+ * SavePendingRecoveryEmergencyKit saves the kit of a recovery operation through the save dialog and records the saved
+ * file as its delivery, unless Hisar locked or signed out while the dialog was open.
+ */
 export function SavePendingRecoveryEmergencyKit(operationID: string, password: string): $CancellablePromise<string> {
     return $Call.ByID(3209141355, operationID, password);
 }
