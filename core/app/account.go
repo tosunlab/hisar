@@ -211,7 +211,6 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 			result.LocalError = fmt.Sprintf("your credentials were changed, but this device could not finish saving the change: %v", err)
 		}
 	}
-	result.Status = s.buildStatus()
 	if pending.OperationID != "" {
 		pending.Phase = "delivery-pending"
 		pending.ManualUnlock = result.KeychainError != ""
@@ -229,6 +228,7 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 		}
 		result.PendingOperationID, result.SetupState, result.Problems = pending.OperationID, pending.Phase, pending.Problems
 	}
+	result.Status = s.buildStatus()
 	return result, nil
 }
 

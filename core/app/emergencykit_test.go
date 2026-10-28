@@ -638,6 +638,9 @@ func TestReplacementKitUsesSameGrant(t *testing.T) {
 	if owed.Kind != "replace-secret-key" || owed.OperationID != result.PendingOperationID || !owed.IsAuthorized {
 		t.Fatalf("the replacement's kit is not owed and authorized: %+v", owed)
 	}
+	if result.Status.EmergencyKit == nil || *result.Status.EmergencyKit != owed {
+		t.Fatalf("the replacement's status does not open its kit: %+v", result.Status.EmergencyKit)
+	}
 	kit, err := ExportNewSecretKeyEmergencyKitToDirectory(service, result, t.TempDir())
 	if err != nil || kit.SecretKey != key.Encode() {
 		t.Fatalf("replacement kit: %+v %v", kit, err)
