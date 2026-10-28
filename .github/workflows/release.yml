@@ -76,6 +76,10 @@ jobs:
     name: macOS
     needs: plan
     if: ${{ !inputs.dryRun && !inputs.skipTests && inputs.app == 'desktop' }}
+    # Its iPhone UI parts read ios-build's artifact through the Actions API.
+    permissions:
+      contents: read
+      actions: read
     uses: ./.github/workflows/macos.yml
 
   # The deploy key in RELEASE_DEPLOY_KEY may create tags past the ruleset "tags: only maintainers create".
