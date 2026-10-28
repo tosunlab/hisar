@@ -443,17 +443,18 @@ jobs:
           retention-days: 7
 
   android:
-    name: Android instrumented tests (part ${{ matrix.part }} of 2)
+    name: Android instrumented tests (part ${{ matrix.part }} of 3)
     needs: changes
     if: needs.changes.outputs.isAndroidChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-android')
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    # Each part runs about half of the instrumented tests on its own emulator (ANDROID_UI_TEST_PART in
-    # scripts/test-android-ui.sh) and builds only HisarKit.aar and the debug and test APKs they need.
+    # Each part runs about a third of the instrumented tests on its own emulator (ANDROID_UI_TEST_PART in
+    # scripts/test-android-ui.sh) and builds only HisarKit.aar and the debug and test APKs they need. The emulator's host
+    # memory grows with every test, so a runner holds about 80 tests (scripts/ui-test-parts.sh).
     strategy:
       fail-fast: false
       matrix:
-        part: [1, 2]
+        part: [1, 2, 3]
     services:
       postgres:
         image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
