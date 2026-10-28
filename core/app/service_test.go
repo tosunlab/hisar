@@ -187,6 +187,12 @@ func TestSetAutoLock(t *testing.T) {
 			t.Errorf("accepted %d", badSeconds)
 		}
 	}
+	for _, seconds := range []int{43200, 86400} {
+		status, err := service.SetAutoLock(seconds)
+		if err != nil || status.AutoLockSeconds != seconds || service.GetStatus().AutoLockSeconds != seconds {
+			t.Fatalf("set %d: %+v %v", seconds, status, err)
+		}
+	}
 	status, err := service.SetAutoLock(30)
 	if err != nil || status.AutoLockSeconds != 30 || service.getAutoLockAfter() != 30*time.Second {
 		t.Fatalf("set: %+v %v", status, err)

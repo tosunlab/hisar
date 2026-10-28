@@ -169,8 +169,8 @@ describe("SettingsPanel", () => {
     const wrapper = mount(SettingsPanel);
     const select = wrapper.find('[data-testid="auto-lock"]');
     expect((select.element as HTMLSelectElement).value).toBe("600");
-    expect(select.findAll("option").map((option) => option.text())).toEqual(["30 seconds", "1 minute", "5 minutes", "10 minutes", "1 hour"]);
-    expect(select.element.closest(".setting")?.textContent).toContain("Hisar locks after this long without keyboard, mouse or trackpad input on this Mac, and when the screen locks.");
+    expect(select.findAll("option").map((option) => option.text())).toEqual(["30 seconds", "1 minute", "5 minutes", "10 minutes", "1 hour", "12 hours", "24 hours"]);
+    expect(select.element.closest(".setting")?.textContent).toContain("Hisar locks after this long without keyboard, mouse or trackpad input on this Mac; sleep counts toward this time.");
     expect(select.element.closest(".setting")?.textContent).not.toContain("Copied values");
     const clipboard = wrapper.get('[data-testid="clipboard-clearing"]');
     expect(clipboard.text()).toBe("Clear copied values after 90 seconds");
@@ -179,6 +179,11 @@ describe("SettingsPanel", () => {
     await flushPromises();
     expect(api.setAutoLock).toHaveBeenCalledWith(30);
     expect(store.status.autoLockSeconds).toBe(30);
+    api.setAutoLock.mockResolvedValue({ ...store.status, autoLockSeconds: 86400 });
+    await select.setValue("86400");
+    await flushPromises();
+    expect(api.setAutoLock).toHaveBeenCalledWith(86400);
+    expect(store.status.autoLockSeconds).toBe(86400);
   });
 
   it("turns Touch ID off", async () => {

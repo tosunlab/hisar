@@ -51,11 +51,13 @@ beforeEach(() => {
     allAgentHost: [],
     allAgentGrant: [],
     agentSignIn: { isAvailable: false, isEnabled: false, hasAccessibility: false },
-    agentErrors: { vaults: "", signIn: "", grants: "", sessions: "", hosts: "" },
+    agentErrors: { vaults: "", signIn: "", grants: "", sessions: "", hosts: "", alwaysWhileLocked: "" },
+    alwaysAgentAccessWhileLocked: { isAvailable: false, isEnabled: false },
   });
   api.listAllAgentVaultID.mockResolvedValue([]);
   api.listAllAgentGrant.mockResolvedValue([]);
   api.getAgentSignIn.mockResolvedValue({ isAvailable: true, isEnabled: false, hasAccessibility: false });
+  api.getAlwaysAgentAccessWhileLocked.mockResolvedValue({ isAvailable: true, isEnabled: false });
   api.listAllAgentSession.mockResolvedValue([]);
   api.listAllAgentHost.mockResolvedValue([]);
 });
@@ -79,6 +81,28 @@ describe("CodingAgentsSection", () => {
     expect(getSwitch(wrapper, "acme-vault-2").getAttribute("aria-label")).toBe("Available to agents: Acme, Production · acme-vault-2");
     expect(getSwitch(wrapper, "northwind-vault").getAttribute("aria-label")).toBe("Available to agents: Northwind, Production");
     expect(getSwitch(wrapper, "personal").getAttribute("aria-label")).toBe("Available to agents: Vaults, Personal");
+  });
+
+  it("keeps locked Always access off by default and saves the switch", async () => {
+    const wrapper = mount(CodingAgentsSection);
+    await flushPromises();
+    const toggle = wrapper.get('[data-testid="always-agent-access-while-locked-switch"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    expect(wrapper.get('[data-testid="always-agent-access-while-locked"] p').text()).toBe("Hisar keeps the secrets you allowed Always in memory when it locks, so agents can use them without asking until Hisar quits.");
+    api.setAlwaysAgentAccessWhileLocked.mockResolvedValue({ isAvailable: true, isEnabled: true });
+    await toggle.setValue(true);
+    await flushPromises();
+    expect(api.setAlwaysAgentAccessWhileLocked).toHaveBeenCalledWith(true);
+    expect((toggle.element as HTMLInputElement).checked).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("hides locked Always access without a usable grant store", async () => {
+    api.getAlwaysAgentAccessWhileLocked.mockResolvedValue({ isAvailable: false, isEnabled: false });
+    const wrapper = mount(CodingAgentsSection);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="always-agent-access-while-locked-switch"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it("lists every vault as invisible to agents by default", async () => {

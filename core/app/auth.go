@@ -20,6 +20,7 @@ import (
 )
 
 func (s *Service) openSession(unlockedSession *session.Session) {
+	s.dropLockedGrantView()
 	unlockedSession.SeqStore = s.state
 	unlockedSession.MemberVerifier = s.state.CheckMemberPin
 	s.unlockedSession = unlockedSession

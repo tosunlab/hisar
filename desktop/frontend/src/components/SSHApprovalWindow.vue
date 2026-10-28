@@ -47,6 +47,7 @@ const allLauncherAllowance: { icon: IconName; text: string }[] = [
 ];
 
 const password = ref("");
+const isAlwaysAgentAccessWhileLockedEnabled = ref(false);
 const promptSlot = ref<HTMLElement | null>(null);
 const passwordInput = ref<HTMLInputElement | null>(null);
 const denyButton = ref<HTMLButtonElement | null>(null);
@@ -91,7 +92,7 @@ const agentGrantLifetime = computed(() => {
   const revoke = "Revoke in Settings → Developer tools → Coding agents → Allowed without asking, or sign out.";
   switch (approval.value?.grantHolderScope) {
     case "harness":
-      return `Saved for ${harnessName.value} across sessions and Hisar restarts. Locking pauses access but does not remove this grant. ${approvalStore.grantDuration === "always" ? "Until you revoke it or sign out." : `Ends in ${duration}.`} ${revoke}`;
+      return `Saved for ${harnessName.value} across sessions and Hisar restarts. ${approvalStore.grantDuration === "always" ? "Until you revoke it or sign out." : `Locking pauses access but does not remove this grant. Ends in ${duration}.`} ${revoke}`;
     case "session":
       return `Ends in ${duration} or when this agent session ends. Locking pauses access. ${revoke}`;
     case "connection":
@@ -381,6 +382,11 @@ watch(
       api.clearApprovalTouchIDFrame().catch(() => undefined);
       return;
     }
+    api.getAlwaysAgentAccessWhileLocked().then((setting) => {
+      if (approval.value?.requestID === requestID) {
+        isAlwaysAgentAccessWhileLockedEnabled.value = setting.isEnabled;
+      }
+    }).catch(() => { isAlwaysAgentAccessWhileLockedEnabled.value = false; });
     countdownTimer = setInterval(() => {
       now.value = Date.now();
     }, 250);
@@ -397,7 +403,7 @@ watch(
 );
 
 watch(
-  () => [approval.value?.requestID, isCompactShown.value, isPasswordShown.value, approvalStore.failureMessage, approvalStore.allApproval.length, isWaitingForTouchID.value, isExpired.value],
+  () => [approval.value?.requestID, isCompactShown.value, isPasswordShown.value, approvalStore.failureMessage, approvalStore.allApproval.length, approvalStore.grantDuration, isAlwaysAgentAccessWhileLockedEnabled.value, isWaitingForTouchID.value, isExpired.value],
   () => fitWindow(),
 );
 
@@ -667,6 +673,11 @@ onBeforeUnmount(() => {
               </label>
               <p v-if="approval.grantScope" class="muted" data-testid="approval-grant-scope">{{ approval.grantScope }}</p>
               <p v-if="agentGrantLifetime" class="muted" data-testid="approval-grant-note">{{ agentGrantLifetime }}</p>
+              <p v-if="approvalStore.grantDuration === 'always'" class="muted" data-testid="approval-always-lock-note">
+                {{ isAlwaysAgentAccessWhileLockedEnabled
+                  ? "Agents can use this permission while Hisar is locked, until Hisar quits."
+                  : 'Hisar still asks after it locks; turn on “Use Always permissions while Hisar is locked” in Settings to allow it.' }}
+              </p>
             </div>
           </div>
 

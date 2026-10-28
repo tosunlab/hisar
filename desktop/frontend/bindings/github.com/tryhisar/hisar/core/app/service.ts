@@ -352,6 +352,13 @@ export function GetAgentSignIn(): $CancellablePromise<$models.AgentSignIn> {
     return $Call.ByID(2932810882);
 }
 
+/**
+ * GetAlwaysAgentAccessWhileLocked returns this device's availability and setting for locked Always access.
+ */
+export function GetAlwaysAgentAccessWhileLocked(): $CancellablePromise<$models.AlwaysAgentAccessWhileLocked> {
+    return $Call.ByID(3760748064);
+}
+
 export function GetExportOptions(): $CancellablePromise<$models.ExportOptions> {
     return $Call.ByID(2477468897);
 }
@@ -777,6 +784,13 @@ export function SavePendingRecoveryEmergencyKit(operationID: string, password: s
  */
 export function SetAgentSignInEnabled(isEnabled: boolean): $CancellablePromise<$models.AgentSignIn> {
     return $Call.ByID(757356227, isEnabled);
+}
+
+/**
+ * SetAlwaysAgentAccessWhileLocked saves the setting and erases retained secrets when disabled.
+ */
+export function SetAlwaysAgentAccessWhileLocked(isEnabled: boolean): $CancellablePromise<$models.AlwaysAgentAccessWhileLocked> {
+    return $Call.ByID(466181460, isEnabled);
 }
 
 /**

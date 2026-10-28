@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/signin"
 )
@@ -21,13 +22,19 @@ type AgentSignInHandler interface {
 	PerformAgentSignIn(ctx context.Context, target AgentSignInTarget, login AgentLogin, authorization AgentAuthorization) (cliprotocol.AgentSignInResult, error)
 }
 
+// LockedAgentSignInHandler offers logins covered by retained Always grants without unlocking Hisar.
+type LockedAgentSignInHandler interface {
+	PrepareLockedAgentSignIn(ctx context.Context, request *cliprotocol.Request, target AgentSignInTarget, harness agentharness.Session, authorization AgentAuthorization) (AgentSignInTarget, bool, error)
+}
+
 // AgentSignInTarget is where an agent sign-in goes, as the app observed it, and the logins it may use there.
 type AgentSignInTarget struct {
 	Destination signin.Destination
 	// Logins are saved for Destination.Origin, each with Origin set to it; only the named one when the request named a
 	// login.
-	Logins   []AgentLogin
-	IsLocked bool
+	Logins                []AgentLogin
+	IsLocked              bool
+	LockedGrantGeneration uint64
 }
 
 // AgentLogin is a login an agent sign-in may use, as PrepareAgentSignIn read it; the approval shows its Username.
@@ -62,6 +69,17 @@ func (s *Server) answerAgentSignIn(ctx context.Context, client *connectionPeer, 
 	target, err := handler.PrepareAgentSignIn(ctx, request)
 	if err != nil {
 		return nil, err
+	}
+	if target.IsLocked && client.isInAgentSession() && client.isHarnessRunning() {
+		if lockedHandler, ok := handler.(LockedAgentSignInHandler); ok {
+			lockedTarget, covered, err := lockedHandler.PrepareLockedAgentSignIn(ctx, request, target, client.agentSession.Session, authorization)
+			if err != nil {
+				return nil, err
+			}
+			if covered {
+				return s.performAgentSignIn(ctx, handler, client, authorization, lockedTarget, lockedTarget.Logins[0])
+			}
+		}
 	}
 	if !target.IsLocked && client.isHarnessRunning() {
 		login, isGranted, err := approvals.findAgentSignInGrant(authorization, client, target.Logins)

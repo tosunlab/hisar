@@ -18,6 +18,7 @@ export type {
     AgentHost,
     AgentSession,
     AgentSignIn,
+    AlwaysAgentAccessWhileLocked,
     BrowserPairingRequest,
     BrowserStatus,
     CardDescription,

@@ -8,7 +8,7 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 )
 
-var autoLockSeconds = []int{30, 60, 300, 600, 3600}
+var autoLockSeconds = []int{30, 60, 300, 600, 3600, 43200, 86400}
 
 const minimumLockRecheckInterval = 10 * time.Millisecond
 
@@ -22,7 +22,7 @@ func (s *Service) getAutoLockAfter() time.Duration {
 // SetAutoLock stores how long Hisar stays unlocked without activity and restarts the countdown.
 func (s *Service) SetAutoLock(seconds int) (Status, error) {
 	if !slices.Contains(autoLockSeconds, seconds) {
-		return Status{}, errors.New("choose 30 seconds, 1 minute, 5 minutes, 10 minutes or 1 hour")
+		return Status{}, errors.New("choose 30 seconds, 1 minute, 5 minutes, 10 minutes, 1 hour, 12 hours or 24 hours")
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -136,6 +136,11 @@ func (s *Service) lockSession() {
 		s.lockTimer = nil
 	}
 	wasUnlocked := s.unlockedSession != nil
+	if wasUnlocked {
+		s.buildLockedGrantView()
+	} else if s.lockedGrants != nil {
+		s.lockedGrants.generation = s.lockedGrantGeneration.Add(1)
+	}
 	s.forgetPhoneApprovalSession()
 	if wasUnlocked {
 		s.unlockedSession.Lock()

@@ -43,7 +43,7 @@ beforeEach(() => {
     isBusy: false,
     allVault: [{ id: "work", name: "Work", type: "shared", role: "editor", itemCount: 3 }],
     allAgentVaultID: [],
-    agentErrors: { vaults: "", signIn: "", grants: "", sessions: "", hosts: "" },
+    agentErrors: { vaults: "", signIn: "", grants: "", sessions: "", hosts: "", alwaysWhileLocked: "" },
   });
   api.listAllAgentVaultID.mockResolvedValue(["work"]);
 });

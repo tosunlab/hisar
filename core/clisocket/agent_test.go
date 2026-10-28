@@ -810,3 +810,22 @@ func TestAgentSessionListFollowsTheHarness(t *testing.T) {
 	waitFor(t, "the session leaves the list", func() bool { return len(fixture.approvals.ListAgentSessions()) == 0 })
 	waitFor(t, "the exit is announced", func() bool { return announcementCount.Load() == 3 })
 }
+
+func TestLockedGrantAuthorizationEndsWithItsView(t *testing.T) {
+	approvals := NewSessionApprovals(0, nil, nil)
+	approvals.SetAccount("account")
+	authorization := approvals.authorizeAgent(&connectionPeer{})
+	var generation atomic.Uint64
+	generation.Store(1)
+	locked := authorization.BindLockedGrantGeneration(&generation, 1)
+	if !locked.IsCurrent() {
+		t.Fatal("a fresh locked-view authorization is stale")
+	}
+	generation.Add(1)
+	if locked.IsCurrent() {
+		t.Fatal("erasing the view kept its authorization")
+	}
+	if !authorization.IsCurrent() {
+		t.Fatal("erasing a retained view ended an ordinary unlock-dialog authorization")
+	}
+}

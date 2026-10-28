@@ -185,7 +185,8 @@ export const store = reactive({
   allAgentHost: [] as AgentHost[],
   allAgentGrant: [] as AgentGrant[],
   agentSignIn: { isAvailable: false, isEnabled: false, hasAccessibility: false } as AgentSignIn,
-  agentErrors: { vaults: "", signIn: "", grants: "", sessions: "", hosts: "" },
+  agentErrors: { vaults: "", signIn: "", grants: "", sessions: "", hosts: "", alwaysWhileLocked: "" },
+  alwaysAgentAccessWhileLocked: { isAvailable: false, isEnabled: false },
   isImportOpen: false,
   importStep: "choose" as ImportStep,
   allImportFormat: [] as ImportFormat[],
@@ -2490,6 +2491,28 @@ export async function loadAgentSignIn(): Promise<void> {
     store.agentErrors.signIn = "";
   } catch (error) {
     store.agentErrors.signIn = getErrorMessage(error);
+  }
+}
+
+export async function loadAlwaysAgentAccessWhileLocked(): Promise<void> {
+  try {
+    store.alwaysAgentAccessWhileLocked = await api.getAlwaysAgentAccessWhileLocked();
+    store.agentErrors.alwaysWhileLocked = "";
+  } catch (error) {
+    store.agentErrors.alwaysWhileLocked = getErrorMessage(error);
+  }
+}
+
+export async function setAlwaysAgentAccessWhileLocked(isEnabled: boolean): Promise<void> {
+  store.isBusy = true;
+  try {
+    store.alwaysAgentAccessWhileLocked = await api.setAlwaysAgentAccessWhileLocked(isEnabled);
+    store.agentErrors.alwaysWhileLocked = "";
+  } catch (error) {
+    await loadAlwaysAgentAccessWhileLocked();
+    store.agentErrors.alwaysWhileLocked = getErrorMessage(error);
+  } finally {
+    store.isBusy = false;
   }
 }
 
