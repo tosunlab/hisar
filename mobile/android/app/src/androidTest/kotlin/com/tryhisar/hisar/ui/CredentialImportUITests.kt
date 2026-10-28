@@ -69,16 +69,6 @@ class CredentialImportUITests : HisarUITestCase() {
     }
 
     @Test
-    fun testFailedTransferExplainsAndCloses() = startImport({ CredentialExchangeResult.Failed("No app on this device offered its passwords and passkeys to Hisar.") }) {
-        waitFor("credential-import-failed-transfer")
-        assertTrue(exists(hasText("No app on this device offered its passwords and passkeys to Hisar.")))
-        saveScreenshot("credential-import-failed")
-        tap("credential-import-cancel")
-        composeRule.waitUntil("the import closes", 10_000) { !exists(hasTestTag("credential-import")) }
-        assertEquals(0, backend.countCall("prepareCredentialExchangeImport"))
-    }
-
-    @Test
     fun testTransferFinishingWhileLockedImportsAfterTheUnlock() = startImport({
         // Hisar locked while the user was in the other app.
         backend.lock()

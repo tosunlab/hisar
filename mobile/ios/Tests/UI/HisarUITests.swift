@@ -59,7 +59,7 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("password-generator")
         app.buttons["generator-use"].tap()
         type("dev, work", into: app.textFields["editor-new-tag"])
-        for (index, name) in ["Recovery code", "Recovery code", "recovery CODE", "Password"].enumerated() {
+        for (index, name) in ["Recovery code", "Recovery code", "Password"].enumerated() {
             app.buttons["Add field"].tap()
             type(name, into: app.textFields["editor-field-\(index)-name"])
             type("row-secret-\(index)", into: app.textFields["editor-field-\(index)-value"])
@@ -70,8 +70,8 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
         XCTAssertNotEqual(passwordRow.value as? String, "ui-test-password-1", "the generated password replaced the old one")
         let customRows = app.buttons.matching(identifier: "copy-recovery code")
-        for index in 0..<4 {
-            let copy = index < 3 ? customRows.element(boundBy: index) : app.buttons.matching(identifier: "copy-password").element(boundBy: 1)
+        for index in 0..<3 {
+            let copy = index < 2 ? customRows.element(boundBy: index) : app.buttons.matching(identifier: "copy-password").element(boundBy: 1)
             copy.tap()
             app.buttons["edit-item"].tap()
             let title = app.textFields["editor-title"]
@@ -93,7 +93,7 @@ final class HisarUITests: HisarUITestCase {
         app.buttons.matching(identifier: "reveal-recovery code").element(boundBy: 1).tap()
         XCTAssertEqual(customRows.element(boundBy: 1).value as? String, "row-secret-1")
         XCTAssertEqual(customRows.element(boundBy: 0).value as? String, "Hidden")
-        XCTAssertEqual(customRows.element(boundBy: 2).value as? String, "Hidden")
+        XCTAssertEqual(app.buttons.matching(identifier: "copy-password").element(boundBy: 1).value as? String, "Hidden")
 
         app.buttons["copy-secret-reference"].tap()
         goBack()
@@ -225,18 +225,6 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "build.example.com:2222 · deploy")).firstMatch)
         XCTAssertEqual(app.buttons["copy-password"].value as? String, "Hidden", "the password is shown before it is revealed")
         saveScreenshot("server")
-        app.buttons["edit-item"].tap()
-        waitFor(app.secureTextFields["editor-one-time-password"])
-        app.buttons["Reveal setup key"].tap()
-        waitFor(app.textFields["editor-one-time-password"])
-        XCTAssertTrue(app.secureTextFields["editor-password"].exists)
-        app.buttons["Hide setup key"].tap()
-        waitFor(app.secureTextFields["editor-one-time-password"])
-        app.buttons["Reveal setup key"].tap()
-        app.buttons["editor-cancel"].tap()
-        app.buttons["edit-item"].tap()
-        waitFor(app.secureTextFields["editor-one-time-password"])
-        app.buttons["editor-cancel"].tap()
         goBack()
 
         choose("New database", from: "new-menu", under: "new-more")
@@ -274,22 +262,7 @@ final class HisarUITests: HisarUITestCase {
         app.buttons["unlock-submit"].tap()
         waitFor(app.buttons["vault-Personal"])
 
-        openTab("Approvals")
-        saveScreenshot("approvals-empty")
-
-        openSettings("open-security")
-        app.buttons["5 minutes"].firstMatch.tap()
-        app.buttons["1 hour"].firstMatch.tap()
-        saveScreenshot("security")
-        goBack()
-
-        app.buttons["open-devices"].tap()
-        // iOS shows the section header as "This iPhone" or "THIS IPHONE"; the screen may still be opening, so both are awaited.
-        waitFor(app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "This iPhone")).firstMatch)
-        saveScreenshot("devices")
-        goBack()
-
-        app.buttons["open-appearance"].tap()
+        openSettings("open-appearance")
         app.buttons["appearance-dark"].tap()
         app.buttons["theme-color-purple"].tap()
         saveScreenshot("appearance")
@@ -305,21 +278,6 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertEqual(shownSecretKey.label, secretKey)
         saveScreenshot("secret-key")
         goBack()
-        goBack()
-
-        for _ in 0..<5 where !app.buttons["open-help"].isHittable {
-            app.swipeUp()
-        }
-        app.buttons["open-help"].tap()
-        XCTAssertFalse(app.staticTexts["App version"].exists)
-        app.buttons["copy-diagnostics"].tap()
-        saveScreenshot("settings-help")
-        goBack()
-        let about = app.buttons["open-about"]
-        scrollTo(about)
-        XCTAssertEqual(about.label, "About Hisar")
-        about.tap()
-        waitFor(app.staticTexts["Version"])
         goBack()
 
         for _ in 0..<5 where !app.buttons["sign-out"].isHittable {

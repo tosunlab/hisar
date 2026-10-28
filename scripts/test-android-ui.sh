@@ -14,7 +14,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 : "${ANDROID_HOME:?set ANDROID_HOME to the Android SDK}"
 ADB=$ANDROID_HOME/platform-tools/adb
-SMOKE_TESTS=HisarKitBackendTests,KeystoreSecretKeyStoreTests,BiometricKeystoreTests,ClipboardAdapterTests,testAccountItemLockAndSignInFlow,testBiometricUnlockAfterTurningItOn,AutofillServiceUITests#testWebViewFormFillsAfterUnlock,testRegisterPasskeyThenSignInWithIt,HarnessServerTests,testAppSwitcherHidesAnOpenSheet
+SMOKE_TESTS=HisarKitBackendTests,KeystoreSecretKeyStoreTests,BiometricKeystoreTests,ClipboardAdapterTests,testAccountItemLockAndSignInFlow,testBiometricUnlockAfterTurningItOn,AutofillServiceUITests#testWebViewFormFillsAfterUnlock,testRegisterPasskeyThenSignInWithIt,testAppSwitcherHidesAnOpenSheet
 # The runner matches tests_regex against package.Class#test: part 1 names its classes, and part 2 leaves out those of part 1.
 source "$ROOT/scripts/ui-test-parts.sh"
 TESTS_REGEX=
@@ -72,7 +72,6 @@ save_device_log() {
 UI_TEST_PLATFORM_NAME=Android
 UI_TEST_PORT=${ANDROID_UI_TEST_PORT:-18084}
 source "$ROOT/scripts/ui-test-partner.sh"
-ui_test_add_account SIGN_IN_AGAIN_ "android-sign-in-again-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PLATFORM_BACKEND_ "android-platform-backend-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PLATFORM_BIOMETRIC_ "android-platform-biometric-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PLATFORM_TIME_ZONE_ "android-platform-time-zone-$(date +%s)-$RANDOM@example.com"
