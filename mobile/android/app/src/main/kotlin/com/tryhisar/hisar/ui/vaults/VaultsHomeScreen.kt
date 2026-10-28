@@ -170,6 +170,7 @@ fun VaultsHomeScreen(model: AppModel) {
                 cardSection("review-recipients", data.allReviewInvitation, rowKey = { it.id }, header = "Review recipients") { invitation ->
                     SentInvitationRow(
                         invitation, isVaultNameShown = true, testTag = "review-invitation-${invitation.id}",
+                        model = model, onResent = { model.invitations.loadShareInvitations() },
                         onConfirm = { snapshot ->
                             scope.launch {
                                 if (!model.sharing.confirmShareRecipient(snapshot)) refusal = model.takeRefusal("Give access")
