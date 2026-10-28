@@ -103,7 +103,7 @@ check_partner "inviting the joining account to Northwind" "Invitation sent to $O
   "$(partner org invite Northwind "$ORGANIZATION_JOIN_EMAIL" 2>&1)"
 
 # The partner's Hisar unlocks once and answers for the rest of the run (mobile/cmd/hisar-ui-test-partner says what it
-# does); a CLI unlocking on every pass derived the account's keys every few seconds and kept the runner's CPUs busy.
+# does), instead of a CLI that derived the partner's keys on every pass, every 5 to 6 seconds.
 "$ROOT/bin/hisar-ui-test-partner" -state "$T/partner.json" -password "$PARTNER_PASSWORD" -secret-key "$PARTNER_SECRET_KEY" \
   -join-email "$ORGANIZATION_JOIN_EMAIL" >"$T/partner.log" 2>&1 &
 UI_TEST_PARTNER=$!

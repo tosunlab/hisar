@@ -6,8 +6,8 @@
 // team Platform once it joined Northwind, removes it again once it saved "Remove me" in Deploy, and writes "Seen by
 // partner" into Contoso's Runbooks once it reads Pager there.
 //
-// Unlocking derives the account's keys with Argon2id (64 MiB, 24 passes, 4 lanes), seconds of CPU on a CI runner, so a
-// partner that unlocked on every pass kept the runner's CPUs busy under the simulator for the whole run.
+// Unlocking derives the account's keys with Argon2id (64 MiB, 24 passes, 4 lanes), about a second of CPU, so a partner
+// that unlocked on every pass added that work every 5 to 6 seconds to the runner the simulator shares.
 package main
 
 import (
