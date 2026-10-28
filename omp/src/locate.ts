@@ -17,7 +17,8 @@ export function isExecutableFile(path: string): boolean {
   }
 }
 
-// findHisar looks on PATH, then in the Hisar.app in /Applications, then in the one in ~/Applications.
+// findHisar looks on PATH, then in the Hisar.app in /Applications, then in the one in ~/Applications, then in
+// ~/.local/share/hisar/bin, where a Linux AppImage or Flatpak of Hisar copies its hisar.
 export function findHisar(
   environment: Record<string, string | undefined>,
   isExecutable: (path: string) => boolean = isExecutableFile,
@@ -28,7 +29,10 @@ export function findHisar(
     if (isExecutable(path)) return { path, isOnInheritedPath: true };
   }
   const appCandidates = [join("/Applications", bundledHelper)];
-  if (environment.HOME) appCandidates.push(join(environment.HOME, "Applications", bundledHelper));
+  if (environment.HOME) {
+    appCandidates.push(join(environment.HOME, "Applications", bundledHelper));
+    appCandidates.push(join(environment.HOME, ".local", "share", "hisar", "bin", "hisar"));
+  }
   const path = appCandidates.find(isExecutable);
   return path === undefined ? undefined : { path, isOnInheritedPath: false };
 }

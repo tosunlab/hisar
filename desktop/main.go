@@ -276,7 +276,7 @@ func main() {
 		HomeDirectory:   homeDirectory,
 		GetUserPath:     userPathReader.Read,
 		GetUserVariable: userPathReader.ReadVariable,
-		OmpPluginPath:   harness.FindOmpPlugin(filepath.Dir(executablePath)),
+		OmpPluginPath:   helpers.ompPlugin,
 		HisarPath:       helpers.commandLine,
 	})
 	inviteLinkService := app.NewInviteLinkService()

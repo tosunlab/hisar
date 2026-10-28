@@ -192,10 +192,11 @@ and its status line shows whether Hisar is locked. The command still receives th
 1. In Hisar, open Settings → Developer tools → Coding agents and turn on "Available to agents" for the vaults omp may use, as for
    `hisar mcp` above.
 2. Next to omp in the same section, click **Connect**. Hisar finds omp on your PATH, in `~/bin`, in Tern
-   (`~/Library/Application Support/Tern/omp/bin`) or in `~/.bun/bin`, and runs `omp plugin link` with the plugin inside Hisar.app.
-   The plugin starts the MCP server with the `hisar` inside Hisar.app. New omp sessions load Hisar; restart the ones already
-   running. **Disconnect** runs `omp plugin uninstall @tryhisar/omp-plugin`, which removes the MCP server too.
-   On Linux, link the plugin from a checkout of this repository: `omp plugin link <checkout>/omp`.
+   (`~/Library/Application Support/Tern/omp/bin`) or in `~/.bun/bin`, and runs `omp plugin link` with the plugin Hisar ships:
+   inside Hisar.app on the Mac, in `/usr/share/hisar/omp-plugin` from the Linux `.deb` or `.rpm`, and in
+   `~/.local/share/hisar/omp-plugin`, which the app copies out at every start, from the AppImage or the Flatpak. The plugin starts
+   the MCP server with the `hisar` that came with it. New omp sessions load Hisar; restart the ones already running.
+   **Disconnect** runs `omp plugin uninstall @tryhisar/omp-plugin`, which removes the MCP server too.
 3. Start omp. Its status line says "Hisar locked" or "Hisar unlocked", and `/hisar` shows Hisar's state. The agent gets
    `list_vaults`, `search_items`, `run_with_secrets` and `sign_in`, never `get_secret` or `get_one_time_code`. omp shows nothing of a
    `run_with_secrets` command's output until it ends, so for a long command, one that asks for input or one that needs the shell's

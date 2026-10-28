@@ -212,7 +212,8 @@ jobs:
         run: |
           bash scripts/package-desktop-linux.sh 0.0.0-ci
           contents=$(dpkg-deb -c desktop/bin/Hisar-0.0.0-ci-linux-amd64.deb)
-          for path in ./usr/bin/Hisar ./usr/bin/hisar ./usr/lib/hisar/hisar-browser-host ./usr/share/applications/com.tryhisar.hisar.desktop; do
+          for path in ./usr/bin/Hisar ./usr/bin/hisar ./usr/lib/hisar/hisar-browser-host ./usr/share/applications/com.tryhisar.hisar.desktop \
+            ./usr/share/hisar/omp-plugin/package.json ./usr/share/hisar/omp-plugin/mcp.json ./usr/share/hisar/omp-plugin/bin/run-hisar; do
             grep -q " $path\$" <<<"$contents" || { echo "the .deb has no $path"; exit 1; }
           done
           test -s desktop/bin/Hisar-0.0.0-ci-linux-amd64.rpm
@@ -240,7 +241,8 @@ jobs:
         run: |
           bash scripts/package-desktop-flatpak.sh 0.0.0-ci
           flatpak install --user -y --noninteractive desktop/bin/Hisar-0.0.0-ci-linux-amd64.flatpak
-          flatpak run --command=sh com.tryhisar.hisar -c 'test -x /app/bin/Hisar && test -x /app/lib/hisar/hisar-browser-host && /app/bin/hisar --version'
+          flatpak run --command=sh com.tryhisar.hisar -c 'test -x /app/bin/Hisar && test -x /app/lib/hisar/hisar-browser-host && /app/bin/hisar --version &&
+            test -f /app/share/hisar/omp-plugin/package.json && test -x /app/share/hisar/omp-plugin/bin/run-hisar'
 
   extension:
     name: Extension tests, Chromium end-to-end tests and zip
