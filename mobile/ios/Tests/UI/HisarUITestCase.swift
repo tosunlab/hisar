@@ -232,8 +232,9 @@ class HisarUITestCase: XCTestCase {
             XCTFail("\(element) would show its placeholder \"\(element.placeholderValue ?? "")\" whether or not \"\(text)\" is in; type something else", file: file, line: line)
             return
         }
-        // Formatting and live search redraw after each key, before the next key can safely arrive.
-        if showing == nil && ((normalize != nil && !typedText.isSecure) || element.elementType == .searchField) {
+        // Formatting and live search redraw after each key, before the next key can safely arrive. A key typed into a secure
+        // card number while it redraws is lost (job 122902964946 kept 14 of 16 digits).
+        if showing == nil && (normalize != nil || element.elementType == .searchField) {
             var entered = String(typedText.expected.dropLast(text.count))
             for character in text {
                 entered.append(character)
