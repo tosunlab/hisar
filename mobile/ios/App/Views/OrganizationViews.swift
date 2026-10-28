@@ -1330,6 +1330,7 @@ struct TeamVaultRolePicker: View {
         .pickerStyle(.menu)
         .disabled(model.isBusy || isSubmitting)
         .accessibilityLabel("Role for \(teamName) in \(vaultName)")
+        .accessibilityValue(describeVaultRole(role))
         .accessibilityHint("Someone in several teams gets the strongest of their roles.")
         .accessibilityIdentifier("team-role-\(teamID)-\(vaultID)")
         .confirmationDialog(

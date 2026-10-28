@@ -407,7 +407,6 @@ struct SearchView: View {
             }
             .applyThemedListStyle()
             .navigationTitle("Search")
-            .searchable(text: $searchText, prompt: "Search all items")
         } detail: {
             // A server's SSH key link pushes within the detail column.
             NavigationStack(path: $detailPath) {
@@ -424,6 +423,7 @@ struct SearchView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        .searchable(text: $searchText, prompt: "Search all items")
         .onChange(of: selection) { _, _ in detailPath = NavigationPath() }
         .onChange(of: searchText) { _, _ in model.reportActivity() }
     }

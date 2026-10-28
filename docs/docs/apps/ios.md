@@ -33,6 +33,8 @@ New items have a **Vault** picker that lists writable vaults and starts with the
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
 Text and secret fields retain visible labels above their values, including populated identity, address, credential,
 license, server and database editors. Labels and inputs stay vertically stacked at larger text sizes.
+Organization vault role pickers announce the team, vault, and current role to VoiceOver.
+The Search tab exposes its search field in compact and wide layouts.
 Nonempty item passwords show their strength below the field in detail, the editor, and the generator,
 without revealing the password.
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, account deletion, and sign out.
