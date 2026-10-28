@@ -121,6 +121,8 @@ with it, check the attestation and the ES256 signature with CryptoKit, then see 
 `WideLayoutUITests` checks the split views: beside their list on a wide screen, pushed over it on a compact one, so it
 means something on both the iPhone Duo simulator and the compact one CI uses.
 
+`FaceIDUITests` first launches `com.apple.LocalAuthenticationUIService`, waits for it to reach the foreground, and returns Home. A cold service can start after `coreauthd`'s five-second UI activation deadline on a CI runner. Warming it before the real account flow avoids that startup condition without retrying a failed authentication or changing the app.
+
 `FaceIDUITests` posts matching-face notifications every 500 ms on a background timer, starting before the action that requests authentication. Slow XCTest permission and accessibility queries must not delay the simulated face. The timer stops when that step finishes, and authentication errors still fail the test.
 
 `SharingUITests` scrolls the invitation's Send again action into view before revealing its swipe actions. After a confirmation closes, a partially visible invitation label can still count as hittable while its midpoint is over the home indicator.
