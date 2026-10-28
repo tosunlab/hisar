@@ -2,7 +2,6 @@
 import { computed } from "vue";
 import { configureSSHConfig, removeSSHConfig, setCompactSSHApproval, setPhoneApproval, setSigningRemember, setSSHRemember, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { getThisDeviceName } from "../util";
 
 const isRowVisible = useSettingsRowVisibility();
 const allSSHRememberOption = [
@@ -105,7 +104,7 @@ const allSigningRememberOption = [
         <label v-show="isRowVisible('phone-approval')" class="setting">
           <div class="setting-text">
             <strong>Approve requests on my smart device</strong>
-            <p class="muted">While Hisar is unlocked here, SSH and command-line requests also appear in Hisar on your smart device when it is open and unlocked. Approving there never unlocks {{ getThisDeviceName() }}.</p>
+            <p class="muted">Requests to use SSH keys, the command-line tool, coding agents and apps also appear on your smart device while Hisar is open and unlocked on both devices.</p>
           </div>
           <input
             class="switch"

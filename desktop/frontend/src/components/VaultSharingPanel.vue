@@ -16,6 +16,8 @@ import {
   takeVaultFromTeam,
 } from "../store";
 import { formatRole, vaultRoleDescription } from "../util";
+import { formatDateTime, formatExpiresIn } from "../util";
+import { useInvitationClock } from "../invitationClock";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
@@ -27,6 +29,7 @@ const removingAccountID = ref("");
 const newMemberEmail = ref("");
 const newMemberRole = ref<VaultRole>("editor");
 const cancellingInvitationID = ref("");
+const now = useInvitationClock();
 
 const vault = computed(() => getSelectedVault());
 const isOwner = computed(() => vault.value?.role === "owner");
@@ -121,12 +124,12 @@ useModalFocus(panel, closeSharing);
         <div class="sharing-heading">
           <h2 id="sharing-title">Share “{{ vault?.name }}”</h2>
           <p v-if="organizationID" id="sharing-description" class="muted" data-testid="sharing-organization">Shared through teams in {{ organizationName }}</p>
-          <p v-else id="sharing-description" class="muted" data-testid="sharing-member-count">{{ memberCountText }}</p>
+          <p v-else-if="store.allVaultMember.length" id="sharing-description" class="muted" data-testid="sharing-member-count">{{ memberCountText }}</p>
         </div>
         <button class="ghost icon-button" aria-label="Close sharing" @click="closeSharing"><AppIcon name="close" /></button>
       </header>
 
-      <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+      <p v-if="store.sharingErrors.load" class="error" role="alert">{{ store.sharingErrors.load }} <button class="ghost" aria-label="Dismiss sharing error" @click="delete store.sharingErrors.load">Dismiss</button></p>
 
       <template v-if="organizationID">
         <p class="section-label">Teams</p>
@@ -239,6 +242,7 @@ useModalFocus(panel, closeSharing);
               </template>
               <span v-else class="role-label" :class="{ aligned: isOwner }">{{ formatRole(member.role) }}</span>
             </div>
+            <p v-if="store.sharingErrors[member.accountId]" class="error" role="alert">{{ store.sharingErrors[member.accountId] }} <button class="ghost" aria-label="Dismiss member error" @click="delete store.sharingErrors[member.accountId]">Dismiss</button></p>
 
             <div v-if="removingAccountID === member.accountId" class="member-detail confirm" data-testid="remove-confirmation">
               <AppIcon name="refresh" class="detail-icon" />
@@ -273,9 +277,10 @@ useModalFocus(panel, closeSharing);
                   <span class="invitation-icon"><AppIcon name="mail" :size="15" /></span>
                   <div class="member-text">
                     <span class="member-name"><span class="name-text">{{ invitation.email }}</span></span>
-                    <span class="member-email">{{ invitation.requiresConfirmation ? "Accepted · Review recipient identity" : invitation.state === "accepted" ? "Accepted · Hisar is finishing sharing" : "Waiting for them to accept" }}</span>
+                    <span class="member-email invitation-status" :title="formatDateTime(invitation.expiresAt)">{{ invitation.requiresConfirmation ? "Accepted · Review recipient identity" : invitation.state === "accepted" ? "Accepted · Hisar is finishing sharing" : `Waiting for them to accept · ${formatExpiresIn(invitation.expiresAt, now)}` }}</span>
                   </div>
                   <template v-if="cancellingInvitationID !== invitation.id">
+                    <button v-if="invitation.state !== 'accepted' && !invitation.requiresConfirmation" class="ghost" :disabled="store.isBusy" title="Sending again replaces the previous invitation." :data-testid="`resend-invitation-${invitation.id}`" @click="shareVault(invitation.email, invitation.role as VaultRole, invitation.vaultId, invitation.id)">Send again</button>
                     <span class="role-label">{{ formatRole(invitation.role) }}</span>
                     <button
                       class="ghost icon-button remove-button"
@@ -294,7 +299,10 @@ useModalFocus(panel, closeSharing);
                     </button>
                   </template>
                 </div>
-                <ShareRecipientConfirmation :invitation="invitation" />
+                <div v-if="invitation.requiresConfirmation" class="invitation-action">
+                  <ShareRecipientConfirmation :invitation="invitation" />
+                </div>
+                <p v-if="store.sharingErrors[invitation.id]" class="error" role="alert">{{ store.sharingErrors[invitation.id] }} <button class="ghost" aria-label="Dismiss invitation error" @click="delete store.sharingErrors[invitation.id]">Dismiss</button></p>
               </li>
             </ul>
           </template>
@@ -314,8 +322,9 @@ useModalFocus(panel, closeSharing);
               <select v-model="newMemberRole" class="role-select" aria-label="Role for the new member" :title="vaultRoleDescription" data-testid="new-member-role">
                 <option v-for="role in allVaultRole" :key="role" :value="role">{{ formatRole(role) }}</option>
               </select>
-              <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Share</button>
+              <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Send invitation</button>
             </div>
+            <p v-if="store.sharingErrors.invite" class="error" role="alert">{{ store.sharingErrors.invite }} <button class="ghost" aria-label="Dismiss invitation error" @click="delete store.sharingErrors.invite">Dismiss</button></p>
             <p class="muted hint">They get an email and accept in Hisar; without an account they create one first.</p>
           </form>
         </template>
@@ -417,6 +426,10 @@ h2 {
   padding: 10px 12px;
 }
 
+.invitation-action {
+  margin: 0 12px 10px 54px;
+}
+
 .member-text {
   display: flex;
   flex: 1;
@@ -442,6 +455,11 @@ h2 {
 .member-email {
   font-size: var(--font-size-12);
   color: var(--color-text-muted);
+}
+
+.member-email.invitation-status {
+  white-space: normal;
+  overflow: visible;
 }
 
 .code-toggle {

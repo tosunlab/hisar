@@ -160,6 +160,11 @@ enum OrganizationLogic {
         )
     }
 
+    static func listAllTeamMember(organization: Organization, team: Team) -> [Member] {
+        let allTeamMemberID = Set(team.allMember.map(\.accountID))
+        return organization.allMember.filter { allTeamMemberID.contains($0.accountID) }
+    }
+
     static func describeMemberChoice(_ member: Member) -> String {
         let name = member.name.isEmpty || member.name == member.email ? member.email : "\(member.name) (\(member.email))"
         return member.isCurrentUser ? "\(name) (you)" : name

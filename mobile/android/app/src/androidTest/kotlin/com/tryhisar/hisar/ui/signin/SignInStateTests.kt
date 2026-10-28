@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.FakeTextClipboard
@@ -41,6 +43,23 @@ class SignInStateTests {
     @After
     fun stopModel() {
         scope.cancel()
+    }
+
+    @Test
+    fun testPasswordMismatchWaitsUntilConfirmationLosesFocus() {
+        runBlocking(Dispatchers.Main) { model.start { FakeBackend() } }
+        composeRule.setContent {
+            HisarTheme { Box(Modifier.fillMaxSize().exposeTestTags()) { SignInScreen(model) } }
+        }
+        composeRule.onNodeWithText("Create account").performClick()
+        composeRule.onNodeWithTag("sign-up-password").performScrollTo().performTextReplacement("a long master password")
+        composeRule.onNodeWithTag("sign-up-repeated-password").performScrollTo().performClick().performTextReplacement("a long")
+        composeRule.onNodeWithText("The passwords do not match.").assertDoesNotExist()
+        composeRule.onNodeWithTag("sign-in-submit").assertIsNotEnabled()
+        composeRule.onNodeWithTag("sign-up-password").performScrollTo().performClick()
+        composeRule.onNodeWithText("The passwords do not match.").assertExists()
+        composeRule.onNodeWithTag("sign-up-repeated-password").performScrollTo().performClick().performTextReplacement("a long master password")
+        composeRule.onNodeWithText("The passwords do not match.").assertDoesNotExist()
     }
 
     @Test

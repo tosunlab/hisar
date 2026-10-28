@@ -23,6 +23,8 @@ Item icons ([Design](../design.md) §4.5): the editor's icon opens `IconPickerVi
 draws the chosen icon, else a login's website icon, which `AppModel.loadWebsiteIcon` loads once per domain through HisarKit.
 Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconpresets_test.go` keeps the list on core's.
 
+An empty writable vault says "Tap + to add your first item." Its **+** menu offers every item type.
+An empty Reader vault instead says "Items appear here once an editor adds them." It has no **+** menu.
 At accessibility text sizes, browsing rows wrap the full title and username, put the vault name on its own line,
 and cap the decorative tile at 44 points. Ordinary text sizes keep the compact row. Android browsing rows also wrap
 titles and subtitles at large font scales without reducing the selected text size.
@@ -31,6 +33,19 @@ New items have a **Vault** picker that lists writable vaults and starts with the
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
 Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
+
+Sign in keeps the server behind **Use a different server…**. The expanded editor labels the URL **Server** and
+keeps **Signs in to \<server>.** visible as the value changes. **Use eu.tryhisar.com** explicitly restores the
+default server and closes the editor. Remembered and scanned servers remain unchanged until the user edits or resets them.
+
+The logo-only privacy cover uses the selected appearance and palette, including its grouped background.
+Each new cover window receives the theme before becoming visible above sheets and alerts.
+
+An organization vault's **Members** sheet lists its teams with member counts and each team's role for that vault.
+Open a team to see its members' names and emails, then open a person to compare their security code.
+The person's Admin or Member role belongs to the organization, not the vault.
+In Settings → People, open your own row to use **Share my security code**.
+Other people's rows show their selectable code without this action.
 
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
@@ -110,6 +125,7 @@ means something on both the iPhone Duo simulator and the compact one CI uses.
 
 `FaceIDUITests` posts matching-face notifications every 500 ms on a background timer, starting before the action that requests authentication. Slow XCTest permission and accessibility queries must not delay the simulated face. The timer stops when that step finishes, and authentication errors still fail the test.
 
+`SharingUITests` scrolls the invitation's Send again action into view before revealing its swipe actions. After a confirmation closes, a partially visible invitation label can still count as hittable while its midpoint is over the home indicator.
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,
 or denied) is driven through a debug-only preview with a made-up request: launch with `-HisarApprovalPreview ssh` (or

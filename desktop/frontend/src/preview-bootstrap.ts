@@ -293,7 +293,7 @@ export async function applyPreviewParameter(): Promise<void> {
   }
   if (parameter.get("organizationAlert") === "1") {
     store.organizationAlert = {
-      title: "Take back",
+      title: "Couldn't take Deploy keys back from Ops",
       message: "Nobody who can open this vault would be its owner. Give owner access to a team whose members already have the vault first.",
     };
   }

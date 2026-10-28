@@ -259,7 +259,6 @@ class HisarUITestCase: XCTestCase {
         type(name, into: app.textFields["sign-up-name"])
         type(Self.masterPassword, into: app.secureTextFields["sign-up-password"])
         type(Self.masterPassword, into: app.secureTextFields["sign-up-repeated-password"])
-        // The note is the footer below the submit button, at the end of the form.
         let createAccountNote = app.staticTexts["create-account-note"]
         scrollTo(createAccountNote)
         saveScreenshot("create-account")

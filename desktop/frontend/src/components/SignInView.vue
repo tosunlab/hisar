@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { api, getErrorMessage } from "../api";
 import { clearError, dismissSignedOutReason, signIn, signUp, signUpWithoutInvite, store } from "../store";
 import { useMasterPasswordFeedback } from "../passwordStrength";
 import { getThisDeviceName, isMacPlatform } from "../util";
@@ -39,6 +40,42 @@ const inviteCode = ref("");
 const pastedInviteLink = ref("");
 const name = ref("");
 const repeatedPassword = ref("");
+const serverInput = ref<HTMLInputElement | null>(null);
+const emailInput = ref<HTMLInputElement | null>(null);
+const secretKeyInput = ref<HTMLInputElement | null>(null);
+const passwordInput = ref<HTMLInputElement | null>(null);
+const isOpeningKit = ref(false);
+
+async function openEmergencyKit(): Promise<void> {
+  clearError();
+  isOpeningKit.value = true;
+  try {
+    const fields = await api.openEmergencyKit();
+    if (!fields) return;
+    server.value = getDisplayServer(fields.server);
+    email.value = fields.email;
+    secretKey.value = fields.secretKey;
+    password.value = "";
+    await nextTick();
+    passwordInput.value?.focus();
+  } catch (error) {
+    store.errorMessage = getErrorMessage(error);
+  } finally {
+    isOpeningKit.value = false;
+  }
+}
+
+onMounted(() => {
+  const firstEmpty = [emailInput.value, secretKeyInput.value, passwordInput.value].find((input) => input && !input.value);
+  firstEmpty?.focus();
+});
+
+watch(isServerShown, async (isShown) => {
+  if (isShown) {
+    await nextTick();
+    serverInput.value?.focus();
+  }
+});
 const validationAnnouncement = ref("");
 
 const passwordMismatch = computed(
@@ -190,34 +227,41 @@ async function submitCreateAccount(): Promise<void> {
         <div v-if="store.status.signedOutReason" class="signed-out-notice" role="status" data-testid="signed-out-reason">
           <AppIcon name="shield" />
           <p>{{ store.status.signedOutReason }}</p>
-          <button type="button" class="ghost" aria-label="Dismiss" data-testid="dismiss-signed-out-reason" @click="dismissSignedOutReason">OK</button>
+          <button type="button" class="ghost" data-testid="dismiss-signed-out-reason" @click="dismissSignedOutReason">OK</button>
         </div>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
 
         <form v-if="mode === 'sign-in'" @submit.prevent="submitSignIn">
+          <div v-if="isMacPlatform()" class="kit-import">
+            <button type="button" class="ghost" data-testid="open-emergency-kit" :disabled="store.isBusy || isOpeningKit" @click="openEmergencyKit">
+              {{ isOpeningKit ? "Opening…" : "Open Emergency Kit…" }}
+            </button>
+            <p class="hint muted">The QR code fills in your server, email and Secret Key.</p>
+          </div>
           <label v-if="isServerShown">
             <span>Server</span>
-            <span class="input-with-icon"><AppIcon name="globe" /><input v-model="server" name="server" autocomplete="url" required /></span>
+            <span class="input-with-icon"><AppIcon name="globe" /><input ref="serverInput" v-model="server" name="server" autocomplete="url" required /></span>
           </label>
           <label>
             <span>Email</span>
-            <span class="input-with-icon"><AppIcon name="user" /><input v-model="email" name="email" type="email" autocomplete="username" placeholder="you@example.com" required /></span>
+            <span class="input-with-icon"><AppIcon name="user" /><input ref="emailInput" v-model="email" name="email" type="email" autocomplete="username" placeholder="you@example.com" required /></span>
           </label>
           <label>
             <span>Secret Key</span>
             <span class="input-with-icon">
               <AppIcon name="key" />
-              <input v-model="secretKey" name="secretKey" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" required />
+              <input ref="secretKeyInput" v-model="secretKey" name="secretKey" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" required />
             </span>
           </label>
           <label>
             <span>Master password</span>
-            <span class="input-with-icon"><AppIcon name="lock" /><input v-model="password" name="password" type="password" autocomplete="current-password" required /></span>
+            <span class="input-with-icon"><AppIcon name="lock" /><input ref="passwordInput" v-model="password" name="password" type="password" autocomplete="current-password" required /></span>
           </label>
-          <button class="primary full-width submit" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Signing in…" : "Sign in" }}</button>
-          <p class="hint muted" data-testid="secret-key-note">Lost your Secret Key? It's on your Emergency Kit.</p>
+          <button class="primary full-width submit" type="submit" :disabled="store.isBusy || isOpeningKit">{{ store.isBusy ? "Signing in…" : "Sign in" }}</button>
+          <p class="hint muted" data-testid="secret-key-note">Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.</p>
           <p v-if="!isServerShown" class="hint">
             <span class="muted" data-testid="sign-in-server">Signs in to {{ server }}.</span>
+            {{ ' ' }}
             <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>
           </p>
         </form>
@@ -241,7 +285,7 @@ async function submitCreateAccount(): Promise<void> {
           </label>
           <label v-if="isServerShown && !hasInvite">
             <span>Server</span>
-            <span class="input-with-icon"><AppIcon name="globe" /><input v-model="server" name="server" autocomplete="url" required /></span>
+            <span class="input-with-icon"><AppIcon name="globe" /><input ref="serverInput" v-model="server" name="server" autocomplete="url" required /></span>
           </label>
           <div class="two-columns">
             <label>
@@ -271,6 +315,7 @@ async function submitCreateAccount(): Promise<void> {
           <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://eu.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://eu.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
           <p v-if="!isServerShown && !hasInvite" class="hint">
             <span class="muted" data-testid="create-account-server">Creates the account on {{ server }}.</span>
+            {{ ' ' }}
             <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>
           </p>
         </form>
@@ -391,6 +436,10 @@ h1 {
 .subtitle {
   margin: 0 0 22px;
   color: var(--color-text-muted);
+}
+
+.segmented + .subtitle {
+  margin-top: 16px;
 }
 
 .segmented {

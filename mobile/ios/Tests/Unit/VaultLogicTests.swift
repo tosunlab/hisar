@@ -361,6 +361,19 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(CardInput.formatNumber("Store card #12"), "Store card #12")
     }
 
+    func testInvitationLifetimeShowsExpiryAndClosesAcceptanceAtItsDeadline() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let formatter = ISO8601DateFormatter()
+        let lifetime = InvitationLifetime(formatter.string(from: now.addingTimeInterval(5 * 86400)))
+        XCTAssertEqual(lifetime.describe(at: now), "Expires in 5 days")
+        XCTAssertFalse(lifetime.isExpired(at: now))
+        XCTAssertFalse(lifetime.exactDate.isEmpty)
+        XCTAssertEqual(lifetime.describe(at: now.addingTimeInterval(4 * 86400)), "Expires tomorrow")
+        XCTAssertEqual(lifetime.describe(at: now.addingTimeInterval(5 * 86400)), "Expired")
+        XCTAssertTrue(lifetime.isExpired(at: now.addingTimeInterval(5 * 86400)))
+        XCTAssertNotNil(InvitationLifetime("2027-01-15T12:00:00.123Z").date)
+    }
+
     func testExpiryIsWrittenAsMonthAndYearAsTyped() {
         let allCase = ["0": "0", "01": "01", "013": "01/3", "0130": "01/30", "01305": "01/30", "3": "03", "13": "01/3", "1/": "01/", "01/": "01/", "1/30": "01/30", "12/2030": "12/30", "2030-12": "12/30", "122030": "12/30", "": "", "soon": "soon"]
         for (typed, want) in allCase {
