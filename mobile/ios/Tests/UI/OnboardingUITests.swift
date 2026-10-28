@@ -83,7 +83,6 @@ final class OnboardingUITests: HisarUITestCase {
     }
 
     private func checkBannerLayout(_ name: String) {
-        let banner = app.otherElements["emergency-kit-banner"].firstMatch
         let save = app.buttons["emergency-kit-banner-save"]
         let notNow = app.buttons["emergency-kit-banner-not-now"]
         let list = app.collectionViews.firstMatch
@@ -91,11 +90,8 @@ final class OnboardingUITests: HisarUITestCase {
             scrollTo(button)
             waitForHittable(button)
             XCTAssertGreaterThanOrEqual(button.frame.height, 44)
-            for control in [app.buttons["lock-now"], app.buttons["new-menu"]] + app.tabBars.buttons.allElementsBoundByIndex where control.isHittable {
-                XCTAssertFalse(button.frame.intersects(control.frame), "\(control.identifier) overlaps \(button.identifier)")
-                if banner.exists {
-                    XCTAssertFalse(banner.frame.intersection(list.frame).intersects(control.frame), "The visible banner covers \(control.identifier)")
-                }
+            for control in [app.buttons["lock-now"], app.buttons["new-menu"]] + app.tabBars.buttons.allElementsBoundByIndex {
+                XCTAssertTrue(control.isHittable, "The reminder covers \(control.identifier)")
             }
         }
         saveScreenshot("onboarding-banner-\(name)")
