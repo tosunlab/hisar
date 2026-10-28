@@ -25,6 +25,24 @@ Signing out another device ends its server session immediately. An offline devic
 
 Device sign-out and Mac-approval changes keep failures next to the initiating control. A failed change leaves the device or saved approval state unchanged and allows another attempt. A sign-out notice appears only after the server accepts revocation.
 
+## Account setup and your Emergency Kit
+
+On a new device, **Welcome to Hisar** offers **Create account** or **I already have an account**. Create account checks
+the chosen server before asking for credentials. Open servers do not show an invitation field. Invite-only servers
+ask for an invitation first. An invitation link that includes an email fixes that address in the form.
+
+**Save later** leaves an Emergency Kit reminder at the top of Vaults. It scrolls with the list and does not cover the
+toolbar or tabs. **Not now** hides it until Hisar next locks. A master-password unlock also authorizes that account's
+postponed kit until the next lock. After a biometric unlock, opening the kit asks for one biometric check instead.
+If Hisar locks while the kit is open, unlock to return to the same kit screen.
+
+On iPhone, copying the Secret Key or cancelling the share sheet does not confirm delivery. **I saved my Emergency Kit**
+appears after a completed Save to Files, print or share. Keep a copy you can reach without the phone.
+
+In Settings → Account → Secret Key and Emergency Kit, entering the master password shows the Secret Key and its sign-in
+QR code together. Scan it with Hisar on the new device, then enter the master password there. The QR is cleared when
+the screen closes or Hisar locks.
+
 ## If Hisar cannot start
 
 The failure screen keeps the current error selectable. **Try again** retries startup with the same configuration and no

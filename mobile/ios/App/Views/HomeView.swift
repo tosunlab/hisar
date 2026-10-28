@@ -195,6 +195,61 @@ struct NewItemMoreMenu: View {
     }
 }
 
+struct EmergencyKitBanner: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.themePalette) private var palette
+    var kit: EmergencyKitStatus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(kit.title, systemImage: "exclamationmark.triangle")
+                .font(.headline)
+                .foregroundStyle(palette.warning.color)
+                .accessibilityAddTraits(.isHeader)
+            Text(kit.reminderMessage)
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+            ViewThatFits(in: .horizontal) {
+                HStack { actions }
+                VStack(alignment: .leading) { actions }
+            }
+        }
+        .padding(kit.reminder == "14-days" ? 8 : 0)
+        .overlay {
+            if kit.reminder == "14-days" {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(palette.warning.color, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("emergency-kit-banner")
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        Button {
+            model.openEmergencyKit()
+        } label: {
+            Text(kit.savedBy.isEmpty ? "Save Emergency Kit" : "Continue to confirmation")
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityIdentifier("emergency-kit-banner-save")
+        Button {
+            model.hideEmergencyKitReminder()
+        } label: {
+            Text("Not now")
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+            .buttonStyle(.borderless)
+            .accessibilityHint("Hides until Hisar locks")
+            .accessibilityIdentifier("emergency-kit-banner-not-now")
+    }
+}
+
 struct VaultsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selection: VaultsSelection?
@@ -215,6 +270,9 @@ struct VaultsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
+                if let kit = model.status.emergencyKit, !kit.isReminderHidden {
+                    Section { EmergencyKitBanner(kit: kit) }
+                }
                 if let refreshFailure {
                     Section {
                         ErrorBanner(message: refreshFailure)

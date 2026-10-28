@@ -71,5 +71,13 @@ final class WideLayoutUITests: HisarUITestCase {
         waitFor(app.navigationBars["Security"])
         XCTAssertEqual(app.buttons["open-account"].isHittable, isWide, "the Settings list beside Security, \(layout)")
         saveScreenshot("\(layout)-settings")
+        app.buttons["settings-lock-now"].tap()
+        scrollTo(app.buttons["lock-sign-out"])
+        app.buttons["lock-sign-out"].tap()
+        let cancel = app.alerts.buttons["Cancel"]
+        waitForHittable(cancel)
+        cancel.tap()
+        waitFor(app.secureTextFields["unlock-password"])
+        XCTAssertEqual(app.staticTexts["lock-email"].label, "ios-wide-layout@example.com")
     }
 }

@@ -153,12 +153,8 @@ struct SettingsView: View {
             .onReceive(model.$requestedSettingsDestination) { destination in
                 guard let destination else { return }
                 model.requestedSettingsDestination = nil
-                // The new Secret Key is shown only once, so its screen stays until Done. The section opens over whatever
-                // was pushed below the one selected before, also when it is the same section.
-                if !model.isNewSecretKeyShown {
-                    detailPath = NavigationPath()
-                    selection = destination
-                }
+                detailPath = NavigationPath()
+                selection = destination
             }
         } detail: {
             // Beside the list on the open iPhone Duo, pushed over it on any other iPhone. Screens below a section (Account →
@@ -289,12 +285,16 @@ struct AccountView: View {
         }
         .applyThemedListStyle()
         .navigationTitle("Account")
-        .confirmationDialog(AccountLifecycleLogic.signOutTitle, isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
+        .alert(AccountLifecycleLogic.signOutTitle, isPresented: $isSignOutConfirmationShown) {
+            Button("Cancel", role: .cancel) {}
+            if model.status.emergencyKit != nil {
+                Button("Save Emergency Kit") { model.openEmergencyKit() }
+            }
             Button("Sign out", role: .destructive) {
                 Task { await model.signOut() }
             }
         } message: {
-            Text(AccountLifecycleLogic.signOutMessage)
+            Text(AccountLifecycleLogic.signOutMessage(isLocked: false, emergencyKit: model.status.emergencyKit))
         }
         .sheet(isPresented: $isExportShown) {
             ExportDataView()
@@ -313,6 +313,8 @@ struct SecretKeyView: View {
     @State private var password = ""
     @State private var export: EmergencyKitExport?
     @State private var isPasswordFocused = false
+    @State private var qrImage: UIImage?
+    @State private var revealGeneration = 0
 
     var body: some View {
         List {
@@ -334,6 +336,18 @@ struct SecretKeyView: View {
                 } footer: {
                     Text("Hisar keeps a copy on this iPhone. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults.")
                         .foregroundStyle(.themeSecondary)
+                }
+                if let image = qrImage {
+                    Section {
+                        Image(uiImage: image)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: 280)
+                            .accessibilityLabel("Emergency Kit sign-in QR code")
+                            .accessibilityIdentifier("secret-key-qr-code")
+                        Text("Scan this with Hisar on your new device. Anyone with this code and your master password can open your vaults.")
+                    }
                 }
                 Section {
                     ShareLink(item: URL(fileURLWithPath: export.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
@@ -393,6 +407,8 @@ struct SecretKeyView: View {
             isPasswordFocused = true
         }
         .onDisappear {
+            revealGeneration += 1
+            qrImage = nil
             if let export {
                 model.removeEmergencyKit(export)
             }
@@ -404,8 +420,14 @@ struct SecretKeyView: View {
     private func reveal() {
         guard !password.isEmpty, !model.isBusy else { return }
         let enteredPassword = password
+        let generation = revealGeneration
         Task {
             if let result = await model.exportEmergencyKit(password: enteredPassword) {
+                guard generation == revealGeneration, model.status.isUnlocked else {
+                    model.removeEmergencyKit(result)
+                    return
+                }
+                qrImage = result.qrCode.flatMap { Data(base64Encoded: $0) }.flatMap { UIImage(data: $0) }
                 password = ""
                 export = result
             }

@@ -295,6 +295,14 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertTrue(export.emergencyKitPath.hasPrefix(FileManager.default.temporaryDirectory.path), "the kit is written to the app's temporary folder")
         model.removeEmergencyKit(export)
         XCTAssertFalse(FileManager.default.fileExists(atPath: export.emergencyKitPath))
+        var latePath: URL?
+        backend.onExportEmergencyKit = { path in
+            latePath = path
+            DispatchQueue.main.sync { model.lock() }
+        }
+        let lateExport = await model.exportEmergencyKit(password: FakeBackend.password)
+        XCTAssertNil(lateExport, "a kit prepared before lock cannot reveal its key or QR afterward")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(latePath).path))
     }
 
     func testCopyingCountsForHapticsAndCopiesReferences() async {

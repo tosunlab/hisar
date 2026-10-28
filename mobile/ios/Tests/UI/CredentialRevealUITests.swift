@@ -1,11 +1,13 @@
 import XCTest
 
 final class CredentialRevealUITests: HisarUITestCase {
-    func testCredentialRevealNamesAndIndependentToggles() {
+    func testCredentialRevealNamesAndIndependentToggles() throws {
         app.launch()
+        selectSignInMode("Sign in")
+        scrollTo(app.buttons["sign-in-password-reveal"])
         waitFor(app.buttons["sign-in-password-reveal"])
         XCTAssertEqual(app.buttons["sign-in-password-reveal"].label, "Show master password")
-        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
+        prepareCreateAccount(inviteLink: try readEnvironment("HISAR_UI_TEST_INVITE_LINK"))
         scrollTo(app.secureTextFields["sign-up-password"])
         type("long master password", into: app.secureTextFields["sign-up-password"])
         app.buttons["sign-up-password-reveal"].tap()
@@ -23,6 +25,8 @@ final class CredentialRevealUITests: HisarUITestCase {
 
     func testCredentialRevealConcealsOnNavigationAndInactivity() {
         app.launch()
+        selectSignInMode("Sign in")
+        scrollTo(app.buttons["sign-in-password-reveal"])
         waitFor(app.buttons["sign-in-password-reveal"])
         type("typed credential", into: app.secureTextFields["sign-in-password"])
         app.buttons["sign-in-password-reveal"].tap()
@@ -31,17 +35,19 @@ final class CredentialRevealUITests: HisarUITestCase {
         waitFor(app.secureTextFields["sign-in-password"])
         XCTAssertEqual(app.buttons["sign-in-password-reveal"].label, "Show master password")
         app.buttons["sign-in-password-reveal"].tap()
-        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
-        app.segmentedControls["sign-in-mode"].buttons["Sign in"].tap()
+        selectSignInMode("Create account")
+        selectSignInMode("Sign in")
         XCTAssertEqual(app.buttons["sign-in-password-reveal"].label, "Show master password")
         XCTAssertTrue(app.secureTextFields["sign-in-password"].exists)
     }
 
     func testCredentialRevealConcealsOnSubmission() {
         app.launch()
+        selectSignInMode("Sign in")
         waitFor(app.textFields["sign-in-email"])
         type("invalid@example.com", into: app.textFields["sign-in-email"])
         type("not-a-secret-key", into: app.textFields["sign-in-secret-key"])
+        scrollTo(app.secureTextFields["sign-in-password"])
         type("typed credential", into: app.secureTextFields["sign-in-password"])
         app.buttons["sign-in-password-reveal"].tap()
         scrollTo(app.buttons["sign-in-submit"])
