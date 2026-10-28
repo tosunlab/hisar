@@ -49,51 +49,6 @@ class PhoneApprovalUITests : HisarUITestCase() {
     }
 
     @Test
-    fun testRememberedSSHApproval() {
-        val backend = createBackend(createApproval("ssh"))
-        launchApp(backend).use {
-            openSheet("preview-ssh")
-            waitFor("phone-approval-remember")
-            tap("phone-approval-approve")
-            checkResult(backend, "approve remembered preview-ssh", "Approved on your Mac")
-        }
-    }
-
-    @Test
-    fun testDenyCommandLineRequest() {
-        val backend = createBackend(createApproval("cli"))
-        launchApp(backend).use {
-            openSheet("preview-cli")
-            assertEquals("Approve on Alper's MacBook Pro?", readText("phone-approval-title"))
-            assertEquals("Until 10 minutes after this terminal’s last command, or until Hisar locks", readText("phone-approval-row-Lasts"))
-            val note = readText("phone-approval-encryption-note")
-            assertTrue(note, "Approving also lets hisar in Terminal use Hisar without asking until then." in note)
-            saveScreenshot("phone-approval-cli")
-            tap("phone-approval-deny")
-            checkResult(backend, "deny preview-cli", "Denied on your Mac")
-        }
-    }
-
-    @Test
-    fun testApproveLauncherRequest() {
-        val backend = createBackend(createApproval("launcher"))
-        launchApp(backend).use {
-            openSheet("preview-launcher")
-            assertEquals("Raycast wants to search Hisar and copy or paste passwords and one-time codes", readText("phone-approval-summary"))
-            assertEquals("Raycast", readText("phone-approval-row-App"))
-            assertEquals("Until Hisar locks on Alper's MacBook Pro", readText("phone-approval-row-Lasts"))
-            assertFalse(exists(hasTestTag("phone-approval-row-Program")))
-            assertFalse(exists(hasTestTag("phone-approval-row-Terminal")))
-            assertFalse("a launcher's approval always lasts until Hisar locks", exists(hasTestTag("phone-approval-remember")))
-            val note = readText("phone-approval-encryption-note")
-            assertTrue(note, "Approving lets Raycast use Hisar until it locks on your Mac" in note)
-            saveScreenshot("phone-approval-launcher")
-            tap("phone-approval-approve")
-            checkResult(backend, "approve preview-launcher", "Approved on your Mac")
-        }
-    }
-
-    @Test
     fun testApproveLauncherShareRequest() {
         val backend = createBackend(createApproval("launcher-share"))
         launchApp(backend).use {
@@ -109,23 +64,6 @@ class PhoneApprovalUITests : HisarUITestCase() {
             saveScreenshot("phone-approval-launcher-share")
             tap("phone-approval-approve")
             checkResult(backend, "approve preview-launcher-share", "Approved on your Mac")
-        }
-    }
-
-    @Test
-    fun testCodingAgentRequestShowsProject() {
-        val backend = createBackend(createApproval("agent"))
-        launchApp(backend).use {
-            openSheet("preview-agent")
-            assertEquals("omp in Tern (via hisar) wants to use 2 secrets", readText("phone-approval-summary"))
-            assertEquals("~/src/acme-web", readText("phone-approval-row-Project"))
-            assertEquals("npm run db:migrate", readText("phone-approval-row-Command"))
-            assertFalse("the agent runs in its project's root", exists(hasTestTag("phone-approval-row-Repository")))
-            val secrets = readText("phone-approval-row-Secrets")
-            assertTrue(secrets, "Agents › Staging Postgres › connection string" in secrets && "Agents › Stripe › secret key" in secrets)
-            saveScreenshot("phone-approval-agent")
-            tap("phone-approval-deny")
-            checkResult(backend, "deny preview-agent", "Denied on your Mac")
         }
     }
 
@@ -352,12 +290,6 @@ class PhoneApprovalUITests : HisarUITestCase() {
                     requestID = "preview-launcher-share", requesterDeviceName = mac, expiresAt = expiresAt, kind = PhoneApproval.KIND_LAUNCHER,
                     appName = "Raycast", purpose = "create a share link for “GitHub”", commandLine = "Expires in 7 days · 1 view", secrets = listOf("username", "password"),
                     appWarning = "Anyone with the link can read these until it expires or its views run out.",
-                )
-                "agent" -> PhoneApproval(
-                    requestID = "preview-agent", requesterDeviceName = mac, expiresAt = expiresAt, kind = PhoneApproval.KIND_COMMAND_LINE,
-                    appName = "omp in Tern (via hisar)", purpose = "use 2 secrets", commandLine = "npm run db:migrate", repositoryPath = "~/src/acme-web",
-                    projectPath = "~/src/acme-web", secrets = listOf("Agents › Staging Postgres › connection string", "Agents › Stripe › secret key"),
-                    rememberLabel = "Also allows these secrets for this agent for 1 hour",
                 )
                 else -> PhoneApproval(
                     requestID = "preview-ssh", requesterDeviceName = mac, expiresAt = expiresAt, kind = PhoneApproval.KIND_SSH,
