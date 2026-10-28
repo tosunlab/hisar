@@ -7,7 +7,6 @@ import com.tryhisar.hisar.model.ItemDatabase
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.ItemField
 import com.tryhisar.hisar.model.ItemIdentity
-import com.tryhisar.hisar.model.ItemField
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
