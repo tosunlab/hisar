@@ -14,6 +14,9 @@
 #   40645082873, 40645263609 and 40665680491 (2026-10-27 and 28). ui.AccountLifecycleUITests, ui.BiometricUITests,
 #   ui.item.ItemEditorFieldNameTests and platform.BiometricEnrollmentTests are estimates from classes like them, until CI
 #   has measured them.
+# P2-only Android classes use CI run 40641727162 where it reached them (ui.BrowseRowTests, ui.BrowseStateTests,
+# ui.BusyButtonSemanticsTests, ui.CredentialRevealTests, ui.ExportCopyUITests, ui.HeadingSemanticsTests,
+# passkey.PasskeyLayoutTests), otherwise twice their time on a Mac's API 36 emulator on 2026-10-28.
 # Retained-class estimates account for the tests and steps removed on 2026-10-28. HisarUITests and AccountLifecycleUITests
 # scale the audited reductions to the older iOS weights; PhoneApprovalUITests uses its 102.4 s local after measurement.
 # Android reductions include each deleted test's audited body time and the 2.3 s transition, or two transitions for the modal merge.
