@@ -222,10 +222,10 @@ class ItemDetailScreenTests {
 
         dismissNotice()
         composeRule.onNode(hasClickLabel("Copy PIN")).performScrollTo().performClick()
-        composeRule.waitUntil(5_000) { backend.allCopiedField.last() == "github.PIN" }
+        composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("1234") }
         dismissNotice()
         composeRule.onNodeWithTag("website-https://github.com").performScrollTo().performClick()
-        composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
+        composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("1234", "https://github.com") }
         val username = composeRule.onNode(hasClickLabel("Copy username")).fetchSemanticsNode()
         assertEquals(Role.Button, username.config[SemanticsProperties.Role])
         assertEquals(listOf("Copy username"), username.config[SemanticsProperties.ContentDescription])
