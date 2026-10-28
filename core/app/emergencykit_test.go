@@ -505,6 +505,17 @@ func TestUnlockOfAnUnsavedKitStartsItsReminder(t *testing.T) {
 	if kit := requireOwedKit(t, service); kit.PostponedAt != unlockedAt.Format(time.RFC3339) {
 		t.Fatalf("a kit left unsaved across a lock has no postponement: %+v", kit)
 	}
+	service.Lock()
+	*now = now.Add(4 * 24 * time.Hour)
+	if _, err := service.Unlock(owedKitPassword); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.PostponeNewAccountEmergencyKit(); err != nil {
+		t.Fatal(err)
+	}
+	if kit := requireOwedKit(t, service); kit.PostponedAt != unlockedAt.Format(time.RFC3339) || kit.Reminder != EmergencyKitReminderThreeDays {
+		t.Fatalf("a later unlock or Save later moved the first postponement: %+v", kit)
+	}
 }
 
 func TestHiddenReminderReturnsAfterLock(t *testing.T) {
