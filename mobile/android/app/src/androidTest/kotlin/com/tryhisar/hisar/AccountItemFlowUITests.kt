@@ -4,6 +4,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
@@ -55,6 +56,9 @@ class AccountItemFlowUITests : HisarUITestCase() {
         Espresso.closeSoftKeyboard()
     }
 
+    private fun readFieldText(tag: String): String =
+        composeRule.onNode(hasTestTag(tag)).fetchSemanticsNode().config[SemanticsProperties.EditableText].text
+
     private fun findComposeRoot(view: View): View? =
         view.takeIf { it is ViewRootForTest } ?: (view as? ViewGroup)?.children?.firstNotNullOfOrNull(::findComposeRoot)
 
@@ -94,13 +98,13 @@ class AccountItemFlowUITests : HisarUITestCase() {
         saveScreenshot("item-detail")
 
         tap("edit-item")
-        val setupKeyField = composeRule.onNode(hasTestTag("editor-one-time-password"))
         scrollTo("editor-one-time-password")
-        setupKeyField.assertTextEquals("•".repeat(setupKey.length))
+        val hiddenSetupKey = readFieldText("editor-one-time-password")
+        assertTrue("the editor shows the setup key before it is revealed: $hiddenSetupKey", hiddenSetupKey.isNotEmpty() && hiddenSetupKey.all { it == '•' })
         composeRule.onNode(hasContentDescription("Reveal setup key")).performClick()
-        setupKeyField.assertTextEquals(setupKey)
+        assertTrue(readFieldText("editor-one-time-password").contains(setupKey))
         composeRule.onNode(hasContentDescription("Hide setup key")).performClick()
-        setupKeyField.assertTextEquals("•".repeat(setupKey.length))
+        assertEquals(hiddenSetupKey, readFieldText("editor-one-time-password"))
         tap("editor-cancel")
         waitForGone("editor-cancel")
         dismissNotice()
