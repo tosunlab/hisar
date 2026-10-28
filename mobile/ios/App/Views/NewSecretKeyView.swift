@@ -210,11 +210,11 @@ struct BiometricOfferView: View {
 }
 
 extension View {
-    // Onboarding screens hold the user for minutes (writing a Secret Key down, printing), so their appearance, taps and
-    // scrolling count as activity for auto-lock; idle time on them still locks.
+    // Onboarding screens hold the user for minutes (writing a Secret Key down, printing), so their appearance and scrolling
+    // count as activity for auto-lock; idle time on them still locks. No tap gesture: on the list it takes the taps of its
+    // rows' buttons, such as Save later and Copy Secret Key.
     func reportsActivity(to model: AppModel) -> some View {
         onAppear { model.reportActivity() }
-            .simultaneousGesture(TapGesture().onEnded { model.reportActivity() })
             .onScrollPhaseChange { _, phase in
                 if phase == .interacting { model.reportActivity() }
             }
