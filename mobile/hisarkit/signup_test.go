@@ -116,7 +116,11 @@ func TestInterruptedSignUpReturnsDurableVisibleRecoveryWithoutReinstallingTheAcc
 	kit := decodeJSON[struct {
 		SecretKey string `json:"secretKey"`
 		Path      string `json:"path"`
+		ExportID  string `json:"exportId"`
 	}](t)(restarted.ExportPendingRecoveryEmergencyKit(result.PendingOperationID, "new master password", t.TempDir()))
+	if err := restarted.RecordPendingRecoveryEmergencyKitDelivery(kit.ExportID, "file"); err != nil {
+		t.Fatalf("the export's delivery could not be recorded: %+v %v", kit, err)
+	}
 	key, err := crypt.ParseSecretKey(kit.SecretKey)
 	if err != nil || key.AccountID != accountID {
 		t.Fatalf("protected delivery returned another account's factor: %v", err)
@@ -127,5 +131,25 @@ func TestInterruptedSignUpReturnsDurableVisibleRecoveryWithoutReinstallingTheAcc
 	}
 	if current := decodeJSON[status](t)(hisar.Status(), nil); current.State != "signed-out" {
 		t.Error("interrupted registration reopened the account")
+	}
+}
+
+func TestSignUpPolicyIsJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/v1/auth/register/policy" {
+			http.NotFound(writer, request)
+			return
+		}
+		writer.Write([]byte(`{"mode":"invite"}`))
+	}))
+	t.Cleanup(server.Close)
+	hisar, err := New(t.TempDir(), "Phone", createMemorySecretKeyStore(), nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := hisar.GetSignUpPolicy(server.URL + "/")
+	want := `{"server":"` + server.URL + `","host":"` + server.URL + `","mode":"invite"}`
+	if err != nil || policy != want {
+		t.Fatalf("policy = %s %v, want %s", policy, err, want)
 	}
 }

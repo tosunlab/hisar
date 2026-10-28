@@ -64,10 +64,10 @@ onBeforeUnmount(() => {
 <template>
   <UpdateRequiredView v-if="store.status.updateRequired" />
   <PendingRecoveryView v-else-if="store.isRecoveryOpen && store.pendingRecovery.length > 0" />
-  <SecretKeyView v-else-if="store.pendingSecretKey" />
-  <TouchIDOfferView v-else-if="store.isTouchIDOfferShown" />
-  <SignInView v-else-if="store.status.state === 'signed-out'" />
   <UnlockView v-else-if="store.status.state === 'locked'" />
+  <SecretKeyView v-else-if="store.onboardingStep === 'kit'" />
+  <TouchIDOfferView v-else-if="store.onboardingStep === 'biometric'" />
+  <SignInView v-else-if="store.status.state === 'signed-out'" />
   <MainView v-else />
   <BrowserPairingModal v-if="store.status.state === 'unlocked'" />
   <MissingAgentKeyNotice v-if="store.status.state === 'unlocked'" />

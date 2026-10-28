@@ -38,6 +38,7 @@ describe("segmented keyboard controls", () => {
 
   it.each([["account", SignInView], ["SSH key", SSHKeyForm]] as const)("selects and labels %s panels using arrows, Home and End", async (_name, component) => {
     const wrapper = mount(component, { attachTo: document.body });
+    if (_name === "account" && wrapper.findAll('[role="tab"]').length === 0) await wrapper.findAll("button").find(button => button.text() === "I already have an account")!.trigger("click");
     const tabs = wrapper.findAll<HTMLButtonElement>('[role="tab"]');
     const assertSelection = (index: number) => {
       expect(document.activeElement).toBe(tabs[index]!.element);

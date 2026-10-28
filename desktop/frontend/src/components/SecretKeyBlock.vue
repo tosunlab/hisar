@@ -11,7 +11,7 @@ defineProps<{ secretKey: string; testId?: string }>();
     <div class="key" :data-testid="testId ?? 'secret-key'" :aria-label="secretKey">
       <span v-for="(part, index) in secretKey.split('-')" :key="index" class="key-part monospace">{{ part }}</span>
     </div>
-    <button @click="copyText(secretKey, 'Secret Key')"><AppIcon name="copy" /> Copy</button>
+    <button @click="copyText(secretKey, 'Secret Key')"><AppIcon name="copy" /> Copy Secret Key</button>
   </section>
 </template>
 

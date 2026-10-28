@@ -124,7 +124,7 @@ final class AppModelTests: XCTestCase {
         let model = await createModel()
         let isSignedUp = await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
         XCTAssertTrue(isSignedUp)
-        XCTAssertEqual(model.newSecretKey, FakeBackend.secretKey)
+        XCTAssertEqual(model.onboardingStep, .kit)
         XCTAssertEqual(model.screen, .unlocked)
         XCTAssertFalse(model.isPendingRecoveryShown, "the Secret Key screen stands in for the recovery screen")
         let isFinishedWithoutKit = await model.finishNewSecretKey()
@@ -135,6 +135,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(export.secretKey, FakeBackend.secretKey)
         XCTAssertTrue(FileManager.default.fileExists(atPath: export.emergencyKitPath))
         XCTAssertFalse(backend.allCallName.contains("exportEmergencyKit"), "no master password asked again")
+        await model.recordEmergencyKitDelivery(exportID: try XCTUnwrap(export.exportId), method: "file", epoch: model.emergencyKitDeliveryEpoch)
         let isFinished = await model.finishNewSecretKey()
         XCTAssertTrue(isFinished)
         XCTAssertNil(model.errorMessage)
@@ -143,7 +144,7 @@ final class AppModelTests: XCTestCase {
         model.removeEmergencyKit(export)
         XCTAssertFalse(FileManager.default.fileExists(atPath: export.emergencyKitPath))
         model.dismissNewSecretKey()
-        XCTAssertNil(model.newSecretKey)
+        XCTAssertNil(model.onboardingStep)
     }
 
     func testSignUpWithoutInviteAsksTheServerAndShowsNewSecretKey() async throws {
@@ -155,13 +156,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(backend.signUpWithoutInviteServer, "https://hisar.example.com")
         XCTAssertEqual(model.status.server, "https://hisar.example.com")
         XCTAssertEqual(model.status.email, "bob@example.com")
-        XCTAssertEqual(model.newSecretKey, FakeBackend.secretKey)
+        XCTAssertEqual(model.onboardingStep, .kit)
         XCTAssertEqual(model.screen, .unlocked)
         XCTAssertNil(model.errorMessage)
         XCTAssertFalse(model.isPendingRecoveryShown)
         let possibleExport = await model.exportNewAccountEmergencyKit()
         let export = try XCTUnwrap(possibleExport)
         XCTAssertEqual(export.secretKey, FakeBackend.secretKey)
+        await model.recordEmergencyKitDelivery(exportID: try XCTUnwrap(export.exportId), method: "file", epoch: model.emergencyKitDeliveryEpoch)
         let isFinished = await model.finishNewSecretKey()
         XCTAssertTrue(isFinished)
         XCTAssertTrue(backend.allPendingRecovery.isEmpty)
@@ -174,7 +176,7 @@ final class AppModelTests: XCTestCase {
         let isSignedUp = await model.signUpWithoutInvite(server: "https://hisar.example.com", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
         XCTAssertFalse(isSignedUp)
         XCTAssertEqual(model.screen, .signedOut)
-        XCTAssertNil(model.newSecretKey)
+        XCTAssertNil(model.onboardingStep)
         XCTAssertEqual(model.errorMessage, "Sign-ups are not open on this server. Ask an admin for an invitation.")
     }
 
@@ -182,39 +184,39 @@ final class AppModelTests: XCTestCase {
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
         await model.postponeNewSecretKey()
-        XCTAssertNil(model.newSecretKey)
-        XCTAssertFalse(model.isPendingRecoveryShown, "Finish later leaves the record for the banner, not the screen")
-        XCTAssertEqual(model.allPendingRecovery.map(\.operationId), ["signup-1"])
+        XCTAssertEqual(model.onboardingStep, .biometric)
+        model.dismissNewSecretKey()
+        XCTAssertFalse(model.isPendingRecoveryShown)
+        XCTAssertEqual(model.status.emergencyKit?.operationId, "signup-1")
         await waitForCall("forgetNewAccountSecretKey")
         model.lock()
         XCTAssertEqual(model.screen, .locked)
-        XCTAssertNil(model.newSecretKey)
+        XCTAssertNil(model.onboardingStep)
     }
 
     func testAutoLockHidesTheBiometricOffer() async {
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
-        _ = await model.exportNewAccountEmergencyKit()
-        await model.finishNewSecretKey()
-        XCTAssertTrue(model.isBiometricOfferShown)
+        await model.postponeNewSecretKey()
+        XCTAssertEqual(model.onboardingStep, .biometric)
         _ = backend.lock()
         model.handleLockedEvent()
-        XCTAssertNil(model.newSecretKey)
-        XCTAssertFalse(model.isBiometricOfferShown)
+        XCTAssertNil(model.onboardingStep)
     }
 
-    func testLockOnTheSecretKeyScreenLeavesTheKitReminderAfterUnlock() async {
+    func testLockDuringKitReopensItAfterUnlock() async {
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
-        XCTAssertEqual(model.allPendingRecovery.map(\.operationId), ["signup-1"], "the sign-up's record is loaded for the reminder")
+        XCTAssertEqual(model.status.emergencyKit?.operationId, "signup-1")
         XCTAssertFalse(model.isPendingRecoveryShown, "the record does not cover Save your Secret Key")
         _ = backend.lock()
         model.handleLockedEvent()
-        XCTAssertNil(model.newSecretKey)
+        XCTAssertNil(model.onboardingStep)
         XCTAssertEqual(model.screen, .locked)
         let isUnlocked = await model.unlock(password: FakeBackend.password)
         XCTAssertTrue(isUnlocked)
-        XCTAssertEqual(model.allPendingRecovery.map(\.operationId), ["signup-1"], "the Finish account recovery bar has its record")
+        XCTAssertEqual(model.onboardingStep, .kit)
+        XCTAssertEqual(model.status.emergencyKit?.isAuthorized, true)
         XCTAssertFalse(model.isPendingRecoveryShown)
     }
 
@@ -228,15 +230,14 @@ final class AppModelTests: XCTestCase {
     func testSecretKeyScreenOffersFaceIDAndTurnsItOnInOneTap() async {
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
-        _ = await model.exportNewAccountEmergencyKit()
-        await model.finishNewSecretKey()
-        XCTAssertTrue(model.isBiometricOfferShown)
-        XCTAssertNotNil(model.newSecretKey, "the cover stays up for the offer")
+        await model.postponeNewSecretKey()
+        XCTAssertEqual(model.onboardingStep, .biometric)
         let isTurnedOn = await model.turnOnBiometricUnlockFromOffer()
         XCTAssertTrue(isTurnedOn)
         XCTAssertTrue(model.status.biometricEnabled)
-        XCTAssertFalse(model.isBiometricOfferShown)
-        XCTAssertNil(model.newSecretKey)
+        XCTAssertNil(model.onboardingStep)
+        model.openEmergencyKit()
+        XCTAssertEqual(model.status.emergencyKit?.isAuthorized, true)
         XCTAssertFalse(backend.allCallName.contains("enableBiometricUnlock"), "no master password asked again")
         await waitForCall("forgetNewAccountSecretKey")
     }
@@ -244,15 +245,14 @@ final class AppModelTests: XCTestCase {
     func testFaceIDOfferFailureStaysOnTheOffer() async {
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
-        _ = await model.exportNewAccountEmergencyKit()
-        await model.finishNewSecretKey()
+        await model.postponeNewSecretKey()
         backend.isBiometricSucceeding = false
         let isTurnedOn = await model.turnOnBiometricUnlockFromOffer()
         XCTAssertFalse(isTurnedOn)
-        XCTAssertTrue(model.isBiometricOfferShown)
+        XCTAssertEqual(model.onboardingStep, .biometric)
         XCTAssertEqual(model.errorMessage, "Face ID was cancelled.")
         model.dismissNewSecretKey()
-        XCTAssertFalse(model.isBiometricOfferShown)
+        XCTAssertNil(model.onboardingStep)
         XCTAssertFalse(model.status.biometricEnabled)
         await waitForCall("forgetNewAccountSecretKey")
     }
@@ -261,10 +261,8 @@ final class AppModelTests: XCTestCase {
         backend.isBiometricAvailable = false
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
-        _ = await model.exportNewAccountEmergencyKit()
-        await model.finishNewSecretKey()
-        XCTAssertFalse(model.isBiometricOfferShown)
-        XCTAssertNil(model.newSecretKey)
+        await model.postponeNewSecretKey()
+        XCTAssertNil(model.onboardingStep)
         await waitForCall("forgetNewAccountSecretKey")
     }
 

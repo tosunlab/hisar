@@ -111,7 +111,11 @@ func finishSignUp(mac *app.Service, signUp app.SignUpResult, password, directory
 	if signUp.SetupState != "delivery-pending" {
 		return fmt.Errorf("sign-up stopped at %s: %s", signUp.SetupState, strings.Join(signUp.Problems, " "))
 	}
-	if _, err := app.ExportPendingRecoveryEmergencyKitToDirectory(mac, signUp.PendingOperationID, password, directory); err != nil {
+	kit, err := app.ExportPendingRecoveryEmergencyKitToDirectory(mac, signUp.PendingOperationID, password, directory)
+	if err != nil {
+		return err
+	}
+	if err := mac.RecordPendingRecoveryEmergencyKitDelivery(kit.ExportID, app.EmergencyKitSavedByFile); err != nil {
 		return err
 	}
 	return mac.AcknowledgePendingRecovery(signUp.PendingOperationID, password)

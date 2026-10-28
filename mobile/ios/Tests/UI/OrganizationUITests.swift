@@ -1,7 +1,7 @@
 import XCTest
 
-// scripts/test-ios-ui.sh runs a partner on the command line who accepts every organization invitation, gives team members
-// the keys of its vaults and writes "Seen by partner" into Runbooks once it reads it.
+// scripts/test-ios-ui.sh runs a partner (scripts/ui-test-partner.sh) who accepts every organization invitation, gives team
+// members the keys of its vaults and writes "Seen by partner" into Runbooks once it reads it.
 final class OrganizationUITests: HisarUITestCase {
     private func findElement(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any)[identifier].firstMatch

@@ -21,7 +21,15 @@ object AccountLifecycleLogic {
     const val EXPORT_ADVICE = "Export your items first in Settings → Account → Export data."
     const val SIGN_OUT_TITLE = "Sign out of Hisar on this device?"
     const val SIGN_OUT_MESSAGE = "Hisar removes this device's saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device."
-    const val LOCKED_SIGN_OUT_MESSAGE = "$SIGN_OUT_MESSAGE If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account."
+    const val LOCKED_SIGN_OUT_MESSAGE = "$SIGN_OUT_MESSAGE If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit."
+
+    fun signOutMessage(kit: EmergencyKitStatus?, isLocked: Boolean): String {
+        if (kit == null) return if (isLocked) LOCKED_SIGN_OUT_MESSAGE else SIGN_OUT_MESSAGE
+        val prefix = if (kit.savedBy.isEmpty()) "You haven't saved this account's Emergency Kit yet."
+        else "You haven't confirmed this account's Emergency Kit yet."
+        val instruction = if (isLocked) " Cancel, unlock Hisar and finish saving or confirming your Emergency Kit." else ""
+        return "$prefix $SIGN_OUT_MESSAGE The protected unfinished setup stays on this device. Don't rely on it as your only recovery copy.$instruction"
+    }
 
     /**
      * The sentence that refuses a new master password: fewer than 10 characters, counted as the user sees them, or core's

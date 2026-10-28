@@ -200,6 +200,12 @@ func (hisar *Hisar) SignUpWithoutInvite(server, email, name, password string) (s
 	return encodeJSON(hisar.service.SignUpWithoutInvite(server, email, name, password))
 }
 
+// GetSignUpPolicy returns app.SignUpPolicy ({"server", "host", "mode"}) as JSON: mode is "open", "invite", "setup" or
+// "unknown".
+func (hisar *Hisar) GetSignUpPolicy(server string) (string, error) {
+	return encodeJSON(hisar.service.GetSignUpPolicy(server))
+}
+
 func (hisar *Hisar) Unlock(password string) (string, error) {
 	defer releaseMemory()
 	if err := app.ReloadExactHostMatch(hisar.service); err != nil {

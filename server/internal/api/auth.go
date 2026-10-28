@@ -18,6 +18,11 @@ func (s *Server) handlePrelogin(c fiber.Ctx) error {
 	return c.JSON(response)
 }
 
+func (s *Server) handleRegistrationPolicy(c fiber.Ctx) error {
+	c.Set("Cache-Control", "no-store")
+	return c.JSON(s.service.GetRegistrationPolicy())
+}
+
 func (s *Server) handleRegisterStart(c fiber.Ctx) error {
 	var request apitypes.RegisterStartRequest
 	if err := decodeBody(c, &request); err != nil {

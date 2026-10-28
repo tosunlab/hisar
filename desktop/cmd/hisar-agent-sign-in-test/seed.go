@@ -88,8 +88,12 @@ func seedAccount(statePath, cachePath, serverInvite, email, password string, pla
 		return account{}, err
 	}
 	defer os.RemoveAll(kitDirectory)
-	if _, err := app.ExportPendingRecoveryEmergencyKitToDirectory(service, signedUp.PendingOperationID, password, kitDirectory); err != nil {
+	kit, err := app.ExportPendingRecoveryEmergencyKitToDirectory(service, signedUp.PendingOperationID, password, kitDirectory)
+	if err != nil {
 		return account{}, fmt.Errorf("saving the test account's Emergency Kit: %w", err)
+	}
+	if err := service.RecordPendingRecoveryEmergencyKitDelivery(kit.ExportID, app.EmergencyKitSavedByFile); err != nil {
+		return account{}, fmt.Errorf("recording the test account's Emergency Kit: %w", err)
 	}
 	if err := service.AcknowledgePendingRecovery(signedUp.PendingOperationID, password); err != nil {
 		return account{}, fmt.Errorf("finishing test account recovery: %w", err)

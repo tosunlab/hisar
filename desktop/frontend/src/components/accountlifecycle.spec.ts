@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { createApiMock, createStatus } from "../testing";
+import { createApiMock, createEmergencyKit, createStatus } from "../testing";
 import type { AccountDeletionPreview, Status } from "../api";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
@@ -21,6 +21,7 @@ const ChangeMasterPasswordDialog = (await import("./ChangeMasterPasswordDialog.v
 const ReplaceSecretKeyDialog = (await import("./ReplaceSecretKeyDialog.vue")).default;
 const DeleteAccountDialog = (await import("./DeleteAccountDialog.vue")).default;
 const SignInView = (await import("./SignInView.vue")).default;
+const AccountSection = (await import("./AccountSection.vue")).default;
 const api = apiMock.current;
 
 const strongPassword = "orange cactus harbor lantern";
@@ -55,10 +56,19 @@ beforeEach(() => {
   vi.clearAllMocks();
   api.getSSHAgentStatus?.mockResolvedValue?.({});
   api.forgetNewAccountSecretKey.mockResolvedValue(undefined);
-  Object.assign(store, { status: createStatus("unlocked"), errorMessage: "", noticeMessage: "", isBusy: false, pendingSecretKey: "" });
+  Object.assign(store, { status: createStatus("unlocked"), errorMessage: "", noticeMessage: "", isBusy: false, onboardingStep: "" });
+  api.getStatus.mockImplementation(async () => ({ ...store.status }));
 });
 
 describe("Settings rows", () => {
+  it("focuses Cancel rather than the destructive action when signing out", async () => {
+    const wrapper = mount(AccountSection, { attachTo: document.body });
+    await wrapper.findAll("button").find(button => button.text() === "Sign out")!.trigger("click");
+    await flushPromises();
+    expect(document.activeElement?.textContent).toBe("Cancel");
+    wrapper.unmount();
+  });
+
   it("offers changing the master password and replacing the Secret Key under Security", async () => {
     window.localStorage.setItem("hisar.settings.selectedSection", "security");
     const wrapper = mount(SettingsPanel);
@@ -156,51 +166,41 @@ describe("Replace Secret Key", () => {
     expect(wrapper.find('[data-testid="confirm-replace-secret-key"]').attributes("disabled")).toBeDefined();
   });
 
-  it("shows the new Secret Key and keeps the dialog open until the kit is saved", async () => {
-    api.replaceSecretKey.mockResolvedValue({ status: createStatus("unlocked"), secretKey: newSecretKey, signedOutDeviceCount: 1, keychainError: "", localError: "" });
-    api.saveNewAccountEmergencyKit.mockResolvedValue("/Users/alice/Hisar Emergency Kit.pdf");
+  it("opens the same kit screen after a protected replacement", async () => {
+    const emergencyKit = createEmergencyKit({ kind: "replace-secret-key" });
+    api.replaceSecretKey.mockResolvedValue({ status: { ...createStatus("unlocked"), emergencyKit }, secretKey: newSecretKey, signedOutDeviceCount: 1, keychainError: "", localError: "", pendingOperationId: emergencyKit.operationId });
     const wrapper = mount(ReplaceSecretKeyDialog);
     await wrapper.find('input[name="replaceSecretKeyPassword"]').setValue("master password");
     await submitForm(wrapper);
     expect(api.replaceSecretKey).toHaveBeenCalledWith("master password");
-    expect(wrapper.find('[data-testid="new-secret-key"]').attributes("aria-label")).toBe(newSecretKey);
-    expect(wrapper.find('[data-testid="replace-secret-key-done"]').text()).toContain("1 other device was signed out.");
-    expect(wrapper.find('[data-testid="replace-secret-key-close"]').attributes("disabled")).toBeDefined();
-    expect(wrapper.get('[data-testid="save-new-emergency-kit"]').text()).toBe("Save Emergency Kit…");
-    await wrapper.find('[data-testid="save-new-emergency-kit"]').trigger("click");
-    await flushPromises();
-    expect(api.saveNewAccountEmergencyKit).toHaveBeenCalled();
-    expect(wrapper.find('[data-testid="new-emergency-kit-saved"]').exists()).toBe(true);
-    await wrapper.find('[data-testid="replace-secret-key-close"]').trigger("click");
-    await flushPromises();
-    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
+    expect(store.onboardingStep).toBe("kit");
+    expect(store.status.emergencyKit?.kind).toBe("replace-secret-key");
+    expect(wrapper.emitted("close")).toHaveLength(1);
+    expect(api.forgetNewAccountSecretKey).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="new-secret-key"]').exists()).toBe(false);
+  });
+
+  it("keeps a replacement with protection problems in Finish account setup", async () => {
+    const problem = "The new Secret Key could not be saved to the keychain.";
+    api.replaceSecretKey.mockResolvedValue({ status: createStatus("unlocked"), secretKey: newSecretKey, signedOutDeviceCount: 0, keychainError: problem, localError: "", pendingOperationId: "replacement", setupState: "delivery-pending", problems: [problem] });
+    const wrapper = mount(ReplaceSecretKeyDialog);
+    await wrapper.find('input[name="replaceSecretKeyPassword"]').setValue("master password");
+    await submitForm(wrapper);
+    expect(store.isRecoveryOpen).toBe(true);
+    expect(store.onboardingStep).toBe("");
+    expect(store.errorMessage).toContain(problem);
     expect(wrapper.emitted("close")).toHaveLength(1);
   });
 
-  it("shows the keychain error and lets the user confirm they wrote the key down", async () => {
-    api.replaceSecretKey.mockResolvedValue({ status: createStatus("unlocked"), secretKey: newSecretKey, signedOutDeviceCount: 0, keychainError: "the new Secret Key could not be saved to the keychain", localError: "" });
+  it("keeps a cache warning alongside the unified replacement kit screen", async () => {
+    const localError = "Your credentials changed, but this device's offline copy could not be deleted.";
+    api.replaceSecretKey.mockResolvedValue({ status: { ...createStatus("unlocked"), emergencyKit: createEmergencyKit({ kind: "replace-secret-key" }) }, secretKey: newSecretKey, signedOutDeviceCount: -1, keychainError: "", localError });
     const wrapper = mount(ReplaceSecretKeyDialog);
     await wrapper.find('input[name="replaceSecretKeyPassword"]').setValue("master password");
     await submitForm(wrapper);
-    expect(wrapper.find('[data-testid="keychain-error"]').exists()).toBe(true);
-    await wrapper.find('input[name="hasConfirmedSaved"]').setValue(true);
-    expect(wrapper.find('[data-testid="replace-secret-key-close"]').attributes("disabled")).toBeUndefined();
-  });
-
-  it("keeps the new key and Emergency Kit screen visible alongside a cache warning", async () => {
-    const localError = "your credentials were changed, but this device's offline copy of the vaults could not be deleted";
-    api.replaceSecretKey.mockResolvedValue({ status: createStatus("unlocked"), secretKey: newSecretKey, signedOutDeviceCount: -1, keychainError: "", localError });
-    api.saveNewAccountEmergencyKit.mockResolvedValue("/Users/alice/Hisar Emergency Kit.pdf");
-    const wrapper = mount(ReplaceSecretKeyDialog);
-    await wrapper.find('input[name="replaceSecretKeyPassword"]').setValue("master password");
-    await submitForm(wrapper);
-    expect(wrapper.find('[data-testid="new-secret-key"]').attributes("aria-label")).toBe(newSecretKey);
-    expect(wrapper.find('[data-testid="credential-local-error"]').text()).toBe(localError);
-    expect(wrapper.find('[data-testid="replace-secret-key-done"]').text()).toContain("Any other devices were signed out");
-    expect(wrapper.find("form").exists()).toBe(false);
-    await wrapper.find('[data-testid="save-new-emergency-kit"]').trigger("click");
-    await flushPromises();
-    expect(wrapper.find('[data-testid="new-emergency-kit-saved"]').exists()).toBe(true);
+    expect(store.onboardingStep).toBe("kit");
+    expect(store.errorMessage).toBe(localError);
+    expect(wrapper.emitted("close")).toHaveLength(1);
   });
 });
 

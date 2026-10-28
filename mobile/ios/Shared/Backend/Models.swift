@@ -53,6 +53,8 @@ struct VaultStatus: Codable, Equatable {
     var autoLockSeconds: Int
     var signedOutReason = ""
     var updateRequired: UpdateRequirement?
+    var emergencyKit: EmergencyKitStatus?
+    var biometricOfferAvailable = false
 
     static let defaultAutoLockSeconds = 300
     static let allAutoLockSeconds = [30, 60, 300, 600, 3600]
@@ -88,6 +90,8 @@ struct VaultStatus: Codable, Equatable {
         autoLockSeconds = decodedAutoLockSeconds > 0 ? decodedAutoLockSeconds : Self.defaultAutoLockSeconds
         signedOutReason = try container.decodeIfPresent(String.self, forKey: .signedOutReason) ?? ""
         updateRequired = try container.decodeIfPresent(UpdateRequirement.self, forKey: .updateRequired)
+        emergencyKit = try container.decodeIfPresent(EmergencyKitStatus.self, forKey: .emergencyKit)
+        biometricOfferAvailable = try container.decodeIfPresent(Bool.self, forKey: .biometricOfferAvailable) ?? false
     }
 
     static func describeAutoLock(seconds: Int) -> String {
@@ -948,6 +952,56 @@ struct CardDescription: Codable, Equatable {
     var expiryWarning = ""
 }
 
+struct SignUpPolicy: Codable, Equatable {
+    var server: String
+    var host: String
+    var mode: String
+}
+
+struct EmergencyKitStatus: Codable, Equatable {
+    var operationId: String
+    var kind: String
+    var savedBy = ""
+    var postponedAt = ""
+    var reminder = "new"
+    var isAuthorized = false
+    var isReminderHidden = false
+
+    var title: String {
+        if !savedBy.isEmpty { return "Confirm your Emergency Kit" }
+        if kind == "replace-secret-key" { return "Save your new Emergency Kit" }
+        switch reminder {
+        case "3-days": return "Your Emergency Kit still isn't saved"
+        case "14-days": return "Save your Emergency Kit now"
+        default: return "Save your Emergency Kit"
+        }
+    }
+
+    static let postponementAdvice = "Save a copy you can reach without this iPhone. Losing access to your signed-in devices before you save it could lock you out."
+    static let savedAdvice = "A copy saved only on this iPhone is lost with it. Print it, or keep another copy somewhere else."
+
+    var deliveryMessage: String {
+        switch savedBy {
+        case "file": return "Emergency Kit saved."
+        case "print": return "Emergency Kit sent to the printer."
+        case "share": return "Emergency Kit shared."
+        default: return ""
+        }
+    }
+
+    var reminderMessage: String {
+        if !savedBy.isEmpty { return "\(deliveryMessage) \(Self.savedAdvice)" }
+        if kind == "replace-secret-key" {
+            return "Your old Emergency Kit no longer works. Save the new one where you can reach it without this iPhone."
+        }
+        switch reminder {
+        case "3-days": return "You haven't saved an Emergency Kit yet. Losing access to your signed-in devices could lock you out."
+        case "14-days": return "It's been at least 2 weeks. Save a copy you can reach without this iPhone so losing your devices doesn't mean losing access."
+        default: return Self.postponementAdvice
+        }
+    }
+}
+
 struct SignUpResult: Codable, Equatable {
     var status: VaultStatus
     var secretKey: String
@@ -985,6 +1039,8 @@ struct PendingRecovery: Codable, Equatable, Identifiable {
     var problems: [String]
     var manualUnlock: Bool = false
     var keychainProtected: Bool = false
+    var savedBy: String?
+    var postponedAt: String?
     var id: String { operationId }
     var reminderLabel: String {
         if phase == "manual-unlock" { return "Sign in with your saved Emergency Kit." }
@@ -1005,6 +1061,7 @@ struct PendingRecovery: Codable, Equatable, Identifiable {
 struct PendingRecoveryExport: Codable, Equatable {
     var secretKey: String
     var path: String
+    var exportId: String?
 }
 
 struct LoginMatch: Codable, Hashable, Identifiable {
@@ -1625,9 +1682,15 @@ struct Device: Codable, Identifiable, Hashable {
     }
 }
 
+struct RevealedSecretKey: Codable, Equatable {
+    var secretKey: String
+}
+
 struct EmergencyKitExport: Codable, Equatable {
     var secretKey: String
     var emergencyKitPath: String
+    var qrCode: String?
+    var exportId: String?
 }
 
 // VaultActions says who may rename, delete or leave a vault and what deleting it means; members leave out the user.
@@ -1960,6 +2023,7 @@ struct CredentialChangeResult: Codable, Equatable {
     var pendingOperationId: String = ""
     var setupState: String = ""
     var problems: [String] = []
+    var exportId: String?
 
     var isWaitingOnlyForKit: Bool {
         AccountLifecycleLogic.isWaitingOnlyForKit(setupState: setupState, secretKey: secretKey, problems: problems)
@@ -1989,6 +2053,7 @@ struct CredentialChangeResult: Codable, Equatable {
         pendingOperationId = try container.decodeIfPresent(String.self, forKey: .pendingOperationId) ?? ""
         setupState = try container.decodeIfPresent(String.self, forKey: .setupState) ?? ""
         problems = try container.decodeIfPresent([String].self, forKey: .problems) ?? []
+        exportId = try container.decodeIfPresent(String.self, forKey: .exportId)
     }
 }
 

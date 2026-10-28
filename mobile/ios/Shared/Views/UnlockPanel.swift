@@ -15,6 +15,7 @@ struct UnlockPanel: View {
     var submitPassword: (String) async -> Bool
     var submitBiometric: () async -> Void
     var signOut: (() -> Void)?
+    var showLostKeyHelp: (() -> Void)?
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -111,12 +112,19 @@ struct UnlockPanel: View {
                     .applyGlassButtonStyle(isProminent: !isBiometricReady)
                     .disabled(isBusy || password.isEmpty)
                     .accessibilityIdentifier("unlock-submit")
+                    // Borderless, or a tap on one of these two buttons in the same Form row runs both actions.
                     if let signOut {
                         Button("Sign out", action: signOut)
+                            .buttonStyle(.borderless)
                             .font(.footnote)
                             .foregroundStyle(.themeSecondary)
                             .padding(.top, 8)
                             .accessibilityIdentifier("lock-sign-out")
+                    }
+                    if let showLostKeyHelp {
+                        Button("Can't find your Secret Key?", action: showLostKeyHelp)
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("secret-key-note")
                     }
                 }
                 .controlSize(.large)

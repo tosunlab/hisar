@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { store } from "../store";
+import { needsAttentionRecovery, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 
+const records = computed(needsAttentionRecovery);
 const reminder = computed(() => {
-  const records = store.pendingRecovery;
-  if (records.length !== 1) return { label: `${records.length} account setups need attention`, hint: "Opens the account setup chooser" };
-  const record = records[0];
+  if (records.value.length !== 1) return { label: `${records.value.length} account setups need attention`, hint: "Opens the account setup chooser" };
+  const record = records.value[0];
   if (record.phase === "manual-unlock") return { label: "Sign in with your saved Emergency Kit.", hint: "Opens sign-in with your saved Emergency Kit" };
   if (record.phase === "awaiting-kit" || record.phase === "delivery-pending") {
     return {
@@ -19,7 +19,7 @@ const reminder = computed(() => {
 </script>
 
 <template>
-  <button v-if="store.pendingRecovery.length && !store.isRecoveryOpen && !store.pendingSecretKey" class="recovery-reminder" data-testid="open-pending-recovery" :title="reminder.hint" :aria-description="reminder.hint" @click="store.isRecoveryOpen = true">
+  <button v-if="records.length && !store.isRecoveryOpen && !store.onboardingStep" class="recovery-reminder" data-testid="open-pending-recovery" :title="reminder.hint" :aria-description="reminder.hint" @click="store.isRecoveryOpen = true">
     <AppIcon name="warning" :size="16" />
     <span>{{ reminder.label }} <span class="continue">Continue…</span></span>
     <AppIcon name="chevronRight" :size="14" />

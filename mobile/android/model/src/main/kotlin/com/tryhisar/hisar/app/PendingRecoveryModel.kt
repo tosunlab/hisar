@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** Durable setup recovery is separate from the account currently open on this phone. */
-class PendingRecoveryModel(private val context: ModelContext, private val onSignupDelivered: () -> Unit = {}) {
+class PendingRecoveryModel(private val context: ModelContext, private val onInstalledKitReady: () -> Unit = {}) {
     private val mutableAllRecovery = MutableStateFlow<List<PendingRecovery>>(emptyList())
     private val mutableIsShown = MutableStateFlow(false)
     private val mutableExport = MutableStateFlow<PendingRecoveryExport?>(null)
@@ -62,12 +62,13 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
             return
         }
         val hadNone = mutableAllRecovery.value.isEmpty()
-        mutableAllRecovery.value = records
-        val selection = operationID?.takeIf { id -> records.any { it.operationId == id } }
-            ?: mutableSelectedOperationID.value?.takeIf { id -> records.any { it.operationId == id } }
-            ?: records.singleOrNull()?.operationId
+        val needsAttention = records.filterNot { it.operationId == context.status.value.emergencyKit?.operationId }
+        mutableAllRecovery.value = needsAttention
+        val selection = operationID?.takeIf { id -> needsAttention.any { it.operationId == id } }
+            ?: mutableSelectedOperationID.value?.takeIf { id -> needsAttention.any { it.operationId == id } }
+            ?: needsAttention.singleOrNull()?.operationId
         select(selection)
-        if (records.isEmpty()) close() else if (hadNone && isOpening) mutableIsShown.value = true
+        if (needsAttention.isEmpty()) close() else if (hadNone && isOpening) mutableIsShown.value = true
     }
 
     fun open() {
@@ -107,6 +108,10 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         context.refreshStatus()
         if (context.status.value.isUnlocked) context.refreshAll()
         refresh()
+        if (context.status.value.isUnlocked && context.status.value.emergencyKit?.operationId == operationID) {
+            close()
+            onInstalledKitReady()
+        }
         if (result.problems.isNotEmpty()) context.errorMessage.value = result.problems.joinToString("\n")
         result.setupState == "delivery-pending"
     }
@@ -146,17 +151,19 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         true
     }
 
+    suspend fun recordDelivery(exportID: String, method: String): Boolean {
+        if (mutableExport.value?.exportId != exportID) return false
+        perform { it.recordPendingRecoveryEmergencyKitDelivery(exportID, method) } ?: return false
+        refresh(isOpening = false)
+        return true
+    }
+
     suspend fun acknowledge(operationID: String, password: String): Boolean = context.runInModel {
         val startedEpoch = epoch
-        val recovery = mutableAllRecovery.value.firstOrNull { it.operationId == operationID }
         perform { it.acknowledgePendingRecovery(operationID, password) } ?: return@runInModel false
         if (startedEpoch != epoch) return@runInModel false
         clearExport()
         refresh()
-        val current = context.status.value
-        if (startedEpoch == epoch && recovery?.kind == "signup" && recovery.phase == "delivery-pending" && !recovery.manualUnlock && current.isUnlocked &&
-            current.email == recovery.email && current.server == recovery.origin
-        ) onSignupDelivered()
         true
     }
 }

@@ -96,6 +96,38 @@ final class HisarKitBackend: VaultBackend {
     func signUpWithoutInvite(server: String, email: String, name: String, password: String) throws -> SignUpResult {
         try decode(SignUpResult.self, from: callReturningText { hisar.signUpWithoutInvite(server, email: email, name: name, password: password, error: $0) })
     }
+    func getSignUpPolicy(server: String) throws -> SignUpPolicy {
+        try decode(SignUpPolicy.self, from: callReturningText { hisar.getSignUpPolicy(server, error: $0) })
+    }
+
+    func authorizeNewAccountEmergencyKit(password: String) throws {
+        try callReturningNothing { try hisar.authorizeNewAccountEmergencyKit(password) }
+    }
+
+    func authorizeNewAccountEmergencyKitWithBiometric() throws {
+        try callReturningNothing { try hisar.authorizeNewAccountEmergencyKitWithBiometric() }
+    }
+
+    func revealNewAccountSecretKey() throws -> RevealedSecretKey {
+        try decode(RevealedSecretKey.self, from: callReturningText { hisar.revealNewAccountSecretKey($0) })
+    }
+
+    func recordNewAccountEmergencyKitDelivery(exportID: String, method: String) throws {
+        try callReturningNothing { try hisar.recordNewAccountEmergencyKitDelivery(exportID, method: method) }
+    }
+
+    func postponeNewAccountEmergencyKit() throws {
+        try callReturningNothing { try hisar.postponeNewAccountEmergencyKit() }
+    }
+
+    func hideEmergencyKitReminder() {
+        hisar.hideEmergencyKitReminder()
+    }
+
+    func recordPendingRecoveryEmergencyKitDelivery(exportID: String, method: String) throws {
+        try callReturningNothing { try hisar.recordPendingRecoveryEmergencyKitDelivery(exportID, method: method) }
+    }
+
 
     func unlock(password: String) throws -> VaultStatus {
         try decode(VaultStatus.self, from: callReturningText { hisar.unlock(password, error: $0) })

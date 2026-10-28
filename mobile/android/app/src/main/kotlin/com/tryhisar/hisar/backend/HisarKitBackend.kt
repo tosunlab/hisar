@@ -148,6 +148,9 @@ class HisarKitBackend(
     override fun signUpWithoutInvite(server: String, email: String, name: String, password: String): SignUpResult =
         decode(SignUpResult.serializer(), call { signUpWithoutInvite(server, email, name, password) })
 
+    override fun getSignUpPolicy(server: String): com.tryhisar.hisar.model.SignUpPolicy =
+        decode(com.tryhisar.hisar.model.SignUpPolicy.serializer(), call { getSignUpPolicy(server) })
+
     override fun unlock(password: String): VaultStatus = decode(VaultStatus.serializer(), call { unlock(password) })
 
     override fun unlockWithBiometric(): VaultStatus = decode(VaultStatus.serializer(), call { unlockWithBiometric() })
@@ -159,6 +162,14 @@ class HisarKitBackend(
         decode(VaultStatus.serializer(), call { enableNewAccountBiometricUnlock() })
 
     override fun forgetNewAccountSecretKey() = call { forgetNewAccountSecretKey() }
+
+    override fun authorizeNewAccountEmergencyKit(password: String) = call { authorizeNewAccountEmergencyKit(password) }
+    override fun authorizeNewAccountEmergencyKitWithBiometric() = call { authorizeNewAccountEmergencyKitWithBiometric() }
+    override fun revealNewAccountSecretKey(): com.tryhisar.hisar.model.RevealedSecretKey =
+        decode(com.tryhisar.hisar.model.RevealedSecretKey.serializer(), call { revealNewAccountSecretKey() })
+    override fun recordNewAccountEmergencyKitDelivery(exportID: String, method: String) = call { recordNewAccountEmergencyKitDelivery(exportID, method) }
+    override fun postponeNewAccountEmergencyKit() = call { postponeNewAccountEmergencyKit() }
+    override fun hideEmergencyKitReminder() = call { hideEmergencyKitReminder() }
 
     override fun exportNewAccountEmergencyKit(directory: File): EmergencyKitExport =
         decode(EmergencyKitExport.serializer(), call { exportNewAccountEmergencyKit(directory.path) })
@@ -485,6 +496,8 @@ class HisarKitBackend(
 
     override fun exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: File): PendingRecoveryExport =
         decode(PendingRecoveryExport.serializer(), call { exportPendingRecoveryEmergencyKit(operationID, password, directory.path) })
+
+    override fun recordPendingRecoveryEmergencyKitDelivery(exportID: String, method: String) = call { recordPendingRecoveryEmergencyKitDelivery(exportID, method) }
 
     override fun acknowledgePendingRecovery(operationID: String, password: String) = call { acknowledgePendingRecovery(operationID, password) }
 

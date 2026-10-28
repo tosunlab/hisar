@@ -5,6 +5,7 @@ import {
   allTestVault,
   createApiMock,
   createDevice,
+  createEmergencyKit,
   createIdentityItem,
   createItem,
   createPerson,
@@ -43,7 +44,10 @@ function resetStore(): void {
     selectedItem: null,
     editorMode: "view",
     searchQuery: "",
-    pendingSecretKey: "",
+    onboardingStep: "",
+    interruptedKitOperationID: "",
+    isRecoveryOpen: false,
+    pendingRecovery: [],
     biometricResetReminder: null,
     errorMessage: "",
     noticeMessage: "",
@@ -98,26 +102,27 @@ describe("store", () => {
     expect(store.isBusy).toBe(false);
   });
 
-  const cleanSignUp = { status: createStatus("unlocked"), secretKey: "H1-SECRET", pendingOperationId: "signup", setupState: "delivery-pending", problems: [] };
+  const cleanSignUp = { status: { ...createStatus("unlocked"), emergencyKit: createEmergencyKit() }, secretKey: "H1-SECRET", pendingOperationId: "signup", setupState: "delivery-pending", problems: [] };
   const signUpRecord = {
     operationId: "signup", kind: "signup", origin: "https://hisar.test", accountId: "account", email: "alice@example.com", name: "Alice",
     phase: "delivery-pending", kitSaved: false, manualUnlock: false, problems: [], keychainProtected: true, revision: 1,
   };
 
-  it("shows Save your Secret Key, not recovery, after a sign-up that waits only for its kit", async () => {
+  it("shows the kit, not recovery, after a sign-up that waits only for its kit", async () => {
     api.signUp.mockResolvedValue(cleanSignUp);
     api.listPendingRecovery.mockResolvedValue([signUpRecord]);
     api.listAllVault.mockResolvedValue([allTestVault[0]]);
     api.listAllItem.mockResolvedValue([]);
     await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
-    expect(store.pendingSecretKey).toBe("H1-SECRET");
+    expect(store.onboardingStep).toBe("kit");
     expect(store.isRecoveryOpen).toBe(false);
     expect(store.pendingRecovery).toHaveLength(1);
     expect(store.recoveryFactor).toBeNull();
     api.listPendingRecovery.mockResolvedValue([]);
+    api.getStatus.mockResolvedValue(createStatus("unlocked"));
     expect(await storeModule.confirmSecretKeySaved()).toBe(true);
     expect(api.acknowledgeNewAccountRecovery).toHaveBeenCalledTimes(1);
-    expect(store.pendingSecretKey).toBe("");
+    expect(store.onboardingStep).toBe("");
     expect(store.pendingRecovery).toEqual([]);
     expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
   });
@@ -130,37 +135,38 @@ describe("store", () => {
     await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
     api.acknowledgeNewAccountRecovery.mockRejectedValueOnce(new Error("finish setup and save the Emergency Kit before acknowledging delivery"));
     expect(await storeModule.confirmSecretKeySaved()).toBe(false);
-    expect(store.pendingSecretKey).toBe("H1-SECRET");
-    expect(store.isTouchIDOfferShown).toBe(false);
+    expect(store.onboardingStep).toBe("kit");
     expect(store.errorMessage).toBe("Finish setup and save the Emergency Kit before acknowledging delivery.");
     expect(api.forgetNewAccountSecretKey).not.toHaveBeenCalled();
   });
 
-  it("keeps the sign-up's record for the recovery reminder on Finish later, even before the list loaded", async () => {
+  it("keeps the sign-up's authorization on Save later, even before the list loaded", async () => {
     const vaults = Promise.withResolvers<typeof allTestVault>();
     api.signUp.mockResolvedValue(cleanSignUp);
     api.listPendingRecovery.mockResolvedValue([signUpRecord]);
     api.listAllVault.mockReturnValueOnce(vaults.promise);
     api.listAllItem.mockResolvedValue([]);
     const signingUp = storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
-    await vi.waitFor(() => expect(store.pendingSecretKey).toBe("H1-SECRET"));
+    await vi.waitFor(() => expect(store.onboardingStep).toBe("kit"));
+    api.getStatus.mockResolvedValue({ ...cleanSignUp.status, biometricOfferAvailable: true });
     await storeModule.postponeSecretKey();
     vaults.resolve([allTestVault[0]]);
     await signingUp;
-    expect(store.pendingSecretKey).toBe("");
+    expect(store.onboardingStep).toBe("biometric");
     expect(store.isRecoveryOpen).toBe(false);
     expect(store.pendingRecovery).toHaveLength(1);
-    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
+    expect(api.postponeNewAccountEmergencyKit).toHaveBeenCalled();
+    expect(api.forgetNewAccountSecretKey).not.toHaveBeenCalled();
     expect(api.acknowledgeNewAccountRecovery).not.toHaveBeenCalled();
   });
 
   it("opens recovery for a sign-up that still needs finishing", async () => {
-    api.signUp.mockResolvedValue({ ...cleanSignUp, problems: ["The account was created, but its Personal vault could not finish. Resume account setup."] });
+    api.signUp.mockResolvedValue({ ...cleanSignUp, status: createStatus("unlocked"), problems: ["The account was created, but its Personal vault could not finish. Resume account setup."] });
     api.listPendingRecovery.mockResolvedValue([signUpRecord]);
     api.listAllVault.mockResolvedValue([allTestVault[0]]);
     api.listAllItem.mockResolvedValue([]);
     await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
-    expect(store.pendingSecretKey).toBe("");
+    expect(store.onboardingStep).toBe("");
     expect(store.isRecoveryOpen).toBe(true);
   });
 
@@ -172,7 +178,7 @@ describe("store", () => {
     expect(api.signUpWithoutInvite).toHaveBeenCalledWith("hisar.test", "alice@example.com", "Alice", "long password");
     expect(api.signUp).not.toHaveBeenCalled();
     expect(store.status.state).toBe("unlocked");
-    expect(store.pendingSecretKey).toBe("H1-SECRET");
+    expect(store.onboardingStep).toBe("kit");
   });
 
   it("shows the server's answer when sign-ups without an invite are closed", async () => {
@@ -212,13 +218,13 @@ describe("store", () => {
   });
 
   it("hides the new account's Secret Key when Hisar locks before it was confirmed", async () => {
-    api.signUp.mockResolvedValue({ status: createStatus("unlocked"), secretKey: "H1-SECRET" });
+    api.signUp.mockResolvedValue(cleanSignUp);
     api.listAllVault.mockResolvedValue([allTestVault[0]]);
     api.listAllItem.mockResolvedValue([]);
     await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
     api.getStatus.mockResolvedValue(createStatus("locked"));
     await storeModule.handleLocked();
-    expect(store.pendingSecretKey).toBe("");
+    expect(store.onboardingStep).toBe("");
   });
 
   it("shows sign-in and the error when signing out could not reach the server", async () => {
@@ -619,7 +625,7 @@ it("judge refuses a sign-up Secret Key response that arrives after lock", async 
   await storeModule.handleLocked();
   finish({ status: createStatus("unlocked"), secretKey: "H1-SECRET", pendingOperationId: "", setupState: "", problems: [] });
   await pending;
-  expect(store.pendingSecretKey).toBe("");
+  expect(store.onboardingStep).toBe("");
   expect(store.status.state).toBe("locked");
 });
 
@@ -633,7 +639,7 @@ it("refuses a replacement Secret Key response that arrives after lock", async ()
   await storeModule.handleLocked();
   finish({ status: createStatus("unlocked"), secretKey: "H1-REPLACEMENT", signedOutDeviceCount: 1, keychainError: "", localError: "", pendingOperationId: "", setupState: "", problems: [] });
   expect(await pending).toBeUndefined();
-  expect(store.pendingSecretKey).toBe("");
+  expect(store.onboardingStep).toBe("");
   expect(store.status.state).toBe("locked");
 });
 
@@ -652,7 +658,7 @@ it("does not install a staged signup when lock occurs during journal refresh", a
   journal.resolve([]);
   expect(await pending).toBe(false);
   expect(store.status.state).toBe("locked");
-  expect(store.pendingSecretKey).toBe("");
+  expect(store.onboardingStep).toBe("");
 });
 
 it("ignores a password unlock response that arrives after a newer lock", async () => {

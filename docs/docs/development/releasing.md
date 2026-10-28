@@ -50,7 +50,10 @@ also keep their builds.
 (HisarKit, Xcode project check, unit tests, then UI tests against a local server in three parts, split by the test classes'
 measured run times in `scripts/ui-test-parts.sh`: the build job runs part 1 on the simulator it booted while building, and parts
 2 and 3 start alongside it, boot their simulators while the app builds and then run its build) on
-GitHub's `macos-26` runners with Xcode 26.6. macOS
+GitHub's `macos-26` runners with Xcode 26.6. The iPhone jobs turn off Spotlight indexing before the simulator boots. A failed
+iPhone UI test runs a second time, alone with the other failed tests, against an emptied database with a new server and
+partner, and fails the job only when it fails again. The job log, the job summary and a warning or error annotation name every
+test that needed the second run, and the job uploads both result bundles, so a flaky test stays visible in a green run. macOS
 minutes count ten times against the plan's included minutes, so each job runs only when the pull request, compared with its base
 branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
 

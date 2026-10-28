@@ -18,80 +18,18 @@ final class AccountLifecycleTests: XCTestCase {
         return model
     }
 
-    func testDeferredSignupRequiresProtectedUnambiguousDelivery() {
-        var recovery = PendingRecovery(operationId: "deferred", kind: "signup", origin: "https://pending.example", accountId: "pending-account", email: "pending@example.com", name: "Pending", phase: "delivery-pending", kitSaved: false, problems: [], keychainProtected: true)
-        XCTAssertTrue(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
-        recovery.kind = "replacement"
-        XCTAssertFalse(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
-        recovery.kind = "signup"
-        for phase in ["awaiting-kit", "prepared", "outcome-unknown", "needs-finishing", "manual-unlock"] {
-            recovery.phase = phase
-            XCTAssertFalse(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
-        }
-        recovery.phase = "delivery-pending"
-        recovery.keychainProtected = false
-        XCTAssertFalse(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
-        recovery.keychainProtected = true
-        recovery.manualUnlock = true
-        XCTAssertFalse(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
-        recovery.manualUnlock = false
-        recovery.problems = ["Setup needs finishing."]
-        XCTAssertFalse(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
-    }
-
-    func testDeferredSignupUsesOnePasswordWithoutSwitchingAccounts() async throws {
-        let model = await createUnlockedModel()
-        let originalStatus = model.status
-        backend.allPendingRecovery = [
-            PendingRecovery(operationId: "deferred", kind: "signup", origin: "https://pending.example", accountId: "pending-account", email: "pending@example.com", name: "Pending", phase: "delivery-pending", kitSaved: false, problems: [], keychainProtected: true),
-        ]
-        await model.refreshPendingRecovery()
-        let delivery = DeferredSecretKeyDelivery(operationID: "deferred")
-        delivery.password = FakeBackend.password
-        await delivery.prepare(using: model)
-        let export = try XCTUnwrap(delivery.export)
-        XCTAssertEqual(model.status, originalStatus)
-        XCTAssertFalse(delivery.canAcknowledge)
-        await delivery.acknowledge(using: model)
-        XCTAssertEqual(backend.allPendingRecovery.count, 1)
-        delivery.completedHandoff(path: export.path)
-        await delivery.acknowledge(using: model)
-        XCTAssertTrue(backend.allPendingRecovery.isEmpty)
-        XCTAssertEqual(model.status, originalStatus)
-        XCTAssertNil(delivery.export)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: export.path))
-        XCTAssertFalse(backend.allCallName.contains("exportNewAccountEmergencyKit"))
-        XCTAssertFalse(backend.allCallName.contains("acknowledgeNewAccountRecovery"))
-        XCTAssertFalse(backend.allCallName.contains("resumePendingRecovery"))
-    }
-
-    func testDeferredSignupFinishLaterClearsDeliveryButKeepsTheRecord() async throws {
-        let model = await createUnlockedModel()
-        seedPendingRecovery(phase: "delivery-pending")
-        await model.refreshPendingRecovery()
-        let delivery = DeferredSecretKeyDelivery(operationID: "pending-1")
-        delivery.password = FakeBackend.password
-        await delivery.prepare(using: model)
-        let path = try XCTUnwrap(delivery.export?.path)
-        delivery.completedHandoff(path: path)
-        delivery.clear(using: model)
-        delivery.completedHandoff(path: path)
-        await delivery.acknowledge(using: model)
-        XCTAssertNil(delivery.export)
-        XCTAssertFalse(delivery.canAcknowledge)
-        XCTAssertTrue(delivery.password.isEmpty)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: path))
-        XCTAssertEqual(backend.allPendingRecovery.count, 1)
-    }
 
     func testNewAccountKitRetryKeepsTheKeyAndUsesAFreshDirectory() async throws {
         let model = AppModel(credentialIdentityStore: identityStore)
         await model.start { self.backend }?.value
         _ = await model.signUpWithoutInvite(server: "https://hisar.example.com", email: "new@example.com", name: "New", password: FakeBackend.password)
         backend.newAccountEmergencyKitError = BackendError(message: "Temporary storage is unavailable.")
+        let secretKey = await model.revealNewAccountSecretKey()
         let failed = await model.exportNewAccountEmergencyKit()
+        XCTAssertEqual(secretKey, FakeBackend.secretKey)
         XCTAssertNil(failed)
-        XCTAssertEqual(model.newSecretKey, FakeBackend.secretKey)
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertEqual(model.onboardingStep, .kit)
         XCTAssertEqual(backend.allPendingRecovery.count, 1)
         XCTAssertFalse(backend.allPendingRecovery[0].kitSaved)
         backend.newAccountEmergencyKitError = nil
@@ -154,7 +92,7 @@ final class AccountLifecycleTests: XCTestCase {
     func testSignOutConfirmationExplainsLocalRemoval() {
         XCTAssertEqual(AccountLifecycleLogic.signOutTitle, "Sign out of Hisar on this iPhone?")
         XCTAssertEqual(AccountLifecycleLogic.signOutMessage, "Hisar removes this iPhone's saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.")
-        XCTAssertEqual(AccountLifecycleLogic.lockedSignOutMessage, AccountLifecycleLogic.signOutMessage + " If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit.")
+        XCTAssertEqual(AccountLifecycleLogic.signOutMessage(isLocked: true, emergencyKit: nil), AccountLifecycleLogic.signOutMessage + " If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit.")
     }
 
     func testEmailConfirmationIgnoresCaseAndSpaces() {
@@ -243,34 +181,25 @@ final class AccountLifecycleTests: XCTestCase {
         seedPendingRecovery(phase: "delivery-pending")
         backend.allPendingRecovery[0].kind = "replace-secret-key"
         backend.allPendingRecovery[0].problems = []
+        backend.status.emergencyKit = EmergencyKitStatus(operationId: "pending-1", kind: "replace-secret-key", isAuthorized: true)
+        backend.isNewAccountSecretKeyRetained = true
         backend.pendingCredentialChangeResult = CredentialChangeResult(
-            status: backend.status, secretKey: "H1-NEW-SECRET", signedOutDeviceCount: 2,
+            status: backend.status, secretKey: FakeBackend.secretKey, signedOutDeviceCount: 2,
             pendingOperationId: "pending-1", setupState: "delivery-pending"
         )
-        backend.pendingRecoverySecretKey = "H1-NEW-SECRET"
-        XCTAssertNil(model.selectedPendingRecoveryID)
         let replaced = await model.replaceSecretKey(password: FakeBackend.password)
-        let result = try XCTUnwrap(replaced)
-        XCTAssertTrue(result.isWaitingOnlyForKit)
-        XCTAssertTrue(model.isNewSecretKeyShown)
+        XCTAssertEqual(replaced?.signedOutDeviceCount, 2)
+        XCTAssertEqual(model.onboardingStep, .kit)
         XCTAssertFalse(model.isPendingRecoveryShown)
-        XCTAssertEqual(result.signedOutDeviceCount, 2)
-        XCTAssertTrue(result.emergencyKitPath.isEmpty)
-        let exported = try XCTUnwrap(model.pendingRecoveryExport)
-        XCTAssertEqual(exported.secretKey, result.secretKey)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: exported.path))
-        XCTAssertTrue(backend.allCallName.contains("exportPendingRecoveryEmergencyKit"))
-        XCTAssertFalse(backend.allCallName.contains("exportNewAccountEmergencyKit"))
-        XCTAssertEqual(backend.allPendingRecovery.count, 1)
-        model.finishSecretKeyReplacement(result)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: exported.path))
-        XCTAssertNil(model.pendingRecoveryExport)
-        XCTAssertEqual(backend.allPendingRecovery.count, 1)
-        await model.exportPendingRecoveryKit(operationID: result.pendingOperationId, password: FakeBackend.password)
-        let acknowledged = await model.acknowledgePendingRecovery(operationID: result.pendingOperationId, password: FakeBackend.password)
+        let prepared = await model.exportNewAccountEmergencyKit()
+        let export = try XCTUnwrap(prepared)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: export.emergencyKitPath))
+        await model.recordEmergencyKitDelivery(exportID: try XCTUnwrap(export.exportId), method: "file", epoch: model.emergencyKitDeliveryEpoch)
+        let acknowledged = await model.finishNewSecretKey()
         XCTAssertTrue(acknowledged)
         XCTAssertTrue(backend.allPendingRecovery.isEmpty)
-        XCTAssertNil(model.pendingRecoveryExport)
+        model.removeEmergencyKit(export)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: export.emergencyKitPath))
     }
 
     func testDeleteAccountCleanupErrorStillSignsOut() async {
@@ -365,6 +294,7 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(export.secretKey, FakeBackend.secretKey)
         XCTAssertTrue(FileManager.default.fileExists(atPath: export.path))
         XCTAssertEqual(restarted.screen, .signedOut)
+        await restarted.recordPendingKitDelivery(method: "file", path: export.path)
         await restarted.acknowledgePendingRecovery(operationID: "pending-1", password: FakeBackend.password)
         XCTAssertTrue(restarted.allPendingRecovery.isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: export.path))
@@ -383,7 +313,7 @@ final class AccountLifecycleTests: XCTestCase {
         model.closePendingRecovery()
         XCTAssertNil(model.pendingRecoveryExport)
         XCTAssertEqual(backend.allPendingRecovery.count, 1)
-        XCTAssertTrue(backend.allPendingRecovery[0].kitSaved)
+        XCTAssertFalse(backend.allPendingRecovery[0].kitSaved)
     }
 
     func testLockWhilePreparingTheKitHidesItAndSaysToPrepareItAgain() async {
@@ -441,7 +371,7 @@ final class AccountLifecycleTests: XCTestCase {
         let accepted = await model.signUp(inviteLink: "https://recovery.example/invite/test", email: "pending@example.com", name: "Pending", password: FakeBackend.password)
         XCTAssertTrue(accepted)
         XCTAssertEqual(model.screen, .signedOut)
-        XCTAssertNil(model.newSecretKey)
+        XCTAssertNil(model.onboardingStep)
         XCTAssertTrue(model.isPendingRecoveryShown)
         XCTAssertEqual(model.errorMessage, "The server response was lost.")
     }
@@ -555,6 +485,7 @@ final class AccountLifecycleTests: XCTestCase {
         await first.refreshPendingRecovery()
         await first.exportPendingRecoveryKit(operationID: "pending-1", password: FakeBackend.password)
         let kit = try XCTUnwrap(first.pendingRecoveryExport)
+        await first.recordPendingKitDelivery(method: "file", path: kit.path)
         await first.acknowledgePendingRecovery(operationID: "pending-1", password: FakeBackend.password)
         XCTAssertEqual(first.allPendingRecovery.first?.phase, "prepared")
         backend.isPendingRecoveryFactorAvailable = false
@@ -603,7 +534,7 @@ final class AccountLifecycleTests: XCTestCase {
         backend.onCheckMinimumVersion = nil
         XCTAssertEqual(model.screen, .signedOut)
         XCTAssertTrue(model.allVault.isEmpty)
-        XCTAssertNil(model.newSecretKey)
+        XCTAssertNil(model.onboardingStep)
     }
 
     func testPendingRecoveryRefreshDoesNotDiscardActionError() async {

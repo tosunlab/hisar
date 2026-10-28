@@ -42,6 +42,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.model.EmergencyKitExport
@@ -60,108 +63,169 @@ import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import kotlinx.coroutines.launch
 
-/**
- * "Save your Secret Key", right after a sign-up that waits only for its Emergency Kit. It covers the app until its owner
- * saves the kit or finishes later, so Back does nothing here, as the iPhone's full-screen cover cannot be swiped away.
- * "I saved my Emergency Kit" waits for a save, print or share of the kit; a copied key alone does not count.
- */
+/** One kit screen, using core's saved state and authorization for the installed account. */
 @Composable
-fun NewSecretKeyScreen(model: AppModel, secretKey: String, copySecret: (String) -> Boolean) {
+fun NewSecretKeyScreen(model: AppModel, copySecret: (String) -> Boolean) {
+    val status by model.status.collectAsStateWithLifecycle()
+    val kit = status.emergencyKit ?: return
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var isCopied by remember { mutableStateOf(false) }
+    var secretKey by remember { mutableStateOf<String?>(null) }
     var export by remember { mutableStateOf<EmergencyKitExport?>(null) }
-    var isKitHandedOff by remember { mutableStateOf(false) }
+    var isPreparing by remember { mutableStateOf(true) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var password by remember { mutableStateOf("") }
+    var isPasswordShown by remember { mutableStateOf(false) }
     val latestExport by rememberUpdatedState(export)
     val view = LocalView.current
-    BackHandler {}
-    LaunchedEffect(Unit) {
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    fun leave() {
+        if (!kit.isAuthorized) model.signIn.closeEmergencyKitGate()
+        else scope.launch { model.signIn.postponeNewSecretKey() }
+    }
+    fun authorize(withBiometric: Boolean) {
+        focus.clearFocus(force = true)
+        keyboard?.hide()
+        val entered = password
+        password = ""
+        scope.launch { model.signIn.authorizeEmergencyKit(if (withBiometric) null else entered) }
+    }
+    BackHandler { if (!isBusy) leave() }
+    suspend fun prepareKit() {
+        isPreparing = true
         model.errorMessage.value = null
         export = model.signIn.exportNewAccountEmergencyKit()
+        isPreparing = false
+    }
+    LaunchedEffect(kit.operationId, kit.isAuthorized) {
+        model.errorMessage.value = null
+        if (kit.isAuthorized) {
+            secretKey = model.signIn.revealNewAccountSecretKey()
+            prepareKit()
+        }
     }
     DisposableEffect(Unit) {
         onDispose { latestExport?.let(model.settings::removeEmergencyKit) }
     }
     GroupedForm(
-        title = "Save your Secret Key",
+        title = if (kit.kind == "replace-secret-key") "Save your new Emergency Kit" else "Save your Emergency Kit",
         bottomBar = {
-            ProminentButton(
-                "I saved my Emergency Kit",
-                { scope.launch { model.signIn.finishNewSecretKey() } },
-                testTag = "new-secret-key-done",
-                enabled = export != null && isKitHandedOff,
-                isBusy = isBusy,
-            )
-            if (!isKitHandedOff) {
+            if (kit.isAuthorized) {
+                if (kit.savedBy.isNotEmpty()) {
+                    ProminentButton(
+                        "I saved my Emergency Kit",
+                        { scope.launch { model.signIn.finishNewSecretKey() } },
+                        testTag = "new-secret-key-done",
+                        isBusy = isBusy,
+                    )
+                }
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    PlainButton("Save later", ::leave, testTag = "new-secret-key-later", enabled = !isBusy)
+                }
                 Text(
-                    "Save, print or share the Emergency Kit first.",
+                    com.tryhisar.hisar.model.EmergencyKitStatus.SAVE_LATER_MESSAGE,
                     style = HisarType.footnote,
                     color = HisarTheme.colors.secondaryLabel,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().testTag("new-secret-key-hint"),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-            }
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                PlainButton("Finish later", { scope.launch { model.signIn.postponeNewSecretKey() } }, testTag = "new-secret-key-later", enabled = !isBusy)
+            } else {
+                if (status.biometricEnabled && !isPasswordShown) {
+                    ProminentButton("Continue with biometrics", { authorize(true) }, testTag = "kit-authorize-biometric", isBusy = isBusy)
+                    PlainButton("Use master password", { isPasswordShown = true }, testTag = "kit-use-password")
+                } else {
+                    ProminentButton("Continue", { authorize(false) }, testTag = "kit-authorize-password", enabled = password.isNotEmpty(), isBusy = isBusy)
+                }
+                PlainButton("Cancel", model.signIn::closeEmergencyKitGate, testTag = "kit-authorize-cancel")
             }
         },
     ) {
-        ClearSection {
-            Text(
-                "To sign in on another device you need your master password and this Secret Key. Hisar keeps a copy on this device. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults.",
-                style = HisarType.body,
-                color = HisarTheme.colors.label,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
-        }
-        FormSection(header = "Secret Key") {
-            FormRow {
-                SelectionContainer {
-                    // iOS wraps the key after a hyphen; Android's line breaker would split a group, so each group is its own word.
-                    FlowRow(Modifier.clearAndSetSemantics { text = AnnotatedString(secretKey); testTag = "new-secret-key" }) {
-                        for (group in secretKey.split("(?<=-)".toRegex())) {
-                            Text(group, style = HisarType.title3Monospaced, color = HisarTheme.colors.label)
+        if (!kit.isAuthorized) {
+            ClearSection { Text("Enter your master password to show your Secret Key.", style = HisarType.body, color = HisarTheme.colors.label) }
+            if (!status.biometricEnabled || isPasswordShown) {
+                FormSection {
+                    com.tryhisar.hisar.ui.components.FormTextField(
+                        password, { password = it }, placeholder = "Master password", testTag = "kit-master-password",
+                        isSecure = true, label = "Master password",
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
+                    )
+                }
+            }
+        } else {
+            ClearSection {
+                Text(
+                    if (kit.kind == "replace-secret-key") "Your Secret Key changed, so your old Emergency Kit no longer works. Save the new one."
+                    else "Hisar created a Secret Key for your account. You need it and your master password to sign in on a new device. You don't need to remember it.",
+                    style = HisarType.body, color = HisarTheme.colors.label,
+                )
+            }
+            secretKey?.let { key ->
+                FormSection(header = "Secret Key") {
+                    FormRow {
+                        SelectionContainer {
+                            FlowRow(Modifier.clearAndSetSemantics { text = AnnotatedString(key); testTag = "new-secret-key" }) {
+                                for (group in key.split("(?<=-)".toRegex())) {
+                                    Text(group, style = HisarType.title3Monospaced, color = HisarTheme.colors.label)
+                                }
+                            }
                         }
                     }
+                    RowDivider()
+                    FormButtonRow(
+                        if (isCopied) "Copied · clears in about 2 minutes" else "Copy Secret Key",
+                        onClick = { if (copySecret(key)) { isCopied = true; view.performConfirmHaptic() } },
+                        testTag = "copy-new-secret-key", icon = if (isCopied) Icons.Filled.Check else Icons.Outlined.ContentCopy,
+                    )
                 }
             }
-            RowDivider()
-            FormButtonRow(
-                if (isCopied) "Copied · clears in about 2 minutes" else "Copy Secret Key",
-                onClick = {
-                    if (copySecret(secretKey)) {
-                        isCopied = true
-                        view.performConfirmHaptic()
+            FormSection(header = "Emergency Kit") {
+                FormRow {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("The Emergency Kit holds your Secret Key and has a space to write your master password.")
+                        Text("Keep it where you can get to it without this device: print it, or save it to storage you can open from another device. Don't keep the only copy in Hisar.")
                     }
-                },
-                testTag = "copy-new-secret-key",
-                icon = if (isCopied) Icons.Filled.Check else Icons.Outlined.ContentCopy,
-            )
-        }
-        FormSection(
-            header = "Emergency Kit",
-            footer = { Text("The Emergency Kit holds your Secret Key and has a space to write your master password. Keep it away from your devices.") },
-        ) {
-            val current = export
-            if (current != null) {
-                EmergencyKitRows(model, current.emergencyKitPath, "new-secret-key-save-kit", "new-secret-key-print-kit", "new-secret-key-share-kit", onHandoff = { isKitHandedOff = true })
-            } else if (errorMessage == null) {
-                Box(Modifier.fillMaxWidth().heightIn(min = 52.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                 }
+                RowDivider()
+                val current = export
+                when {
+                    current != null -> EmergencyKitRows(
+                        model, current.emergencyKitPath, "new-secret-key-save-kit", "new-secret-key-print-kit", "new-secret-key-share-kit",
+                        onHandoff = { method -> scope.launch { if (model.signIn.recordEmergencyKitDelivery(current, method)) message = null } },
+                        isSaveProminent = kit.savedBy.isEmpty(),
+                        onMessage = { message = it },
+                    )
+                    isPreparing -> FormRow { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) }
+                    else -> FormButtonRow("Try again", { scope.launch { prepareKit() } }, testTag = "new-secret-key-retry-kit")
+                }
+                message?.let { FormRow { Text(it, Modifier.testTag("new-secret-key-hint")) } }
             }
-        }
-        FormSection {
-            FormRow(Modifier.testTag("master-password-warning")) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Warning, contentDescription = null, tint = HisarTheme.colors.warning, modifier = Modifier.size(24.dp))
-                    Spacer(Modifier.size(14.dp))
-                    Text("A forgotten master password can't be recovered by anyone, including Hisar.", style = HisarType.subheadline, fontWeight = FontWeight.Medium, color = HisarTheme.colors.label)
+            if (kit.savedBy.isNotEmpty()) {
+                FormSection {
+                    FormRow { Text(kit.savedMessage, Modifier.testTag("kit-saved-status").semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }) }
+                    FormRow { Text("A copy saved only on this device is lost with it. Print it, or keep another copy somewhere else.") }
                 }
             }
         }
         errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
+    }
+}
+
+@Composable
+fun EmergencyKitQRCode(qrCode: String) {
+    val bitmap = remember(qrCode) {
+        val encoded = qrCode.substringAfter("base64,", qrCode)
+        runCatching {
+            val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        }.getOrNull()
+    }
+    if (bitmap != null) {
+        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+            androidx.compose.foundation.Image(bitmap, contentDescription = "Sign-in QR code. Contains your Secret Key.", modifier = Modifier.size(240.dp).testTag("secret-key-qr-code"))
+        }
     }
 }
 

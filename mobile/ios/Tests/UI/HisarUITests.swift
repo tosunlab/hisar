@@ -102,12 +102,12 @@ final class HisarUITests: HisarUITestCase {
 
     func testPrivacyCoverHidesContentInTheBackground() throws {
         app.launch()
-        waitFor(app.segmentedControls["sign-in-mode"])
+        waitFor(app.buttons["welcome-create-account"])
         for _ in 0..<2 {
             XCUIDevice.shared.press(.home)
             XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended, timeout: 10))
             app.activate()
-            waitFor(app.segmentedControls["sign-in-mode"])
+            waitFor(app.buttons["welcome-create-account"])
             XCTAssertTrue(app.otherElements["privacy-cover"].waitForNonExistence(timeout: 5), "the cover goes away once the app is active")
         }
     }

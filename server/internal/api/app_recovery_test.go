@@ -274,6 +274,12 @@ func TestAppSecretKeyReplacementSurvivesLostCommitResponseAndRestart(t *testing.
 	if kit.SecretKey != resumed.SecretKey {
 		t.Fatal("the Emergency Kit did not deliver the remotely committed factor")
 	}
+	if err := restarted.AcknowledgePendingRecovery(changed.PendingOperationID, "recovery master password"); err == nil {
+		t.Fatal("a temporary export confirmed the Emergency Kit")
+	}
+	if err := restarted.RecordPendingRecoveryEmergencyKitDelivery(kit.ExportID, app.EmergencyKitSavedByShare); err != nil {
+		t.Fatal(err)
+	}
 	if err := restarted.AcknowledgePendingRecovery(changed.PendingOperationID, "recovery master password"); err != nil {
 		t.Fatal(err)
 	}

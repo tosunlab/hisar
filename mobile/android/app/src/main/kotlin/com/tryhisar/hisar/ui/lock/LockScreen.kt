@@ -70,6 +70,8 @@ fun LockScreen(model: AppModel) {
     val isResumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     val scope = rememberCoroutineScope()
     var isSignOutConfirmationShown by remember { mutableStateOf(false) }
+    var isHelpShown by remember { mutableStateOf(false) }
+    val interruptedKit by model.signIn.interruptedKitOperationID.collectAsStateWithLifecycle()
 
     LaunchedEffect(isResumed) {
         if (isResumed) model.lock.refreshShareAwaitingUnlock()
@@ -87,6 +89,14 @@ fun LockScreen(model: AppModel) {
         errorMessage = errorMessage,
         isOffline = status.isOffline,
         allNotice = allShareAwaitingUnlock.map { it.message },
+        kitReminder = status.emergencyKit?.let {
+            when {
+                interruptedKit == it.operationId -> "Hisar locked while you were saving your Emergency Kit. Unlock to continue."
+                it.savedBy.isNotEmpty() -> "Your Emergency Kit isn't confirmed yet. Unlock Hisar to confirm it."
+                else -> "Your Emergency Kit isn't saved yet. Unlock Hisar to save it."
+            }
+        }.orEmpty(),
+        showSecretKeyHelp = { isHelpShown = true },
         submitPassword = { model.lock.unlock(it) },
         submitBiometric = { model.lock.unlockWithBiometric() },
         signOut = { isSignOutConfirmationShown = true },
@@ -96,7 +106,7 @@ fun LockScreen(model: AppModel) {
         AlertDialog(
             onDismissRequest = { isSignOutConfirmationShown = false },
             title = { Text(AccountLifecycleLogic.SIGN_OUT_TITLE) },
-            text = { Text(AccountLifecycleLogic.LOCKED_SIGN_OUT_MESSAGE) },
+            text = { Text(AccountLifecycleLogic.signOutMessage(status.emergencyKit, isLocked = true)) },
             confirmButton = {
                 PlainButton("Sign out", {
                     isSignOutConfirmationShown = false
@@ -106,6 +116,7 @@ fun LockScreen(model: AppModel) {
             dismissButton = { PlainButton("Cancel", { isSignOutConfirmationShown = false }, testTag = "cancel-sign-out") },
         )
     }
+    if (isHelpShown) com.tryhisar.hisar.ui.signin.SecretKeyHelpSheet { isHelpShown = false }
 }
 
 /** The lock screen's form, which the iPhone app also shows in AutoFill and approvals. */
@@ -126,6 +137,8 @@ fun UnlockPanel(
     isOffline: Boolean = false,
     allNotice: List<String> = emptyList(),
     signOut: (() -> Unit)? = null,
+    kitReminder: String = "",
+    showSecretKeyHelp: (() -> Unit)? = null,
 ) {
     var password by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
@@ -191,6 +204,7 @@ fun UnlockPanel(
                 LogoMark(Modifier.padding(bottom = 6.dp), size = 72.dp)
                 Text("Hisar is locked", style = HisarType.title2, color = HisarTheme.colors.label)
                 Text(email, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, modifier = Modifier.testTag("lock-email"))
+                if (kitReminder.isNotEmpty()) Text(kitReminder, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, modifier = Modifier.testTag("lock-emergency-kit-reminder"))
                 if (requestDescription.isNotEmpty()) {
                     Text(requestDescription, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel)
                 }
@@ -248,6 +262,7 @@ fun UnlockPanel(
                 } else {
                     ProminentButton("Unlock", ::submit, testTag = "unlock-submit", enabled = password.isNotEmpty(), isBusy = isBusy, busyLabel = "Unlocking…")
                 }
+                showSecretKeyHelp?.let { PlainButton("Can't find your Secret Key?", it, testTag = "secret-key-help", textStyle = HisarType.footnote) }
                 if (signOut != null) {
                     PlainButton("Sign out", signOut, testTag = "lock-sign-out", color = HisarTheme.colors.secondaryLabel, textStyle = HisarType.footnote)
                 }

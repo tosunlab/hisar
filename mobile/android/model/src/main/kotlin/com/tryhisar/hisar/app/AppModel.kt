@@ -99,7 +99,7 @@ class AppModel(
     val signIn = SignInModel(this, isPlainHttpAllowed)
     val lock = LockModel(this)
     val settings = SettingsModel(this)
-    val pendingRecovery = PendingRecoveryModel(this) { signIn.offerBiometricUnlock() }
+    val pendingRecovery = PendingRecoveryModel(this) { signIn.openEmergencyKit() }
     val credentialImport = CredentialImportModel(this)
     val itemEditor = ItemEditorModel(this)
     val favorites = FavoritesModel(this)

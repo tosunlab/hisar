@@ -12,7 +12,6 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -21,6 +20,8 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.core.view.children
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.tryhisar.hisar.app.SignInModel
+import com.tryhisar.hisar.model.InviteLink
 import com.tryhisar.hisar.platform.targetContext
 import com.tryhisar.hisar.ui.RecordedViewStructure
 import org.junit.Assert.assertEquals
@@ -76,19 +77,25 @@ class AccountItemFlowUITests : HisarUITestCase() {
         val setupKey = "JBSWY3DPEHPK3PXP"
         launch()
 
-        waitFor("sign-in-mode", APP_START_TIMEOUT)
-        composeRule.onNode(hasText("Create account") and hasAnyAncestor(hasTestTag("sign-in-mode"))).performClick()
+        waitFor("welcome-create-account", APP_START_TIMEOUT)
+        tap("welcome-create-account")
+        tap("sign-up-use-different-server")
+        val invitation = requireNotNull(InviteLink.parseInvitation(inviteLink, SignInModel.DEFAULT_SERVER))
+        composeRule.onNode(hasTestTag("sign-up-server")).performTextReplacement(invitation.server)
+        Espresso.closeSoftKeyboard()
         type(inviteLink, "sign-up-invite-link")
         type(email, "sign-up-email")
         recreate()
-        waitFor("sign-up-email")
-        composeRule.onNode(hasTestTag("sign-up-email")).assertTextEquals(email)
+        waitFor("sign-up-invite-link")
         assertFalse(
             "the invite link, a bearer token, stays out of the saved state, which the system may write to disk",
-            exists(hasTestTag("sign-up-invite-link") and hasText(inviteLink.substringAfterLast('/'), substring = true)),
+            exists(hasText(inviteLink.substringAfterLast('/'), substring = true)),
         )
-        composeRule.onNode(hasTestTag("sign-up-invite-link")).performTextReplacement("")
+        type(inviteLink, "sign-up-invite-link")
+        waitFor("sign-up-email")
+        composeRule.onNode(hasTestTag("sign-up-email")).assertTextEquals(email)
         composeRule.onNode(hasTestTag("sign-up-email")).performTextReplacement("")
+        tap("remove-invitation")
         val secretKey = signUp(inviteLink, email, "Android UI")
         saveScreenshot("vaults")
 

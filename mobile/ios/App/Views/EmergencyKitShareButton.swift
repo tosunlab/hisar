@@ -5,7 +5,7 @@ struct EmergencyKitShareButton: View {
     var url: URL
     var label: String
     var onPresent: () -> Void = {}
-    var onCompleted: () -> Void
+    var onCompleted: (String?) -> Void
     @State private var isPresented = false
 
     var body: some View {
@@ -17,22 +17,30 @@ struct EmergencyKitShareButton: View {
                 .frame(maxWidth: .infinity)
         }
         .sheet(isPresented: $isPresented) {
-            EmergencyKitActivityView(url: url) { didComplete in
+            EmergencyKitActivityView(url: url) { method in
                 isPresented = false
-                if didComplete { onCompleted() }
+                onCompleted(method)
             }
         }
+        .onDisappear { isPresented = false }
+    }
+
+    static func deliveryMethod(activity: UIActivity.ActivityType?, completed: Bool, error: Error?) -> String? {
+        guard completed, error == nil, let activity, activity != .copyToPasteboard else { return nil }
+        if activity == .print { return "print" }
+        if activity.rawValue == "com.apple.DocumentManagerUICore.SaveToFiles" { return "file" }
+        return "share"
     }
 }
 
 private struct EmergencyKitActivityView: UIViewControllerRepresentable {
     var url: URL
-    var onDismiss: (Bool) -> Void
+    var onDismiss: (String?) -> Void
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
         let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         controller.completionWithItemsHandler = { activity, completed, _, error in
-            onDismiss(completed && error == nil && activity != .copyToPasteboard)
+            onDismiss(EmergencyKitShareButton.deliveryMethod(activity: activity, completed: completed, error: error))
         }
         return controller
     }

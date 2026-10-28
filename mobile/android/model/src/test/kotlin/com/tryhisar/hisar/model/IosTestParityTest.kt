@@ -47,14 +47,6 @@ class IosTestParityTest {
         mapOf(
             "testCameraAuthorizationChoosesActionableScannerState" to
                 "Covers AVFoundation camera authorization and the iOS app Settings route",
-            "testNewAccountKitRetryKeepsTheKeyAndUsesAFreshDirectory" to
-                "Covers the iPhone initial Emergency Kit retry and its temporary PDF directories",
-            "testDeferredSignupRequiresProtectedUnambiguousDelivery" to
-                "The focused deferred-signup presentation is currently iPhone-specific",
-            "testDeferredSignupUsesOnePasswordWithoutSwitchingAccounts" to
-                "The focused deferred-signup presentation is currently iPhone-specific",
-            "testDeferredSignupFinishLaterClearsDeliveryButKeepsTheRecord" to
-                "The focused deferred-signup presentation is currently iPhone-specific",
             "testForegroundRefreshUpdatesAutoFillWithoutRequestingPermission" to
                 "iOS Settings exposes the credential identity store's enabled state; Android uses its own AutoFill service status.",
             "testForegroundRefreshRegistersOnlyNewlyAllowedNotifications" to
@@ -105,6 +97,7 @@ class IosTestParityTest {
             "testLoadedItemConversionFailurePreservesItemAndReportsError" to deviceOnly,
             "testLoadedItemCopyFailurePreservesItemAndReportsError" to deviceOnly,
             "testLoadedItemPasskeyDeletionFailurePreservesItemAndReportsError" to deviceOnly,
+            "testInvitationEmailAndServerStayBound" to deviceOnly,
             "testCrossVaultRowsReserveSourceLine" to deviceOnly,
             "testOfflineDisclosuresFollowOnlineStatus" to deviceOnly,
             "testErrorPresentationAnnouncesChangedMessagesOnce" to deviceOnly,

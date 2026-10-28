@@ -112,7 +112,7 @@ func TestCredentialChangeReportsCacheDeletionFailureAndKeepsTheNewSecretKey(t *t
 	if err != nil || kit.SecretKey != visible.SecretKey || kit.Path == "" {
 		t.Fatalf("the committed replacement's Emergency Kit is unavailable: %v", err)
 	}
-	if result.SecretKey != newSecretKey.Encode() || service.newAccountSecretKey == nil || service.newAccountSecretKey.Encode() != result.SecretKey {
+	if result.SecretKey != newSecretKey.Encode() || service.kitGrant == nil || service.kitGrant.secretKey == nil || service.kitGrant.secretKey.Encode() != result.SecretKey {
 		t.Fatal("the committed replacement Secret Key was lost")
 	}
 	stored, err := service.config.SecretKeyStore.LoadSecretKey(fixture.accountID)

@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { flushPromises, mount } from "@vue/test-utils";
-import { allTestVault, createApiMock, createItem, createStatus } from "../testing";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
+import { allTestVault, createApiMock, createEmergencyKit, createItem, createStatus } from "../testing";
 import globalStyles from "../style.css?raw";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
@@ -35,6 +35,7 @@ const TouchIDOfferView = (await import("./TouchIDOfferView.vue")).default;
 const ItemDetailPanel = (await import("./ItemDetailPanel.vue")).default;
 const PasswordGenerator = (await import("./PasswordGenerator.vue")).default;
 const api = apiMock.current;
+enableAutoUnmount(afterEach);
 
 function resetStore(): void {
   Object.assign(store, {
@@ -46,8 +47,10 @@ function resetStore(): void {
     selectedItem: null,
     editorMode: "view",
     searchQuery: "",
-    pendingSecretKey: "",
-    isTouchIDOfferShown: false,
+    onboardingStep: "",
+    pendingInvite: null,
+    pendingRecovery: [],
+    isRecoveryOpen: false,
     errorMessage: "",
     noticeMessage: "",
     isBusy: false,
@@ -94,17 +97,15 @@ describe("SignInView", () => {
     expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(false);
     await wrapper.get('[data-testid="use-different-server"]').trigger("click");
     await wrapper.get('input[name="server"]').setValue(" HTTPS://EU.TRYHISAR.COM:443/ ");
+    await wrapper.get('input[name="server"]').trigger("blur");
+    await flushPromises();
     expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(true);
     await wrapper.get('input[name="inviteCode"]').setValue("https://hisar.example.org/invite/abc123");
     expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(false);
-    await wrapper.get('input[name="inviteCode"]').setValue("otherCode");
-    expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(true);
-    await wrapper.get('input[name="inviteCode"]').setValue("");
-    await wrapper.get('input[name="server"]').setValue("http://eu.tryhisar.com");
-    expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(false);
+    await wrapper.findAll("button").find(button => button.text() === "Remove invitation")!.trigger("click");
+    await flushPromises();
     await wrapper.get('input[name="inviteCode"]').setValue("https://eu.tryhisar.com/invite/abc123");
     expect(wrapper.find('[data-testid="legal-links"]').exists()).toBe(true);
-    wrapper.unmount();
   });
 
   beforeEach(() => {
@@ -130,8 +131,8 @@ describe("SignInView", () => {
     await wrapper.get('input[name="password"]').setValue("do not keep this password");
     await wrapper.get('[data-testid="open-emergency-kit"]').trigger("click");
     await flushPromises();
-    expect((wrapper.get('input[name="email"]').element as HTMLInputElement).value).toBe("kit@example.com");
-    expect((wrapper.get('input[name="secretKey"]').element as HTMLInputElement).value).toBe("H1-IMPORTED");
+    expect(wrapper.get('[data-testid="imported-kit"]').text()).toContain("kit@example.com on kit.example");
+    expect(wrapper.find('input[name="secretKey"]').exists()).toBe(false);
     expect((wrapper.get('input[name="password"]').element as HTMLInputElement).value).toBe("");
     expect(wrapper.get('[data-testid="sign-in-server"]').text()).toBe("Signs in to kit.example.");
     expect(document.activeElement).toBe(wrapper.get('input[name="password"]').element);
@@ -184,11 +185,12 @@ describe("SignInView", () => {
   it("blocks account creation when the passwords differ", async () => {
     const wrapper = mount(SignInView);
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
     await wrapper.find('input[name="password"]').setValue("first password");
     await wrapper.find('input[name="repeatedPassword"]').setValue("other password");
-    expect(wrapper.text()).toContain("The passwords do not match.");
-    expect(wrapper.find('button[type="submit"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.find('button[type="submit"]').attributes("disabled")).toBeUndefined();
     await wrapper.find("form").trigger("submit");
+    expect(wrapper.text()).toContain("The master passwords don't match.");
     expect(api.signUp).not.toHaveBeenCalled();
   });
 
@@ -198,11 +200,26 @@ describe("SignInView", () => {
     expect(wrapper.find('[role="alert"]').text()).toContain("cannot reach the Hisar server");
   });
 
-  it("points to the Emergency Kit for a lost Secret Key and offers no account recovery", () => {
+  it("keeps one tagline and shows the developer panel for sign in and the safety panel for account creation", async () => {
+    const tagline = "Passwords, SSH keys and secrets for developers, end-to-end encrypted.";
     const wrapper = mount(SignInView);
-    expect(wrapper.find('[data-testid="secret-key-note"]').text()).toBe("Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.");
+    expect(wrapper.find('[data-testid="brand-title"]').text()).toBe(tagline);
+    expect(wrapper.find("h1").text()).toBe("Welcome back");
+    expect(wrapper.text()).toContain("Made for the terminal");
+    expect(wrapper.text()).toContain("The hisar command-line tool reads passwords and one-time codes, and uses SSH keys through the agent");
+    expect(wrapper.text()).toContain("Private keys never leave Hisar.");
+    expect(wrapper.text()).not.toContain("!");
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    expect(wrapper.find('[data-testid="brand-title"]').text()).toBe(tagline);
+    expect(wrapper.get("h1").text()).toBe("Create account");
+    expect(wrapper.text()).toContain("Safe even if the server is breached");
+  });
+
+  it("opens lost-key help without offering a password reset", async () => {
+    const wrapper = mount(SignInView);
+    await wrapper.get('[data-testid="secret-key-note"]').trigger("click");
+    expect(wrapper.find('[role="dialog"]').text()).toContain("Hisar can't reset it");
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(["Sign in", "Create account"]);
-    expect(wrapper.text()).not.toMatch(/recover|admin/i);
   });
 
   it("saves the recovery warning for the Secret Key screen", async () => {
@@ -212,7 +229,7 @@ describe("SignInView", () => {
     expect(wrapper.text()).not.toMatch(/can't be recovered|Nobody can reset/);
     expect(wrapper.find('[data-testid="create-account-note"]').exists()).toBe(false);
     wrapper.unmount();
-    store.pendingSecretKey = "H1-ABC123-SECRET";
+    store.status = { ...createStatus("unlocked"), emergencyKit: createEmergencyKit() };
     const secretKey = mount(SecretKeyView);
     expect(secretKey.findAll('[data-testid="master-password-warning"]')).toHaveLength(1);
     expect(secretKey.get('[data-testid="master-password-warning"]').text()).toBe("A forgotten master password can't be recovered by anyone, including Hisar.");
@@ -225,6 +242,7 @@ describe("SignInView", () => {
     api.signIn.mockResolvedValue(createStatus("unlocked"));
     api.listAllVault.mockResolvedValue([]);
     const wrapper = mount(SignInView);
+    await wrapper.findAll("button").find(button => button.text() === "I already have an account")!.trigger("click");
     expect(wrapper.find('input[name="server"]').exists()).toBe(false);
     await wrapper.find('input[name="email"]').setValue("alice@example.com");
     await wrapper.find('input[name="secretKey"]').setValue("H1-KEY");
@@ -241,7 +259,7 @@ describe("SignInView", () => {
     expect(disclosure.text()).toBe("Use a different server…");
     await disclosure.trigger("click");
     expect((wrapper.find('input[name="server"]').element as HTMLInputElement).value).toBe("eu.tryhisar.com");
-    expect(wrapper.find('[data-testid="use-different-server"]').exists()).toBe(false);
+    expect(wrapper.find('input[name="server"]').exists()).toBe(true);
   });
 
   it("keeps another server behind the disclosure too, naming it", async () => {
@@ -274,7 +292,7 @@ describe("SignInView", () => {
     api.signIn.mockResolvedValue(createStatus("unlocked"));
     api.listAllVault.mockResolvedValue([]);
     const wrapper = mount(SignInView);
-    expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to eu.tryhisar.com.");
+    expect(wrapper.find("h1").text()).toBe("Welcome to Hisar");
     store.status = { ...createStatus("signed-out"), server: "http://127.0.0.1:8080", email: "" };
     await flushPromises();
     expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to http://127.0.0.1:8080.");
@@ -297,7 +315,7 @@ describe("SignInView", () => {
     await wrapper.find('input[name="password"]').setValue("hunter2");
     await flushPromises();
     expect(feedback().text()).toBe("Use at least 10 characters.");
-    expect(submitButton().attributes("disabled")).toBeDefined();
+    expect(submitButton().attributes("disabled")).toBeUndefined();
 
     await wrapper.find('input[name="password"]').setValue("password1234");
     await wrapper.find('input[name="repeatedPassword"]').setValue("password1234");
@@ -305,7 +323,7 @@ describe("SignInView", () => {
     expect(api.checkMasterPassword).toHaveBeenCalledWith("password1234");
     expect(wrapper.find('[data-testid="strength-meter"]').text()).toContain("Weak");
     expect(feedback().text()).toBe("This password is too easy to guess. Add a few more words or characters.");
-    expect(submitButton().attributes("disabled")).toBeDefined();
+    expect(submitButton().attributes("disabled")).toBeUndefined();
     await wrapper.find("form").trigger("submit");
     expect(api.signUp).not.toHaveBeenCalled();
 
@@ -327,16 +345,18 @@ describe("SignInView", () => {
     await wrapper.find('input[name="password"]').setValue("orange cactus harbor lanterns");
     await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor lanterns");
     await flushPromises();
-    expect(submitButton().attributes("disabled")).toBeDefined();
+    await wrapper.find("form").trigger("submit");
+    expect(api.signUp).not.toHaveBeenCalled();
   });
 
   it("turns a pasted invite link into its code and signs up with the link", async () => {
     api.signUp.mockResolvedValue({ secretKey: "H1-NEW", status: createStatus("unlocked") });
     const wrapper = mount(SignInView);
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
     const inviteInput = wrapper.find('input[name="inviteCode"]');
     await inviteInput.setValue("https://hisar.example.com/invite/abc_DEF-123");
-    expect((inviteInput.element as HTMLInputElement).value).toBe("abc_DEF-123");
+    expect(wrapper.get('[data-testid="invitation-card"]').text()).toContain("hisar.example.com");
     await wrapper.find('input[name="name"]').setValue("Alice");
     await wrapper.find('input[name="email"]').setValue("alice@example.com");
     await wrapper.find('input[name="password"]').setValue("orange cactus harbor lantern");
@@ -357,7 +377,7 @@ describe("SignInView", () => {
     await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor lantern");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
-    expect(api.signUp).toHaveBeenCalledWith("abc123", "alice@example.com", "Alice", "orange cactus harbor lantern");
+    expect(api.signUp).toHaveBeenCalledWith("https://hisar.test/invite/abc123", "alice@example.com", "Alice", "orange cactus harbor lantern");
     expect(api.signUpWithoutInvite).not.toHaveBeenCalled();
   });
 
@@ -366,12 +386,14 @@ describe("SignInView", () => {
     const wrapper = mount(SignInView);
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
     expect(wrapper.find('input[name="inviteCode"]').attributes("required")).toBeUndefined();
-    expect(wrapper.find('[data-testid="invite-hint"]').text()).toBe("Leave it empty if the server lets anyone sign up.");
-    expect(wrapper.find('[data-testid="create-account-server"]').text()).toBe("Creates the account on hisar.test.");
+    expect(wrapper.find('[data-testid="invite-hint"]').text()).toContain("This server doesn't say whether it needs an invitation.");
+    expect(wrapper.find('[data-testid="create-account-server"]').text()).toBe("Creates your account on hisar.test.");
     expect(wrapper.find('input[name="server"]').exists()).toBe(false);
     await wrapper.find('[data-testid="use-different-server"]').trigger("click");
-    expect(wrapper.find('[data-testid="use-different-server"]').exists()).toBe(false);
+    expect(wrapper.find('input[name="server"]').exists()).toBe(true);
     await wrapper.find('input[name="server"]').setValue("hisar.example.org");
+    await wrapper.get('input[name="server"]').trigger("blur");
+    await flushPromises();
     await wrapper.find('input[name="name"]').setValue("Alice");
     await wrapper.find('input[name="email"]').setValue("alice@example.com");
     await wrapper.find('input[name="password"]').setValue("orange cactus harbor lantern");
@@ -388,13 +410,13 @@ describe("SignInView", () => {
     await wrapper.find('[data-testid="use-different-server"]').trigger("click");
     expect(wrapper.find('input[name="server"]').exists()).toBe(true);
     await wrapper.find('input[name="inviteCode"]').setValue("https://hisar.example.com/invite/abc_DEF-123");
-    expect(wrapper.find('input[name="server"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="create-account-server"]').exists()).toBe(false);
+    expect((wrapper.get('input[name="server"]').element as HTMLInputElement).value).toBe("hisar.example.com");
+    expect(wrapper.get('[data-testid="create-account-server"]').text()).toContain("hisar.example.com");
     expect(wrapper.find('[data-testid="invite-hint"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="invite-server"]').text()).toBe("Server: hisar.example.com");
-    await wrapper.find('input[name="inviteCode"]').setValue("");
-    expect(wrapper.find('input[name="server"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="invite-hint"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="invite-server"]').text()).toBe("on hisar.example.com");
+    await wrapper.findAll("button").find(button => button.text() === "Remove invitation")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find('input[name="inviteCode"]').exists()).toBe(true);
   });
 
   it("shows the server's answer when sign-ups are not open", async () => {
@@ -408,69 +430,8 @@ describe("SignInView", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
     expect(api.signUpWithoutInvite).toHaveBeenCalledWith("hisar.test", "alice@example.com", "Alice", "orange cactus harbor lantern");
-    expect(wrapper.find('[role="alert"]').text()).toBe("Sign-ups are not open on this server. Ask an admin for an invitation.");
+    expect(wrapper.find('[role="alert"]').text()).toBe("Sign-ups on hisar.test need an invitation now. Ask someone with an account there to invite you.");
     expect(store.status.state).toBe("signed-out");
-  });
-});
-
-describe("SecretKeyView", () => {
-  beforeEach(resetStore);
-
-  it("only continues after the Emergency Kit was saved and the user confirms it", async () => {
-    store.pendingSecretKey = "H1-ABC123-SECRET";
-    api.saveNewAccountEmergencyKit.mockResolvedValue("/Users/alice/Hisar Emergency Kit.pdf");
-    const wrapper = mount(SecretKeyView);
-    expect(wrapper.find('[data-testid="secret-key"]').attributes("aria-label")).toBe("H1-ABC123-SECRET");
-    const continueButton = wrapper.get('[data-testid="secret-key-continue"]');
-    expect(continueButton.attributes("disabled")).toBeDefined();
-    expect(wrapper.get('input[name="hasSaved"]').attributes("disabled")).toBeDefined();
-    expect(wrapper.get('[data-testid="save-kit-hint"]').text()).toBe("Save the Emergency Kit to continue.");
-    await wrapper.get('[data-testid="save-emergency-kit"]').trigger("click");
-    await flushPromises();
-    expect(wrapper.find('[data-testid="save-kit-hint"]').exists()).toBe(false);
-    expect(continueButton.attributes("disabled")).toBeDefined();
-    await wrapper.get('input[name="hasSaved"]').setValue(true);
-    await continueButton.trigger("click");
-    await flushPromises();
-    expect(api.acknowledgeNewAccountRecovery).toHaveBeenCalled();
-    expect(store.pendingSecretKey).toBe("");
-    expect(store.isTouchIDOfferShown).toBe(false);
-    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
-  });
-
-  it("stays unconfirmable when the save dialog is cancelled", async () => {
-    store.pendingSecretKey = "H1-ABC123-SECRET";
-    api.saveNewAccountEmergencyKit.mockResolvedValue("");
-    const wrapper = mount(SecretKeyView);
-    await wrapper.get('[data-testid="save-emergency-kit"]').trigger("click");
-    await flushPromises();
-    expect(wrapper.get('input[name="hasSaved"]').attributes("disabled")).toBeDefined();
-    expect(wrapper.get('[data-testid="secret-key-continue"]').attributes("disabled")).toBeDefined();
-  });
-
-  it("offers Touch ID after the Secret Key when the Mac has it", async () => {
-    store.pendingSecretKey = "H1-ABC123-SECRET";
-    store.status = { ...createStatus("unlocked"), biometricAvailable: true };
-    api.saveNewAccountEmergencyKit.mockResolvedValue("/Users/alice/Hisar Emergency Kit.pdf");
-    const wrapper = mount(SecretKeyView);
-    await wrapper.get('[data-testid="save-emergency-kit"]').trigger("click");
-    await flushPromises();
-    await wrapper.get('input[name="hasSaved"]').setValue(true);
-    await wrapper.get('[data-testid="secret-key-continue"]').trigger("click");
-    await flushPromises();
-    expect(store.pendingSecretKey).toBe("");
-    expect(store.isTouchIDOfferShown).toBe(true);
-    expect(api.forgetNewAccountSecretKey).not.toHaveBeenCalled();
-  });
-
-  it("finishes later without acknowledging the sign-up", async () => {
-    store.pendingSecretKey = "H1-ABC123-SECRET";
-    const wrapper = mount(SecretKeyView);
-    await wrapper.get('[data-testid="secret-key-later"]').trigger("click");
-    await flushPromises();
-    expect(store.pendingSecretKey).toBe("");
-    expect(api.acknowledgeNewAccountRecovery).not.toHaveBeenCalled();
-    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
   });
 });
 
@@ -479,7 +440,7 @@ describe("TouchIDOfferView", () => {
     vi.clearAllMocks();
     resetStore();
     store.status = { ...createStatus("unlocked"), biometricAvailable: true };
-    store.isTouchIDOfferShown = true;
+    store.onboardingStep = "biometric";
   });
 
   it("turns on Touch ID in one click with the key kept from sign-up", async () => {
@@ -491,7 +452,7 @@ describe("TouchIDOfferView", () => {
     expect(api.enableNewAccountBiometricUnlock).toHaveBeenCalledTimes(1);
     expect(api.enableBiometricUnlock).not.toHaveBeenCalled();
     expect(store.status.biometricEnabled).toBe(true);
-    expect(store.isTouchIDOfferShown).toBe(false);
+    expect(store.onboardingStep).toBe("");
     expect(store.noticeMessage).toBe("Touch ID unlock is on");
     expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
   });
@@ -501,7 +462,7 @@ describe("TouchIDOfferView", () => {
     const wrapper = mount(TouchIDOfferView);
     await wrapper.find('[data-testid="accept-touch-id-offer"]').trigger("click");
     await flushPromises();
-    expect(store.isTouchIDOfferShown).toBe(true);
+    expect(store.onboardingStep).toBe("biometric");
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
     expect(api.forgetNewAccountSecretKey).not.toHaveBeenCalled();
   });
@@ -509,7 +470,7 @@ describe("TouchIDOfferView", () => {
   it("continues without Touch ID on Not now", async () => {
     const wrapper = mount(TouchIDOfferView);
     await wrapper.find('[data-testid="decline-touch-id-offer"]').trigger("click");
-    expect(store.isTouchIDOfferShown).toBe(false);
+    expect(store.onboardingStep).toBe("");
     expect(api.enableNewAccountBiometricUnlock).not.toHaveBeenCalled();
     expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
   });

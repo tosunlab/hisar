@@ -126,7 +126,7 @@ expect "invite email carries the link and the code" "$BOB_MAIL" "$HISAR_PUBLIC_U
 BOB_INVITE_PAGE=$(curl -s "$HISAR_PUBLIC_URL/invite/$BOB_CODE")
 expect "the emailed invite link opens a page naming the inviter" "$BOB_INVITE_PAGE" "Alice (alice@example.com)</span> invited you to Hisar"
 expect "the invite page shows the code to paste" "$BOB_INVITE_PAGE" "data-testid=\"invite-code\">$BOB_CODE</code>"
-expect "the invite page opens the app with the invite" "$BOB_INVITE_PAGE" "href=\"hisar://invite/$BOB_CODE?server=http%3A%2F%2F127.0.0.1%3A$PORT\""
+expect "the invite page opens the app with the invite and its bound email" "$BOB_INVITE_PAGE" "href=\"hisar://invite/$BOB_CODE?email=bob%40example.com&amp;server=http%3A%2F%2F127.0.0.1%3A$PORT\""
 printf 'bob@example.com\nBob\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/bob-emergency-kit.pdf" "$HISAR_PUBLIC_URL/invite/$BOB_CODE" 2>"$T/bob-signup.txt"
 BOB_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/bob-signup.txt")
 expect "bob signs up from the emailed code" "$BOB_SK" "H1-"

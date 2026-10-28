@@ -173,7 +173,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean, retryStartup: (
                                 },
                             ) {
                                 when (val step = newAccountStep) {
-                                    is NewAccountStep.SaveSecretKey -> NewSecretKeyScreen(model, step.secretKey, copySecret)
+                                    NewAccountStep.SaveSecretKey -> NewSecretKeyScreen(model, copySecret)
                                     NewAccountStep.BiometricOffer -> BiometricOfferScreen(model)
                                     null -> Unit
                                 }

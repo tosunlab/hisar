@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/invitelink"
 	"github.com/tryhisar/hisar/core/item"
@@ -188,6 +189,30 @@ func (s *Service) SignUpWithoutInvite(server, email, name, password string) (Sig
 	return s.signUp(server, "", email, name, password)
 }
 
+// GetSignUpPolicy asks server whether it lets anyone create an account, so Create account can ask for an invitation
+// before anything else. It caches nothing: the policy can change at any time, and the server enforces it at sign-up.
+func (s *Service) GetSignUpPolicy(server string) (SignUpPolicy, error) {
+	server, err := resolveServer(server)
+	if err != nil {
+		return SignUpPolicy{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	policy := SignUpPolicy{Server: server, Host: describeServer(server), Mode: SignUpModeUnknown}
+	answer, err := s.createClient(server).GetRegistrationPolicy(ctx)
+	if errors.Is(err, apiclient.ErrRegistrationPolicyUnsupported) {
+		return policy, nil
+	}
+	if err != nil {
+		return SignUpPolicy{}, authenticationError(server, err)
+	}
+	switch answer.Mode {
+	case apitypes.RegistrationModeOpen, apitypes.RegistrationModeInvite, apitypes.RegistrationModeSetup:
+		policy.Mode = answer.Mode
+	}
+	return policy, nil
+}
+
 func (s *Service) signUp(server, token, email, name, password string) (SignUpResult, error) {
 	s.mutex.Lock()
 	epoch := s.sessionEpoch
@@ -236,6 +261,7 @@ func (s *Service) Unlock(password string) (Status, error) {
 	}
 	server, token, accountID, epoch := s.state.Server, s.state.Token, s.state.AccountID, s.sessionEpoch
 	recoveryOperationID := s.state.RecoveryOperationID
+	owed := s.owedEmergencyKit()
 	accountCache := s.getCache()
 	migrator, _ := s.config.Biometric.(BiometricKeyMigrator)
 	var sealedBiometricKey []byte
@@ -246,7 +272,20 @@ func (s *Service) Unlock(password string) (Status, error) {
 
 	passwordBytes := []byte(password)
 	defer clear(passwordBytes)
-	secretKey, err := s.loadAccountSecretKey(server, accountID, recoveryOperationID, passwordBytes)
+	// The owed kit's record opens with the password too, so this unlock keeps its Secret Key and account unlock key as
+	// the kit's authorization instead of asking again on the kit screen.
+	var secretKey crypt.SecretKey
+	var err error
+	isKitOpened := false
+	if owed != nil {
+		secretKey, err = s.openOwedEmergencyKit(*owed, passwordBytes)
+		isKitOpened = err == nil
+		if !isKitOpened {
+			secretKey, err = s.config.SecretKeyStore.LoadSecretKey(accountID)
+		}
+	} else {
+		secretKey, err = s.loadAccountSecretKey(server, accountID, recoveryOperationID, passwordBytes)
+	}
 	if err != nil {
 		return Status{}, fmt.Errorf("the Secret Key is missing from the keychain or protected recovery storage; sign in again: %w", err)
 	}
@@ -255,7 +294,17 @@ func (s *Service) Unlock(password string) (Status, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	unlocked, err := session.Unlock(ctx, apiClient, accountCache, passwordBytes, secretKey)
+	var unlocked *session.Session
+	var kitUnlockKey []byte
+	defer func() { clear(kitUnlockKey) }()
+	if isKitOpened {
+		kitUnlockKey, err = session.DeriveAccountUnlockKey(ctx, apiClient, accountCache, passwordBytes, secretKey)
+		if err == nil {
+			unlocked, err = session.UnlockWithAccountUnlockKey(ctx, apiClient, accountCache, kitUnlockKey, accountID)
+		}
+	} else {
+		unlocked, err = session.Unlock(ctx, apiClient, accountCache, passwordBytes, secretKey)
+	}
 	if apiclient.IsStatus(err, http.StatusUnauthorized) {
 		s.endSignedOutSession(token)
 		return s.GetStatus(), nil
@@ -283,6 +332,13 @@ func (s *Service) Unlock(password string) (Status, error) {
 	defer s.mutex.Unlock()
 	if err := s.openUnlockedSession(unlocked, epoch); err != nil {
 		return s.buildStatus(), err
+	}
+	if isKitOpened && s.unlockedSession == unlocked {
+		var unlockKey []byte
+		if s.isBiometricOfferPossible() {
+			unlockKey = bytes.Clone(kitUnlockKey)
+		}
+		s.setKitGrant(owed.OperationID, secretKey, unlockKey)
 	}
 	s.recordPasswordUnlock()
 	s.biometricSetupError = biometricSetupError
@@ -324,6 +380,7 @@ func (s *Service) openUnlockedSession(unlocked *session.Session, epoch uint64) e
 		return nil
 	}
 	s.openSession(unlocked)
+	s.notePostponedEmergencyKit()
 	return nil
 }
 

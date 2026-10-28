@@ -2,151 +2,157 @@ import SwiftUI
 
 struct NewSecretKeyView: View {
     @EnvironmentObject private var model: AppModel
-    var secretKey: String
-
-    private enum KitState {
-        case loading
-        case failed(String)
-        case ready(EmergencyKitExport)
-    }
-
-    @State private var kitState = KitState.loading
-    @State private var isKitShared = false
+    @State private var secretKey: String?
+    @State private var export: EmergencyKitExport?
+    @State private var password = ""
+    @State private var isPasswordShown = false
+    @State private var isPreparing = false
+    @State private var wasCancelled = false
     @State private var preparationGeneration = 0
 
-    private var export: EmergencyKitExport? {
-        if case .ready(let export) = kitState { return export }
-        return nil
-    }
+    private var kit: EmergencyKitStatus? { model.status.emergencyKit }
+    private var isAuthorized: Bool { kit?.isAuthorized == true }
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    Text("To sign in on another device you need your master password and this Secret Key.")
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
-                }
-                SecretKeySection(secretKey: secretKey, valueIdentifier: "new-secret-key", copyIdentifier: "new-secret-key-copy", onCopy: model.reportActivity)
-                Section {
-                    switch kitState {
-                    case .ready(let export):
-                        EmergencyKitShareButton(
-                            url: URL(fileURLWithPath: export.emergencyKitPath),
-                            label: "Save or print Emergency Kit",
-                            onPresent: model.reportActivity,
-                            onCompleted: {
-                                isKitShared = true
-                                model.reportActivity()
+                if isAuthorized {
+                    readySections
+                } else {
+                    Section {
+                        Text("Enter your master password to show your Secret Key.")
+                        if model.status.biometricEnabled && !isPasswordShown {
+                            Button("Continue with \(SettingsView.biometryName)") {
+                                Task { await authorize() }
                             }
-                        )
-                        .applyProminentGlassStyle()
-                        .controlSize(.large)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets())
-                        .accessibilityIdentifier("new-secret-key-share-kit")
-                    case .failed(let reason):
-                        ErrorBanner(message: "The Emergency Kit could not be created (\(reason)). Write down the Secret Key above.")
-                        Button("Try again") {
-                            Task { await prepareKit() }
+                            .applyProminentGlassStyle()
+                            .accessibilityIdentifier("new-secret-key-biometric")
+                            Button("Use master password") { isPasswordShown = true }
+                        } else {
+                            CredentialField("Master password", text: $password)
+                                .textContentType(.password)
+                                .submitLabel(.go)
+                                .onSubmit { Task { await authorize() } }
+                                .accessibilityIdentifier("new-secret-key-password")
+                            Button("Continue") { Task { await authorize() } }
+                                .applyProminentGlassStyle()
+                                .disabled(password.isEmpty)
+                                .accessibilityIdentifier("new-secret-key-authorize")
                         }
-                        .accessibilityIdentifier("new-secret-key-retry-kit")
-                    case .loading:
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .listRowBackground(Color.clear)
+                        Button("Cancel") { model.closeEmergencyKit() }
                     }
-                } header: {
-                    Text("Emergency Kit")
-                        .foregroundStyle(.themeSecondary)
-                } footer: {
-                    Text("The Emergency Kit holds your Secret Key and has a space to write your master password. Keep it away from your devices.")
-                        .foregroundStyle(.themeSecondary)
-                }
-                Section {
-                    Label {
-                        Text("A forgotten master password can't be recovered by anyone, including Hisar.")
-                            .font(.subheadline.weight(.medium))
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.themeWarning)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("master-password-warning")
+                    .disabled(model.isBusy)
                 }
                 if let errorMessage = model.errorMessage {
-                    Section {
-                        ErrorBanner(message: errorMessage)
-                    }
+                    Section { ErrorBanner(message: errorMessage) }
                 }
             }
             .applyThemedListStyle()
             .reportsActivity(to: model)
-            .navigationTitle("Save your Secret Key")
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 8) {
-                    Button {
-                        Task { await model.finishNewSecretKey() }
-                    } label: {
-                        Group {
-                            if model.isBusy {
-                                ProgressView()
-                            } else {
-                                Text("I saved my Emergency Kit")
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .applyProminentGlassStyle()
-                    .controlSize(.large)
-                    .disabled(export == nil || !isKitShared || model.isBusy)
-                    .accessibilityIdentifier("new-secret-key-done")
-                    if !isKitShared {
-                        Text("Save or print the Emergency Kit to continue.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("new-secret-key-hint")
-                    }
-                    Button("Finish later") {
-                        Task { await model.postponeNewSecretKey() }
-                    }
-                    .controlSize(.large)
-                    .disabled(model.isBusy)
-                    .accessibilityIdentifier("new-secret-key-later")
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
-            }
-            .task {
+            .navigationTitle(kit?.kind == "replace-secret-key" ? "Save your new Emergency Kit" : "Save your Emergency Kit")
+            .navigationBarTitleDisplayMode(.inline)
+            .task(id: isAuthorized) {
+                guard isAuthorized else { return }
+                isPreparing = true
+                secretKey = await model.revealNewAccountSecretKey()
+                guard !Task.isCancelled else { return }
                 await prepareKit()
             }
             .onDisappear {
                 preparationGeneration += 1
-                if let export {
-                    model.removeEmergencyKit(export)
-                }
-                kitState = .loading
+                if let export { model.removeEmergencyKit(export) }
+                export = nil
+                secretKey = nil
+                password = ""
             }
         }
     }
 
+    @ViewBuilder
+    private var readySections: some View {
+        Section {
+            Text(kit?.kind == "replace-secret-key"
+                 ? "Your Secret Key changed, so your old Emergency Kit no longer works. Save the new one."
+                 : "Hisar created a Secret Key for your account. You need it and your master password to sign in on a new device. You don't need to remember it.")
+        }
+        if let secretKey {
+            SecretKeySection(secretKey: secretKey, valueIdentifier: "new-secret-key", copyIdentifier: "new-secret-key-copy", onCopy: model.reportActivity)
+        }
+        Section {
+            Text("The Emergency Kit holds your Secret Key and has a space to write your master password.")
+            Text("Keep it where you can get to it without this iPhone: print it, or save it to storage you can open from another device. Don't keep the only copy in Hisar.")
+            if let kit, !kit.savedBy.isEmpty {
+                Text(kit.deliveryMessage)
+                    .accessibilityIdentifier("new-secret-key-delivery")
+                Text(EmergencyKitStatus.savedAdvice)
+                Button("I saved my Emergency Kit") {
+                    Task { await model.finishNewSecretKey() }
+                }
+                .applyProminentGlassStyle()
+                .disabled(model.isBusy)
+                .accessibilityIdentifier("new-secret-key-done")
+            }
+            if let export {
+                let epoch = model.emergencyKitDeliveryEpoch
+                EmergencyKitShareButton(
+                    url: URL(fileURLWithPath: export.emergencyKitPath),
+                    label: "Save or print Emergency Kit",
+                    onPresent: model.reportActivity
+                ) { method in
+                    wasCancelled = method == nil
+                    Task { await model.recordEmergencyKitDelivery(exportID: export.exportId ?? "", method: method, epoch: epoch) }
+                }
+                .applyGlassButtonStyle(isProminent: kit?.savedBy.isEmpty != false)
+                .controlSize(.large)
+                .disabled(model.isBusy)
+                .accessibilityIdentifier("new-secret-key-share-kit")
+            } else if isPreparing {
+                ProgressView("Preparing Emergency Kit…")
+            } else {
+                Button("Try again") { Task { await prepareKit() } }
+                    .accessibilityIdentifier("new-secret-key-retry-kit")
+            }
+            if wasCancelled {
+                Text("The Emergency Kit wasn't saved.")
+                    .accessibilityIdentifier("new-secret-key-cancelled")
+            }
+        }
+        Section {
+            Button {
+                Task { await model.postponeNewSecretKey() }
+            } label: {
+                Text("Save later")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+                .disabled(model.isBusy)
+                .accessibilityIdentifier("new-secret-key-later")
+            Text(EmergencyKitStatus.postponementAdvice)
+                .font(.footnote)
+                .foregroundStyle(.themeSecondary)
+        }
+    }
+
+    private func authorize() async {
+        let enteredPassword = password
+        password = ""
+        await model.authorizeEmergencyKit(password: model.status.biometricEnabled && !isPasswordShown ? nil : enteredPassword)
+    }
+
     private func prepareKit() async {
         preparationGeneration += 1
-        let requestedGeneration = preparationGeneration
-        kitState = .loading
-        isKitShared = false
+        let generation = preparationGeneration
+        isPreparing = true
+        if let export { model.removeEmergencyKit(export) }
+        export = nil
         model.clearError()
         let prepared = await model.exportNewAccountEmergencyKit()
-        guard !Task.isCancelled, requestedGeneration == preparationGeneration else {
+        guard !Task.isCancelled, generation == preparationGeneration else {
             if let prepared { model.removeEmergencyKit(prepared) }
             return
         }
-        if let prepared {
-            kitState = .ready(prepared)
-        } else {
-            kitState = .failed(model.errorMessage ?? "Try again.")
-            model.clearError()
-        }
+        isPreparing = false
+        export = prepared
     }
 }
 
@@ -210,11 +216,11 @@ struct BiometricOfferView: View {
 }
 
 extension View {
-    // Onboarding screens hold the user for minutes (writing a Secret Key down, printing), so their appearance, taps and
-    // scrolling count as activity for auto-lock; idle time on them still locks.
+    // Onboarding screens hold the user for minutes (writing a Secret Key down, printing), so their appearance and scrolling
+    // count as activity for auto-lock; idle time on them still locks. No tap gesture: on the list it takes the taps of its
+    // rows' buttons, such as Save later and Copy Secret Key.
     func reportsActivity(to model: AppModel) -> some View {
         onAppear { model.reportActivity() }
-            .simultaneousGesture(TapGesture().onEnded { model.reportActivity() })
             .onScrollPhaseChange { _, phase in
                 if phase == .interacting { model.reportActivity() }
             }

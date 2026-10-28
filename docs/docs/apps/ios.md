@@ -56,8 +56,9 @@ Sign-in and create-account failures appear immediately above their submit button
 At accessibility text sizes, sign-in modes use stacked buttons and a wrapping heading instead of a segmented control.
 The Emergency Kit scanner explains denied or restricted camera access. **Open Settings** is available for denied access.
 Returning from Settings rechecks permission before starting the camera.
-If creating the first Emergency Kit fails, its section offers **Try again** and keeps the Secret Key and Copy available.
-Retrying uses a fresh temporary folder. Only a completed non-copy handoff enables the explicit saved confirmation.
+If preparing the Emergency Kit fails, the kit screen offers **Try again**, which uses a fresh temporary folder. The Secret Key
+and **Copy** appear without waiting for the kit and stay when preparing it fails. Only a completed non-copy handoff records
+delivery and shows **I saved my Emergency Kit**.
 Devices distinguishes a failed first fetch from a successful empty list and offers **Retry**.
 A failed refresh keeps the last loaded list with a warning that it has not refreshed; pull-to-refresh remains available.
 Vaults and item lists show failed favorite, rename, and invitation actions on the screen where they began.
@@ -92,8 +93,25 @@ the remote change until the user saves and confirms the new kit. After a restart
 Secret Key through `ResumePendingRecoveryWithSecretKey`. Metadata-only manual-unlock records remain visible for
 future sign-ins. `DiscardPreparedRecovery` removes only a setup for which no remote change was sent.
 The Android root screen and `PendingRecoveryModel` use the same protocol and test names.
-Choosing a protected sign-up that only needs its kit opens **Save your Secret Key**. Enter its master password once,
-save or print the kit, then confirm **I saved my Emergency Kit**. This does not switch the signed-in account.
+The installed account's own owed kit is never in this list; it opens the Emergency Kit screen below.
+
+## Account setup and the Emergency Kit
+
+`SignInView` shows **Welcome to Hisar** on a fresh installation. Create account (`SignUpForm`) checks the server's
+sign-up policy before asking for account fields, binds an invitation and its email to the invitation's server, and
+focuses the first missing field on submit. Its fields are Email, then Name, then the master password twice. With the
+email directly above the new-password fields, iOS takes the form for a website sign-up and offers **Use Strong
+Password?**; while that offer is up, every keystroke goes into both password fields. A master password must be one the
+user can remember, so Hisar never offers a generated one, and the Name field between them stops the offer. Android
+keeps the same order so the phones match.
+
+`NewSecretKeyView` is the one screen for the installed account's owed kit, after sign-up and after a Secret Key
+replacement, driven by `status.emergencyKit`. `EmergencyKitShareButton.deliveryMethod` turns the activity sheet's
+completion into `file` (Save to Files), `print` or `share`; Copy, cancellation and errors record nothing. **Save later**
+leaves the reminder at the top of Vaults (`EmergencyKitBanner`), and the lock screen shows a static line instead. If
+Hisar locks while the kit screen is open, `AppModel.interruptedKitOperationID` reopens the same kit after unlock. The
+kit screens count appearing and scrolling as activity for auto-lock through `reportsActivity`. It adds no tap gesture:
+one on the list takes the taps of its rows' buttons, such as **Save later** and **Copy Secret Key**.
 
 ## iPhone Duo
 
@@ -162,6 +180,11 @@ Settings → People. `AccountLifecycleUITests` changes the master password, repl
 account. `PasskeyUITests` registers a passkey into a login and signs in with it, checks the attestation and the ES256
 signature with CryptoKit, then sees and deletes it in the item. `OrganizationUITests` creates an organization and gives
 its team a vault. `PhoneApprovalUITests` approves a Mac's SSH request with Face ID.
+`OnboardingUITests` covers a postponed kit that needs only the unlock password, the reminder at the default and the
+largest accessibility text size (every toolbar and tab control stays tappable and the reminder scrolls with Vaults),
+invitation-first Create account on an invite-only server, and Create account without an invitation on a server with open
+registration. Its accounts come from the `ONBOARDING_POSTPONED` and `EMERGENCY_KIT_BANNER` invites that
+`scripts/ui-test-partner.sh` creates, and from the open-registration server it starts beside the test server.
 
 The icon picker keeps the last completed icon while a photo is preparing. **Done** stays disabled until it finishes.
 **Cancel preparation**, selecting another icon, or dismissing the sheet cancels the pending photo.

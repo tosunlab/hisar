@@ -78,6 +78,8 @@ data class VaultStatus(
     val autoLockSeconds: Int = DEFAULT_AUTO_LOCK_SECONDS,
     val signedOutReason: String = "",
     val updateRequired: UpdateRequirement? = null,
+    val emergencyKit: EmergencyKitStatus? = null,
+    val biometricOfferAvailable: Boolean = false,
 ) {
     val isSignedIn: Boolean get() = state != STATE_SIGNED_OUT
     val isUnlocked: Boolean get() = state == STATE_UNLOCKED
@@ -115,6 +117,45 @@ object VaultStatusSerializer : JsonTransformingSerializer<VaultStatus>(VaultStat
         return if (seconds != null && seconds > 0) element else JsonObject(element - "autoLockSeconds")
     }
 }
+
+@Serializable
+data class EmergencyKitStatus(
+    val operationId: String,
+    val kind: String = "signup",
+    val savedBy: String = "",
+    val postponedAt: String = "",
+    val reminder: String = "new",
+    val isAuthorized: Boolean = false,
+    val isReminderHidden: Boolean = false,
+) {
+    val savedMessage: String get() = when (savedBy) {
+        "file" -> "Emergency Kit saved."
+        "print" -> "Emergency Kit sent to the printer."
+        "share" -> "Emergency Kit shared."
+        else -> ""
+    }
+    val title: String get() = when {
+        savedBy.isNotEmpty() -> "Confirm your Emergency Kit"
+        kind == "replace-secret-key" -> "Save your new Emergency Kit"
+        reminder == "14-days" -> "Save your Emergency Kit now"
+        reminder == "3-days" -> "Your Emergency Kit still isn't saved"
+        else -> "Save your Emergency Kit"
+    }
+    val reminderBody: String get() = when {
+        savedBy.isNotEmpty() -> "$savedMessage A copy saved only on this device is lost with it. Print it, or keep another copy somewhere else."
+        kind == "replace-secret-key" -> "Your old Emergency Kit no longer works. Save the new one where you can reach it without this device."
+        reminder == "14-days" -> "It's been at least 2 weeks. Save a copy you can reach without this device so losing your devices doesn't mean losing access."
+        reminder == "3-days" -> "You haven't saved an Emergency Kit yet. Losing access to your signed-in devices could lock you out."
+        else -> SAVE_LATER_MESSAGE
+    }
+
+    companion object {
+        const val SAVE_LATER_MESSAGE = "Save a copy you can reach without this device. Losing access to your signed-in devices before you save it could lock you out."
+    }
+}
+
+@Serializable
+data class SignUpPolicy(val server: String, val host: String, val mode: String)
 
 @Serializable
 data class ReadIssue(val vaultId: String, val itemId: String = "", val revision: String = "", val kind: String, val canRename: Boolean = false, val canDelete: Boolean = false) {
@@ -715,6 +756,8 @@ data class PendingRecovery(
     val problems: List<String> = emptyList(),
     val manualUnlock: Boolean = false,
     val keychainProtected: Boolean = false,
+    val savedBy: String = "",
+    val postponedAt: String = "",
 )
 
 val PendingRecovery.reminderLabel: String
@@ -734,7 +777,7 @@ val PendingRecovery.reminderHint: String
     }
 
 @Serializable
-data class PendingRecoveryExport(val secretKey: String, val path: String)
+data class PendingRecoveryExport(val secretKey: String, val path: String, val exportId: String = "")
 
 @Serializable
 data class LoginMatch(
@@ -1240,7 +1283,10 @@ data class Device(
 enum class DeviceIcon { PHONE, LAPTOP, DESKTOP, TERMINAL, EXTENSION }
 
 @Serializable
-data class EmergencyKitExport(val secretKey: String, val emergencyKitPath: String)
+data class EmergencyKitExport(val secretKey: String, val emergencyKitPath: String, val qrCode: String = "", val exportId: String = "")
+
+@Serializable
+data class RevealedSecretKey(val secretKey: String, val qrPayload: String = "", val qrCode: String = "")
 
 /** Who may rename, delete or leave a vault and what deleting it means; members leave out the user. */
 @Serializable

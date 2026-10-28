@@ -149,6 +149,9 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - name: Select Xcode
         run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
+      # Spotlight indexes the runner's disk all job long, a tenth of a core or more of the 3 the simulator needs (run 40724867151).
+      - name: Turn off Spotlight indexing
+        run: sudo mdutil -a -i off
       # Booting takes a minute; it happens while HisarKit and the app build, and make test-ios waits for it to finish.
       - name: Choose and boot the simulator
         run: |
@@ -163,6 +166,7 @@ jobs:
           brew services start postgresql@17
           for _ in $(seq 30); do "$(brew --prefix postgresql@17)/bin/pg_isready" -h localhost && break; sleep 1; done
           "$(brew --prefix postgresql@17)/bin/createdb" -h localhost "$DATABASE_NAME"
+          echo "$(brew --prefix postgresql@17)/bin" >> "$GITHUB_PATH"
       - name: Install XcodeGen
         run: |
           curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
@@ -205,11 +209,14 @@ jobs:
       - name: Drop the test database
         if: always() && env.IS_RUNNING_UI_TESTS == 'true'
         run: '"$(brew --prefix postgresql@17)/bin/dropdb" -h localhost --if-exists "$DATABASE_NAME" || true'
+      # A second run (scripts/test-ios-ui.sh) keeps the first run's bundle, so a test that passed only then can be looked at.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: (failure() || cancelled()) && env.IS_RUNNING_UI_TESTS == 'true'
+        if: (failure() || cancelled() || hashFiles('HisarUITests-second-run.xcresult/Info.plist') != '') && env.IS_RUNNING_UI_TESTS == 'true'
         with:
           name: HisarUITests-1.xcresult
-          path: HisarUITests.xcresult
+          path: |
+            HisarUITests.xcresult
+            HisarUITests-second-run.xcresult
           retention-days: 7
 
   # Each part runs about a third of the UI tests (IOS_UI_TEST_PART in scripts/test-ios-ui.sh) on its own simulator, with the
@@ -239,6 +246,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Select Xcode
         run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
+      - name: Turn off Spotlight indexing
+        run: sudo mdutil -a -i off
       - name: Choose and boot the simulator
         run: |
           IOS_SIMULATOR_ID=$(mobile/ios/scripts/find-simulator.sh)
@@ -254,6 +263,7 @@ jobs:
           brew services start postgresql@17
           for _ in $(seq 30); do "$(brew --prefix postgresql@17)/bin/pg_isready" -h localhost && break; sleep 1; done
           "$(brew --prefix postgresql@17)/bin/createdb" -h localhost "$DATABASE_NAME"
+          echo "$(brew --prefix postgresql@17)/bin" >> "$GITHUB_PATH"
       # A re-run of this job alone finds the artifact of the earlier attempt's ios-build.
       - name: Wait for ios-build's app and test bundles
         env:
@@ -279,10 +289,12 @@ jobs:
         if: always()
         run: '"$(brew --prefix postgresql@17)/bin/dropdb" -h localhost --if-exists "$DATABASE_NAME" || true'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure() || cancelled()
+        if: failure() || cancelled() || hashFiles('HisarUITests-second-run.xcresult/Info.plist') != ''
         with:
           name: HisarUITests-${{ matrix.part }}.xcresult
-          path: HisarUITests.xcresult
+          path: |
+            HisarUITests.xcresult
+            HisarUITests-second-run.xcresult
           retention-days: 7
 
   # The one check of this workflow that the main branch ruleset requires, so auto-merge waits for every job above. It passes
