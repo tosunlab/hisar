@@ -144,36 +144,4 @@ final class SharingUITests: HisarUITestCase {
         let sentOrNotConfigured = NSPredicate(format: "label CONTAINS 'Invitation sent' OR label CONTAINS 'cannot send email'")
         waitFor(app.staticTexts.matching(sentOrNotConfigured).firstMatch, timeout: 30)
     }
-
-    func testAcceptAnInvitationFromTheBannerAboveTheVaults() throws {
-        let inviteLink = try readEnvironment("HISAR_UI_TEST_BANNER_INVITE_LINK")
-        let email = try readEnvironment("HISAR_UI_TEST_BANNER_EMAIL")
-        let partnerEmail = try readEnvironment("HISAR_UI_TEST_SHARING_PARTNER_EMAIL")
-        app.launchArguments += ["-HisarBrowseFailure-accept"]
-        app.launch()
-        _ = signUp(inviteLink: inviteLink, email: email, name: "iOS Banner")
-
-        let acceptButton = app.buttons["banner-accept-invitation"]
-        waitFor(acceptButton, timeout: 30)
-        XCTAssertFalse(app.buttons["vault-Infrastructure"].exists, "no access before accepting")
-        saveLightAndDarkScreenshot("sharing-invitation-banner")
-
-        acceptButton.tap()
-        waitFor(app.alerts["Accept"])
-        XCTAssertTrue(app.alerts.staticTexts["This action couldn't reach the Hisar server. Try again."].exists)
-        app.alerts.buttons["refusal-ok"].firstMatch.tap()
-        XCTAssertTrue(acceptButton.exists, "a failed Accept keeps its invitation")
-        acceptButton.tap()
-        let sharedVault = app.buttons["vault-Infrastructure"]
-        waitFor(sharedVault, timeout: 90)
-        XCTAssertTrue(sharedVault.label.contains("Editor"), sharedVault.label)
-        sharedVault.tap()
-        waitFor(app.buttons["item-Staging database"], timeout: 30)
-        XCTAssertFalse(app.buttons["share-vault"].exists, "only owners share")
-
-        app.buttons["vault-members"].tap()
-        waitFor(findElement("vault-member-\(partnerEmail)"), timeout: 30)
-        XCTAssertFalse(app.textFields["share-email"].exists, "editors cannot invite")
-        app.buttons["vault-sharing-done"].tap()
-    }
 }

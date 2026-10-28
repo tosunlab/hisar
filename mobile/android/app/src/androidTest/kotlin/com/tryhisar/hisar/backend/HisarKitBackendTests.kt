@@ -6,9 +6,12 @@ import com.tryhisar.hisar.model.ExportFormat
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.model.describeError
+import com.tryhisar.hisar.platform.TrustedCertificates
 import com.tryhisar.hisar.platform.createTemporaryDirectory
 import com.tryhisar.hisar.platform.requireArgument
 import java.io.File
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -89,5 +92,14 @@ class HisarKitBackendTests {
         val localDate = LocalDate.now(zone).toString()
         assertTrue("${File(export.path).name} is named for $localDate in $zone", File(export.path).name.contains(localDate))
         assertFalse(File(export.path).name.contains(LocalDate.now(ZoneOffset.UTC).toString()))
+    }
+
+    @Test
+    fun testEveryCertificateTheDeviceTrustsIsPassedToGo() {
+        val store = KeyStore.getInstance("AndroidCAStore").apply { load(null) }
+        val allTrusted = store.aliases().asSequence().map { store.getCertificate(it) }.toSet()
+        val allPassed = CertificateFactory.getInstance("X.509").generateCertificates(TrustedCertificates.readPem().byteInputStream()).toSet()
+        assertTrue("the device trusts ${allTrusted.size} certificates", allTrusted.size > 100)
+        assertEquals(allTrusted, allPassed)
     }
 }

@@ -64,8 +64,8 @@ branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
   reads the labels the pull request has when it starts. The jobs then report as skipped;
 - or by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to add the iPhone job).
 
-A run takes roughly 15–25 minutes for the Mac app, and for the iPhone app about 10 minutes of build then 15 minutes of UI tests in
-three parts, so about 150–250 included minutes for the Mac app alone and up to 900 with the iPhone app. A desktop release build costs
+A run takes roughly 15–25 minutes for the Mac app, and for the iPhone app about 10 minutes of build then about 5 minutes of UI
+tests in each of three parts, so about 150–250 included minutes for the Mac app alone and up to about 750 with the iPhone app. A desktop release build costs
 about the same as the Mac app job.
 
 ## Releases

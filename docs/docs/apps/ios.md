@@ -141,8 +141,7 @@ The sign-up tests save each Emergency Kit under a unique name because the simula
 The helper waits for the Files picker to become tappable and for saving to finish, then waits for Hisar's share button
 to become tappable again. A missing system activity cell requires searching the remote share sheet's entire
 accessibility tree and can exhaust a wait after the sheet has already closed. The confirmation must still become enabled.
-Formatted fields wait for each character's update before typing the next one. Custom-field clipboard checks paste
-inside Hisar because iOS does not grant the test runner access to the app's clipboard.
+Formatted fields wait for each character's update before typing the next one.
 Back navigation first selects the frontmost navigation bar, then its back button. A global `BackButton` query can
 select a covered stack's button instead of the visible sheet's back button.
 Scrolling to a row continues until the row ends above the floating tab bar. A row partly under the bar counts as
@@ -151,15 +150,18 @@ hittable, but taps there go to the bar. Switching between Sign in and Create acc
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.
 
-What the UI tests cover: create an account from an invite and read the new Secret Key, add a login, Favorites (the star in an item,
-the swipe actions and the Favorites section at the top of Vaults), creating every item type through the + menu and its More… submenu, item detail
-(tap a field anywhere to copy, including a concealed field, reveal independently with the eye, and long-press for
-Copy or Copy secret reference from the field's context menu, independently of the page's secret-reference button), editing with the password generator, search, lock and unlock with the master password, Settings (the empty Approvals tab, auto-lock, devices, the Secret Key behind the master
-password with the Emergency Kit share), turning Mac approvals off in Settings and back on from Approvals, sign out and sign in with the Secret Key, creating a shared vault and seeing its members, inviting someone from Settings → People, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
-simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in
-with it, check the attestation and the ES256 signature with CryptoKit, then see and delete it in the item.
-`WideLayoutUITests` checks the split views: beside their list on a wide screen, pushed over it on a compact one, so it
-means something on both the iPhone Duo simulator and the compact one CI uses.
+What the UI tests cover: only the journeys a user depends on end to end, plus the device-only security checks; the
+logic behind each screen is in the unit tests. `HisarUITests` creates an account from an invite, saves the Emergency
+Kit, adds a login with a one-time code (its password hidden until revealed, copied without revealing, revealed without
+copying; its setup key hidden in the editor until revealed) and a card (number and security code hidden until revealed),
+locks and unlocks with the master password (a revealed password conceals again when Hisar leaves the foreground and
+when an unlock fails), signs out and signs in again with the Secret Key, and checks the privacy
+cover. `FaceIDUITests` turns on Face ID and unlocks with it (the test enrolls a face in the simulator and posts its
+"matching face" notification). `SharingUITests` shares a new vault, manages its members and invites someone from
+Settings → People. `AccountLifecycleUITests` changes the master password, replaces the Secret Key and deletes the
+account. `PasskeyUITests` registers a passkey into a login and signs in with it, checks the attestation and the ES256
+signature with CryptoKit, then sees and deletes it in the item. `OrganizationUITests` creates an organization and gives
+its team a vault. `PhoneApprovalUITests` approves a Mac's SSH request with Face ID.
 
 The icon picker keeps the last completed icon while a photo is preparing. **Done** stays disabled until it finishes.
 **Cancel preparation**, selecting another icon, or dismissing the sheet cancels the pending photo.
@@ -172,11 +174,8 @@ An older photo or its error cannot replace a newer choice.
 UI tests wait for the Files picker's **Save** button to become tappable before renaming an Emergency Kit.
 They wait for the filename field to disappear after saving, before continuing in Hisar.
 Formatted input, concealed card numbers included, and live search are entered one character at a time, with each field update observed before the next character. A concealed field is checked by its count of dots.
-Replacing a search query uses the native clear control, waits for it to disappear, and enters the new query through the same synchronized helper.
 
 `FaceIDUITests` checks that cancelling authentication leaves Hisar locked, focuses the master password field, and shows no error banner.
-`FavoritesUITests` injects its one-shot refresh failure only when the item list requests a manual refresh.
-Background item loads cannot consume that failure. The test checks the retained list, the Retry action, and recovery after retrying.
 
 Notification removal runs off the main thread because the system call can wait for the notification service during a scene transition.
 Returning from another app keeps the interface responsive while Hisar clears its approval reminder and refreshes setup status.
