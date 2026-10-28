@@ -388,3 +388,101 @@ func openRelayPayload(t *testing.T, key *ecdh.PrivateKey, authSecret []byte, pay
 	}
 	return plaintext
 }
+
+// An approval push carries the preview the Mac encrypted to each phone's key, which the account signed: the server
+// lists only signed keys, sends each phone its own message, and the kind alone to a phone whose key changed since.
+func TestAnApprovalPushCarriesThePreviewTheMacEncryptedForEachPhone(t *testing.T) {
+	relay := startFakePushRelay(t)
+	environment := map[string]string{"HISAR_PUSH_RELAY_URL": relay.server.URL}
+	baseURL, server, _ := setupServerWithConfig(t, Config{Config: service.Config{PublicURL: "https://hisar.test"}, Environment: func(name string) string { return environment[name] }})
+	endpoint := startFakeWebPushEndpoint(t)
+	server.service.WebPushClient = endpoint.server.Client()
+	ctx := context.Background()
+	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "dev@example.com", apitypes.RoleAdmin, nil))
+	password := []byte("dev password")
+	mac, secretKey, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, "dev@example.com", "Dev", password, apitypes.DeviceInfo{Name: "MacBook Pro", Platform: "darwin/desktop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	logInPhone := func(name, platform string) *session.Session {
+		phone, err := session.LogIn(ctx, apiclient.New(baseURL), "dev@example.com", password, secretKey, apitypes.DeviceInfo{Name: name, Platform: platform})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return phone
+	}
+	iPhone, android := logInPhone("iPhone", "ios/mobile"), logInPhone("Pixel", "android/mobile")
+	iPhoneID, androidID := findOwnDeviceID(t, iPhone), findOwnDeviceID(t, android)
+	if config := requireValue[apitypes.PushConfig](t)(iPhone.Client.GetPushConfig(ctx)); !config.AcceptsKeySignature {
+		t.Fatalf("push config = %+v", config)
+	}
+
+	payloadKey, _ := ecdh.P256().GenerateKey(rand.Reader)
+	payloadAuth := make([]byte, 16)
+	rand.Read(payloadAuth)
+	signKey := func(deviceID string, publicKey, authSecret []byte) string {
+		return base64.RawURLEncoding.EncodeToString(iPhone.Keyset.SignPushKey(iPhone.AccountID, deviceID, publicKey, authSecret))
+	}
+	approvalKind := []apitypes.PushKind{apitypes.PushKindApproval}
+	key := &apitypes.PushPayloadKey{P256DH: base64.RawURLEncoding.EncodeToString(payloadKey.PublicKey().Bytes()), Auth: base64.RawURLEncoding.EncodeToString(payloadAuth)}
+	for name, signature := range map[string]string{
+		"a signature for another device": signKey(androidID, payloadKey.PublicKey().Bytes(), payloadAuth),
+		"a signature that is not base64": "!!",
+	} {
+		expectStatus(t, name, iPhone.Client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: "iphone-handle", PayloadKey: key, KeySignature: signature, AllKind: approvalKind}), http.StatusBadRequest)
+	}
+	expectStatus(t, "a signature without a key", iPhone.Client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: "iphone-handle", KeySignature: signKey(iPhoneID, payloadKey.PublicKey().Bytes(), payloadAuth), AllKind: approvalKind}), http.StatusBadRequest)
+	if err := iPhone.Client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: "iphone-handle", PayloadKey: key, KeySignature: signKey(iPhoneID, payloadKey.PublicKey().Bytes(), payloadAuth), AllKind: approvalKind}); err != nil {
+		t.Fatal(err)
+	}
+	subscription := endpoint.subscription()
+	if err := android.Client.SetDevicePush(ctx, apitypes.PushRegistration{WebPush: subscription, KeySignature: signKey(androidID, endpoint.key.PublicKey().Bytes(), endpoint.authSecret), AllKind: approvalKind}); err != nil {
+		t.Fatal(err)
+	}
+
+	keys := requireValue[apitypes.DevicePushKeysResponse](t)(mac.Client.ListPushKeys(ctx))
+	if len(keys.AllKey) != 2 {
+		t.Fatalf("push keys = %+v", keys)
+	}
+	for _, listed := range keys.AllKey {
+		if listed.DeviceID != iPhoneID && listed.DeviceID != androidID {
+			t.Fatalf("an unexpected device's key: %+v", listed)
+		}
+	}
+	if keys := requireValue[apitypes.DevicePushKeysResponse](t)(iPhone.Client.ListPushKeys(ctx)); len(keys.AllKey) != 1 || keys.AllKey[0].DeviceID != androidID {
+		t.Fatalf("a phone's own key was listed to it: %+v", keys)
+	}
+	relay.takeAll(server)
+	endpoint.takeAll(server)
+
+	encryptFor := func(deviceID, p256dh string, publicKey, authSecret []byte, plaintext string) apitypes.ApprovalPushMessage {
+		message, err := crypt.EncryptWebPush(publicKey, authSecret, []byte(plaintext))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return apitypes.ApprovalPushMessage{DeviceID: deviceID, P256DH: p256dh, Message: base64.RawURLEncoding.EncodeToString(message)}
+	}
+	staleKey, _ := ecdh.P256().GenerateKey(rand.Reader)
+	createRequest := func(requestID string, allPushMessage []apitypes.ApprovalPushMessage) error {
+		return mac.Client.CreateApproval(ctx, &apitypes.CreateApprovalRequest{RequestID: requestID, SealedRequest: []byte("sealed"), ExpiresAt: time.Now().Add(time.Minute), AllPushMessage: allPushMessage})
+	}
+	tooMany := make([]apitypes.ApprovalPushMessage, apitypes.MaximumApprovalPushMessages+1)
+	for index := range tooMany {
+		tooMany[index] = apitypes.ApprovalPushMessage{DeviceID: iPhoneID, P256DH: key.P256DH, Message: "bWVzc2FnZQ"}
+	}
+	expectStatus(t, "too many push messages", createRequest("00112233445566778899aabbccddeeff", tooMany), http.StatusBadRequest)
+
+	if err := createRequest("ffeeddccbbaa99887766554433221100", []apitypes.ApprovalPushMessage{
+		encryptFor(iPhoneID, key.P256DH, payloadKey.PublicKey().Bytes(), payloadAuth, `{"kind":"approval","approval":{"preview":"p","signature":"s"}}`),
+		encryptFor(androidID, base64.RawURLEncoding.EncodeToString(staleKey.PublicKey().Bytes()), staleKey.PublicKey().Bytes(), endpoint.authSecret, "for an old key"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	allPush := relay.takeAll(server)
+	if len(allPush) != 1 || string(openRelayPayload(t, payloadKey, payloadAuth, allPush[0].Payload)) != `{"kind":"approval","approval":{"preview":"p","signature":"s"}}` {
+		t.Fatalf("the iPhone's push = %+v", allPush)
+	}
+	if allPlaintext := endpoint.takeAll(server); len(allPlaintext) != 1 || allPlaintext[0] != `{"kind":"approval"}` {
+		t.Fatalf("the Android phone, whose key changed, got %q", allPlaintext)
+	}
+}

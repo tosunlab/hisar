@@ -26,44 +26,43 @@ final class FaceIDUITests: HisarUITestCase {
         postNotification("com.apple.BiometricKit.enrollmentChanged")
     }
 
-    private func matchFace() {
-        postNotification("com.apple.BiometricKit_Sim.pearl.match")
-    }
-
-    // Face ID ignores a match posted before it asks, and its prompt is not an element the test can wait for, so the match
-    // repeats until the app goes on. A step whose control stays disabled while Face ID runs passes its control: enabled
-    // again, without the step done and with an error shown, it means Face ID ended in a failure; the app asks no more, so
-    // the test stops there with the app's message. An error banner alone proves nothing: a background refresh can show one
-    // while Face ID still runs, but then the control is still disabled.
-    private func matchFace(until isDone: () -> Bool, failingWhenEnabled control: XCUIElement? = nil, file: StaticString = #filePath, line: UInt = #line) {
+    // Face ID ignores a match posted before it asks, and its prompt is not an element the test can wait for, so matches
+    // repeat until the app goes on. Like a real one, the simulator's prompt fails when no face matches within a few
+    // seconds, and a slow runner's UI queries can take that long, so a timer posts the matches off the test's thread,
+    // from just before the action that asks for Face ID. The first use's permission alert is answered in the loop.
+    // A step whose control stays disabled while Face ID runs passes its control: enabled again, without the step done
+    // and with an error shown, it means Face ID ended in a failure; the app asks no more, so the test stops there with
+    // the app's message. An error banner alone proves nothing: a background refresh can show one while Face ID still
+    // runs, but then the control is still disabled.
+    private func matchFace(after action: () -> Void, until isDone: () -> Bool, failingWhenEnabled control: XCUIElement? = nil, file: StaticString = #filePath, line: UInt = #line) {
+        let post = loadFunction("notify_post", as: NotifyPost.self)
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
+        timer.schedule(deadline: .now(), repeating: .milliseconds(500))
+        timer.setEventHandler { _ = post("com.apple.BiometricKit_Sim.pearl.match") }
+        timer.resume()
+        defer { timer.cancel() }
+        action()
         let errorMessage = app.descendants(matching: .any)["error-message"].firstMatch
         let deadline = Date().addingTimeInterval(30)
-        repeat {
-            matchFace()
-            let retry = Date().addingTimeInterval(2)
-            while Date() < retry {
-                if isDone() {
-                    return
-                }
-                // Snapshots, because the offer can close between two queries, and a query of a gone element fails the test.
-                if let control, let controlState = try? control.snapshot(), controlState.isEnabled, let error = try? errorMessage.snapshot() {
-                    XCTFail("Face ID failed and the app shows \"\(error.label)\"", file: file, line: line)
-                    return
-                }
-                Thread.sleep(forTimeInterval: 0.2)
+        while Date() < deadline {
+            if isDone() {
+                return
             }
-        } while Date() < deadline
+            // Snapshots, because the offer can close between two queries, and a query of a gone element fails the test.
+            if let control, let controlState = try? control.snapshot(), controlState.isEnabled, let error = try? errorMessage.snapshot() {
+                XCTFail("Face ID failed and the app shows \"\(error.label)\"", file: file, line: line)
+                return
+            }
+            answerFaceIDPermission()
+            Thread.sleep(forTimeInterval: 0.2)
+        }
         XCTFail("Face ID did not let the app go on", file: file, line: line)
     }
 
-    private func allowFaceIDIfAsked() {
-        let allowButton = springboard.alerts.buttons["Allow"].exists ? springboard.alerts.buttons["Allow"] : app.alerts.buttons["Allow"]
-        if allowButton.waitForExistence(timeout: 3) {
-            allowButton.tap()
-        }
-        let okButton = springboard.alerts.buttons["OK"]
-        if okButton.waitForExistence(timeout: 1) {
-            okButton.tap()
+    // answerFaceIDPermission allows Face ID if iOS asks for the first time, without waiting for the alert.
+    private func answerFaceIDPermission() {
+        for button in [springboard.alerts.buttons["Allow"], app.alerts.buttons["Allow"], springboard.alerts.buttons["OK"]] where button.exists {
+            button.tap()
         }
     }
 
@@ -80,10 +79,8 @@ final class FaceIDUITests: HisarUITestCase {
 
         saveScreenshot("face-id-offer")
         let turnOnButton = app.buttons["biometric-offer-turn-on"]
-        turnOnButton.tap()
-        allowFaceIDIfAsked()
         // The vaults are already under the offer, so the offer closing is what shows that Face ID is on.
-        matchFace(until: { !turnOnButton.exists }, failingWhenEnabled: turnOnButton)
+        matchFace(after: { turnOnButton.tap() }, until: { !turnOnButton.exists }, failingWhenEnabled: turnOnButton)
         waitForHittable(app.buttons["vault-Personal"], timeout: 20)
 
         openSettings("open-security")
@@ -100,9 +97,7 @@ final class FaceIDUITests: HisarUITestCase {
         let passwordField = app.alerts.secureTextFields.firstMatch
         waitFor(passwordField)
         typeText(Self.masterPassword, into: passwordField)
-        app.alerts.buttons["Turn on"].tap()
-        allowFaceIDIfAsked()
-        matchFace(until: { toggle.value as? String == "1" }, failingWhenEnabled: toggle)
+        matchFace(after: { app.alerts.buttons["Turn on"].tap() }, until: { toggle.value as? String == "1" }, failingWhenEnabled: toggle)
         expectation(for: enabledPredicate, evaluatedWith: toggle)
         waitForExpectations(timeout: 20)
         sleep(2)
@@ -132,8 +127,7 @@ final class FaceIDUITests: HisarUITestCase {
         expectation(for: hasFocus, evaluatedWith: unlockPasswordField)
         waitForExpectations(timeout: 10)
         XCTAssertEqual(app.descendants(matching: .any)["error-message"].firstMatch.label, "Face ID was cancelled.")
-        app.buttons["unlock-biometric"].tap()
-        matchFace(until: { app.buttons["vault-Personal"].exists })
+        matchFace(after: { app.buttons["unlock-biometric"].tap() }, until: { app.buttons["vault-Personal"].exists })
         waitFor(app.buttons["vault-Personal"], timeout: 15)
         XCTAssertFalse(springboard.otherElements["Face ID"].exists, "one Face ID prompt unlocks: the keychain reuses the evaluated context")
     }

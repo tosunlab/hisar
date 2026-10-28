@@ -37,10 +37,19 @@ func (kind PushKind) GetTimeToLive() time.Duration {
 
 // PushMessage is what a push says, encrypted to the phone (RFC 8291): an Android phone's Web Push message, or an
 // iPhone's RelayPushRequest.Payload, which its notification service extension opens. Invitation is set for a sharing
-// push; an older server sends the kind alone.
+// push, Approval for an approval push a Mac wrote; an older server sends the kind alone.
 type PushMessage struct {
 	Kind       PushKind        `json:"kind"`
 	Invitation *PushInvitation `json:"invitation,omitempty"`
+	Approval   *PushApproval   `json:"approval,omitempty"`
+}
+
+// PushApproval is the preview of an approval request (approval.PushPreview as JSON, base64url) and the account's
+// signature over it (crypt.SignApprovalPreview, base64url). The Mac that asks writes and encrypts it to each phone;
+// the server only passes it on.
+type PushApproval struct {
+	Preview   string `json:"preview"`
+	Signature string `json:"signature"`
 }
 
 // PushInvitation names who invited the phone's account to what. A shared vault's name is encrypted, so the server
@@ -72,12 +81,28 @@ const (
 // wants. An iPhone sends the push relay's handle, and the server never sees its APNs token; an Android phone sends the
 // Web Push subscription of its UnifiedPush distributor, which the server sends to directly. Exactly one is set.
 // PayloadKey, with a handle only, is the key an iPhone opens a push's details with; only a server whose PushConfig
-// says AcceptsPayloadKey takes it.
+// says AcceptsPayloadKey takes it. KeySignature, base64url, is the account's signature over the key messages are
+// encrypted to (crypt.SignPushKey): the payload key, or the Web Push subscription's; a phone sends it once unlocked,
+// and only to a server whose PushConfig says AcceptsKeySignature.
 type PushRegistration struct {
-	Handle     string               `json:"handle,omitempty"`
-	WebPush    *WebPushSubscription `json:"webPush,omitempty"`
-	PayloadKey *PushPayloadKey      `json:"payloadKey,omitempty"`
-	AllKind    []PushKind           `json:"kinds"`
+	Handle       string               `json:"handle,omitempty"`
+	WebPush      *WebPushSubscription `json:"webPush,omitempty"`
+	PayloadKey   *PushPayloadKey      `json:"payloadKey,omitempty"`
+	KeySignature string               `json:"keySignature,omitempty"`
+	AllKind      []PushKind           `json:"kinds"`
+}
+
+// DevicePushKey is a phone's key for push messages with the account's signature over it, as GET /api/v1/push/keys
+// lists them: a Mac checks the signature, then encrypts an approval's preview to the key.
+type DevicePushKey struct {
+	DeviceID  string `json:"deviceId"`
+	P256DH    string `json:"p256dh"`
+	Auth      string `json:"auth"`
+	Signature string `json:"signature"`
+}
+
+type DevicePushKeysResponse struct {
+	AllKey []DevicePushKey `json:"keys"`
 }
 
 // PushPayloadKey is an iPhone's public key and authentication secret for push details, as a Web Push subscription's
@@ -96,11 +121,12 @@ type WebPushSubscription struct {
 }
 
 // PushConfig is GET /api/v1/push/config: the push relay this server sends iPhones' pushes through. An empty URL means
-// the server sends no push notifications, to iPhones or Android phones. AcceptsPayloadKey means PushRegistration may
-// carry a PayloadKey; an older server rejects the field.
+// the server sends no push notifications, to iPhones or Android phones. AcceptsPayloadKey and AcceptsKeySignature mean
+// PushRegistration may carry a PayloadKey and a KeySignature; an older server rejects the fields.
 type PushConfig struct {
-	RelayURL          string `json:"relayURL"`
-	AcceptsPayloadKey bool   `json:"acceptsPayloadKey,omitempty"`
+	RelayURL            string `json:"relayURL"`
+	AcceptsPayloadKey   bool   `json:"acceptsPayloadKey,omitempty"`
+	AcceptsKeySignature bool   `json:"acceptsKeySignature,omitempty"`
 }
 
 // RelayRegisterRequest is the body of the push relay's POST /v1/register, which the phone sends with its push service

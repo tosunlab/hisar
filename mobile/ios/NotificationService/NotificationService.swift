@@ -14,8 +14,9 @@ final class NotificationService: UNNotificationServiceExtension {
         let content = (request.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
         deliveredContent = content
 
-        if let body = decryptedBody(from: request.content.userInfo) {
-            content.body = body
+        if let update = decryptedUpdate(from: request.content.userInfo) {
+            if let title = update.title { content.title = title }
+            content.body = update.body
         }
         contentHandler(content)
     }
@@ -26,14 +27,24 @@ final class NotificationService: UNNotificationServiceExtension {
         }
     }
 
-    private func decryptedBody(from userInfo: [AnyHashable: Any]) -> String? {
+    // decryptedUpdate opens the push payload encrypted to this phone and returns the title and body to show: an
+    // approval the account signed, or a sharing invitation (body only). nil keeps the alert's delivered sentence.
+    private func decryptedUpdate(from userInfo: [AnyHashable: Any]) -> (title: String?, body: String)? {
         guard let payloadText = userInfo["payload"] as? String,
               let message = Base64URL.decode(payloadText) else { return nil }
         let accessGroup = HisarConfiguration.current.keychainAccessGroup
         // Only the app makes the key, since only it can give the server the public half.
         guard let key = try? PushPayloadKeyStore(accessGroup: accessGroup).load(),
-              let plaintext = try? WebPushDecryptor.decrypt(message, privateKey: key.privateKey, auth: key.auth),
-              let details = SharingPushDetails.decode(plaintext) else { return nil }
-        return details.body
+              let plaintext = try? WebPushDecryptor.decrypt(message, privateKey: key.privateKey, auth: key.auth) else { return nil }
+        // An approval the account signed names the Mac, the app and the request; the verifier is the account's key.
+        if let verifier = try? ApprovalPushVerifierStore(accessGroup: accessGroup).load(),
+           let text = ApprovalPushText.titleAndBody(decrypted: plaintext, verifier: verifier, now: Date()) {
+            return (text.title, text.body)
+        }
+        // A sharing invitation sets only the body.
+        if let body = SharingPushDetails.decode(plaintext)?.body {
+            return (nil, body)
+        }
+        return nil
     }
 }

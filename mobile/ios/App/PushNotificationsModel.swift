@@ -162,6 +162,7 @@ final class PushNotificationsModel: ObservableObject {
         content.title = "Hisar"
         content.body = String(localized: "push.approval.waiting")
         content.sound = .default
+        content.interruptionLevel = .timeSensitive
         content.userInfo = ["kind": PushKind.approval.rawValue]
         content.threadIdentifier = PushKind.approval.rawValue
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: Self.approvalReminderDelay, repeats: false)

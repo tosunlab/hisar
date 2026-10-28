@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -42,6 +43,20 @@ func (s *Service) openSession(unlockedSession *session.Session) {
 	s.phoneApprovals.mutex.Unlock()
 	if isPhoneApprovalRequester {
 		s.startPhoneApprovalDeviceRefresh(unlockedSession.Client)
+	}
+	s.keepSigningPublicKey(unlockedSession.Keyset.GetSigningPublicKey())
+	s.registerSignedPushKey()
+}
+
+// keepSigningPublicKey saves the account's public signing key for a locked phone to check approval previews with. It
+// needs the mutex.
+func (s *Service) keepSigningPublicKey(signingPublicKey []byte) {
+	if bytes.Equal(s.state.SigningPublicKey, signingPublicKey) {
+		return
+	}
+	s.state.SigningPublicKey = signingPublicKey
+	if err := s.state.Save(); err != nil {
+		log.Printf("saving the account's signing key: %v", err)
 	}
 }
 
