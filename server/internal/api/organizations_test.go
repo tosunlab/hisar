@@ -153,7 +153,6 @@ func countDatabaseRows(t *testing.T, databaseURL, query string, arguments ...any
 
 func TestOrganizationInvitationAndKeyDelivery(t *testing.T) {
 	baseURL, server, databaseURL := setupServer(t)
-	server.config.EventHeartbeatInterval = 100 * time.Millisecond
 	ctx := context.Background()
 	recorder := attachMailRecorder(server)
 	caller := apiCaller{t: t, baseURL: baseURL}
@@ -277,7 +276,6 @@ func TestOrganizationInvitationAndKeyDelivery(t *testing.T) {
 
 func TestOrganizationTeamRemovalNeedsRotation(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
-	server.config.EventHeartbeatInterval = 100 * time.Millisecond
 	ctx := context.Background()
 	caller := apiCaller{t: t, baseURL: baseURL}
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
@@ -849,7 +847,6 @@ func TestOrganizationAdminRules(t *testing.T) {
 
 func TestDeleteAccountInOrganizations(t *testing.T) {
 	baseURL, server, databaseURL, _ := setupLifecycleServer(t)
-	server.config.EventHeartbeatInterval = 100 * time.Millisecond
 	ctx := context.Background()
 	caller := apiCaller{t: t, baseURL: baseURL}
 	alice := signUpLifecycleAccount(t, server, baseURL, "alice@example.com")
