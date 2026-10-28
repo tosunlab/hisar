@@ -84,7 +84,8 @@ class HisarUITestCase: XCTestCase {
 
     // A tap while a late Save Password sheet covers the app is lost, so the button is tappable first.
     func goBack(file: StaticString = #filePath, line: UInt = #line) {
-        let backButton = app.navigationBars.buttons["BackButton"].exists ? app.navigationBars.buttons["BackButton"] : app.navigationBars.buttons.element(boundBy: 0)
+        let navigationBar = app.navigationBars.firstMatch
+        let backButton = navigationBar.buttons["BackButton"].exists ? navigationBar.buttons["BackButton"] : navigationBar.buttons.element(boundBy: 0)
         waitForHittable(backButton, file: file, line: line)
         backButton.tap()
     }
@@ -281,7 +282,7 @@ class HisarUITestCase: XCTestCase {
         let share = app.buttons[shareIdentifier]
         scrollTo(share)
         share.tap()
-        let saveToFiles = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Save to Files")).firstMatch
+        let saveToFiles = app.cells["Save to Files"].firstMatch
         waitForHittable(saveToFiles)
         saveToFiles.tap()
         let save = app.navigationBars.buttons["Save"].firstMatch
@@ -329,6 +330,7 @@ class HisarUITestCase: XCTestCase {
         XCTAssertFalse(app.buttons["new-secret-key-done"].isEnabled, "a cancelled share sheet confirmed the kit")
         handOffEmergencyKit(shareIdentifier: "new-secret-key-share-kit")
         waitForHittable(app.buttons["new-secret-key-done"])
+        XCTAssertTrue(app.buttons["new-secret-key-done"].isEnabled, "saving the Emergency Kit did not enable confirmation")
         app.buttons["new-secret-key-done"].tap()
         let notNowButton = app.buttons["biometric-offer-not-now"]
         if isBiometricOfferExpected {
@@ -351,11 +353,7 @@ class HisarUITestCase: XCTestCase {
         } else {
             app.swipeDown(velocity: .fast)
         }
-        waitForDisappearance(app.descendants(matching: .any)["Save to Files"].firstMatch)
-    }
-
-    func waitForDisappearance(_ element: XCUIElement) {
-        wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO"), object: element)], timeout: 10)
+        XCTAssertTrue(app.cells["Save to Files"].firstMatch.waitForNonExistence(timeout: 10), "the cancelled share sheet stayed open")
     }
 
     @discardableResult
