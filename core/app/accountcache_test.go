@@ -55,7 +55,7 @@ func TestAccountSwitchWithUndeletableCacheNeverUsesThePreviousAccount(t *testing
 					t.Fatal(err)
 				}
 			} else {
-				server := startRegistrationServerWithVaults(t)
+				server, _ := startRegistrationServerWithVaults(t)
 				result, err := service.SignUp(server+"/invite/token", "new@example.com", "New", password)
 				if err != nil || result.SecretKey == "" || result.Status.State != StateUnlocked {
 					t.Fatalf("the cache failure lost the new account's Secret Key ceremony: %+v %v", result, err)

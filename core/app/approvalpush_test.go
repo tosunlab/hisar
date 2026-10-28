@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -114,11 +116,13 @@ func TestAnApprovalWithoutPushKeysGoesOutWithoutPreviews(t *testing.T) {
 	}
 }
 
-// A phone sends the account's signature over its push key once Hisar can sign it, and only to a server that takes it.
+// A phone sends the account's signature over its push key and the device ID the server knows it by, once Hisar can sign
+// it, and only to a server that takes it.
 func TestAPhoneSignsItsPushKeyWhileUnlocked(t *testing.T) {
 	fixture := createUnlockedTestService(t)
 	relay := startFakeRelayForApp(t)
 	fixture.apiServer.pushRelayURL = relay.server.URL
+	fixture.apiServer.devices = []apitypes.Device{{ID: testPhoneDeviceID, Name: "Pixel", Platform: apitypes.PlatformAndroid, Current: true}}
 	pushKey := createTestPushKey(t)
 	p256dh := base64.RawURLEncoding.EncodeToString(pushKey.key.PublicKey().Bytes())
 	auth := base64.RawURLEncoding.EncodeToString(pushKey.authSecret)
@@ -136,16 +140,11 @@ func TestAPhoneSignsItsPushKeyWhileUnlocked(t *testing.T) {
 	if err := fixture.service.SetWebPushEndpoint("https://ntfy.example/upAbC", p256dh, auth); err != nil {
 		t.Fatal(err)
 	}
-	registration := fixture.apiServer.getPushRegistration()
-	signature, err := base64.RawURLEncoding.DecodeString(registration.KeySignature)
-	if err != nil {
-		t.Fatal(err)
-	}
 	fixture.service.mutex.Lock()
-	signingPublicKey, deviceID := fixture.service.unlockedSession.Keyset.GetSigningPublicKey(), fixture.service.state.DeviceID
+	signingPublicKey := fixture.service.unlockedSession.Keyset.GetSigningPublicKey()
 	fixture.service.mutex.Unlock()
-	if err := crypt.VerifyPushKey(signingPublicKey, fixture.accountID, deviceID, pushKey.key.PublicKey().Bytes(), pushKey.authSecret, signature); err != nil {
-		t.Fatalf("the key signature does not verify: %v", err)
+	if err := verifyRegisteredPushKey(fixture.apiServer.getPushRegistration(), signingPublicKey, fixture.accountID, testPhoneDeviceID, pushKey); err != nil {
+		t.Fatalf("the key signature does not verify over the phone's device ID: %v", err)
 	}
 	if verifier := GetApprovalPushVerifier(fixture.service); verifier.AccountID != fixture.accountID || verifier.SigningPublicKey != base64.RawURLEncoding.EncodeToString(signingPublicKey) {
 		t.Fatalf("verifier = %+v", verifier)
@@ -160,5 +159,117 @@ func TestAPhoneSignsItsPushKeyWhileUnlocked(t *testing.T) {
 	}
 	if verifier := GetApprovalPushVerifier(fixture.service); verifier.SigningPublicKey == "" {
 		t.Fatal("locking forgot the key a locked phone checks previews with")
+	}
+}
+
+// verifyRegisteredPushKey checks the account's signature, in a registration the server got, over pushKey and deviceID.
+func verifyRegisteredPushKey(registration *apitypes.PushRegistration, signingPublicKey []byte, accountID, deviceID string, pushKey testPushKey) error {
+	if registration == nil {
+		return errors.New("the phone never registered")
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(registration.KeySignature)
+	if err != nil {
+		return err
+	}
+	return crypt.VerifyPushKey(signingPublicKey, accountID, deviceID, pushKey.key.PublicKey().Bytes(), pushKey.authSecret, signature)
+}
+
+// A new phone signs its push key over the device ID its sign-up session got, the one the server and the Mac check.
+func TestASignedUpPhoneSignsItsPushKeyOverItsDeviceID(t *testing.T) {
+	service, _, _ := createTestService(t, filepath.Join(t.TempDir(), "hisar.json"), createMemorySecretKeyStore())
+	serverURL, apiServer := startRegistrationServerWithVaults(t)
+	relay := startFakeRelayForApp(t)
+	apiServer.mutex.Lock()
+	apiServer.pushRelayURL, apiServer.acceptsPayloadKey = relay.server.URL, true
+	apiServer.devices = []apitypes.Device{{ID: testPhoneDeviceID, Name: "iPhone", Platform: apitypes.PlatformIOS, Current: true}}
+	apiServer.mutex.Unlock()
+	if result, err := service.SignUp(serverURL+"/invite/token", "new@example.com", "New", "correct horse battery"); err != nil || result.Status.State != StateUnlocked {
+		t.Fatalf("sign-up = %+v, %v", result, err)
+	}
+
+	pushKey := createTestPushKey(t)
+	if err := service.SetPushPayloadKey(base64.RawURLEncoding.EncodeToString(pushKey.key.PublicKey().Bytes()), base64.RawURLEncoding.EncodeToString(pushKey.authSecret)); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetPushToken("apns", "device-token"); err != nil {
+		t.Fatal(err)
+	}
+	apiServer.mutex.Lock()
+	account := apiServer.account
+	apiServer.mutex.Unlock()
+	if err := verifyRegisteredPushKey(apiServer.getPushRegistration(), account.PublicKeys.Sign, account.AccountID, testPhoneDeviceID, pushKey); err != nil {
+		t.Fatalf("the key signature does not verify over the phone's device ID: %v", err)
+	}
+}
+
+// A phone signed in by a release that never stored its device ID registered its key signed over an empty one. After
+// the next unlock it registers the key again, signed over the device ID the server knows it by.
+func TestAPhoneWithoutItsDeviceIDRegistersItsKeyAgainAfterUnlock(t *testing.T) {
+	fixture := createUnlockedTestService(t)
+	prepareTestApprovalUnlock(t, fixture, "master password")
+	relay := startFakeRelayForApp(t)
+	fixture.apiServer.mutex.Lock()
+	fixture.apiServer.pushRelayURL, fixture.apiServer.acceptsPayloadKey = relay.server.URL, true
+	fixture.apiServer.devices = []apitypes.Device{
+		{ID: testMacDeviceID, Name: "MacBook Pro", Platform: "darwin/desktop"},
+		{ID: testPhoneDeviceID, Name: "iPhone", Platform: apitypes.PlatformIOS, Current: true},
+	}
+	fixture.apiServer.mutex.Unlock()
+	fixture.service.mutex.Lock()
+	signingPublicKey := fixture.service.unlockedSession.Keyset.GetSigningPublicKey()
+	fixture.service.mutex.Unlock()
+
+	fixture.service.Lock()
+	pushKey := createTestPushKey(t)
+	if err := fixture.service.SetPushPayloadKey(base64.RawURLEncoding.EncodeToString(pushKey.key.PublicKey().Bytes()), base64.RawURLEncoding.EncodeToString(pushKey.authSecret)); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.SetPushToken("apns", "device-token"); err != nil {
+		t.Fatal(err)
+	}
+	if registration := fixture.apiServer.getPushRegistration(); registration == nil || registration.KeySignature != "" {
+		t.Fatalf("registration while locked = %+v", registration)
+	}
+	if _, err := fixture.service.Unlock("master password"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for verifyRegisteredPushKey(fixture.apiServer.getPushRegistration(), signingPublicKey, fixture.accountID, testPhoneDeviceID, pushKey) != nil {
+		if time.Now().After(deadline) {
+			t.Fatalf("after unlock the server has %+v, not a key signed over the phone's device ID", fixture.apiServer.getPushRegistration())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// A released iPhone signed its push key over an empty device ID. The Mac encrypts the preview to that key as to a key
+// signed over the phone's own device ID, and not to a key the account signed for another device.
+func TestAnApprovalPreviewReachesAPhoneThatSignedItsKeyWithoutItsDeviceID(t *testing.T) {
+	test := createPhoneApprovalTest(t)
+	phoneKey, releasedPhoneKey, otherDeviceKey := createTestPushKey(t), createTestPushKey(t), createTestPushKey(t)
+	releasedPhone := releasedPhoneKey.signedBy(test.keyset, test.accountID, "")
+	releasedPhone.DeviceID = "released-phone"
+	otherDevice := otherDeviceKey.signedBy(test.keyset, test.accountID, "another-device")
+	otherDevice.DeviceID = "third-phone"
+	test.apiServer.mutex.Lock()
+	test.apiServer.pushKeys = &apitypes.DevicePushKeysResponse{AllKey: []apitypes.DevicePushKey{
+		phoneKey.signedBy(test.keyset, test.accountID, testPhoneDeviceID), releasedPhone, otherDevice,
+	}}
+	test.apiServer.mutex.Unlock()
+
+	stored, finish := test.start(t)
+	defer finish()
+	keysByDeviceID := map[string]testPushKey{testPhoneDeviceID: phoneKey, "released-phone": releasedPhoneKey}
+	if len(stored.request.AllPushMessage) != len(keysByDeviceID) {
+		t.Fatalf("push messages = %+v", stored.request.AllPushMessage)
+	}
+	for _, pushMessage := range stored.request.AllPushMessage {
+		pushKey, isExpected := keysByDeviceID[pushMessage.DeviceID]
+		if !isExpected {
+			t.Fatalf("a preview went to %s", pushMessage.DeviceID)
+		}
+		if preview, err := OpenApprovalPush(test.service, pushKey.open(t, pushMessage)); err != nil || preview.RequestID != stored.request.RequestID {
+			t.Fatalf("%s opens %+v, %v", pushMessage.DeviceID, preview, err)
+		}
 	}
 }
