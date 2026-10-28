@@ -20,6 +20,7 @@ import (
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/secretreference"
@@ -232,9 +233,9 @@ type agentSessionTest struct {
 
 const deployTokenReference = "hisar://Personal/Deploy%20token/password"
 
-func createAgentSessionTest(t *testing.T, duration clisocket.AgentGrantDuration) *agentSessionTest {
+func createAgentSessionTest(t *testing.T, duration clisocket.AgentGrantDuration, configure ...func(*Config)) *agentSessionTest {
 	t.Helper()
-	testService := createUnlockedTestService(t)
+	testService := createUnlockedTestService(t, configure...)
 	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Title: "Deploy token", Password: "deploy-token-value"}); err != nil {
 		t.Fatal(err)
 	}
@@ -796,5 +797,327 @@ func TestForgetAgentHostRestoresAppScope(t *testing.T) {
 	service.Lock()
 	if _, err := service.ForgetAgentHost(ternApp.Path, ternApp.TeamID); !errors.Is(err, ErrLocked) {
 		t.Errorf("forget while locked: %v", err)
+	}
+}
+
+func TestAlwaysGrantsAnswerRunRevealAndCodeWhileLocked(t *testing.T) {
+	for _, requestType := range []string{cliprotocol.TypeAgentResolveSecret, cliprotocol.TypeAgentRevealSecret, cliprotocol.TypeAgentGetCode} {
+		t.Run(requestType, func(t *testing.T) {
+			test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+			service := test.testService.service
+			prepareTestApprovalUnlock(t, test.testService, "master password")
+			if _, err := service.SetAlwaysAgentAccessWhileLocked(true); err != nil {
+				t.Fatal(err)
+			}
+			request := cliprotocol.Request{Type: requestType, References: []string{deployTokenReference}, CommandLine: []string{"make", "deploy"}}
+			if requestType == cliprotocol.TypeAgentGetCode {
+				login, err := service.SaveItem(test.testService.personalID, ItemDetail{Title: "Authenticator", OneTimePassword: "otpauth://totp/Test?secret=JBSWY3DPEHPK3PXP"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				request.ItemID, request.References = login.ID, nil
+			}
+			connection := test.connect(t)
+			connection.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAgentHello, AgentName: "omp"}, nil)
+			var result struct {
+				Values []string `json:"values"`
+				Code   string   `json:"code"`
+			}
+			connection.mustSend(t, request, &result)
+			service.Lock()
+			connection.mustSend(t, request, &result)
+			if requestType == cliprotocol.TypeAgentGetCode && len(result.Code) != 6 || requestType != cliprotocol.TypeAgentGetCode && !slices.Equal(result.Values, []string{"deploy-token-value"}) {
+				t.Fatalf("locked result %+v", result)
+			}
+			if test.agentApprover.getCount() != 1 || service.GetStatus().State != "locked" {
+				t.Fatalf("locked request asked or unlocked: %d approvals, %+v", test.agentApprover.getCount(), service.GetStatus())
+			}
+			service.SetAlwaysAgentAccessWhileLocked(false)
+			test.agentApprover.onApprove = func() {
+				if _, err := service.Unlock("master password"); err != nil {
+					t.Error(err)
+				}
+			}
+			connection.mustSend(t, request, &result)
+			if count := test.agentApprover.getCount(); count != 2 {
+				t.Fatalf("switch off skipped approval: %d", count)
+			}
+		})
+	}
+}
+
+func TestLockedGrantFallbacksOpenApproval(t *testing.T) {
+	for _, scenario := range []string{"switch off", "day", "uncovered", "partly covered", "ambiguous name", "other program", "revoke", "switch off after lock"} {
+		t.Run(scenario, func(t *testing.T) {
+			duration := clisocket.AgentGrantAlways
+			if scenario == "day" {
+				duration = clisocket.AgentGrantDay
+			}
+			test := createAgentSessionTest(t, duration)
+			service := test.testService.service
+			prepareTestApprovalUnlock(t, test.testService, "master password")
+			if scenario != "switch off" {
+				if _, err := service.SetAlwaysAgentAccessWhileLocked(true); err != nil {
+					t.Fatal(err)
+				}
+			}
+			connection := test.connect(t)
+			test.runDeploy(t, connection)
+			grants := service.ListAgentGrants()
+			other, err := service.SaveItem(test.testService.personalID, ItemDetail{Title: "Other token", Password: "other-value"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			references := []string{deployTokenReference}
+			otherReference := secretreference.Reference{Vault: test.testService.personalID, Item: other.ID, Field: "password"}.String()
+			switch scenario {
+			case "uncovered":
+				references = []string{otherReference}
+			case "partly covered":
+				references = append(references, otherReference)
+			case "ambiguous name":
+				if _, err := service.SaveItem(test.testService.personalID, ItemDetail{Title: "Deploy token", Password: "another-value"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			service.Lock()
+			if scenario == "revoke" {
+				if _, err := service.RevokeAgentGrant(grants[0].ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if scenario == "switch off after lock" {
+				service.SetAlwaysAgentAccessWhileLocked(false)
+			}
+			if scenario == "other program" {
+				instance, err := agentharness.ReadInstance(os.Getppid())
+				if err != nil {
+					t.Fatal(err)
+				}
+				test.resolver.mutex.Lock()
+				test.resolver.omp.Program.Signature.Identifier = "different-program"
+				test.resolver.omp.PID, test.resolver.omp.StartTime = os.Getppid(), instance.StartTime
+				test.resolver.mutex.Unlock()
+				connection = test.connect(t)
+			}
+			test.agentApprover.onApprove = func() {
+				if _, err := service.Unlock("master password"); err != nil {
+					t.Error(err)
+				}
+			}
+			failure := connection.send(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: references, CommandLine: []string{"make", "deploy"}}, nil)
+			if scenario != "ambiguous name" && failure != "" {
+				t.Fatal(failure)
+			}
+			if scenario == "ambiguous name" && failure == "" {
+				t.Fatal("served an ambiguous reference")
+			}
+			if test.agentApprover.getCount() != 2 {
+				t.Fatalf("expected unlock approval, got %d", test.agentApprover.getCount())
+			}
+		})
+	}
+}
+
+func TestLockedGrantViewIsZeroedAndDropped(t *testing.T) {
+	for _, action := range []string{"unlock", "switch off", "revoke", "sign out"} {
+		t.Run(action, func(t *testing.T) {
+			test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+			service := test.testService.service
+			prepareTestApprovalUnlock(t, test.testService, "master password")
+			if setting := service.GetAlwaysAgentAccessWhileLocked(); setting.IsEnabled || !setting.IsAvailable {
+				t.Fatalf("default %+v", setting)
+			}
+			service.SetAlwaysAgentAccessWhileLocked(true)
+			test.runDeploy(t, test.connect(t))
+			grant := service.ListAgentGrants()[0]
+			service.Lock()
+			if service.lockedGrants == nil || len(service.lockedGrants.entries) != 1 {
+				t.Fatal("missing locked view")
+			}
+			value := service.lockedGrants.entries[0].value
+			switch action {
+			case "unlock":
+				service.Unlock("master password")
+			case "switch off":
+				service.SetAlwaysAgentAccessWhileLocked(false)
+			case "revoke":
+				service.RevokeAgentGrant(grant.ID)
+			case "sign out":
+				service.SignOut()
+			}
+			if service.lockedGrants != nil || slices.ContainsFunc(value, func(value byte) bool { return value != 0 }) {
+				t.Fatal("retained granted plaintext after " + action)
+			}
+		})
+	}
+}
+
+func TestRetainedAnswersEndBeforeTheFinalSocketCheck(t *testing.T) {
+	for _, action := range []string{"unlock", "switch off", "revoke", "lock", "launcher lock"} {
+		t.Run(action, func(t *testing.T) {
+			test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+			service := test.testService.service
+			prepareTestApprovalUnlock(t, test.testService, "master password")
+			service.SetAlwaysAgentAccessWhileLocked(true)
+			test.runDeploy(t, test.connect(t))
+			grantID := service.ListAgentGrants()[0].ID
+			paused := pausedLockedGrantBridge{CommandLineBridge: test.bridge, read: make(chan struct{}), resume: make(chan struct{})}
+			test.server = clisocket.NewServer(clisocket.ServerConfig{
+				Handler: paused, Approver: test.commandLineApprover, AgentApprover: test.agentApprover,
+				Approvals: test.approvals, PeerResolver: test.resolver,
+			})
+			connection := test.connect(t)
+			service.Lock()
+			ended := make(chan string, 1)
+			var values cliprotocol.ResolveSecretResult
+			go func() {
+				ended <- connection.send(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{deployTokenReference}, CommandLine: []string{"make", "deploy"}}, &values)
+			}()
+			<-paused.read
+			switch action {
+			case "unlock":
+				service.Unlock("master password")
+			case "switch off":
+				service.SetAlwaysAgentAccessWhileLocked(false)
+			case "revoke":
+				service.RevokeAgentGrant(grantID)
+			case "lock":
+				service.Lock()
+			case "launcher lock":
+				service.lockFromLauncher()
+			}
+			close(paused.resume)
+			if failure := <-ended; !strings.HasPrefix(failure, cliprotocol.ErrorDenied+": ") || len(values.Values) != 0 {
+				t.Fatalf("returned retained value after %s: %q, %q", action, failure, values.Values)
+			}
+		})
+	}
+}
+
+func TestLockedAliasesPreserveExactIDPrecedence(t *testing.T) {
+	for _, level := range []string{"vault", "item"} {
+		t.Run(level, func(t *testing.T) {
+			test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+			service := test.testService.service
+			prepareTestApprovalUnlock(t, test.testService, "master password")
+			service.SetAlwaysAgentAccessWhileLocked(true)
+			vaultID := test.testService.personalID
+			otherVaultID := vaultID
+			title := "Granted"
+			if level == "vault" {
+				vault, err := service.CreateVault(strings.ToUpper(test.testService.familyID))
+				if err != nil {
+					t.Fatal(err)
+				}
+				vaultID, otherVaultID, title = vault.ID, test.testService.familyID, "Collision"
+				service.SetVaultAvailableToAgents(vaultID, true)
+				service.SetVaultAvailableToAgents(otherVaultID, true)
+			}
+			other, err := service.SaveItem(otherVaultID, ItemDetail{Title: "Collision", Password: "ungranted-value"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if level == "item" {
+				title = strings.ToUpper(other.ID)
+			}
+			granted, err := service.SaveItem(vaultID, ItemDetail{Title: title, Password: "granted-value"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			connection := test.connect(t)
+			request := cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, CommandLine: []string{"use"},
+				References: []string{secretreference.Reference{Vault: vaultID, Item: granted.ID, Field: "password"}.String()}}
+			connection.mustSend(t, request, nil)
+			service.Lock()
+			queryItem := other.ID
+			if level == "vault" {
+				queryItem = "Collision"
+			}
+			request.References = []string{secretreference.Reference{Vault: otherVaultID, Item: queryItem, Field: "password"}.String()}
+			test.agentApprover.onApprove = func() {
+				if _, err := service.Unlock("master password"); err != nil {
+					t.Error(err)
+				}
+			}
+			var values cliprotocol.ResolveSecretResult
+			connection.mustSend(t, request, &values)
+			if test.agentApprover.getCount() != 2 || !slices.Equal(values.Values, []string{"ungranted-value"}) {
+				t.Fatalf("exact %s ID used a name alias: %d approvals, %q", level, test.agentApprover.getCount(), values.Values)
+			}
+		})
+	}
+}
+
+func TestLockedGrantsKeepCustomConnectionStringLabelsDistinct(t *testing.T) {
+	for _, category := range []string{item.CategorySecureNote, item.CategoryDatabase} {
+		t.Run(category, func(t *testing.T) {
+			test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+			service, vaultID := test.testService.service, test.testService.personalID
+			prepareTestApprovalUnlock(t, test.testService, "master password")
+			if _, err := service.SetAlwaysAgentAccessWhileLocked(true); err != nil {
+				t.Fatal(err)
+			}
+			imported, err := service.saveCommandLineImports(vaultID, []item.Item{{
+				Overview: item.Overview{Category: category, Title: "Imported connection"},
+				Details: item.Details{Fields: []item.Field{
+					{Name: "Connection string", Value: "granted-value"},
+					{Name: " Connection string ", Value: "ungranted-value"},
+				}},
+			}}, reviewedImportScope(t, service, vaultID))
+			if err != nil || imported.SavedCount != 1 {
+				t.Fatalf("imported custom fields: %+v %v", imported, err)
+			}
+			itemID := findItemID(t, service, vaultID, "Imported connection")
+			reference := secretreference.Reference{Vault: vaultID, Item: itemID, Field: "Connection string"}
+			request := cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, CommandLine: []string{"use"}, References: []string{reference.String()}}
+			connection := test.connect(t)
+			connection.mustSend(t, request, nil)
+			service.Lock()
+			reference.Field = "connection STRING"
+			request.References = []string{reference.String()}
+			var values cliprotocol.ResolveSecretResult
+			connection.mustSend(t, request, &values)
+			if test.agentApprover.getCount() != 1 || !slices.Equal(values.Values, []string{"granted-value"}) || service.GetStatus().State != StateLocked {
+				t.Fatalf("locked custom field: %d approvals, %q, state %s", test.agentApprover.getCount(), values.Values, service.GetStatus().State)
+			}
+			reference.Field = " Connection string "
+			request.References = []string{reference.String()}
+			test.agentApprover.onApprove = func() {
+				if _, err := service.Unlock("master password"); err != nil {
+					t.Error(err)
+				}
+			}
+			connection.mustSend(t, request, &values)
+			if test.agentApprover.getCount() != 2 || !slices.Equal(values.Values, []string{"ungranted-value"}) {
+				t.Fatalf("ungranted custom field skipped unlock approval: %d approvals, %q", test.agentApprover.getCount(), values.Values)
+			}
+		})
+	}
+}
+
+func TestLockBuildsTheGrantViewWithoutNetworkOrMissingItems(t *testing.T) {
+	for _, isLoaded := range []bool{false, true} {
+		t.Run(fmt.Sprint(isLoaded), func(t *testing.T) {
+			test := createAgentSessionTest(t, clisocket.AgentGrantAlways, func(config *Config) {
+				config.IsEventStreamDisabled = true
+			})
+			service := test.testService.service
+			service.SetAlwaysAgentAccessWhileLocked(true)
+			test.runDeploy(t, test.connect(t))
+			transport := &refusingLockTransport{}
+			service.unlockedSession.Client.HTTP.Transport = transport
+			if !isLoaded {
+				delete(service.itemsByVaultID, test.testService.personalID)
+			}
+			service.Lock()
+			if calls := transport.calls.Load(); calls != 0 {
+				t.Fatalf("locking made %d network acquisitions", calls)
+			}
+			retained := service.lockedGrants != nil && len(service.lockedGrants.entries) != 0
+			if retained != isLoaded || service.GetStatus().State != "locked" {
+				t.Fatalf("loaded %t, retained %t, state %s", isLoaded, retained, service.GetStatus().State)
+			}
+		})
 	}
 }

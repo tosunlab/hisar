@@ -45,6 +45,7 @@ const allLauncherAllowance: { icon: IconName; text: string }[] = [
 ];
 
 const password = ref("");
+const isAlwaysAgentAccessWhileLockedEnabled = ref(false);
 const promptSlot = ref<HTMLElement | null>(null);
 const passwordInput = ref<HTMLInputElement | null>(null);
 const denyButton = ref<HTMLButtonElement | null>(null);
@@ -342,6 +343,11 @@ watch(
       api.clearApprovalTouchIDFrame().catch(() => undefined);
       return;
     }
+    api.getAlwaysAgentAccessWhileLocked().then((setting) => {
+      if (approval.value?.requestID === requestID) {
+        isAlwaysAgentAccessWhileLockedEnabled.value = setting.isEnabled;
+      }
+    }).catch(() => { isAlwaysAgentAccessWhileLockedEnabled.value = false; });
     countdownTimer = setInterval(() => {
       now.value = Date.now();
     }, 250);
@@ -358,7 +364,7 @@ watch(
 );
 
 watch(
-  () => [approval.value?.requestID, isCompactShown.value, isPasswordShown.value, approvalStore.failureMessage, approvalStore.allApproval.length, isWaitingForTouchID.value, isExpired.value],
+  () => [approval.value?.requestID, isCompactShown.value, isPasswordShown.value, approvalStore.failureMessage, approvalStore.allApproval.length, approvalStore.grantDuration, isAlwaysAgentAccessWhileLockedEnabled.value, isWaitingForTouchID.value, isExpired.value],
   () => fitWindow(),
 );
 
@@ -603,6 +609,11 @@ onBeforeUnmount(() => {
               <p v-if="approval.grantScope" class="muted" data-testid="approval-grant-scope">{{ approval.grantScope }}</p>
               <p v-if="isHarnessGrantOffered" class="muted" data-testid="approval-grant-note">
                 Longer choices cover {{ harnessName }} in every session until they expire, you revoke them in Settings → Coding agents, or you sign out.
+              </p>
+              <p v-if="approvalStore.grantDuration === 'always'" class="muted" data-testid="approval-always-lock-note">
+                {{ isAlwaysAgentAccessWhileLockedEnabled
+                  ? "Agents can use this permission while Hisar is locked, until Hisar quits."
+                  : 'Hisar still asks after it locks; turn on “Use Always permissions while Hisar is locked” in Settings to allow it.' }}
               </p>
             </div>
           </div>

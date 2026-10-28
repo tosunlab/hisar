@@ -108,6 +108,13 @@ type AgentSecretHandler interface {
 	AnswerAgentRequest(ctx context.Context, request *cliprotocol.Request, approval AgentApproval) (any, error)
 }
 
+// LockedAgentSecretHandler answers only requests fully covered by retained Always grants.
+// A covered answer binds authorization to its view generation for the socket's final check.
+// An uncovered request leaves authorization unchanged so the unlock dialog can continue it.
+type LockedAgentSecretHandler interface {
+	AnswerLockedAgentRequest(ctx context.Context, request *cliprotocol.Request, kind string, harness agentharness.Session, authorization *AgentAuthorization) (any, bool, error)
+}
+
 // AgentApproval is what lets one agent request run: its authorization, and its secrets as they were located when the
 // user approved them or a grant covered them, in the request's order.
 type AgentApproval struct {
@@ -290,6 +297,17 @@ func (s *Server) answerWithAgentRules(ctx context.Context, client *connectionPee
 	secrets, isLocked, err := s.locateAgentSecrets(ctx, request)
 	if err != nil {
 		return nil, err
+	}
+	if isLocked && client.isInAgentSession() && client.isHarnessRunning() {
+		if handler, ok := s.config.Handler.(LockedAgentSecretHandler); ok {
+			result, covered, err := handler.AnswerLockedAgentRequest(ctx, request, kind, client.agentSession.Session, &authorization)
+			if err != nil || covered {
+				if !authorization.IsCurrent() {
+					return nil, denyEndedAuthorization()
+				}
+				return result, err
+			}
+		}
 	}
 	if !isLocked && client.isHarnessRunning() {
 		isGranted, err := approvals.isAgentGranted(authorization, client, kind, secrets)

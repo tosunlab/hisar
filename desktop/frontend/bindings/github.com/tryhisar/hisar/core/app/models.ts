@@ -82,6 +82,14 @@ export interface AgentSignIn {
     "hasAccessibility": boolean;
 }
 
+/**
+ * AlwaysAgentAccessWhileLocked reports whether this device can keep Always permissions active while locked.
+ */
+export interface AlwaysAgentAccessWhileLocked {
+    "isAvailable": boolean;
+    "isEnabled": boolean;
+}
+
 export interface BrowserPairingRequest {
     "browser": string;
     "code": string;

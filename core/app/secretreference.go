@@ -17,9 +17,10 @@ import (
 // serviceSecretSource lets references resolve against the unlocked vaults; the caller holds s.mutex.
 // isCacheOnly uses what the app already loaded, so describing a request for the approval window stays quick.
 type serviceSecretSource struct {
-	service     *Service
-	ctx         context.Context
-	isCacheOnly bool
+	service      *Service
+	ctx          context.Context
+	isCacheOnly  bool
+	isMemoryOnly bool
 }
 
 func (source serviceSecretSource) ListVaults() (secretreference.Inventory, error) {
@@ -30,6 +31,9 @@ func (source serviceSecretSource) ListVaults() (secretreference.Inventory, error
 }
 
 func (source serviceSecretSource) loadVaults() error {
+	if source.isMemoryOnly {
+		return nil
+	}
 	if !source.isCacheOnly || len(source.service.vaultsByID) == 0 {
 		return source.service.loadVaults(source.ctx)
 	}
@@ -57,6 +61,12 @@ func isAnyVault(string) bool { return true }
 
 func (source serviceSecretSource) ListItems(vaultID string) (secretreference.ItemList, error) {
 	s := source.service
+	if source.isMemoryOnly {
+		if _, isLoaded := s.itemsByVaultID[vaultID]; !isLoaded {
+			return secretreference.ItemList{}, fmt.Errorf("vault items %w", ErrNotFound)
+		}
+		return s.listSecretItems(vaultID), nil
+	}
 	if _, isCached := s.itemsByVaultID[vaultID]; !isCached || !source.isCacheOnly {
 		vault, isFound := s.vaultsByID[vaultID]
 		if !isFound {

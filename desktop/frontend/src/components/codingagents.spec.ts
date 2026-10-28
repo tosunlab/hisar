@@ -50,16 +50,40 @@ beforeEach(() => {
     allAgentHost: [],
     allAgentGrant: [],
     agentSignIn: { isAvailable: false, isEnabled: false, hasAccessibility: false },
+    alwaysAgentAccessWhileLocked: { isAvailable: false, isEnabled: false },
     agentErrorMessage: "",
   });
   api.listAllAgentVaultID.mockResolvedValue([]);
   api.listAllAgentGrant.mockResolvedValue([]);
   api.getAgentSignIn.mockResolvedValue({ isAvailable: true, isEnabled: false, hasAccessibility: false });
+  api.getAlwaysAgentAccessWhileLocked.mockResolvedValue({ isAvailable: true, isEnabled: false });
   api.listAllAgentSession.mockResolvedValue([]);
   api.listAllAgentHost.mockResolvedValue([]);
 });
 
 describe("CodingAgentsSection", () => {
+  it("keeps locked Always access off by default and saves the switch", async () => {
+    const wrapper = mount(CodingAgentsSection);
+    await flushPromises();
+    const toggle = wrapper.get('[data-testid="always-agent-access-while-locked-switch"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    expect(wrapper.get('[data-testid="always-agent-access-while-locked"] p').text()).toBe("Hisar keeps the secrets you allowed Always in memory when it locks, so agents can use them without asking until Hisar quits.");
+    api.setAlwaysAgentAccessWhileLocked.mockResolvedValue({ isAvailable: true, isEnabled: true });
+    await toggle.setValue(true);
+    await flushPromises();
+    expect(api.setAlwaysAgentAccessWhileLocked).toHaveBeenCalledWith(true);
+    expect((toggle.element as HTMLInputElement).checked).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("hides locked Always access without a usable grant store", async () => {
+    api.getAlwaysAgentAccessWhileLocked.mockResolvedValue({ isAvailable: false, isEnabled: false });
+    const wrapper = mount(CodingAgentsSection);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="always-agent-access-while-locked-switch"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("lists every vault as invisible to agents by default", async () => {
     const wrapper = mount(CodingAgentsSection);
     await flushPromises();

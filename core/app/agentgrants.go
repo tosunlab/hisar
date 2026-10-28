@@ -23,6 +23,13 @@ func (bridge *CommandLineBridge) ListAgentGrants() []clisocket.AgentGrant {
 	s := bridge.service
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	if s.unlockedSession == nil && s.lockedGrants != nil {
+		grants := make([]clisocket.AgentGrant, 0, len(s.lockedGrants.entries))
+		for _, entry := range s.lockedGrants.entries {
+			grants = append(grants, entry.grant)
+		}
+		return grants
+	}
 	return slices.Clone(s.agentGrants)
 }
 
@@ -73,6 +80,7 @@ func (bridge *CommandLineBridge) CanSaveAgentGrants() bool {
 
 // forgetAgentAccount requires s.mutex and ends the account's agent requests and grants.
 func (s *Service) forgetAgentAccount() {
+	s.dropLockedGrantView()
 	if s.commandLineApprovals != nil {
 		s.commandLineApprovals.SetAccount("")
 	}
@@ -105,6 +113,7 @@ func (bridge *CommandLineBridge) RemoveAgentGrant(harnessID, key string) error {
 // dropAgentGrants needs s.mutex. Without the account key, removing one sealed grant must drop the list. Both stores
 // are cleared even if one fails, and the in-memory state never reopens the revoked grants.
 func (s *Service) dropAgentGrants() error {
+	s.dropLockedGrantView()
 	s.agentGrants, s.state.SealedAgentGrants = nil, nil
 	var headError error
 	if heads := s.config.AgentGrantHeads; heads != nil {
