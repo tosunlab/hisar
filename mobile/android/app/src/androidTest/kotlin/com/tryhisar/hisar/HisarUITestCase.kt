@@ -217,7 +217,7 @@ abstract class HisarUITestCase {
         if (exists(hasTestTag("welcome-create-account"))) tap("welcome-create-account")
         else composeRule.onNode(hasText("Create account") and hasAnyAncestor(hasTestTag("sign-in-mode"))).performClick()
         val invitation = requireNotNull(com.tryhisar.hisar.model.InviteLink.parseInvitation(inviteLink, com.tryhisar.hisar.app.SignInModel.DEFAULT_SERVER))
-        tap("sign-up-use-different-server")
+        if (exists(hasTestTag("sign-up-use-different-server"))) tap("sign-up-use-different-server")
         scrollTo("sign-up-server")
         composeRule.onNode(hasTestTag("sign-up-server")).performTextReplacement(invitation.server)
         Espresso.closeSoftKeyboard()
