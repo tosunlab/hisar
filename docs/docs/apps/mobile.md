@@ -67,6 +67,7 @@ On an emulator, the biometric tests enroll fingerprints through the emulator con
 `IosTestParityTest` fails when an iPhone test has no Android test of the same name, a rename or a reason. Port an iPhone
 test under its Swift name and delete its line from
 `android/model/src/test/resources/ios-test-parity-expected-missing.txt`, which lists the tests not ported yet.
+Instrumented test method names start with `test`, so the runner can match every discovered test's logcat file to its XML result.
 
 CI's `android-build` job (`.github/workflows/ci.yml`) builds and lints the app and runs its JVM tests.
 The `android` job runs the instrumented tests in two parts on x86_64 API 36 emulators with Postgres.

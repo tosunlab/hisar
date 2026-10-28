@@ -69,13 +69,13 @@ class PasswordGeneratorControlTests {
     }
 
     @Test
-    fun standaloneLengthHasOneAccessibleAdjustableControl() {
+    fun testStandaloneLengthHasOneAccessibleAdjustableControl() {
         show(isSheet = false)
         adjustLength()
     }
 
     @Test
-    fun editorSheetLengthHasOneAccessibleAdjustableControl() {
+    fun testEditorSheetLengthHasOneAccessibleAdjustableControl() {
         show(isSheet = true)
         adjustLength()
     }
