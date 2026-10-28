@@ -166,14 +166,7 @@ fun VaultsHomeScreen(model: AppModel) {
                     NoteRow(warning, Icons.Filled.Warning, Modifier.testTag("vault-key-warning"), iconTint = HisarTheme.colors.warning)
                 }
                 cardSection("review-recipients", data.allReviewInvitation, rowKey = { it.id }, header = "Review recipients") { invitation ->
-                    SentInvitationRow(
-                        invitation, isVaultNameShown = true, testTag = "review-invitation-${invitation.id}",
-                        onConfirm = { snapshot ->
-                            scope.launch {
-                                if (!model.sharing.confirmShareRecipient(snapshot)) refusal = model.takeRefusal("Give access")
-                            }
-                        },
-                    )
+                    SentInvitationRow(model, invitation, isVaultNameShown = true, testTag = "review-invitation-${invitation.id}")
                 }
                 cardSection<Any>(
                     "invitations-for-you",

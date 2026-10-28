@@ -145,9 +145,7 @@ fun NewSecretKeyScreen(model: AppModel, secretKey: String, copySecret: (String) 
         ) {
             val current = export
             if (current != null) {
-                EmergencyKitRows(model, current.emergencyKitPath, "new-secret-key-save-kit", "new-secret-key-print-kit", "new-secret-key-share-kit") {
-                    isKitHandedOff = true
-                }
+                EmergencyKitRows(model, current.emergencyKitPath, "new-secret-key-save-kit", "new-secret-key-print-kit", "new-secret-key-share-kit", onHandoff = { isKitHandedOff = true })
             } else if (errorMessage == null) {
                 Box(Modifier.fillMaxWidth().heightIn(min = 52.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)

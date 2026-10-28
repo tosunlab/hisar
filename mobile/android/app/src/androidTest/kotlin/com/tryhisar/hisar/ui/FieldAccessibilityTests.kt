@@ -64,7 +64,7 @@ class FieldAccessibilityTests {
         val failure = mutableStateOf<String?>(null)
         composeRule.setContent {
             HisarTheme {
-                UnlockPanel(email = "ada@example.com", isBiometricReady = false, isBusy = false, errorMessage = failure.value, submitPassword = { failure.value = "Wrong password."; false }, submitBiometric = {})
+                UnlockPanel(email = "ada@example.com", isBiometricReady = false, isBiometricEnabled = false, isBiometricAvailable = false, isBusy = false, errorMessage = failure.value, submitPassword = { failure.value = "Wrong password."; false }, submitBiometric = { false }, lockCount = 0, isResumed = true, isCurrentLock = { true })
             }
         }
         composeRule.onNodeWithTag("unlock-password").performTextInput("wrong")

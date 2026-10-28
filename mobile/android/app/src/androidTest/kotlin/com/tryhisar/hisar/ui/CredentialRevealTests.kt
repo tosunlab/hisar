@@ -39,9 +39,9 @@ class CredentialRevealTests {
         composeRule.setContent {
             HisarTheme {
                 if (isShown) Column {
-                    FormTextField(password, { password = it }, "Master password", "password", isSecure = true, revealName = "master password", concealWhen = concealWhen)
-                    FormTextField(repeated, { repeated = it }, "Repeat master password", "repeated", isSecure = true, revealName = "repeated master password", concealWhen = concealWhen)
-                    FormTextField("recovery key", {}, "Secret Key", "recovery", isSecure = true)
+                    FormTextField(password, { password = it }, "Master password", "password", label = "Master password", isSecure = true, revealName = "master password", concealWhen = concealWhen)
+                    FormTextField(repeated, { repeated = it }, "Repeat master password", "repeated", label = "Repeat master password", isSecure = true, revealName = "repeated master password", concealWhen = concealWhen)
+                    FormTextField("recovery key", {}, "Secret Key", "recovery", label = "Secret Key", isSecure = true)
                 }
             }
         }
