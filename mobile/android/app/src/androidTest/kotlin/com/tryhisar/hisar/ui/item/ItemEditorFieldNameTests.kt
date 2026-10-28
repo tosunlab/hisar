@@ -11,6 +11,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.EditorRequest
@@ -67,6 +69,10 @@ class ItemEditorFieldNameTests {
         composeRule.onNodeWithTag("editor-save").performClick()
 
         composeRule.waitForTag("editor-field-0-name-error")
+        composeRule.waitUntil(5_000) {
+            ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        }
+        composeRule.waitForIdle()
         composeRule.onNodeWithText("Enter a name for this field.").assertIsDisplayed()
         composeRule.onNodeWithTag("editor-field-0-name").assertIsDisplayed().assertIsFocused()
         assertFalse("nothing reaches the backend", "saveItem" in backend.allCallName)

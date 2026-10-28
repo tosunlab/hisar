@@ -150,7 +150,7 @@ An item has two encrypted parts so lists and search don't decrypt every secret:
 - **overview**: title, category, URLs, tags, icon, subtitle (username).
 - **details**: fields, passwords, notes, TOTP seeds, passkeys, history of field values.
 
-**Custom fields.** `SaveItem` requires a name whenever a custom field has a nonempty value. An empty or whitespace-only name returns "enter a name for each field that has a value" before conversion can drop that value. A row with no name and no value is ignored. The Mac, iPhone and Android editors check this rule before saving, retain the full draft, bring the row into view and focus Name with "Enter a name for this field." beside it. Importers continue to name unnamed fields "Field".
+**Custom fields.** `SaveItem` requires a name whenever a custom field has a nonempty value. An empty or whitespace-only name returns "enter a name for each field that has a value" before conversion can drop that value. A row with no name and no value is ignored. The Mac, iPhone and Android editors check this rule before saving, retain the full draft, bring the row into view and focus Name with "Enter a name for this field." beside it. Android explicitly scrolls the name and correction together and keeps them visible when the keyboard changes the available space. Importers continue to name unnamed fields "Field".
 
 **Categories.** `overview.category` is the item's type, set when the item is created and kept by every edit:
 

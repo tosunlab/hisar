@@ -25,7 +25,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -62,8 +61,8 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
     var isIconPickerShown by remember { mutableStateOf(false) }
     var isDeleteConfirmationShown by remember { mutableStateOf(false) }
     var isDiscardConfirmationShown by remember { mutableStateOf(false) }
-    val allFieldNameFocus = remember { mutableMapOf<Int, FocusRequester>() }
-    val fieldNameFocus: (Int) -> FocusRequester = { index -> allFieldNameFocus.getOrPut(index) { FocusRequester() } }
+    val allFieldNameFocus = remember { mutableMapOf<Int, FieldNameFocus>() }
+    val fieldNameFocus: (Int) -> FieldNameFocus = { index -> allFieldNameFocus.getOrPut(index) { FieldNameFocus() } }
 
     LaunchedEffect(request) {
         model.itemEditor.clearError()
@@ -85,7 +84,9 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
         val current = draft?.withTagsAdded() ?: return
         current.unnamedFieldIndex?.let { index ->
             model.itemEditor.updateDraft(current.copy(isUnnamedFieldShown = true))
-            fieldNameFocus(index).requestFocus()
+            val focus = fieldNameFocus(index)
+            focus.focusRequester.requestFocus()
+            scope.launch { focus.bringIntoViewRequester.bringIntoView() }
             return
         }
         model.itemEditor.updateDraft(current)
