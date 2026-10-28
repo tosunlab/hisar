@@ -18,6 +18,8 @@ import (
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/emergencykit"
 	"github.com/tryhisar/hisar/core/session"
+
+	"github.com/skip2/go-qrcode"
 )
 
 func TestRevealSecretKeyVerifiesPasswordWithoutSavingAFile(t *testing.T) {
@@ -692,5 +694,33 @@ func TestGetSignUpPolicy(t *testing.T) {
 	}
 	if _, err := service.GetSignUpPolicy("not a server"); err == nil {
 		t.Error("an invalid address was asked")
+	}
+}
+
+func TestExportedEmergencyKitCarriesItsOwnSignInQRCode(t *testing.T) {
+	fixture := createVerifiableService(t)
+	service := fixture.service
+	if kit, err := ExportEmergencyKitToDirectory(service, "wrong password", t.TempDir()); err == nil || kit.QRCode != "" {
+		t.Fatalf("a wrong password returned a QR code: %v", err)
+	}
+	kit, err := ExportEmergencyKitToDirectory(service, testMasterPassword, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := service.config.SecretKeyStore.LoadSecretKey(fixture.accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := emergencykit.BuildQRPayload(emergencykit.Kit{Server: service.state.Server, Email: service.state.Email, SecretKey: key.Encode()})
+	expected, err := qrcode.Encode(payload, qrcode.Medium, 320)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kit.SecretKey != key.Encode() || kit.QRCode != base64.StdEncoding.EncodeToString(expected) {
+		t.Fatal("the exported QR code does not encode this kit's server, email and Secret Key")
+	}
+	service.Lock()
+	if kit, err := ExportEmergencyKitToDirectory(service, testMasterPassword, t.TempDir()); err == nil || kit.QRCode != "" {
+		t.Fatal("a locked service returned a QR code")
 	}
 }
