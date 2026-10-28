@@ -1,9 +1,14 @@
 package com.tryhisar.hisar.ui.settings
 
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
@@ -11,6 +16,7 @@ import android.print.PageRange
 import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintDocumentInfo
+import android.print.PrintJob
 import android.print.PrintManager
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -34,19 +40,33 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+sealed interface FileSaveResult {
+    data class Saved(val uri: Uri) : FileSaveResult
+    data object Cancelled : FileSaveResult
+    data object Failed : FileSaveResult
+}
+
 /**
- * Saves a file Hisar wrote (an Emergency Kit, an export) where the user picks, through the system's file creator.
- * [onFinish] gets the saved document's URI, or null on failure; picking nothing calls nothing.
+ * Saves a file Hisar wrote where the user picks. [onResult] distinguishes cancellation from a failed write.
+ * [onFinish] gets the saved document's URI, or null on failure; picking nothing calls only [onResult].
  */
 @Composable
-fun rememberFileSaver(mimeType: String, onFinish: (savedURI: Uri?) -> Unit): (File) -> Unit {
+fun rememberFileSaver(
+    mimeType: String,
+    onResult: (FileSaveResult) -> Unit = {},
+    onFinish: (savedURI: Uri?) -> Unit,
+): (File) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var pendingFile by remember { mutableStateOf<File?>(null) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(mimeType)) { uri ->
         val file = pendingFile
         pendingFile = null
-        if (uri == null || file == null) return@rememberLauncherForActivityResult
+        if (file == null) return@rememberLauncherForActivityResult
+        if (uri == null) {
+            onResult(FileSaveResult.Cancelled)
+            return@rememberLauncherForActivityResult
+        }
         scope.launch {
             val isSaved = withContext(Dispatchers.IO) {
                 try {
@@ -55,14 +75,50 @@ fun rememberFileSaver(mimeType: String, onFinish: (savedURI: Uri?) -> Unit): (Fi
                     true
                 } catch (_: IOException) {
                     false
+                } catch (_: SecurityException) {
+                    false
                 }
             }
+            onResult(if (isSaved) FileSaveResult.Saved(uri) else FileSaveResult.Failed)
             onFinish(uri.takeIf { isSaved })
         }
     }
     return { file ->
         pendingFile = file
         launcher.launch(file.name)
+    }
+}
+
+/** Reports the activity the chooser opened, not whether it kept the file. System actions can report null. */
+class FileShareReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val callback = callbacks.remove(intent.data) ?: return
+        @Suppress("DEPRECATION")
+        val component = intent.getParcelableExtra<ComponentName>(Intent.EXTRA_CHOSEN_COMPONENT)
+        callback(component)
+    }
+
+    class Callback internal constructor(private val identity: Uri, private val pending: PendingIntent) : AutoCloseable {
+        val intentSender: IntentSender get() = pending.intentSender
+
+        override fun close() {
+            callbacks.remove(identity)
+            pending.cancel()
+        }
+    }
+
+    companion object {
+        private val callbacks = mutableMapOf<Uri, (ComponentName?) -> Unit>()
+
+        fun register(context: Context, onChosen: (ComponentName?) -> Unit): Callback {
+            val identity = Uri.parse("hisar-share:${UUID.randomUUID()}")
+            val intent = Intent(context, FileShareReceiver::class.java).setData(identity)
+            // The chooser fills EXTRA_CHOSEN_COMPONENT into this explicitly targeted intent.
+            val mutable = if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
+            val pending = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_ONE_SHOT or mutable)
+            callbacks[identity] = onChosen
+            return Callback(identity, pending)
+        }
     }
 }
 
@@ -75,14 +131,24 @@ const val SHARED_FOLDER_NAME = "shared"
  * Sends a file Hisar wrote to another app through the system's share sheet, as the iPhone's ShareLink. Only a copy in
  * the folder Hisar's FileProvider serves goes out, made for the share; it is deleted when the screen leaves, as the
  * iPhone deletes its file. [onFailure] runs when the copy cannot be made, [onShared] once the share sheet opened.
+ * [onTargetChosen] observes the chooser's component; a callback with null is not a target selection.
  */
 @Composable
-fun rememberFileSharer(mimeType: String, onShared: () -> Unit = {}, onFailure: () -> Unit): (File) -> Unit {
+fun rememberFileSharer(
+    mimeType: String,
+    onShared: () -> Unit = {},
+    onTargetChosen: (ComponentName?) -> Unit = {},
+    onFailure: () -> Unit,
+): (File) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val allPublishedFolder = remember { mutableListOf<File>() }
+    val pendingChoice = remember { mutableStateOf<FileShareReceiver.Callback?>(null) }
     DisposableEffect(Unit) {
-        onDispose { allPublishedFolder.forEach(File::deleteRecursively) }
+        onDispose {
+            pendingChoice.value?.close()
+            allPublishedFolder.forEach(File::deleteRecursively)
+        }
     }
     return { file ->
         scope.launch {
@@ -109,7 +175,10 @@ fun rememberFileSharer(mimeType: String, onShared: () -> Unit = {}, onFailure: (
                     .putExtra(Intent.EXTRA_STREAM, uri)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 intent.clipData = ClipData.newRawUri(file.name, uri)
-                context.startActivity(Intent.createChooser(intent, null))
+                pendingChoice.value?.close()
+                val choice = FileShareReceiver.register(context, onTargetChosen)
+                pendingChoice.value = choice
+                context.startActivity(Intent.createChooser(intent, null, choice.intentSender))
                 allPublishedFolder += folder
                 isPublished = true
                 onShared()
@@ -182,12 +251,19 @@ private fun queryDisplayName(context: Context, uri: Uri): String? =
         if (cursor.moveToFirst() && index >= 0) cursor.getString(index) else null
     }?.takeIf { it.isNotEmpty() }
 
-/** Opens the system's print dialog for a PDF Hisar wrote. */
-fun printPdf(context: Context, file: File, jobName: String) {
-    context.getSystemService(PrintManager::class.java).print(jobName, PdfFilePrintAdapter(file), null)
+/** Opens the print dialog. [onFinish] can run while the returned job is still CREATED, even after Save as PDF. */
+fun printPdf(context: Context, file: File, jobName: String, onFinish: (PrintJob) -> Unit = {}): PrintJob {
+    lateinit var job: PrintJob
+    val adapter = PdfFilePrintAdapter(file) { onFinish(job) }
+    job = context.getSystemService(PrintManager::class.java).print(jobName, adapter, null)
+    return job
 }
 
-private class PdfFilePrintAdapter(private val file: File) : PrintDocumentAdapter() {
+private class PdfFilePrintAdapter(private val file: File, private val onFinished: () -> Unit) : PrintDocumentAdapter() {
+    override fun onFinish() {
+        onFinished()
+    }
+
     override fun onLayout(
         oldAttributes: PrintAttributes?,
         newAttributes: PrintAttributes,
