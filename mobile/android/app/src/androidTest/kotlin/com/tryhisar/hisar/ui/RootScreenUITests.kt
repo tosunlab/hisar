@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
@@ -75,6 +76,7 @@ class RootScreenUITests {
             composeRule.onNodeWithTag("sign-in-submit").assertIsNotEnabled()
             composeRule.onNodeWithTag("sign-up-repeated-password").performTextClearance()
             composeRule.type("sign-up-repeated-password", FakeBackend.PASSWORD)
+            composeRule.onNodeWithTag("sign-in-submit").assertIsEnabled()
             composeRule.onNodeWithTag("sign-up-repeated-password").performImeAction()
 
             composeRule.waitForTag("new-secret-key")

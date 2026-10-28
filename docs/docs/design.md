@@ -330,6 +330,7 @@ A lost registration answer is reconciled using the staged factor and exact encry
 The account form rates the master password with the same strength meter as the item editor (Weak, Fair, Good, Strong). It refuses fewer than 10 characters and passwords estimated below 28 bits (common words and patterns such as `password1234`), with "This password is too easy to guess. Add a few more words or characters."; a Weak password above that is allowed with a hint, because the Secret Key also protects the account. The server only checks the length.
 
 On the phones, a mismatched confirmation is reported after the user leaves an edited Repeat master password field or attempts to submit. Once triggered, validation updates as the confirmation changes. Account creation still requires equal passwords.
+The Android confirmation field's Go action submits with the current form values and busy state, including after correcting a mismatch.
 
 The admin dashboard's setup page (§5.1) runs the same steps in its Web Worker as the "Admin dashboard" device. Its form refuses fewer than 10 characters and a repeated password that does not match; it has no strength meter.
 

@@ -105,15 +105,15 @@ fun SignInScreen(model: AppModel) {
     val isPasswordMismatch = mode == SignInMode.CREATE_ACCOUNT && hasValidatedRepeatedPassword && password != repeatedPassword
     // An invite link names its server, so the create-account form asks for one only without an invite.
     val isSignUpServerAsked = inviteLink.isBlank()
-    val canSubmit = when (mode) {
+    fun canSubmit(): Boolean = when (mode) {
         SignInMode.SIGN_IN -> server.isNotEmpty() && email.isNotEmpty() && secretKey.isNotEmpty() && password.isNotEmpty()
         SignInMode.CREATE_ACCOUNT ->
-            (!isSignUpServerAsked || server.isNotBlank()) && email.isNotEmpty() && name.isNotEmpty() && password.isNotEmpty() && password == repeatedPassword
+            (inviteLink.isNotBlank() || server.isNotBlank()) && email.isNotEmpty() && name.isNotEmpty() && password.isNotEmpty() && password == repeatedPassword
     }
 
     fun submit() {
         if (mode == SignInMode.CREATE_ACCOUNT) hasValidatedRepeatedPassword = true
-        if (!canSubmit || isBusy) return
+        if (!canSubmit() || model.isBusy.value) return
         scope.launch {
             when (mode) {
                 SignInMode.SIGN_IN -> if (signIn.signIn(server, email, secretKey, password)) {
@@ -121,7 +121,7 @@ fun SignInScreen(model: AppModel) {
                     secretKey = ""
                 }
                 SignInMode.CREATE_ACCOUNT -> {
-                    val isSignedUp = if (isSignUpServerAsked) {
+                    val isSignedUp = if (inviteLink.isBlank()) {
                         signIn.signUpWithoutInvite(server, email, name, password)
                     } else {
                         signIn.signUp(inviteLink, email, name, password)
@@ -190,7 +190,7 @@ fun SignInScreen(model: AppModel) {
                 }
             } else null,
         ) {
-            ProminentButton(mode.title, ::submit, testTag = "sign-in-submit", enabled = canSubmit, isBusy = isBusy)
+            ProminentButton(mode.title, ::submit, testTag = "sign-in-submit", enabled = canSubmit(), isBusy = isBusy)
         }
     }
 
