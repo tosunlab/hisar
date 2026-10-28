@@ -37,13 +37,18 @@ build-cli-all:
 package-cli-release:
 	./scripts/package-cli-release.sh $(VERSION) bin/cli-release
 
-# -p 1: database tests in different packages share one schema.
+# server tests with -p 1: its database tests in different packages share one schema. The other modules have no database
+# tests, so they test in parallel while server's tests run; server's output follows theirs.
 # desktop: every package but the Wails main package, which needs cgo and the built frontend.
 DESKTOP_PACKAGES = $(shell cd desktop && go list -e ./... | grep -v '^github.com/tryhisar/hisar/desktop$$')
 
 test:
-	@for m in $(MODULES); do (cd $$m && go test -p 1 -count=1 $(TESTFLAGS) ./...) || exit 1; done
-	cd desktop && go test -count=1 $(TESTFLAGS) $(DESKTOP_PACKAGES)
+	@status=0; serverLog=$$(mktemp); \
+	(cd server && go test -p 1 -count=1 $(TESTFLAGS) ./...) > "$$serverLog" 2>&1 & serverTests=$$!; \
+	for m in $(filter-out server,$(MODULES)); do (cd $$m && go test -count=1 $(TESTFLAGS) ./...) || status=1; done; \
+	(cd desktop && go test -count=1 $(TESTFLAGS) $(DESKTOP_PACKAGES)) || status=1; \
+	wait $$serverTests || status=1; \
+	cat "$$serverLog"; rm -f "$$serverLog"; exit $$status
 
 vet:
 	@for m in $(MODULES); do (cd $$m && go vet ./...) || exit 1; done
