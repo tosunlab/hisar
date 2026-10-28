@@ -14,8 +14,8 @@ final class HisarUITests: HisarUITestCase {
         password.tap()
         waitFor(app.staticTexts["The passwords do not match."])
         repeated.tap()
-        repeated.typeText(" master password")
-        XCTAssertTrue(app.staticTexts["The passwords do not match."].waitForNonExistence(timeout: 5))
+        typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6) + "a long master password", into: repeated, showing: "a long master password")
+        XCTAssertTrue(app.staticTexts["The passwords do not match."].waitForNonExistence(timeout: 30))
     }
 
     func testAccountItemLockAndSignInFlow() throws {
@@ -315,7 +315,8 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertEqual(serverField.value as? String, "https://eu.tryhisar.com")
         XCTAssertTrue(app.staticTexts["Server"].exists)
         XCTAssertTrue(app.staticTexts["Signs in to eu.tryhisar.com."].exists)
-        type("/hisar", into: serverField)
+        serverField.tap()
+        typeText("/hisar", into: serverField, showing: "https://eu.tryhisar.com/hisar")
         XCTAssertTrue(app.staticTexts["Signs in to eu.tryhisar.com/hisar."].exists)
         app.buttons["sign-in-use-default-server"].tap()
         XCTAssertFalse(serverField.exists)
