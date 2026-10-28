@@ -12,7 +12,7 @@ enum AccountLifecycleLogic {
             let prefix = emergencyKit.savedBy.isEmpty
                 ? "You haven't saved this account's Emergency Kit yet."
                 : "You haven't confirmed this account's Emergency Kit yet."
-            return "\(prefix) \(signOutMessage) The protected unfinished setup stays on this device. Don't rely on it as your only recovery copy." + (isLocked ? " Cancel, unlock Hisar and finish saving or confirming your Emergency Kit." : "")
+            return "\(prefix) \(signOutMessage) The protected unfinished setup stays on this iPhone. Don't rely on it as your only recovery copy." + (isLocked ? " Cancel, unlock Hisar and finish saving or confirming your Emergency Kit." : "")
         }
         return signOutMessage + (isLocked ? " If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit." : "")
     }
