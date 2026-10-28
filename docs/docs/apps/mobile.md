@@ -71,8 +71,10 @@ Instrumented test method names start with `test`, so the runner can match every 
 
 CI's `android-build` job (`.github/workflows/ci.yml`) builds and lints the app and runs its JVM tests.
 The `android` job runs the instrumented tests in two parts on x86_64 API 36 emulators with Postgres.
-These headless emulators use SwiftShader OpenGL ES with Vulkan disabled: the Vulkan context can be lost during
-the tests, hanging QEMU and leaving the device offline.
+These headless emulators use SwiftShader OpenGL ES with Vulkan disabled. The test script builds both APKs in a
+separate Gradle invocation before running the tests. Every invocation uses `--no-daemon` and in-process Kotlin
+compilation, so idle build JVMs do not retain their compiler heaps while the emulator's host memory grows with
+each instrumented test. Host memory exhaustion can leave QEMU unresponsive with graphics-context errors.
 
 ### Push notifications
 
