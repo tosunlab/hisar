@@ -110,7 +110,7 @@ describe("store", () => {
     expect(await storeModule.confirmSecretKeySaved()).toBe(false);
     expect(store.pendingSecretKey).toBe("H1-SECRET");
     expect(store.isTouchIDOfferShown).toBe(false);
-    expect(store.errorMessage).toBe("finish setup and save the Emergency Kit before acknowledging delivery");
+    expect(store.errorMessage).toBe("Finish setup and save the Emergency Kit before acknowledging delivery.");
     expect(api.forgetNewAccountSecretKey).not.toHaveBeenCalled();
   });
 

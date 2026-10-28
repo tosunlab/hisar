@@ -181,7 +181,8 @@ describe("Settings sidebar", () => {
     await settings.get('[data-testid="open-password-generator"]').trigger("click");
     await flushPromises();
     const dialog = settings.get('[data-testid="password-generator-dialog"]');
-    expect(dialog.get('[role="dialog"]').attributes("aria-label")).toBe("Password generator");
+    const headingID = dialog.get('[role="dialog"]').attributes("aria-labelledby");
+    expect(dialog.get(`#${headingID}`).text()).toBe("Password generator");
     expect(dialog.get('[data-testid="generated-password"]').text()).toBe("first-password");
     await dialog.get('button[aria-label="Regenerate"]').trigger("click");
     await flushPromises();
