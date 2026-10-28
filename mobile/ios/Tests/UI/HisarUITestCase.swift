@@ -159,7 +159,8 @@ class HisarUITestCase: XCTestCase {
     // drag stays in the top part of the form: lower down, the keyboard of the field being typed in covers it, and a swipe
     // there does not scroll the form in a sheet.
     func scrollTo(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
-        let list = app.collectionViews.firstMatch
+        let lists = app.collectionViews
+        let list = lists.element(boundBy: max(0, lists.count - 1))
         for _ in 0..<8 {
             if element.waitForExistence(timeout: 1) && element.isHittable {
                 return
