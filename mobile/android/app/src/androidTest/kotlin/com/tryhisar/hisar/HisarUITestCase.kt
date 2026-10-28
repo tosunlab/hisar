@@ -1,7 +1,6 @@
 package com.tryhisar.hisar
 
 import android.graphics.Bitmap
-import android.os.Process
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -253,66 +252,6 @@ abstract class HisarUITestCase {
         requireNotNull(device.wait(androidx.test.uiautomator.Until.findObject(By.clazz("android.widget.EditText")), 10_000)).text = "Hisar-test-${System.nanoTime()}.pdf"
         requireNotNull(device.wait(androidx.test.uiautomator.Until.findObject(By.res(Pattern.compile(".*:id/button1")).enabled(true)), 10_000)).click()
         composeRule.waitUntil("the file creator closes", 10_000) { !device.hasObject(documents) }
-    }
-
-    data class PendingRecoveryKit(val recordTag: String, val secretKey: String, val phase: String, val processID: Int)
-
-    fun preparePendingRecoveryKit(email: String, password: String): PendingRecoveryKit {
-        val record = SemanticsMatcher("a pending recovery record") { node ->
-            node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("pending-recovery-") == true
-        }
-        val account = record and hasText(email, substring = true)
-        composeRule.waitUntil("recovery details or chooser appears", ACCOUNT_KEY_TIMEOUT) {
-            exists(hasTestTag("pending-recovery-phase")) || exists(account)
-        }
-        val recordTag = if (exists(hasTestTag("pending-recovery-phase"))) "" else {
-            val row = composeRule.onAllNodes(account).onLast()
-            val tag = row.fetchSemanticsNode().config[SemanticsProperties.TestTag]
-            row.performClick()
-            tag
-        }
-        val phase = readText("pending-recovery-phase")
-        type(password, "pending-recovery-password")
-        tapWhenEnabled("pending-recovery-export")
-        waitFor("pending-recovery-secret-key", ACCOUNT_KEY_TIMEOUT)
-        val secretKey = readText("pending-recovery-secret-key")
-        saveScreenshot("pending-recovery-kit")
-        return PendingRecoveryKit(recordTag, secretKey, phase, Process.myPid())
-    }
-
-    fun finishPendingRecovery(email: String, password: String, preparedKit: PendingRecoveryKit? = null): String {
-        val kit = preparedKit ?: preparePendingRecoveryKit(email, password)
-        if (preparedKit != null) {
-            check(Process.myPid() != kit.processID) { "recovery must resume in a different app process" }
-            if (kit.recordTag.isNotEmpty()) {
-                waitFor(hasTestTag(kit.recordTag) and hasText(email, substring = true), ACCOUNT_KEY_TIMEOUT)
-                tap(kit.recordTag)
-            } else waitFor("pending-recovery-phase", ACCOUNT_KEY_TIMEOUT)
-            check(readText("pending-recovery-phase") == kit.phase) { "the prepared recovery changed across process restart" }
-            type(password, "pending-recovery-password")
-        }
-        if (exists(hasTestTag("pending-recovery-export"))) {
-            tapWhenEnabled("pending-recovery-export")
-            waitFor("pending-recovery-share-kit", ACCOUNT_KEY_TIMEOUT)
-        }
-        saveEmergencyKit("pending-recovery-save-kit")
-        tapWhenEnabled("pending-recovery-acknowledge")
-        if (kit.phase == "Save and confirm your new Emergency Kit before Hisar sends this change.") {
-            waitFor(hasTestTag("pending-recovery-phase") and hasText("Your Emergency Kit is confirmed saved. Continue to send this change."), ACCOUNT_KEY_TIMEOUT)
-            type(kit.secretKey, "pending-recovery-input-secret-key")
-            tapWhenEnabled("pending-recovery-resume")
-            waitFor(hasTestTag("pending-recovery-phase") and hasText("Your account is ready. Save and confirm your Emergency Kit to finish."), ACCOUNT_KEY_TIMEOUT)
-            type(password, "pending-recovery-password")
-            tapWhenEnabled("pending-recovery-export")
-            waitFor("pending-recovery-share-kit", ACCOUNT_KEY_TIMEOUT)
-            saveEmergencyKit("pending-recovery-save-kit")
-            tapWhenEnabled("pending-recovery-acknowledge")
-        }
-        composeRule.waitUntil("recovery delivery is acknowledged", ACCOUNT_KEY_TIMEOUT) {
-            !exists(hasTestTag("pending-recovery-phase")) || exists(hasTestTag("pending-recovery-phase") and hasText("Sign in with your master password and the Secret Key from your saved Emergency Kit."))
-        }
-        if (exists(hasTestTag("pending-recovery-phase"))) tap("pending-recovery-later")
-        return kit.secretKey
     }
 
     /** Signs in to the harness server with an account another device created. */
