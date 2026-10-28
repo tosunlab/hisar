@@ -254,20 +254,25 @@ fi
 OUTPUT=$ROOT/mobile/android/app/build/outputs/connected_android_test_additional_output
 RESULTS=$ROOT/mobile/android/app/build/outputs/androidTest-results/connected
 rm -rf "$OUTPUT" "$RESULTS"
+# The emulator's host process grows with every test (scripts/ui-test-parts.sh), and a Gradle daemon and the Kotlin compiler's
+# daemon keep the gigabytes they built with until they exit. So every Gradle here compiles in its own process and exits when
+# it is done, and the first one only builds the APKs, so that the one that runs the tests never holds a build's memory.
+GRADLE=(./gradlew --console=plain --no-daemon -Pkotlin.compiler.execution.strategy=in-process)
+(cd "$ROOT/mobile/android" && "${GRADLE[@]}" assembleDebug assembleDebugAndroidTest)
 STATUS=0
 if "$RECOVERY_ONLY"; then
-  (cd "$ROOT/mobile/android" && ./gradlew --console=plain installDebug installDebugAndroidTest) || STATUS=$?
+  (cd "$ROOT/mobile/android" && "${GRADLE[@]}" installDebug installDebugAndroidTest) || STATUS=$?
 else
-  (cd "$ROOT/mobile/android" && ./gradlew --console=plain connectedDebugAndroidTest "${GRADLE_ARGUMENTS[@]}") || STATUS=$?
+  (cd "$ROOT/mobile/android" && "${GRADLE[@]}" connectedDebugAndroidTest "${GRADLE_ARGUMENTS[@]}") || STATUS=$?
 fi
 
 # Instrumentation shares the app process. These phases preserve app data while force-stop discards every in-memory key.
 if "$RUN_RECOVERY"; then
   mkdir -p "$RESULTS/recovery-process-restart"
   if ! "$RECOVERY_ONLY"; then
-    (cd "$ROOT/mobile/android" && ./gradlew --console=plain installDebug installDebugAndroidTest) || STATUS=$?
+    (cd "$ROOT/mobile/android" && "${GRADLE[@]}" installDebug installDebugAndroidTest) || STATUS=$?
   fi
-  SERVICES_APK=$(cd "$ROOT/mobile/android" && ./gradlew --quiet :app:printTestServicesApk)
+  SERVICES_APK=$(cd "$ROOT/mobile/android" && "${GRADLE[@]}" --quiet :app:printTestServicesApk)
   [ -f "$SERVICES_APK" ] || { echo "Gradle did not resolve the pinned Android test services APK: $SERVICES_APK" >&2; exit 1; }
   "$ADB" install -r -g "$SERVICES_APK"
   if [ "$("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')" -ge 30 ]; then
