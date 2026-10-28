@@ -5,9 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -34,8 +32,8 @@ class OtherFieldEditorTests {
         )), isNew = true))
         composeRule.setContent { HisarTheme { Column { OtherFieldsSection(draft, { draft = it }) } } }
         composeRule.onAllNodesWithContentDescription("Reveal Recovery code")[0].performClick()
-        composeRule.onNodeWithTag("editor-field-0-value").assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Password))
-        composeRule.onNodeWithTag("editor-field-1-value").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Password))
+        composeRule.onNodeWithTag("editor-field-0-value").assertTextEquals("first")
+        composeRule.onNodeWithTag("editor-field-1-value").assertTextEquals("\u2022".repeat("second".length))
         val backend = FakeBackend().apply { seedSignedIn() }
         val saved = backend.saveItem("personal", draft.buildItem())
         assertEquals(listOf(true, true), backend.getItem("personal", saved.id).allField.map { it.concealed })

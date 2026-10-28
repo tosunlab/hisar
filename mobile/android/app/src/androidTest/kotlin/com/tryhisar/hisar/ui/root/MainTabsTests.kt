@@ -17,8 +17,9 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.tryhisar.hisar.app.Tab
 import com.tryhisar.hisar.ui.theme.HisarTheme
+import kotlin.math.ceil
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -40,11 +41,18 @@ class MainTabsTests {
             composeRule.runOnIdle { width.value = windowWidth }
             for ((tag, title) in listOf("vaults" to "Vaults", "approvals" to "Approvals", "settings" to "Settings")) {
                 composeRule.onNodeWithTag("tab-$tag").assertTextContains(title)
+                val label = composeRule.onNodeWithText(title, useUnmergedTree = true)
                 val layouts = mutableListOf<TextLayoutResult>()
-                composeRule.onNodeWithText(title, useUnmergedTree = true)
-                    .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
-                assertEquals(1, layouts.single().lineCount)
-                assertFalse(layouts.single().hasVisualOverflow)
+                label.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+                val layout = layouts.single()
+                assertEquals(1, layout.lineCount)
+                // The rebuilt layout of a no-wrap label reports overflow whenever it is narrower than its constraints, so the
+                // label's own size is compared with the space its whole line needs.
+                val labelNode = label.fetchSemanticsNode()
+                assertTrue("$title at $windowWidth dp is cut short", ceil(layout.multiParagraph.intrinsics.maxIntrinsicWidth) <= labelNode.size.width && ceil(layout.multiParagraph.height) <= labelNode.size.height)
+                val tabBounds = composeRule.onNodeWithTag("tab-$tag").fetchSemanticsNode().boundsInRoot
+                val labelBounds = labelNode.boundsInRoot
+                assertTrue("$title at $windowWidth dp leaves its tab", labelBounds.left >= tabBounds.left && labelBounds.right <= tabBounds.right && labelBounds.top >= tabBounds.top && labelBounds.bottom <= tabBounds.bottom)
             }
         }
     }

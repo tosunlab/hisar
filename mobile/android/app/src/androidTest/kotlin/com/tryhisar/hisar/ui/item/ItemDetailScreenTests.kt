@@ -69,21 +69,21 @@ class ItemDetailScreenTests {
         val host = openHost()
         host.show("personal", "github")
         composeRule.waitForTag("move-item")
-        composeRule.tap("move-item")
+        composeRule.onNodeWithTag("move-item").performClick()
         composeRule.waitForTag("move-item-sheet")
         composeRule.tap("move-item-target-family")
         assertTrue(composeRule.onAllNodes(hasText("Shared vault / Family")).fetchSemanticsNodes().isNotEmpty())
         assertTrue(composeRule.onAllNodes(hasText("Copies they retained independently cannot be revoked.", substring = true)).fetchSemanticsNodes().isNotEmpty())
         backend.moveErrorMessage = "The server could not be reached."
-        composeRule.tap("move-item-confirm")
+        composeRule.onNodeWithTag("move-item-confirm").performClick()
         composeRule.waitUntil(5_000) { host.model.errorMessage.value == "The server could not be reached." }
         assertTrue(exists("move-item-sheet"))
         assertTrue(backend.getItem("personal", "github").allPasskey.isNotEmpty())
         backend.moveErrorMessage = null
-        composeRule.tap("move-item-confirm")
+        composeRule.onNodeWithTag("move-item-confirm").performClick()
         composeRule.waitForTagToGo("move-item-sheet")
         composeRule.waitForTag("edit-item")
-        composeRule.tap("edit-item")
+        composeRule.onNodeWithTag("edit-item").performClick()
         composeRule.waitUntil(5_000) { host.allEditorRequest.isNotEmpty() }
         assertEquals("family", (host.allEditorRequest.last() as com.tryhisar.hisar.app.EditorRequest.Edit).vaultID)
         assertTrue(backend.getItem("family", "github").allPasskey.isNotEmpty())
@@ -120,10 +120,10 @@ class ItemDetailScreenTests {
                 server = ItemServer(host = "build.example.com", port = port),
             )
             host.show("personal", id)
-            composeRule.waitForTag("Host-value")
+            composeRule.waitForTag("host-value")
             assertTrue(composeRule.onAllNodes(hasText("build.example.com")).fetchSemanticsNodes().isNotEmpty())
             assertTrue(composeRule.onAllNodes(hasText(port)).fetchSemanticsNodes().isNotEmpty())
-            composeRule.onNodeWithTag("copy-Host").performClick()
+            composeRule.onNodeWithTag("copy-host").performClick()
             composeRule.waitUntil(5_000) { backend.allCopiedField.contains("$id.Host") }
             dismissNotice()
         }

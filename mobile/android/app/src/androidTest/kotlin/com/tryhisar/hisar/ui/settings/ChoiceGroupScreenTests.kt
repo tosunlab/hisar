@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.CredentialImportSheet
@@ -96,10 +97,11 @@ class ChoiceGroupScreenTests {
             ImportSourceGroup(id = "second", name = "Second", vaultID = "family", vaultName = "Family"),
         ))
         show { CredentialImportScreen(model, CredentialImportSheet.Previewing(preview)) }
-        assertChoices(groups = 2, options = model.credentialImport.allVault.size * 2, selected = 2)
-        composeRule.onNodeWithTag("credential-import-group-0-vault-personal").assertIsSelected()
-        composeRule.onNodeWithTag("credential-import-group-0-vault-family").assertIsNotSelected()
-        composeRule.onNodeWithTag("credential-import-group-1-vault-family").assertIsSelected()
-        composeRule.onNodeWithTag("credential-import-group-1-vault-personal").assertIsNotSelected()
+        for ((index, vaultID) in listOf("personal", "family").withIndex()) {
+            composeRule.onNodeWithTag("credential-import-group-$index-destination").performClick()
+            assertChoices(groups = 1, options = model.credentialImport.allVault.size, selected = 1)
+            composeRule.onNodeWithTag("credential-import-group-vault-$vaultID").assertIsSelected()
+            composeRule.onNodeWithTag("credential-import-vault-cancel").performClick()
+        }
     }
 }
