@@ -169,7 +169,6 @@ final class HisarUITests: HisarUITestCase {
         // The item under the editor shows the old password until the save finishes and the editor closes.
         XCTAssertTrue(app.buttons["editor-save"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
         XCTAssertNotEqual(passwordRow.value as? String, "ui-test-password-1", "the generated password replaced the old one")
-        XCTAssertEqual(app.buttons["copy-notes"].value as? String, longDraft, "the full draft survives validation and retry")
         let customRows = app.buttons.matching(identifier: "copy-recovery code")
         for index in 0..<4 {
             let copy = index < 3 ? customRows.element(boundBy: index) : app.buttons.matching(identifier: "copy-password").element(boundBy: 1)
@@ -195,6 +194,8 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertEqual(customRows.element(boundBy: 1).value as? String, "row-secret-1")
         XCTAssertEqual(customRows.element(boundBy: 0).value as? String, "Hidden")
         XCTAssertEqual(customRows.element(boundBy: 2).value as? String, "Hidden")
+        scrollTo(app.buttons["copy-notes"])
+        XCTAssertEqual(app.buttons["copy-notes"].value as? String, longDraft, "the full draft survives validation and retry")
 
         scrollTo(app.buttons["copy-secret-reference"])
         app.buttons["copy-secret-reference"].tap()
