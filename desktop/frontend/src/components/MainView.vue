@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import PendingRecoveryReminder from "./PendingRecoveryReminder.vue";
+import EmergencyKitBanner from "./EmergencyKitBanner.vue";
 import {
   clearError,
   copyItemField,
@@ -713,6 +714,7 @@ onBeforeUnmount(() => {
     <ColumnResizer v-model="columnWidths.sidebar" column="sidebar" label="Sidebar width" @commit="saveColumnWidths(columnWidths)" />
 
     <section class="list" :aria-busy="store.isAllItemsSelected && store.isLoadingAllItems">
+      <EmergencyKitBanner />
       <ReadIssuesPanel />
       <div v-if="isReferenceScope" class="title-bar list-title">
         <div>
@@ -1173,6 +1175,8 @@ onBeforeUnmount(() => {
 .list {
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
+  min-width: 0;
   border-right: 1px solid var(--color-border);
   background: var(--color-panel);
   overflow: hidden;

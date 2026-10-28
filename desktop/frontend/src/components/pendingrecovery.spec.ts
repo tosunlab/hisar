@@ -49,10 +49,9 @@ describe("Pending recovery", () => {
     expect(wrapper.findAll("button").some((button) => button.text() === "Continue")).toBe(false);
     await wrapper.findAll("button").find((button) => button.text() === "Save Emergency Kit…")!.trigger("click");
     await flushPromises();
-    await wrapper.find('input[name="pendingRecoveryKitSaved"]').setValue(true);
     mock.api.acknowledgePendingRecovery.mockResolvedValue(undefined);
     mock.api.listPendingRecovery.mockResolvedValue([{ ...entry, phase: "prepared", kitSaved: true }]);
-    await wrapper.findAll("button").find((button) => button.text() === "Confirm saved")!.trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "I saved my Emergency Kit")!.trigger("click");
     await flushPromises();
     expect(wrapper.text()).toContain("Your Emergency Kit is confirmed saved. Continue to send this change.");
     expect(mock.api.resumePendingRecovery).not.toHaveBeenCalled();
@@ -72,8 +71,7 @@ describe("Pending recovery", () => {
     mock.api.savePendingRecoveryEmergencyKit.mockResolvedValue("/tmp/Hisar Emergency Kit.pdf");
     await save.trigger("click");
     await flushPromises();
-    await wrapper.find('input[name="pendingRecoveryKitSaved"]').setValue(true);
-    const confirm = wrapper.findAll("button").find((button) => button.text() === "Confirm saved")!;
+    const confirm = wrapper.findAll("button").find((button) => button.text() === "I saved my Emergency Kit")!;
     expect(confirm.attributes("disabled")).toBeUndefined();
     mock.api.acknowledgePendingRecovery.mockResolvedValue(undefined);
     mock.api.listPendingRecovery.mockResolvedValue([]);
@@ -114,6 +112,6 @@ describe("Pending recovery", () => {
     result.resolve({ status: createStatus("unlocked"), secretKey: "", pendingOperationId: "pending-1", setupState: "delivery-pending", problems: [] });
     expect(await recovery).toBe(false);
     expect(model.store.status.state).toBe("locked");
-    expect(model.store.pendingSecretKey).toBe("");
+    expect(model.store.onboardingStep).toBe("");
   });
 });

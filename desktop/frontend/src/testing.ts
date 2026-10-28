@@ -4,6 +4,7 @@ import type {
   AgentSession,
   ApprovalEvent,
   CodingAgent,
+  EmergencyKitStatus,
   FavoriteItem,
   ShareLink,
   ShareLinkField,
@@ -33,6 +34,10 @@ import type {
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600, signedOutReason: "", updateRequired: null };
+}
+
+export function createEmergencyKit(overrides: Partial<EmergencyKitStatus> = {}): EmergencyKitStatus {
+  return { operationId: "signup", kind: "signup", savedBy: "", postponedAt: "", reminder: "new", isAuthorized: true, isReminderHidden: false, ...overrides };
 }
 
 export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
@@ -738,6 +743,12 @@ export function createApiMock() {
     signIn: vi.fn(),
     signUp: vi.fn(),
     signUpWithoutInvite: vi.fn(),
+    getSignUpPolicy: vi.fn(async (server: string) => ({ server, host: server.replace(/^https:\/\//, ""), mode: "unknown" })),
+    authorizeNewAccountEmergencyKit: vi.fn().mockResolvedValue(undefined),
+    authorizeNewAccountEmergencyKitWithBiometric: vi.fn().mockResolvedValue(undefined),
+    revealNewAccountSecretKey: vi.fn().mockResolvedValue({ secretKey: "H1-ABC123-SECRET", qrPayload: "", qrCode: "" }),
+    postponeNewAccountEmergencyKit: vi.fn().mockResolvedValue(undefined),
+    hideEmergencyKitReminder: vi.fn().mockResolvedValue(undefined),
     unlock: vi.fn(),
     lock: vi.fn(),
     signOut: vi.fn(),

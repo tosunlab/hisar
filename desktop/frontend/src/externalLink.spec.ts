@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 
 const openURL = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock("./api", () => ({
@@ -7,6 +7,7 @@ vi.mock("./api", () => ({
     openURL,
     ratePassword: vi.fn().mockResolvedValue({ level: "", label: "", bits: 0 }),
     checkMasterPassword: vi.fn().mockResolvedValue({ level: "", label: "", bits: 0, message: "", isBlocking: false }),
+    getSignUpPolicy: vi.fn(async (server: string) => ({ server, host: "eu.tryhisar.com", mode: "open" })),
   },
 }));
 
@@ -39,7 +40,8 @@ describe("openExternalLink", () => {
   it("links the Terms and the Privacy Policy when creating an account", async () => {
     openURL.mockClear();
     const wrapper = mount(SignInView, { attachTo: document.body });
-    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await wrapper.findAll("button").find(button => button.text() === "Create account")!.trigger("click");
+    await flushPromises();
     const legalLinks = wrapper.find('[data-testid="legal-links"]');
     expect(legalLinks.text()).toBe("By creating an account you agree to the Terms and Privacy Policy.");
     expect(legalLinks.findAll("a").map((link) => link.attributes("href"))).toEqual(["https://eu.tryhisar.com/terms", "https://eu.tryhisar.com/privacy"]);

@@ -10,6 +10,7 @@
     "build": "vue-tsc && vite build --mode production",
     "typecheck": "vue-tsc",
     "test": "vitest run",
+    "test:end-to-end": "playwright test",
     "check:bundle": "vite build --mode production && ! grep -rlE 'previewApi|applyPreviewParameter|Staging database' dist"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "vue": "3.5.43"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@vitejs/plugin-vue": "6.0.9",
     "@vue/test-utils": "2.5.1",
     "dom-accessibility-api": "0.7.1",
