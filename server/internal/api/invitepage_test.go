@@ -85,7 +85,7 @@ func TestInvitePage(t *testing.T) {
 		`data-testid="invitee-email">ada@example.com</strong>`,
 		`data-testid="invite-code">` + operatorInvite.Token + `</code>`,
 		`data-testid="signup-command">hisar signup ` + baseURL + `/invite/` + operatorInvite.Token + `</code>`,
-		`href="hisar://invite/` + operatorInvite.Token + `?server=` + url.QueryEscape(baseURL) + `"`,
+		`href="hisar://invite/` + operatorInvite.Token + `?email=ada%40example.com&amp;server=` + url.QueryEscape(baseURL) + `"`,
 		`href="https://tryhisar.com/download" rel="noopener noreferrer" data-testid="download">Download for Mac</a>`,
 		`href="https://tryhisar.com/download#linux" rel="noopener noreferrer" data-testid="download-linux">Download for Linux</a>`,
 		"On Linux, the Hisar package installs it.",
@@ -167,9 +167,9 @@ func TestInvitePageRateLimit(t *testing.T) {
 
 func TestInviteDeepLink(t *testing.T) {
 	for publicURL, expected := range map[string]string{
-		"https://eu.tryhisar.com/":   "hisar://invite/abc_DEF-1?server=https%3A%2F%2Feu.tryhisar.com",
-		"http://eu.tryhisar.com":     "hisar://invite/abc_DEF-1?server=https%3A%2F%2Feu.tryhisar.com",
-		"http://127.0.0.1:19400/sub": "hisar://invite/abc_DEF-1?server=http%3A%2F%2F127.0.0.1%3A19400",
+		"https://eu.tryhisar.com/":   "hisar://invite/abc_DEF-1?email=bob%40example.com&server=https%3A%2F%2Feu.tryhisar.com",
+		"http://eu.tryhisar.com":     "hisar://invite/abc_DEF-1?email=bob%40example.com&server=https%3A%2F%2Feu.tryhisar.com",
+		"http://127.0.0.1:19400/sub": "hisar://invite/abc_DEF-1?email=bob%40example.com&server=http%3A%2F%2F127.0.0.1%3A19400",
 	} {
 		server := &Server{config: Config{Config: service.Config{PublicURL: publicURL}}}
 		if deepLink := server.buildInviteDeepLink("abc_DEF-1", "", "bob@example.com"); deepLink != expected {
@@ -181,5 +181,46 @@ func TestInviteDeepLink(t *testing.T) {
 	expected := "hisar://invite/abc_DEF-1?email=bob%40example.com&invitation=organization&server=https%3A%2F%2Feu.tryhisar.com"
 	if deepLink := server.buildInviteDeepLink("abc_DEF-1", "organization", "bob@example.com"); deepLink != expected {
 		t.Errorf("organization invite: %s, want %s", deepLink, expected)
+	}
+}
+
+func TestInviteDeepLinkCarriesEmail(t *testing.T) {
+	server := &Server{config: Config{Config: service.Config{PublicURL: "https://eu.tryhisar.com"}}}
+	for _, test := range []struct {
+		name   string
+		source string
+		email  string
+	}{
+		{name: "plain", email: "ada@example.com"},
+		{name: "percent encoded", email: "ada+invite&team@example.com"},
+		{name: "organization", source: "organization", email: "ada@example.com"},
+		{name: "share", source: "share", email: "ada@example.com"},
+		{name: "setup"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			link, err := url.Parse(server.buildInviteDeepLink("abc_DEF-1", test.source, test.email))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if link.Scheme != "hisar" || link.Host != "invite" || link.Path != "/abc_DEF-1" {
+				t.Errorf("invite destination = %s", link)
+			}
+			query := link.Query()
+			if got := query.Get("server"); got != "https://eu.tryhisar.com" {
+				t.Errorf("server = %q", got)
+			}
+			if got := query.Get("email"); got != test.email {
+				t.Errorf("email = %q, want %q", got, test.email)
+			}
+			if query.Has("email") != (test.email != "") {
+				t.Errorf("email parameter present = %v, email = %q", query.Has("email"), test.email)
+			}
+			if got := query.Get("invitation"); got != test.source {
+				t.Errorf("invitation = %q, want %q", got, test.source)
+			}
+			if query.Has("invitation") != (test.source != "") {
+				t.Errorf("invitation parameter present = %v, source = %q", query.Has("invitation"), test.source)
+			}
+		})
 	}
 }
