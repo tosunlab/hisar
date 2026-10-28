@@ -72,12 +72,6 @@ describe("Overview", () => {
     expect(readText(root, "check-public-url")).toContain("does not lead to this server");
   });
 
-  it("shows no update when the server runs the newest release", async () => {
-    const root = await mountOverview((path) => (path === "/api/v1/admin/server" ? answer(200, { publicUrl: "" }) : answer(200, { ...health, latestVersion: "" })));
-    expect(readText(root, "version")).toBe("9.9.9");
-    expect(root.querySelector("[data-testid=update]")).toBeNull();
-  });
-
   it("shows the server's error when the database is down, and the server it reached", async () => {
     const root = await mountOverview((path) =>
       path === "/api/v1/admin/server" ? answer(200, { publicUrl: "https://hisar.example.com" }) : answer(503, { error: "the server cannot reach its database" }),

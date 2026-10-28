@@ -17,13 +17,18 @@ desktopPaths=(desktop/ cli/ omp/ scripts/download-sparkle.sh scripts/get-build-n
   scripts/desktop-keychain-entitlements.py scripts/test-desktop-keychain-entitlements.py scripts/test-emergency-kit-qr.swift
   scripts/sign-desktop-app.sh scripts/stage-omp-plugin.sh scripts/test-desktop-linux-package.sh scripts/test-download-sparkle.sh
   .github/workflows/release-desktop.yml "${releasePaths[@]}" "${sharedGoPaths[@]}")
-phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum scripts/ui-test-partner.sh scripts/ui-test-parts.sh "${sharedGoPaths[@]}")
+phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum mobile/fast-test-kdf.sh scripts/ui-test-partner.sh scripts/ui-test-parts.sh "${sharedGoPaths[@]}")
 mobilePaths=(mobile/ios/ mobile/build-framework.sh scripts/test-ios-ui.sh "${phonePaths[@]}")
 # The Android CI job runs its build and tests through Makefile recipes, so a Makefile change runs it too.
 androidPaths=(mobile/android/ mobile/build-android-aar.sh mobile/cmd/ scripts/install-android-sdk.sh scripts/test-android-ui.sh
   assets/themes/ scripts/themes/ Makefile "${phonePaths[@]}")
 extensionPaths=(extension/ .github/workflows/release-extension.yml "${releasePaths[@]}")
 docsPaths=(docs/ .github/workflows/release-docs.yml "${releasePaths[@]}")
+# Apps without releases of their own, for CI only.
+raycastPaths=(raycast/)
+ompPaths=(omp/)
+# Globs of what no Go test or build reads, so a change only to these skips the Go job.
+nonGoPaths=('extension/**' 'docs/**' 'raycast/**' 'mobile/ios/**' 'mobile/android/**' '**/*.md')
 # CI also runs an app's tests when something those tests run against changes, without making that a reason to release
 # the app: the iPhone and Android UI tests and the admin dashboard's browser tests run against a real hisar-server and the
 # hisar CLI that scripts/ui-test-partner.sh and the end-to-end fixtures build, and every job builds through Makefile recipes.

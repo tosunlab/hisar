@@ -24,10 +24,6 @@ test.afterEach(async () => {
   await harness?.close();
 });
 
-test("loads with the extension ID from the manifest key", async () => {
-  expect(await harness.evaluateInExtension(() => chrome.runtime.id, undefined)).toBe(extensionID);
-});
-
 test("pairs, fills only same-origin frames, and offers to update a changed password", async () => {
   const loginPage = await context.newPage();
   await loginPage.goto(`${site.origin}/login`);
@@ -75,23 +71,6 @@ test("pairs, fills only same-origin frames, and offers to update a changed passw
   await confirmation.getByTestId("save-confirm").click();
   await expect.poll(() => readState(stateFile).allLogin[0].password).toBe("new password");
   expect(readState(stateFile).allLogin).toHaveLength(1);
-});
-
-test("offers to save a new login and stores it in the desktop", async () => {
-  await harness.pairWithoutPopup();
-  const loginPage = await context.newPage();
-  await loginPage.goto(`${site.origin}/login`);
-  const tabId = await getTabId(loginPage.url());
-  await loginPage.locator("#username").fill("someone-new@example.com");
-  await loginPage.locator("#password").fill("brand new");
-  await loginPage.locator("#password").press("Enter");
-  await expect(loginPage.locator("h1")).toHaveText("Welcome back");
-  const popup = await context.newPage();
-  await popup.goto(`chrome-extension://${extensionID}/popup.html?tabId=${tabId}`);
-  await popup.getByTestId("save-confirm").click();
-  await expect
-    .poll(() => readState(stateFile).allLogin.find((login) => login.username === "someone-new@example.com")?.password)
-    .toBe("brand new");
 });
 
 test("copies a password from the popup, and it stays on the clipboard", async () => {

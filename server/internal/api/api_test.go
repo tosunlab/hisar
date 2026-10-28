@@ -74,6 +74,10 @@ func setupServerWithConfig(t *testing.T, config Config) (baseURL string, server 
 	}
 	t.Cleanup(func() { listener.Close() })
 	config.PublicURL = "http://" + listener.Addr().String()
+	// Shutdown waits for open event streams, and a stream only notices that its client left on its next heartbeat.
+	if config.EventHeartbeatInterval == 0 {
+		config.EventHeartbeatInterval = 100 * time.Millisecond
+	}
 	server, err = NewServer(database, testServerSecrets, config)
 	if err != nil {
 		t.Fatal(err)
@@ -200,7 +204,7 @@ func TestEndToEnd(t *testing.T) {
 		anonymous := apiclient.New(baseURL)
 		first := requireValue[*apitypes.PreloginResponse](t)(anonymous.FetchPrelogin(ctx, "ghost@example.com"))
 		second := requireValue[*apitypes.PreloginResponse](t)(anonymous.FetchPrelogin(ctx, "ghost@example.com"))
-		if len(first.Salt) != crypt.SaltSize || !bytes.Equal(first.Salt, second.Salt) || first.Argon2 != crypt.DefaultArgon2Params() {
+		if len(first.Salt) != crypt.SaltSize || !bytes.Equal(first.Salt, second.Salt) || first.Argon2 != crypt.NewAccountArgon2Params() {
 			t.Errorf("fake prelogin not stable: %+v %+v", first, second)
 		}
 	})

@@ -24,7 +24,8 @@ if [ "$selected" != .dockerignore ]; then
 fi
 output=$(BASE_SHA=$base HEAD_SHA=$head WORKFLOW_FILE=.github/workflows/ci.yml GITHUB_OUTPUT=/dev/null \
   bash "$scriptDirectory/detect-app-changes.sh")
-for expected in isAdminChanged=true isDesktopChanged=false isMobileChanged=false isAndroidChanged=false; do
+for expected in isAdminChanged=true isServerChanged=true isDesktopChanged=false isMobileChanged=false isAndroidChanged=false \
+  isExtensionChanged=false isDocsChanged=false; do
   if [[ "$output" != *"$expected"* ]]; then
     printf 'Expected change detector output to contain %s, got:\n%s\n' "$expected" "$output" >&2
     exit 1
@@ -44,23 +45,32 @@ commitChange() {
 
 # The phone UI tests and the admin browser tests run against hisar-server and the hisar CLI, and every job builds through
 # the Makefile, so those changes select the tests that exercise them; a desktop build uses neither server nor phone code.
-while read -r file desktop mobile android admin; do
+# The Go job skips changes only to the apps without Go and to Markdown.
+while read -r file desktop mobile android admin go server extension docs raycast omp; do
   head=$(commitChange "$file")
   output=$(BASE_SHA=$base HEAD_SHA=$head WORKFLOW_FILE=.github/workflows/ci.yml GITHUB_OUTPUT=/dev/null \
     bash "$scriptDirectory/detect-app-changes.sh")
-  for expected in "isDesktopChanged=$desktop" "isMobileChanged=$mobile" "isAndroidChanged=$android" "isAdminChanged=$admin"; do
+  for expected in "isDesktopChanged=$desktop" "isMobileChanged=$mobile" "isAndroidChanged=$android" "isAdminChanged=$admin" \
+    "isGoChanged=$go" "isServerChanged=$server" "isExtensionChanged=$extension" "isDocsChanged=$docs" \
+    "isRaycastChanged=$raycast" "isOmpChanged=$omp"; do
     if [[ "$output" != *"$expected"* ]]; then
       printf 'A change to %s: expected %s, got:\n%s\n' "$file" "$expected" "$output" >&2
       exit 1
     fi
   done
 done <<'EOF'
-server/internal/api/server.go false true true true
-cli/cmd/hisar/main.go true true true true
-Makefile true true true true
-mobile/ios/App/App.swift false true false false
-mobile/android/app/build.gradle.kts false false true false
-extension/src/background/controller.ts false false false false
+server/internal/api/server.go false true true true true true false false false false
+cli/cmd/hisar/main.go true true true true true false false false false false
+Makefile true true true true true true true true true true
+mobile/ios/App/App.swift false true false false false false false false false false
+mobile/android/app/build.gradle.kts false false true false false false false false false false
+extension/src/background/controller.ts false false false false false false true false false false
+docs/docs/design.md false false false false false false false true false false
+raycast/src/index.ts false false false false false false false false true false
+omp/src/index.ts true false false false true false false false false true
+core/README.md true true true true false true false false false false
+scripts/get-build-number.sh true false false false true false false false false false
+.github/workflows/ci.yml true true true true true true true true true true
 EOF
 
 # Release sets stay what each app is built from: a CLI change is not a reason to release the server.
@@ -90,7 +100,7 @@ for app in server cli desktop extension; do
 done
 output=$(BASE_SHA='' HEAD_SHA=$head IS_FORCED=true WORKFLOW_FILE=.github/workflows/ci.yml GITHUB_OUTPUT=/dev/null \
   bash "$scriptDirectory/detect-app-changes.sh")
-for area in Desktop Mobile Android Admin; do
+for area in Desktop Mobile Android Admin Go Server Extension Docs Raycast Omp; do
   [[ "$output" = *"is${area}Changed=true"* ]] || { echo "release did not force $area tests" >&2; exit 1; }
 done
 echo 'All release evidence inputs select their apps; releases force every CI area without a diff.'

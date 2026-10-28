@@ -136,6 +136,8 @@ final class OrganizationUITests: HisarUITestCase {
         XCTAssertTrue(opsRow.label.contains("Owner"), opsRow.label)
         XCTAssertTrue(app.buttons["give-vault-to-team"].exists, "admins give the vault to other teams")
         saveScreenshot("organization-vault-sharing-admin")
+        opsRow.tap()
+        goBack()
         app.buttons["vault-sharing-done"].tap()
 
         // The partner reads Pager through the key this iPhone gave it, then writes into the vault.

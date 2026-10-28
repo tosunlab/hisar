@@ -31,7 +31,7 @@ func createAccountCredential(accountID string, password []byte, register func(re
 	if err != nil {
 		return nil, err
 	}
-	credential := &accountCredential{secretKey: secretKey, salt: crypt.GenerateSalt(), argon2Params: crypt.DefaultArgon2Params()}
+	credential := &accountCredential{secretKey: secretKey, salt: crypt.GenerateSalt(), argon2Params: crypt.NewAccountArgon2Params()}
 	derivedKeys, err := crypt.DeriveKeys(password, credential.salt, credential.argon2Params, secretKey)
 	if err != nil {
 		return nil, err
