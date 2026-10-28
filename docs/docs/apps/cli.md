@@ -132,8 +132,11 @@ has a menu for how long the agent may keep exactly what it names: **Only this ti
 For omp, Claude Code, Codex and Hermes, a longer choice covers that agent's program across sessions and Hisar restarts only
 when Hisar can identify the program and use its Keychain-backed grant store. Otherwise only the first two choices appear,
 and **For 1 hour** ends with the agent session or connection.
-Settings → Developer tools → Coding agents lists each one with its expiry and a revoke button. Signing out ends them; locking does
-not, but a locked Hisar asks you to unlock it first.
+Settings → Developer tools → Coding agents lists each one with its expiry and a revoke button. Signing out ends them.
+Locking keeps them, but asks for an unlock by default. On a Mac with a usable saved-grant store, the off-by-default
+**Use Always permissions while Hisar is locked** switch lets fully covered Always-approved runs, reveals, one-time codes and
+website sign-ins continue while locked. Hisar never writes this retained view to disk. Turning the switch off erases it.
+One-hour and one-day grants, list and search still need an unlock.
 
 The first dialog names the agent (from its MCP client name) and the app it runs in. Denying fails the tool with "The user denied
 access in Hisar.", which the agent can relay to you. The agent's connection approval ends when it disconnects or Hisar locks.
@@ -303,12 +306,16 @@ this time.
   dialog. Eligible saved grants cover the harness's program across sessions and Hisar restarts.
   [Desktop app](./desktop.md#coding-agent-approvals-and-website-sign-in) explains program identity and storage.
 - Settings → Developer tools → Coding agents → **Allowed without asking** lists each grant ("Sign in to https://tosunlab.com as
-  Personal › Tosun Lab") with the agent that holds it, its expiry and **Revoke**. Signing out ends them all. Locking keeps them, but a
-  locked Hisar asks you to unlock it before it signs in.
+  Personal › Tosun Lab") with the agent that holds it, its expiry and **Revoke**. Signing out ends them all. Locking keeps them.
+  By default, a locked Hisar asks you to unlock it before it signs in.
 - `cleanup-failed` ends the grant for that login and website, so the next call asks you. If Hisar is locked or cannot save the
   removal, it drops all saved grants instead. A storage failure is reported as a tool error, not hidden.
-- While Hisar is locked, the dialog unlocks it first ("Hisar shows the login saved for this website after you unlock it"). Hisar
-  then reads the window again, refuses if it shows another website, and asks once more if several logins match.
+- On a Mac with saved Always grants, **Use Always permissions while Hisar is locked** in Settings → Developer tools → Coding
+  agents lets fully covered requests continue without a dialog. It is off by default. Hisar retains only Always-approved values
+  in process memory until you unlock, turn it off, revoke access, sign out or quit. Values are from the moment Hisar locked;
+  edits on other devices take effect after the next unlock. A restart needs one unlock.
+- Other locked requests still open the unlock dialog ("Hisar shows the login saved for this website after you unlock it").
+  Hisar then reads the window again, refuses if it shows another website, and asks once more if several logins match.
 
 ### What the agent sees
 

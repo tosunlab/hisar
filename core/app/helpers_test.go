@@ -16,8 +16,10 @@ import (
 
 	"github.com/bytemare/opaque"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
@@ -317,7 +319,7 @@ func blockStateSaves(t *testing.T, statePath string) (unblock func()) {
 }
 
 // createUnlockedTestService opens a session against the in-memory API with a Personal and a Family vault.
-func createUnlockedTestService(t *testing.T) unlockedTestService {
+func createUnlockedTestService(t *testing.T, configure ...func(*Config)) unlockedTestService {
 	t.Helper()
 	keyset, err := crypt.GenerateKeyset()
 	if err != nil {
@@ -335,6 +337,9 @@ func createUnlockedTestService(t *testing.T) unlockedTestService {
 	t.Cleanup(httpServer.Close)
 
 	service, clipboard, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
+	for _, configure := range configure {
+		configure(&service.config)
+	}
 	lockedCount := 0
 	service.config.OnLock = func() { lockedCount++ }
 	apiClient := apiclient.New(httpServer.URL)
@@ -502,4 +507,26 @@ func mustReadFile(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return content
+}
+
+type pausedLockedGrantBridge struct {
+	*CommandLineBridge
+	read   chan struct{}
+	resume chan struct{}
+}
+
+func (bridge pausedLockedGrantBridge) AnswerLockedAgentRequest(ctx context.Context, request *cliprotocol.Request, kind string, harness agentharness.Session, authorization *clisocket.AgentAuthorization) (any, bool, error) {
+	result, covered, err := bridge.CommandLineBridge.AnswerLockedAgentRequest(ctx, request, kind, harness, authorization)
+	close(bridge.read)
+	<-bridge.resume
+	return result, covered, err
+}
+
+type refusingLockTransport struct {
+	calls atomic.Int32
+}
+
+func (transport *refusingLockTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	transport.calls.Add(1)
+	return nil, errors.New("lock must not acquire network data")
 }

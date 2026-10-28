@@ -684,6 +684,7 @@ const previewAgentSignIn: AgentSignIn = {
   isEnabled: previewParameter.has("agentSignIn"),
   hasAccessibility: previewParameter.get("agentSignIn") !== "noAccess",
 };
+const previewAlwaysAgentAccessWhileLocked = { isAvailable: true, isEnabled: previewParameter.has("alwaysWhileLocked") };
 
 function buildPreviewVaultSummary(vault: VaultSummary): VaultSummary {
   return { ...vault, itemCount: allPreviewItemByVaultID[vault.id]?.length ?? 0 };
@@ -2019,6 +2020,11 @@ export const previewApi = {
   setAgentSignInEnabled: (isEnabled: boolean) => {
     previewAgentSignIn.isEnabled = isEnabled;
     return resolveAfterDelay({ ...previewAgentSignIn });
+  },
+  getAlwaysAgentAccessWhileLocked: () => resolveAfterDelay({ ...previewAlwaysAgentAccessWhileLocked }),
+  setAlwaysAgentAccessWhileLocked: (isEnabled: boolean) => {
+    previewAlwaysAgentAccessWhileLocked.isEnabled = isEnabled;
+    return resolveAfterDelay({ ...previewAlwaysAgentAccessWhileLocked });
   },
   forgetAgentHost: (path: string, teamID: string) => {
     allPreviewAgentHost = allPreviewAgentHost.filter((host) => host.path !== path || host.teamID !== teamID);

@@ -880,6 +880,8 @@ export function createApiMock() {
     revokeAgentGrant: vi.fn().mockResolvedValue([]),
     getAgentSignIn: vi.fn().mockResolvedValue({ isAvailable: true, isEnabled: false, hasAccessibility: false }),
     setAgentSignInEnabled: vi.fn(),
+    getAlwaysAgentAccessWhileLocked: vi.fn().mockResolvedValue({ isAvailable: true, isEnabled: false }),
+    setAlwaysAgentAccessWhileLocked: vi.fn(),
     forgetAgentHost: vi.fn(),
     listAllCodingAgent: vi.fn().mockResolvedValue([]),
     connectCodingAgent: vi.fn(),

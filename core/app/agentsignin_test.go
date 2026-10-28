@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -623,6 +624,99 @@ func TestAgentSignInCleanupFailureCannotReuseSavedGrant(t *testing.T) {
 			test.connectAgent(t).mustSend(t, request, nil)
 			if count := test.agentApprover.getCount(); count != 2 {
 				t.Errorf("sign-in after cleanup-failed reused its saved grant: %d approvals", count)
+			}
+		})
+	}
+}
+
+func TestAlwaysSignInWhileLocked(t *testing.T) {
+	for _, isEnabled := range []bool{false, true} {
+		t.Run(fmt.Sprint(isEnabled), func(t *testing.T) {
+			test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+			service := test.testService.service
+			prepareTestApprovalUnlock(t, test.testService, "master password")
+			logins := saveSignInLogins(t, test.testService)
+			window := &signInWindow{website: "https://tosunlab.com", values: map[signin.ElementID]string{}}
+			service.config.SignInDriver = window
+			service.signer = signin.NewSigner(window, t.TempDir(), service.config.Now)
+			service.SetAgentSignInEnabled(true)
+			service.SetAlwaysAgentAccessWhileLocked(isEnabled)
+			client := test.connectAgent(t)
+			request := cliprotocol.Request{Type: cliprotocol.TypeAgentSignIn, Window: signInWindowTarget, ItemID: logins.tosunlab.ID}
+			client.mustSend(t, request, nil)
+			window.mutex.Lock()
+			window.isSignedIn = false
+			window.mutex.Unlock()
+			service.Lock()
+			test.agentApprover.onApprove = func() {
+				if _, err := service.Unlock("master password"); err != nil {
+					t.Error(err)
+				}
+			}
+			var result cliprotocol.AgentSignInResult
+			client.mustSend(t, request, &result)
+			expectedCount := 2
+			if isEnabled {
+				expectedCount = 1
+			}
+			if count := test.agentApprover.getCount(); count != expectedCount || result.Outcome != cliprotocol.SignInSubmitted {
+				t.Fatalf("locked sign-in: %d approvals, %+v", count, result)
+			}
+			if len(window.posted) != 2 || window.posted[1][passwordField] != "tosunlab-password" {
+				t.Fatalf("site received %+v", window.posted)
+			}
+			if isEnabled && service.GetStatus().State != "locked" {
+				t.Fatal("Always sign-in unlocked Hisar")
+			}
+		})
+	}
+}
+
+func TestLockedSignInStopsWhenTheRetainedViewEnds(t *testing.T) {
+	for _, action := range []string{"unlock", "switch off", "revoke", "lock", "cleanup-failed"} {
+		t.Run(action, func(t *testing.T) {
+			test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+			service := test.testService.service
+			prepareTestApprovalUnlock(t, test.testService, "master password")
+			logins := saveSignInLogins(t, test.testService)
+			window := &signInWindow{website: "https://tosunlab.com", values: map[signin.ElementID]string{}}
+			service.config.SignInDriver = window
+			service.signer = signin.NewSigner(window, t.TempDir(), service.config.Now)
+			service.SetAgentSignInEnabled(true)
+			service.SetAlwaysAgentAccessWhileLocked(true)
+			client := test.connectAgent(t)
+			request := cliprotocol.Request{Type: cliprotocol.TypeAgentSignIn, Window: signInWindowTarget, ItemID: logins.tosunlab.ID}
+			client.mustSend(t, request, nil)
+			grantID := service.ListAgentGrants()[0].ID
+			window.mutex.Lock()
+			window.isSignedIn = false
+			window.failClear = action == "cleanup-failed"
+			window.onEnter = func(field signin.ElementID) {
+				if field != usernameField {
+					return
+				}
+				switch action {
+				case "unlock":
+					service.Unlock("master password")
+				case "switch off":
+					service.SetAlwaysAgentAccessWhileLocked(false)
+				case "revoke":
+					service.RevokeAgentGrant(grantID)
+				case "lock", "cleanup-failed":
+					service.Lock()
+				}
+			}
+			window.mutex.Unlock()
+			service.Lock()
+			failure := client.send(t, request, nil)
+			if failure == "" || len(window.posted) != 1 || window.getValue(passwordField) != "" {
+				t.Fatalf("continued after %s: %q, posted %+v", action, failure, window.posted)
+			}
+			if test.agentApprover.getCount() != 1 {
+				t.Fatal("locked sign-in opened approval")
+			}
+			if action == "cleanup-failed" && (service.lockedGrants != nil || len(service.state.SealedAgentGrants) != 0) {
+				t.Fatal("cleanup-failed kept the locked grant view")
 			}
 		})
 	}

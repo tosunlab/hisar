@@ -48,6 +48,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(approvalStore, { allApproval: [], failureMessage: "", isAuthorizing: false, isRemembered: true, isPasswordChosen: false, isExpanded: false });
   api.listAllPendingSSHApproval.mockResolvedValue([]);
+  api.getAlwaysAgentAccessWhileLocked.mockResolvedValue({ isAvailable: true, isEnabled: false });
 });
 
 afterEach(() => {
@@ -55,6 +56,40 @@ afterEach(() => {
 });
 
 describe("SSHApprovalWindow", () => {
+  it.each([false, true])("explains Always while locked with the switch %s", async (isEnabled) => {
+    api.getAlwaysAgentAccessWhileLocked.mockResolvedValue({ isAvailable: true, isEnabled });
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createSignInApprovalEvent({ allGrantDuration: ["once", "hour", "day", "always"] }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-always-lock-note"]').exists()).toBe(false);
+    const fitCount = api.fitSSHApprovalWindow.mock.calls.length;
+    await wrapper.get('[data-testid="approval-grant-duration-menu"]').setValue("always");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="approval-always-lock-note"]').text()).toBe(
+      isEnabled
+        ? "Agents can use this permission while Hisar is locked, until Hisar quits."
+        : "Hisar still asks after it locks; turn on “Use Always permissions while Hisar is locked” in Settings to allow it.",
+    );
+    expect(api.fitSSHApprovalWindow).toHaveBeenCalledTimes(fitCount + 1);
+    wrapper.unmount();
+  });
+
+  it("refits the Always warning when the locked-access setting arrives", async () => {
+    const setting = Promise.withResolvers<{ isAvailable: boolean; isEnabled: boolean }>();
+    api.getAlwaysAgentAccessWhileLocked.mockReturnValueOnce(setting.promise);
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createSignInApprovalEvent({ allGrantDuration: ["once", "hour", "day", "always"] }));
+    await flushPromises();
+    await wrapper.get('[data-testid="approval-grant-duration-menu"]').setValue("always");
+    await flushPromises();
+    const fitCount = api.fitSSHApprovalWindow.mock.calls.length;
+    setting.resolve({ isAvailable: true, isEnabled: true });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="approval-always-lock-note"]').text()).toBe("Agents can use this permission while Hisar is locked, until Hisar quits.");
+    expect(api.fitSSHApprovalWindow).toHaveBeenCalledTimes(fitCount + 1);
+    wrapper.unmount();
+  });
+
   it.each([false, true])("counts down to the hard deadline and keeps the denial visible, phone %s", async (isPhoneApproval) => {
     vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00.321Z") });
     const lifetime = isPhoneApproval ? 95 : 43;

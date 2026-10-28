@@ -82,6 +82,8 @@ type serviceState struct {
 	// agentGrants are the harness grants opened from state.SealedAgentGrants while Hisar is unlocked; nil while locked.
 	agentGrants                 []clisocket.AgentGrant
 	isAgentGrantHeadUnavailable bool
+	lockedGrants                *lockedGrantView
+	lockedGrantGeneration       atomic.Uint64
 	signer                      *signin.Signer
 	agentSignInCancels          map[uint64]context.CancelFunc
 	lastAgentSignInID           uint64

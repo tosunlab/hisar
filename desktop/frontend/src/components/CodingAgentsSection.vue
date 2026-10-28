@@ -6,10 +6,12 @@ import {
   forgetAgentHost,
   loadAgentSessions,
   loadAgentSignIn,
+  loadAlwaysAgentAccessWhileLocked,
   loadAgentVaults,
   revokeAgentGrant,
   revokeAgentSession,
   setAgentSignInEnabled,
+  setAlwaysAgentAccessWhileLocked,
   setVaultAvailableToAgents,
   store,
 } from "../store";
@@ -37,6 +39,11 @@ async function toggleVault(vault: VaultSummary, checkbox: HTMLInputElement): Pro
 async function toggleAgentSignIn(checkbox: HTMLInputElement): Promise<void> {
   await setAgentSignInEnabled(checkbox.checked);
   checkbox.checked = store.agentSignIn.isEnabled;
+}
+
+async function toggleAlwaysAgentAccessWhileLocked(checkbox: HTMLInputElement): Promise<void> {
+  await setAlwaysAgentAccessWhileLocked(checkbox.checked);
+  checkbox.checked = store.alwaysAgentAccessWhileLocked.isEnabled;
 }
 
 function openAccessibilitySettings(): Promise<void> {
@@ -99,7 +106,7 @@ function refreshAgentSignIn(): Promise<void> {
 onMounted(() => {
   window.addEventListener("focus", refreshAgentSignIn);
   allRemoveListener = [Events.On("agent-sessions-changed", () => loadAgentSessions()), () => window.removeEventListener("focus", refreshAgentSignIn)];
-  return Promise.all([loadAgentVaults(), loadAgentSessions(), loadAgentSignIn()]);
+  return Promise.all([loadAgentVaults(), loadAgentSessions(), loadAgentSignIn(), loadAlwaysAgentAccessWhileLocked()]);
 });
 
 onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListener()));
@@ -109,6 +116,20 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
   <section v-show="isRowVisible('coding-agents')" class="settings-block" data-testid="coding-agents-section">
     <p class="section-label">Coding agents</p>
     <CodingAgentConnections />
+    <div v-if="store.alwaysAgentAccessWhileLocked.isAvailable" class="settings-group">
+      <label class="setting" data-testid="always-agent-access-while-locked">
+        <span class="settings-row-icon"><AppIcon name="lock" :size="14" /></span>
+        <div class="setting-text">
+          <strong>Use Always permissions while Hisar is locked</strong>
+          <p class="muted">Hisar keeps the secrets you allowed Always in memory when it locks, so agents can use them without asking until Hisar quits.</p>
+        </div>
+        <input class="switch" type="checkbox" name="alwaysAgentAccessWhileLocked"
+          aria-label="Use Always permissions while Hisar is locked"
+          data-testid="always-agent-access-while-locked-switch"
+          :checked="store.alwaysAgentAccessWhileLocked.isEnabled" :disabled="store.isBusy"
+          @change="toggleAlwaysAgentAccessWhileLocked($event.target as HTMLInputElement)" />
+      </label>
+    </div>
     <div class="settings-group">
       <div class="setting">
         <div class="setting-text">
