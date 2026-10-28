@@ -83,8 +83,9 @@ func (s *Service) Prelogin(ctx context.Context, email string) (apitypes.Prelogin
 	}
 	account, err := s.store.GetAccountByEmail(ctx, email)
 	switch {
+	// An unknown email answers with what a new account gets, so the answer does not tell it apart from a real one.
 	case errors.Is(err, store.ErrNotFound):
-		return apitypes.PreloginResponse{Salt: s.computeMAC("prelogin-salt", email)[:crypt.SaltSize], Argon2: crypt.DefaultArgon2Params()}, nil
+		return apitypes.PreloginResponse{Salt: s.computeMAC("prelogin-salt", email)[:crypt.SaltSize], Argon2: crypt.NewAccountArgon2Params()}, nil
 	case err != nil:
 		return apitypes.PreloginResponse{}, err
 	}

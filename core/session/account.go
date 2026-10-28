@@ -152,7 +152,7 @@ func reauthenticateForScope(ctx context.Context, client *apiclient.Client, email
 
 // strongerArgon2Params never lowers a cost the account already uses.
 func strongerArgon2Params(current crypt.Argon2Params) crypt.Argon2Params {
-	params := crypt.DefaultArgon2Params()
+	params := crypt.NewAccountArgon2Params()
 	if current.Validate() != nil {
 		return params
 	}

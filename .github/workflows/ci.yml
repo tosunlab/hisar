@@ -55,6 +55,8 @@ jobs:
         run: python3 scripts/check-ci-result-needs.py
       - name: Test release evidence and publication gates
         run: python3 scripts/test-release-evidence.py
+      - name: Check that the fast test KDF stays in test builds
+        run: bash scripts/check-fast-test-kdf.sh
       - name: Compare the pull request with its base
         id: changes
         env:
@@ -65,7 +67,7 @@ jobs:
         run: scripts/detect-app-changes.sh
 
   go:
-    name: Go gofmt, vet, tests and end-to-end test
+    name: Go gofmt, vet and tests
     needs: changes
     if: needs.changes.outputs.isGoChanged == 'true'
     runs-on: ubuntu-latest
@@ -86,12 +88,6 @@ jobs:
         with:
           go-version-file: go.work
           cache-dependency-path: "**/go.sum"
-      - name: Set up Node for make build, which builds the admin dashboard
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: admin/package-lock.json
       - name: Check gofmt
         run: |
           allUnformatted=$(git ls-files -z "*.go" | xargs -0 gofmt -l)
@@ -102,10 +98,39 @@ jobs:
         run: |
           set -o pipefail
           HISAR_TEST_DATABASE_URL=$PG_URL make test TESTFLAGS=-v 2>&1 | tee test.log
-      # The integration tests need a running server and run in the end-to-end step; TestRecordOpenSSHFixture only runs when asked to.
+      # The integration tests need a running server and run in go-build's end-to-end step; TestRecordOpenSSHFixture only runs
+      # when asked to.
       - name: Fail on skipped tests outside the allowlist
         run: |
           if grep -- "--- SKIP" test.log | grep -v -E "TestIntegration[A-Za-z]+|TestRecordOpenSSHFixture"; then exit 1; fi
+
+  # The builds and the end-to-end test of the release binaries, beside the tests in their own job.
+  go-build:
+    name: Go builds and end-to-end test
+    needs: changes
+    if: needs.changes.outputs.isGoChanged == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_PASSWORD: hisar
+          POSTGRES_DB: hisar
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - name: Set up Node for make build, which builds the admin dashboard
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
       - name: Build CLI for every release platform
         run: make build-cli-all
       - name: End-to-end test of the built server and CLI
@@ -414,7 +439,7 @@ jobs:
         id: hisarkit
         with:
           path: mobile/build/HisarKit.aar
-          key: hisarkit-android-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'scripts/install-android-sdk.sh') }}
+          key: hisarkit-android-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'mobile/fast-test-kdf.sh', 'scripts/install-android-sdk.sh') }}
       - if: steps.hisarkit.outputs.cache-hit != 'true'
         run: make build-android-aar
       - name: Check that ThemePalettes.kt matches assets/themes/themes.json
@@ -431,17 +456,17 @@ jobs:
           retention-days: 7
 
   android:
-    name: Android instrumented tests (part ${{ matrix.part }} of 2)
+    name: Android instrumented tests (part ${{ matrix.part }} of 3)
     needs: changes
     if: needs.changes.outputs.isAndroidChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-android')
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    # Each part runs about half of the instrumented tests on its own emulator (ANDROID_UI_TEST_PART in
+    # Each part runs about a third of the instrumented tests on its own emulator (ANDROID_UI_TEST_PART in
     # scripts/test-android-ui.sh) and builds only HisarKit.aar and the debug and test APKs they need, while the emulator boots.
     strategy:
       fail-fast: false
       matrix:
-        part: [1, 2]
+        part: [1, 2, 3]
     services:
       postgres:
         image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
@@ -467,18 +492,20 @@ jobs:
         run: |
           scripts/install-android-sdk.sh --build-only
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
-      # The same HisarKit.aar cache as android-build.
+      # Not android-build's HisarKit.aar: this one gives the accounts the tests create the minimum Argon2 parameters
+      # (HISAR_FAST_TEST_KDF, mobile/fast-test-kdf.sh), so it has a cache of its own.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: hisarkit
         with:
           path: mobile/build/HisarKit.aar
-          key: hisarkit-android-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'scripts/install-android-sdk.sh') }}
+          key: hisarkit-android-fast-test-kdf-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'mobile/fast-test-kdf.sh', 'scripts/install-android-sdk.sh') }}
       # HisarKit.aar and the APKs build in the background while the emulator boots and the script starts the server; the
       # script waits for ANDROID_UI_TEST_APK_BUILD before the tests.
       - name: Start building HisarKit.aar and the APKs
         env:
           IS_HISARKIT_CACHED: ${{ steps.hisarkit.outputs.cache-hit }}
           STATUS_FILE: ${{ runner.temp }}/apk-build
+          HISAR_FAST_TEST_KDF: "1"
         run: |
           echo "ANDROID_UI_TEST_APK_BUILD=$STATUS_FILE" >> "$GITHUB_ENV"
           {
@@ -531,7 +558,7 @@ jobs:
   # when each job passed or was skipped; scripts/check-ci-result-needs.py fails a job missing from its needs.
   result:
     name: CI result
-    needs: [changes, go, server-image-check, desktop-linux, desktop-flatpak, extension, web, admin, android-build, android]
+    needs: [changes, go, go-build, server-image-check, desktop-linux, desktop-flatpak, extension, web, admin, android-build, android]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

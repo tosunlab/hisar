@@ -7,8 +7,8 @@
 # (testAccountItemLockAndSignInFlow) or both (HisarUITests#testAccountItemLockAndSignInFlow), or "smoke" for the set the
 # older Android versions run (a smoke test this checkout lacks is named and left out). A name that matches
 # no test, or a run in which no test ran, fails. HISAR_UI_TEST_SCREENSHOT_DIRECTORY receives the screenshots the tests save.
-# ANDROID_UI_TEST_PART=1 or 2 runs one of two parts of similar length, for two CI jobs, as scripts/ui-test-parts.sh splits the
-# classes; part 2 also runs every class new to its table.
+# ANDROID_UI_TEST_PART=1, 2 or 3 runs one of three parts of similar length, for three CI jobs, as scripts/ui-test-parts.sh
+# splits the classes; part 3 also runs every class new to its table.
 #
 # --build-apks only builds the debug and test APKs, with no device. CI runs it in the background while the emulator boots
 # and sets ANDROID_UI_TEST_APK_BUILD to the file its exit status goes to (its output beside it, in that name plus .log); the
@@ -28,20 +28,20 @@ if [ "${1:-}" = --build-apks ]; then
   exit
 fi
 SMOKE_TESTS=HisarKitBackendTests,KeystoreSecretKeyStoreTests,BiometricKeystoreTests,ClipboardAdapterTests,testAccountItemLockAndSignInFlow,testBiometricUnlockAfterTurningItOn,AutofillServiceUITests#testWebViewFormFillsAfterUnlock,testRegisterPasskeyThenSignInWithIt,testAppSwitcherHidesAnOpenSheet
-# The runner matches tests_regex against package.Class#test: part 1 names its classes, and part 2 leaves out those of part 1.
+# The runner matches tests_regex against package.Class#test: parts 1 and 2 name their classes, and part 3 leaves out theirs.
 source "$ROOT/scripts/ui-test-parts.sh"
 TESTS_REGEX=
 case "${ANDROID_UI_TEST_PART:-}" in
   "") ;;
-  1)
-    ui_test_part 1 2 "${ANDROID_UI_TEST_SECONDS[@]}"
+  1 | 2)
+    ui_test_part "$ANDROID_UI_TEST_PART" 3 "${ANDROID_UI_TEST_SECONDS[@]}"
     TESTS_REGEX="^com\\.tryhisar\\.hisar\\.($(IFS='|'; echo "${UI_TEST_PART_CLASSES[*]//./\\.}"))#"
     ;;
-  2)
-    ui_test_part 2 2 "${ANDROID_UI_TEST_SECONDS[@]}"
+  3)
+    ui_test_part 3 3 "${ANDROID_UI_TEST_SECONDS[@]}"
     TESTS_REGEX="^(?!com\\.tryhisar\\.hisar\\.($(IFS='|'; echo "${UI_TEST_PART_CLASSES[*]//./\\.}"))#)"
     ;;
-  *) echo "ANDROID_UI_TEST_PART is 1 or 2" >&2; exit 1 ;;
+  *) echo "ANDROID_UI_TEST_PART is 1, 2 or 3" >&2; exit 1 ;;
 esac
 if [ -n "${ANDROID_UI_TEST_PART:-}" ] && [ -n "${ANDROID_UI_TESTS:-}" ]; then
   echo "set ANDROID_UI_TESTS or ANDROID_UI_TEST_PART, not both" >&2

@@ -155,6 +155,14 @@ jobs:
           IOS_SIMULATOR_ID=$(mobile/ios/scripts/find-simulator.sh)
           echo "IOS_SIMULATOR_ID=$IOS_SIMULATOR_ID" >> "$GITHUB_ENV"
           xcrun simctl boot "$IOS_SIMULATOR_ID"
+      # Part 1's database starts while the app builds rather than before its UI tests.
+      - name: Start Postgres
+        if: env.IS_RUNNING_UI_TESTS == 'true'
+        run: |
+          brew list postgresql@17 >/dev/null 2>&1 || brew install postgresql@17
+          brew services start postgresql@17
+          for _ in $(seq 30); do "$(brew --prefix postgresql@17)/bin/pg_isready" -h localhost && break; sleep 1; done
+          "$(brew --prefix postgresql@17)/bin/createdb" -h localhost "$DATABASE_NAME"
       - name: Install XcodeGen
         run: |
           curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
@@ -165,13 +173,16 @@ jobs:
       - name: Check that the generated Xcode project is committed
         run: git diff --exit-code -- mobile/ios
       # HisarKit is built from the Go code alone, so a pull request whose push left that code as it was reuses the HisarKit
-      # its earlier run built, or the one main saved (caches.yml).
+      # its earlier run built, or the one main saved (caches.yml). It gives the accounts the tests create the minimum Argon2
+      # parameters (HISAR_FAST_TEST_KDF, mobile/fast-test-kdf.sh); this job's app is for the tests and is never released.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: hisarkit
         with:
           path: mobile/build/HisarKit.xcframework
-          key: hisarkit-ios-${{ env.XCODE_PATH }}-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-framework.sh') }}
+          key: hisarkit-ios-fast-test-kdf-${{ env.XCODE_PATH }}-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-framework.sh', 'mobile/fast-test-kdf.sh') }}
       - if: steps.hisarkit.outputs.cache-hit != 'true'
+        env:
+          HISAR_FAST_TEST_KDF: "1"
         run: make build-ios-framework
       - name: Check the HisarKit slices
         run: |
@@ -188,13 +199,6 @@ jobs:
           path: ${{ runner.temp }}/ios-build.tar
           retention-days: 1
       - run: make test-ios
-      - name: Start Postgres
-        if: env.IS_RUNNING_UI_TESTS == 'true'
-        run: |
-          brew list postgresql@17 >/dev/null 2>&1 || brew install postgresql@17
-          brew services start postgresql@17
-          for _ in $(seq 30); do "$(brew --prefix postgresql@17)/bin/pg_isready" -h localhost && break; sleep 1; done
-          "$(brew --prefix postgresql@17)/bin/createdb" -h localhost "$DATABASE_NAME"
       - name: iPhone UI tests (part 1 of 3)
         if: env.IS_RUNNING_UI_TESTS == 'true'
         run: HISAR_DATABASE_URL="postgres://$(whoami)@localhost:5432/$DATABASE_NAME?sslmode=disable" IOS_RESULT_BUNDLE=$GITHUB_WORKSPACE/HisarUITests.xcresult IOS_UI_TEST_PART=1 make test-ios-ui
