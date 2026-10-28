@@ -129,9 +129,9 @@ means something on both the iPhone Duo simulator and the compact one CI uses.
 
 `SharingUITests` scrolls the invitation's Send again action into view before revealing its swipe actions. After a confirmation closes, a partially visible invitation label can still count as hittable while its midpoint is over the home indicator.
 
-The sharing sheet applies its busy-dismissal policy to the list inside its navigation stack. On iOS 27, changing that
-policy on the stack itself can recreate the sheet and discard its form state after an invitation succeeds.
-The UI test checks that the success message and chosen role survive the response.
+The sharing sheet updates its presenting UIKit controller's busy-dismissal policy directly. Updating SwiftUI's
+`interactiveDismissDisabled` preference can recreate the sheet on iOS 27 and discard its form state after an
+invitation succeeds. The UI test checks that the success message and chosen role survive the response.
 
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,

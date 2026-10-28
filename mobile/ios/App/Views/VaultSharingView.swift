@@ -62,7 +62,6 @@ struct VaultSharingView: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .interactiveDismissDisabled(model.isBusy)
             .refreshable { await load() }
             .navigationTitle(isOwner ? "Share “\(vaultName)”" : "Members")
             .navigationBarTitleDisplayMode(.inline)
@@ -117,6 +116,7 @@ struct VaultSharingView: View {
             }
         }
         .presentationDetents([.medium, .large], selection: $presentationDetent)
+        .background(SharingDismissalPolicy(isDisabled: model.isBusy))
     }
 
     private var inviteSection: some View {
@@ -239,6 +239,37 @@ struct VaultSharingView: View {
     private func load() async {
         if let loaded = await model.loadVaultSharing(vaultID: vaultID) {
             sharing = loaded
+        }
+    }
+}
+
+// Updating SwiftUI's interactiveDismissDisabled preference can recreate this sheet on iOS 27 and discard its form.
+private struct SharingDismissalPolicy: UIViewControllerRepresentable {
+    var isDisabled: Bool
+
+    func makeUIViewController(context: Context) -> PolicyController {
+        PolicyController()
+    }
+
+    func updateUIViewController(_ controller: PolicyController, context: Context) {
+        controller.isDisabled = isDisabled
+        controller.applyPolicy()
+    }
+
+    final class PolicyController: UIViewController {
+        var isDisabled = false
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            applyPolicy()
+        }
+
+        func applyPolicy() {
+            var sheet: UIViewController = self
+            while let parent = sheet.parent {
+                sheet = parent
+            }
+            sheet.isModalInPresentation = isDisabled
         }
     }
 }
