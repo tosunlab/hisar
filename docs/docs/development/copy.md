@@ -37,9 +37,9 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Delete account…, Delete account (the confirm button, after typing the email) | Close account, Remove account, Deactivate |
 | "Export your items first in Settings → Import & Export." (Mac), "… in Settings → Account → Export data." (iPhone, Android), "… with `hisar export`" (CLI) | Back up your data |
 
-### Onboarding on the Mac and Android
+### Onboarding on the Mac, iPhone and Android
 
-In this section, \<device> is "this Mac" on macOS, "this computer" on Linux, and "this device" on Android.
+In this section, \<device> is "this Mac" on macOS, "this computer" on Linux, "this iPhone" on the iPhone, and "this device" on Android.
 These strings describe the installed account's owed kit, not an unrelated operation in **Finish account setup**.
 
 | Where | Copy |
@@ -47,18 +47,20 @@ These strings describe the installed account's owed kit, not an unrelated operat
 | Fresh installation | Welcome to Hisar · Create account · I already have an account |
 | Mac Sign in | Or enter the details. All fields are required. |
 | Mac Create account | All account fields are required. |
-| Android Create account | Name, email and both master password fields are required. |
+| iPhone Sign in and Create account | All fields are required. |
+| Android Create account | Email, name and both master password fields are required. |
+| Create account field order | Email, then Name on the iPhone and Android; Name, then Email on the Mac. Keep a field between Email and the master password on the iPhone: directly above them, the email makes iOS offer a generated password ([Design](../design.md) §5.2). |
 | Required fields on submit | Enter your name. · Enter your email. · Enter your Secret Key. · Enter your master password. |
-| Required invitation on submit | Enter your invite link or code. (Mac); Enter an invite link or code. (Android) |
+| Required invitation on submit | Enter your invite link or code. (Mac); Enter an invite link or code. (iPhone, Android) |
 | Master password on Create account | Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you. |
 | Secret Key on Create account | Next, Hisar creates your Secret Key. You don't choose one. |
 | Kit title | Save your Emergency Kit |
 | Replacement kit title | Save your new Emergency Kit |
 | New-account kit body | Hisar created a Secret Key for your account. You need it and your master password to sign in on a new device. You don't need to remember it. |
 | Replacement kit body | Your Secret Key changed, so your old Emergency Kit no longer works. Save the new one. |
-| Kit authorization | Enter your master password to show your Secret Key. · Continue · Continue with Touch ID (Mac), Continue with biometrics (Android) · Use master password · Cancel |
+| Kit authorization | Enter your master password to show your Secret Key. · Continue · Continue with Touch ID (Mac), Continue with Face ID or Touch ID (iPhone), Continue with biometrics (Android) · Use master password · Cancel |
 | Kit storage guidance | Keep it where you can get to it without \<device>: print it, or save it to storage you can open from another device. Don't keep the only copy in Hisar. |
-| Delivery actions | Save Emergency Kit… and Save another copy… (Mac); Save Emergency Kit, Print Emergency Kit, Share Emergency Kit (Android) |
+| Delivery actions | Save Emergency Kit… and Save another copy… (Mac); Save or print Emergency Kit (iPhone); Save Emergency Kit, Print Emergency Kit, Share Emergency Kit (Android) |
 | Recorded file delivery | Emergency Kit saved. |
 | Recorded print delivery | Emergency Kit sent to the printer. |
 | Recorded share delivery | Emergency Kit shared. |
@@ -70,13 +72,14 @@ These strings describe the installed account's owed kit, not an unrelated operat
 | Unconfirmed Android Share or Print | Hisar can't tell whether the other app kept the kit. Save it to a file to finish. |
 
 The saved sentences describe the backend's recorded `savedBy`, not an open sheet or a temporary PDF.
+The iPhone records `file` for Save to Files, `print` for Print, and `share` for any other completed activity except Copy.
 Android records `file` only after a successful Storage Access Framework write and `share` only after the PDF chooser reports a non-null chosen component.
 Android Print never records delivery or enables **I saved my Emergency Kit**. A chosen share target is not proof that the receiving app kept the file.
 Copy never counts. Do not reintroduce the Mac's saved-kit checkbox or "only on this device" warnings.
 
 ### Emergency Kit reminders
 
-The Mac and Android show the following copy in the vault list's normal flow, not over content or controls.
+The Mac, the iPhone and Android show the following copy in the vault list's normal flow, not over content or controls.
 The age starts at the first **Save later**, or the first unlock that finds the kit still owed.
 Recorded delivery awaiting acknowledgement takes precedence over the age and replacement warnings.
 
@@ -88,20 +91,22 @@ Recorded delivery awaiting acknowledgement takes precedence over the age and rep
 | Unsaved replacement kit | Save your new Emergency Kit | Your old Emergency Kit no longer works. Save the new one where you can reach it without \<device>. |
 | Delivered, not acknowledged | Confirm your Emergency Kit | The recorded delivery sentence above, then "A copy saved only on \<device> is lost with it. Print it, or keep another copy somewhere else." |
 
-The unsaved action is **Save Emergency Kit…** on the Mac or **Save Emergency Kit** on Android.
-A delivered kit uses **Continue to confirmation**. Both states offer **Not now**, with the accessible action label "Hide until Hisar locks".
+The unsaved action is **Save Emergency Kit…** on the Mac or **Save Emergency Kit** on the iPhone and Android.
+A delivered kit uses **Continue to confirmation**. Both states offer **Not now**, with the accessible action label "Hide until Hisar locks" on the Mac and Android and the accessibility hint "Hides until Hisar locks" on the iPhone.
+Both actions stay fully readable at the largest text sizes. A long label wraps instead of truncating.
 The locked screen has static text, not an action that opens recovery over Unlock.
 
 | Locked state | Copy |
 |---|---|
 | Unsaved kit | Your Emergency Kit isn't saved yet. Unlock Hisar to save it. |
 | Delivered kit, Mac | Your Emergency Kit needs confirmation. Unlock Hisar to continue. |
+| Delivered kit, iPhone | Your Emergency Kit still needs confirming. Unlock Hisar to continue. |
 | Delivered kit, Android | Your Emergency Kit isn't confirmed yet. Unlock Hisar to confirm it. |
 | Kit interrupted by lock | Hisar locked while you were saving your Emergency Kit. Unlock to continue. |
 
 ### Lost Secret Key help
 
-On the Mac and Android, **Can't find your Secret Key?** opens the same help from Sign in and the lock screen.
+On the Mac, the iPhone and Android, **Can't find your Secret Key?** opens the same help from Sign in and the lock screen.
 Closing it with **Done** preserves the form. The paragraphs are:
 
 > It's on your Emergency Kit, the PDF or printout you saved when you created your account. If you saved the Secret Key separately, you can use that too.
@@ -116,7 +121,7 @@ Under **Forgot your master password?**, the help says:
 
 > Hisar can't reset it, and neither can the server's admin. The Emergency Kit doesn't replace it. If you can still open Hisar on a device, don't sign out; preserve the items you can access. If you can no longer unlock any device and cannot find your master password, items only your account can open cannot be recovered. Shared vaults remain accessible to their other members.
 
-Android Settings → Account → Secret Key and Emergency Kit shows its sign-in QR only after the master password.
+The iPhone's and Android's Settings → Account → Secret Key and Emergency Kit show the sign-in QR only after the master password.
 Its caption is "Scan this with Hisar on your new device. Anyone with this code and your master password can open your vaults."
 Copy and PDF delivery remain alternatives.
 
@@ -133,7 +138,7 @@ The message is "Hisar removes \<device>'s saved Secret Key and offline copy of y
 | Android | this device | Settings, Account, Secret Key and Emergency Kit |
 
 Without an owed kit, the locked-screen confirmation adds "If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in \<route>."
-On the Mac and Android, an owed kit changes the copy without dropping the full local-removal and sign-in disclosure above:
+On the Mac, the iPhone and Android, an owed kit changes the copy without dropping the full local-removal and sign-in disclosure above:
 
 | State | Additional copy |
 |---|---|
@@ -141,10 +146,10 @@ On the Mac and Android, an owed kit changes the copy without dropping the full l
 | Delivered but not acknowledged | Prepend "You haven't confirmed this account's Emergency Kit yet." |
 | Either owed-kit state | Append "The protected unfinished setup stays on \<device>. Don't rely on it as your only recovery copy." |
 | Locked Mac | Append "Cancel, unlock Hisar and finish saving your Emergency Kit." or, after delivery, "Cancel, unlock Hisar and finish confirming your Emergency Kit." |
-| Locked Android | Append "Cancel, unlock Hisar and finish saving or confirming your Emergency Kit." |
+| Locked iPhone and Android | Append "Cancel, unlock Hisar and finish saving or confirming your Emergency Kit." |
 
 Keep **Cancel** as the safe choice and destructive **Sign out**.
-Unlocked Mac Account also offers **Save Emergency Kit…**. Android offers **Save Emergency Kit** when a kit is owed.
+Unlocked Mac Account also offers **Save Emergency Kit…**. The iPhone and Android offer **Save Emergency Kit** when a kit is owed.
 These open the owed kit without signing out. Without an owed kit, the Mac opens the Security kit form.
 Sign-out removes the active account's local data, not separately protected unfinished-setup recovery records.
 
@@ -288,12 +293,12 @@ The Hisar server knows the invitation details it encrypts. Do not say that shari
 | "Ada invited you to Hisar"; Download for Mac; Open in Hisar; invite code | sign-up token, registration link | Invite page and invite email |
 | This invite isn't valid | expired, already used, not found (never say which) | Invite page for any code that does not work |
 | Need Hisar? See how to build and install it on your phone. · iPhone build instructions / Android build instructions · Other downloads | App Store, TestFlight or APK download claims | Phone invite page, after its primary Open in Hisar action; build links use the repository's platform instructions |
-| You need an invitation to create an account on \<host>. Ask someone with an account there to invite you. | An optional invitation on a confirmed invite-only server | Mac and Android Create account |
-| \<host> is still being set up. You need an invitation from its admin. | Claiming that anyone can create its first account | Mac and Android Create account |
-| This server doesn't say whether it needs an invitation. If it does, Hisar tells you when you create the account. | Assuming a missing policy route means open registration | Mac and Android, unknown sign-up policy |
+| You need an invitation to create an account on \<host>. Ask someone with an account there to invite you. | An optional invitation on a confirmed invite-only server | Mac, iPhone and Android Create account |
+| \<host> is still being set up. You need an invitation from its admin. | Claiming that anyone can create its first account | Mac, iPhone and Android Create account |
+| This server doesn't say whether it needs an invitation. If it does, Hisar tells you when you create the account. | Assuming a missing policy route means open registration | Mac, iPhone and Android, unknown sign-up policy |
 | Checking sign-up options on \<host>… · Try again | Sign-ups unavailable (on a discovery error) | Policy discovery |
 | Invite link or code; Invite link or code (if you have one) | A required field on confirmed open registration | Required on invite/setup servers; optional when unknown |
-| Invitation for \<email> · on \<host> · Remove invitation · This invitation is for this address. | Editable email for an email-bound invitation | Invitation card and fixed Email field; without email, the card says Invitation (Mac) or Invitation on \<host> (Android) |
+| Invitation for \<email> · on \<host> · Remove invitation · This invitation is for this address. | Editable email for an email-bound invitation | Invitation card and fixed Email field; without email, the card says Invitation (Mac), Invitation then on \<host> (iPhone) or Invitation on \<host> (Android) |
 | Update required (screen title); This server needs Hisar 0.2.0 or later. This Mac has 0.1.0. (This computer has 0.1.0. on Linux; This device has 0.1.0. on Android) | Your app is outdated, unsupported version | Mac, Linux, iPhone and Android blocking screen |
 | Update now (Mac, Sparkle); Install the latest Hisar (iPhone and Android, until the stores have Hisar); Check again | Upgrade | Blocking screen buttons |
 | Hisar needs an update | update required error, 426 | What the SSH agent, the command-line tool, coding agents and the extension are told |
