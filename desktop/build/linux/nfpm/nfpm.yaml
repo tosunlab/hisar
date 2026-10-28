@@ -1,5 +1,6 @@
 # The Hisar .deb and .rpm (scripts/package-desktop-linux.sh). nfpm expands ${VERSION} and ${GOARCH} from the environment.
-# The paths are fixed: desktop/helpers_linux.go reads the browser host and hisar from them, and hisar starts /usr/bin/Hisar.
+# The paths are fixed: desktop/helpers_linux.go reads the browser host and hisar from them, hisar starts /usr/bin/Hisar,
+# desktop/harness finds the omp plugin in /usr/share/hisar/omp-plugin and its bin/run-hisar runs /usr/bin/hisar.
 
 name: "hisar"
 arch: ${GOARCH}
@@ -27,6 +28,10 @@ contents:
     dst: "/usr/bin/hisar"
     file_info:
       mode: 0755
+  # The omp plugin, staged in bin/omp-plugin by scripts/stage-omp-plugin.sh; the tree keeps bin/run-hisar executable.
+  - src: "./bin/omp-plugin"
+    dst: "/usr/share/hisar/omp-plugin"
+    type: tree
   - src: "./build/appicon.png"
     dst: "/usr/share/pixmaps/com.tryhisar.hisar.png"
   - src: "./build/linux/com.tryhisar.hisar.desktop"

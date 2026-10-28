@@ -26,6 +26,15 @@ describe("findHisar", () => {
     expect(findHisar(environment, existing(homeHelper))).toEqual({ path: homeHelper, isOnInheritedPath: false });
   });
 
+  test("then where a Linux AppImage or Flatpak copied it", () => {
+    const copied = "/Users/a/.local/share/hisar/bin/hisar";
+    expect(findHisar(environment, existing(copied))).toEqual({ path: copied, isOnInheritedPath: false });
+    expect(findHisar(environment, existing(homeHelper, copied))).toEqual({
+      path: homeHelper,
+      isOnInheritedPath: false,
+    });
+  });
+
   test("finds nothing when Hisar is not installed", () => {
     expect(findHisar(environment, existing())).toBeUndefined();
     expect(findHisar({}, existing(homeHelper))).toBeUndefined();

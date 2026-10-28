@@ -23,6 +23,8 @@ CGO_ENABLED=1 go build -tags production -trimpath -buildvcs=false \
 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/hisar-browser-host ./cmd/hisar-browser-host
 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$version" -o bin/hisar ../cli/cmd/hisar
 test "$(bin/hisar --version)" = "hisar $version"
+# The omp plugin Settings → Coding agents links omp to, in share/hisar/omp-plugin of every package (desktop/harness).
+"$scriptDirectory/stage-omp-plugin.sh" bin/omp-plugin
 
 packageDirectory=$(mktemp -d)
 trap 'rm -rf "$packageDirectory"' EXIT
@@ -35,7 +37,8 @@ for format in deb rpm; do
   echo "$PWD/$output"
 done
 
-# The AppImage holds the three binaries and uses the system's GTK 4 and WebKitGTK 6.0 (build/linux/appimage/AppRun).
+# The AppImage holds the three binaries and the omp plugin and uses the system's GTK 4 and WebKitGTK 6.0
+# (build/linux/appimage/AppRun).
 appImageToolVersion=1.9.1
 runtimeVersion=20251108
 case $architecture in
@@ -68,10 +71,11 @@ download "https://github.com/AppImage/appimagetool/releases/download/$appImageTo
 download "https://github.com/AppImage/type2-runtime/releases/download/$runtimeVersion/runtime-$appImageArchitecture" "$runtimeSHA256" "$runtime"
 
 appDirectory=$packageDirectory/Hisar.AppDir
-mkdir -p "$appDirectory/usr/bin" "$appDirectory/usr/lib/hisar"
+mkdir -p "$appDirectory/usr/bin" "$appDirectory/usr/lib/hisar" "$appDirectory/usr/share/hisar"
 install -m 0755 build/linux/appimage/AppRun "$appDirectory/AppRun"
 install -m 0755 bin/Hisar bin/hisar "$appDirectory/usr/bin/"
 install -m 0755 bin/hisar-browser-host "$appDirectory/usr/lib/hisar/"
+cp -R bin/omp-plugin "$appDirectory/usr/share/hisar/omp-plugin"
 sed 's|^Exec=/usr/bin/Hisar$|Exec=Hisar|' build/linux/com.tryhisar.hisar.desktop > "$appDirectory/com.tryhisar.hisar.desktop"
 cp build/linux/appicon-512.png "$appDirectory/com.tryhisar.hisar.png"
 ln -s com.tryhisar.hisar.png "$appDirectory/.DirIcon"
