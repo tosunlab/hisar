@@ -2,13 +2,10 @@ package com.tryhisar.hisar.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
@@ -24,6 +21,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import com.tryhisar.hisar.AppViewModel
 import com.tryhisar.hisar.HisarTestApplication
 import com.tryhisar.hisar.model.FakeBackend
@@ -71,6 +69,8 @@ class RootScreenUITests {
     @Test
     fun testSignInHidesTheServerUntilAskedFor() {
         launchApp(FakeBackend()).use {
+            composeRule.waitForTag("welcome-sign-in")
+            composeRule.onNodeWithTag("welcome-sign-in").performClick()
             composeRule.waitForTag("sign-in-use-different-server")
             assertFalse(composeRule.isTagShown("sign-in-server"))
             composeRule.tap("sign-in-use-different-server")
@@ -82,14 +82,14 @@ class RootScreenUITests {
     @Test
     fun testPrivacyCoverHidesContentInTheBackground() {
         launchApp(FakeBackend()).use { scenario ->
-            composeRule.waitForTag("sign-in-mode")
+            composeRule.waitForTag("welcome-create-account")
             assertFalse(composeRule.isTagShown("privacy-cover"))
             scenario.moveToState(Lifecycle.State.STARTED)
             composeRule.waitForTag(scenario, "privacy-cover")
             scenario.moveToState(Lifecycle.State.CREATED)
             scenario.moveToState(Lifecycle.State.RESUMED)
             composeRule.waitForTagToGo("privacy-cover")
-            composeRule.onNodeWithTag("sign-in-mode").assertIsDisplayed()
+            composeRule.onNodeWithTag("welcome-create-account").assertIsDisplayed()
         }
     }
 
@@ -97,15 +97,17 @@ class RootScreenUITests {
     fun testSignUpShowsTheSecretKeyThenOffersBiometricsThenTheVaults() {
         val backend = FakeBackend()
         launchApp(backend).use { scenario ->
-            composeRule.waitForTag("sign-in-mode")
-            composeRule.onNode(hasText("Create account") and hasAnyAncestor(hasTestTag("sign-in-mode"))).performClick()
+            composeRule.waitForTag("welcome-create-account")
+            composeRule.onNodeWithTag("welcome-create-account").performClick()
             composeRule.waitForTag("sign-up-invite-link")
             composeRule.type("sign-up-invite-link", "http://127.0.0.1:18080/invite/abc")
             composeRule.type("sign-up-email", "bob@example.com")
             composeRule.type("sign-up-name", "Bob")
             composeRule.type("sign-up-password", FakeBackend.PASSWORD)
             composeRule.type("sign-up-repeated-password", "not the same")
-            composeRule.onNodeWithTag("sign-in-submit").assertIsNotEnabled()
+            composeRule.tap("sign-in-submit")
+            composeRule.waitUntil { composeRule.onAllNodesWithText("The master passwords don't match.").fetchSemanticsNodes().isNotEmpty() }
+            assertFalse("signUp" in backend.allCallName)
             composeRule.onNodeWithTag("sign-up-repeated-password").performTextClearance()
             composeRule.type("sign-up-repeated-password", FakeBackend.PASSWORD)
             composeRule.onNodeWithTag("sign-in-submit").assertIsEnabled()
@@ -119,19 +121,25 @@ class RootScreenUITests {
             scenario.onActivity { ViewModelProvider(it)[AppViewModel::class.java].model.showNotice("Secret Key copied.") }
             composeRule.waitForTag("notice")
             val notice = composeRule.onNodeWithTag("notice").fetchSemanticsNode().boundsInRoot
-            val done = composeRule.onNodeWithTag("new-secret-key-done").fetchSemanticsNode().boundsInRoot
-            assertTrue("the notice clears the form's primary action", notice.bottom <= done.top)
-            composeRule.onNodeWithTag("new-secret-key-done").assertIsNotEnabled()
-            composeRule.onNodeWithTag("new-secret-key-hint").assertTextEquals("Save, print or share the Emergency Kit first.")
+            val later = composeRule.onNodeWithTag("new-secret-key-later").fetchSemanticsNode().boundsInRoot
+            assertTrue("the notice clears the form's actions", notice.bottom <= later.top)
+            composeRule.onNodeWithTag("new-secret-key-done").assertDoesNotExist()
 
-            composeRule.waitForTag("new-secret-key-share-kit")
+            composeRule.waitUntil(30_000) { backend.countCall("exportNewAccountEmergencyKit") > 0 }
             composeRule.tap("new-secret-key-share-kit")
             val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
             val shareSheet = By.pkg(Pattern.compile("android|com\\.android\\.intentresolver"))
             composeRule.waitUntil(10_000) { device.hasObject(shareSheet) }
             device.pressBack()
             composeRule.waitUntil(10_000) { !device.hasObject(shareSheet) }
-            composeRule.waitForTagToGo("new-secret-key-hint")
+            composeRule.onNodeWithTag("new-secret-key-done").assertDoesNotExist()
+            composeRule.tap("new-secret-key-save-kit")
+            val documents = By.pkg(Pattern.compile("com\\.android\\.documentsui|com\\.google\\.android\\.documentsui"))
+            assertTrue(device.wait(Until.hasObject(documents), 10_000))
+            device.findObject(By.clazz("android.widget.EditText"))?.text = "RootScreen-${System.currentTimeMillis()}.pdf"
+            device.wait(Until.findObject(By.res(Pattern.compile(".*:id/button1")).enabled(true)), 10_000).click()
+            assertTrue(device.wait(Until.gone(documents), 10_000))
+            composeRule.waitForTag("new-secret-key-done")
             composeRule.onNodeWithTag("new-secret-key-done").assertIsEnabled().performClick()
             composeRule.waitUntil { "acknowledgeNewAccountRecovery" in backend.allCallName }
             assertTrue("the sign-up's record ended", backend.allPendingRecovery.isEmpty())

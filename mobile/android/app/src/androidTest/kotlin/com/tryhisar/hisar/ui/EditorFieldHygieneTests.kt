@@ -74,6 +74,8 @@ class EditorFieldHygieneTests {
     @Test
     fun testSignInAndCreateAccountSecretsStayOutOfAutofillAndKeyboardLearning() {
         show { SignInScreen(model) }
+        composeRule.waitForTag("welcome-sign-in")
+        composeRule.onNodeWithTag("welcome-sign-in").performClick()
         assertOrdinary("sign-in-email")
         assertSecret("sign-in-secret-key")
         assertSecret("sign-in-password")

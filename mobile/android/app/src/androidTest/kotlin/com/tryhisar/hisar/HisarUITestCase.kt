@@ -317,7 +317,9 @@ abstract class HisarUITestCase {
 
     /** Signs in to the harness server with an account another device created. */
     fun signIn(email: String, secretKey: String, password: String) {
-        waitFor("sign-in-use-different-server", APP_START_TIMEOUT)
+        waitFor(hasTestTag("sign-in-use-different-server") or hasTestTag("welcome-sign-in"), APP_START_TIMEOUT)
+        if (exists(hasTestTag("welcome-sign-in"))) tap("welcome-sign-in")
+        waitFor("sign-in-use-different-server")
         tap("sign-in-use-different-server")
         composeRule.onNode(hasTestTag("sign-in-server")).performTextReplacement(readArgument("HISAR_UI_TEST_SERVER"))
         type(email, "sign-in-email")
