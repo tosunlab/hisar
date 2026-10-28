@@ -31,8 +31,9 @@ final class CredentialRevealUITests: HisarUITestCase {
         waitFor(app.secureTextFields["sign-in-password"])
         XCTAssertEqual(app.buttons["sign-in-password-reveal"].label, "Show master password")
         app.buttons["sign-in-password-reveal"].tap()
-        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
-        app.segmentedControls["sign-in-mode"].buttons["Sign in"].tap()
+        XCTAssertEqual(app.buttons["sign-in-password-reveal"].label, "Hide master password")
+        selectSignInMode("Create account")
+        selectSignInMode("Sign in")
         XCTAssertEqual(app.buttons["sign-in-password-reveal"].label, "Show master password")
         XCTAssertTrue(app.secureTextFields["sign-in-password"].exists)
     }

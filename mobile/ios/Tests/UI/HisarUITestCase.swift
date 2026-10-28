@@ -261,11 +261,19 @@ class HisarUITestCase: XCTestCase {
         return segmented.exists ? segmented : app.otherElements["sign-in-mode"].firstMatch
     }
 
-    func selectSignInMode(_ title: String) {
+    // On a loaded simulator a tap on the mode control can be lost (job 122902965025 stayed in Sign in), so the mode is tapped
+    // until it is selected.
+    func selectSignInMode(_ title: String, file: StaticString = #filePath, line: UInt = #line) {
         let button = signInModeControl.buttons[title]
-        waitFor(button)
-        scrollTo(button)
-        button.tap()
+        waitFor(button, file: file, line: line)
+        scrollTo(button, file: file, line: line)
+        for _ in 0..<3 {
+            button.tap()
+            if waitUntil(timeout: 5, { button.isSelected }) {
+                return
+            }
+        }
+        XCTFail("the \(title) mode was not selected", file: file, line: line)
     }
 
     func handOffEmergencyKit(shareIdentifier: String) {
