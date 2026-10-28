@@ -12,9 +12,11 @@ on pushes to `main`: a merge was already tested as its pull request. A new push 
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` (Linux runners): gofmt, vet, all Go tests against Postgres (failing on any skipped test except the
-`TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform and the end-to-end test of the built
-binaries (unless the pull request changes only `extension/`, `docs/`, `raycast/`, `mobile/ios/`, `mobile/android/` or Markdown),
+`.github/workflows/ci.yml` (Linux runners): gofmt, vet and all Go tests against Postgres (failing on any skipped test except the
+`TestIntegration…` tests and `TestRecordOpenSSHFixture`) in one job, and the CLI for every release platform and the end-to-end test
+of the built binaries in another (both unless the pull request changes only `extension/`, `docs/`, `raycast/`, `mobile/ios/`,
+`mobile/android/` or Markdown; the tests create accounts with the minimum Argon2 parameters, through the test-only build tag
+`hisar_fast_test_kdf`, which `scripts/check-fast-test-kdf.sh` keeps out of every release build),
 the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed; when the server or what it
 builds from changes), the desktop app's Linux build (when the desktop app or what it builds from changes, as below), the extension
 (tests, Chromium end-to-end tests and zip, when `extension/` changes) with the share link page in Chromium against the server (when
@@ -22,7 +24,7 @@ the extension or the server changes), the admin dashboard (typecheck, tests, the
 freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
 `core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
 release APKs, lint and the JVM tests in one job, and the instrumented tests on x86_64 API 36 emulators against a local server in
-two more, split by the test classes' measured run times in `scripts/ui-test-parts.sh`; only when the pull request changes
+three more, split by the test classes' measured run times in `scripts/ui-test-parts.sh`; only when the pull request changes
 `mobile/android/`, `mobile/hisarkit/`, `mobile/go.mod`, the Android scripts, the themes,
 `core/`, `go.work` or the workflow, and not while the pull request has the label `skip-android`, for changes whose Android build
 and tests already passed locally with `make build-android-aar build-android test-android test-android-ui`; add the label before

@@ -31,7 +31,7 @@ Five Go modules joined by `go.work`, plus seven non-Go apps.
 
 | Package | What it holds |
 |---|---|
-| `crypt` | Every cryptographic operation and AAD label: sealing, Argon2id/HKDF, keyset, vault keys, items, approvals, share links, exports, Secret Key, Web Push message encryption (RFC 8291). `vectors_test.go` freezes the formats |
+| `crypt` | Every cryptographic operation and AAD label: sealing, Argon2id/HKDF, keyset, vault keys, items, approvals, share links, exports, Secret Key, Web Push message encryption (RFC 8291). `vectors_test.go` freezes the formats. `NewAccountArgon2Params` is what sign-ups and credential changes use: the defaults, or the minimum under the test-only build tag `hisar_fast_test_kdf` (`newaccount_fast_test_kdf.go`) |
 | `pake` | The OPAQUE configuration shared by apps and server |
 | `apitypes` | JSON wire types of `/api/v1`, event names, roles, platform headers, share-link limits, `IsValidVaultRole`, `NormalizeEmail` |
 | `apiclient` | Typed HTTP client of `/api/v1` and its event stream |
@@ -325,11 +325,15 @@ check cache repair, concurrent reuse and Python failures.
   account as `HISAR_UI_TEST_<NAME>_INVITE_LINK` and `_EMAIL`, the iPhone's names; invites are single-use, so a new
   server test adds a `ui_test_add_account` line. The test orchestrator runs each test in a new process with the app's
   data cleared. `ANDROID_UI_TESTS=<class or test names>` or `ANDROID_UI_TESTS=smoke` runs a subset.
-- CI runs the iPhone UI tests in three parts and the Android instrumented tests in two, split by the test classes' measured
+- CI runs the iPhone UI tests in three parts and the Android instrumented tests in three, split by the test classes' measured
   run times in `scripts/ui-test-parts.sh` (`IOS_UI_TEST_PART`, `ANDROID_UI_TEST_PART`); a class missing from its table runs
   in the last part. iPhone part 1 runs in the build job on its warm simulator; parts 2 and 3 start alongside the build and
   wait for its artifact. The Android jobs build `HisarKit.aar` and the APKs in the background while the emulator boots
   (`test-android-ui.sh --build-apks`, `ANDROID_UI_TEST_APK_BUILD`).
+- Tests create accounts with the minimum Argon2 parameters: `make test` passes the build tag `hisar_fast_test_kdf`, and CI's
+  phone UI test jobs build HisarKit with `HISAR_FAST_TEST_KDF=1` (`mobile/fast-test-kdf.sh`, which refuses outside GitHub
+  Actions) into caches of their own. `scripts/check-fast-test-kdf.sh` fails when the tag appears outside its allowlist, so no
+  release build can carry it.
 - Which CI jobs run is decided per pull request by `scripts/detect-app-changes.sh` from `scripts/app-paths.sh`; a new job
   gets an `is<Area>Changed` output there and a row in `scripts/test-app-paths.sh`. `caches.yml` fills main's caches on every
   push to `main` (its cache keys must match the steps they stand in for in `ci.yml` and `macos.yml`) and deletes a closed
