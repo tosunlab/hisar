@@ -13,11 +13,39 @@ The iPhone and Android apps on top of the gomobile-bound `core`. See [Design](..
 - `android/`: the Android app, below.
 - `cmd/hisar-ui-test-mac`: plays the user's Mac in the Android phone approval UI test.
 
+On iPhone and Android, item detail, the login editor and the password generator rate a nonempty password as Weak, Fair,
+Good or Strong. The four-segment meter uses the shared Go estimator. It does not reveal a masked password, and its rating
+does not prevent saving an item or using a generated password.
+
+Validation and warning text uses opaque, contrast-safe colors in every palette.
+Android destructive text uses the shared `dangerText` role, separate from decorative red icons.
+iPhone blocking password messages use primary text with a red warning symbol.
+
+Signing out another device ends its server session immediately. An offline device can still unlock its downloaded vaults until it next contacts the server, when Hisar removes the account from that device. Both the device list and device-detail confirmations explain this limit.
+
+Device sign-out and Mac-approval changes keep failures next to the initiating control. A failed change leaves the device or saved approval state unchanged and allows another attempt. A sign-out notice appears only after the server accepts revocation.
+
+## If Hisar cannot start
+
+The failure screen keeps the current error selectable. **Try again** retries startup with the same configuration and no
+state or keychain reset. Only one attempt runs at a time, and the initialized backend is reused. **Copy details** copies
+the displayed error for support. If the problem continues, email support@tryhisar.com.
+
+On Android, do not clear Hisar's storage unless you have your Emergency Kit. Clearing storage removes the phone's saved
+Secret Key and offline vault copy.
+
 ## Android
 
 Kotlin and Jetpack Compose on top of `HisarKit.aar`, built with the Gradle wrapper in `android/`. Android 10 (API 29)
 and later, on arm64-v8a and x86_64; 32-bit ARM is out because `github.com/bytemare/ksf`, which OPAQUE uses, does not
 compile for 32-bit targets. The package is `com.tryhisar.hisar`, and `com.tryhisar.hisar.debug` for debug builds.
+
+The floating Android tab bar keeps destination names on one line. At large text sizes it gives longer names more room
+and reduces its outer spacing before limiting label scaling on narrow windows. Lists clear the bar's measured height.
+Global search keeps the accessible name "Search all vaults", and vault search keeps "Search" followed by the vault name,
+including while a query is entered. Both fields offer the keyboard's Search action.
+Vault and organization invitations share **Invitations for you** on Vaults. Accepted vault invitations remain visible
+as waiting for the owner's Hisar to finish sharing, without another Accept or Decline action.
 
 ```
 android/model/     :model, plain JVM: the HisarKit types, VaultBackend, the app model (com.tryhisar.hisar.app),
@@ -35,6 +63,11 @@ its IDNA ASCII form, but Open, Share, labels and Copy keep the stored address as
 the browser: `java.net.IDN` is IDNA2003, which would turn `faß.de` into the different domain `fass.de`. Emergency Kit
 server validation and invite app links share this URI parsing, and invite links keep the original server origin when
 they prefill Create account.
+
+Full-screen setup, biometric onboarding, recovery and credential import hide the underlying screen from accessibility.
+Their touch barrier consumes unused pointer events while preserving the tabs' navigation state.
+
+Vaults hides Favorites until an item is starred. Its Tags row shows the number of tags and opens a separate list with each tag's item count.
 
 ### Build and test
 
@@ -124,10 +157,21 @@ On Android 14 and later, Credential Manager's password sheet also offers **Searc
 the requesting app or site. For an unlinked app, choose **Only this time** or **Always use for this app** before filling.
 When the sheet has no matching credentials, Hisar returns your search choice to the sheet for you to confirm.
 
+Matching logins appear when the lookup finishes, alongside the result count. A failed People refresh keeps the last
+loaded invitations and its error, even if a background vault refresh succeeds.
+
 Copy and action notices use Material snackbars above the tab bar. Favorite changes offer **Undo** until the
 snackbar is dismissed. TalkBack announces each notice. Swipe it away or use its dismiss button to close it without undoing the action.
 If a snackbar covers another field or row, dismiss it before tapping that row. Notices stay clear of pinned primary actions.
 
+The Android icon picker announces **Automatic** and presets as mutually exclusive icon sources.
+Colors form a separate selection group. **Choose photo** is an action, not a selectable preset.
+Settings choices for appearance, auto-lock, export format and import destinations expose each whole row as one
+radio option. TalkBack reports which option is selected within its choice group.
+Busy primary and secondary actions keep their action name for TalkBack, announce the operation in progress, and
+cannot be activated again until it finishes.
+TalkBack's Headings reading control navigates screen titles and named form sections, without including field labels
+or explanatory footnotes.
 The item detail's **Copy secret reference** footer says "For hisar run and hisar read on your Mac."
 Touch and hold a field for that field's **Copy secret reference** action.
 
@@ -136,12 +180,26 @@ SHA-256. The copy uses uppercase hex bytes separated by colons, as `apksigner` a
 
 ### Account passwords and exports
 
+Change your master password or replace your Secret Key in Settings → Account on either phone.
+Security contains device protection, including biometric unlock and auto-lock.
+
 The new master password and encrypted-export passphrase forms count extended grapheme clusters for their
 ten-character minimum, like the iPhone app. Combining marks, flags and joined emoji each stay with their character.
 This validation does not normalize the password or change the shared Go checks.
 
-Credential Exchange imports keep Cancel and system Back available while batches are saving. Closing the import
-does not roll back saved items or interrupt the current batch. The current batch can finish, but no later batch starts.
+A Hisar export restores each source vault to its original writable vault when available, or to Personal.
+Review each destination and its current members before importing.
+Each source group has one destination selector. Open it to choose a writable vault; its current members remain visible
+in the source group's access card.
+The import's origin and access explanations use the same card insets as the destination controls.
+
+Credential Exchange imports keep **Stop import** and system Back available while batches are saving.
+Items already saved stay, and the current batch may finish, but no later batch starts.
+A stopped-import report keeps the known saved count and entries to review. If you leave while the batch settles,
+the result notice's **View report** action reopens it. An uncertain batch outcome is not reported as an exact saved total.
+
+On Android, Settings rows put a long value below the setting name when both do not fit beside each other.
+They keep the system text size and grow to show both strings.
 
 ### Password generator
 
