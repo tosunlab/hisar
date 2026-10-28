@@ -1,4 +1,3 @@
-import UIKit
 import XCTest
 
 final class HisarUITests: HisarUITestCase {
@@ -48,19 +47,33 @@ final class HisarUITests: HisarUITestCase {
             app.buttons["Add field"].tap()
             type(name, into: app.textFields["editor-field-\(index)-name"])
             type("row-secret-\(index)", into: app.textFields["editor-field-\(index)-value"])
-            app.buttons.matching(identifier: "Secret").element(boundBy: index).tap()
+            app.cells.containing(.textField, identifier: "editor-field-\(index)-name").buttons["Secret"].tap()
         }
         app.buttons["editor-save"].tap()
         // The item under the editor shows the old password until the save finishes and the editor closes.
         XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
         XCTAssertNotEqual(passwordRow.value as? String, "ui-test-password-1", "the generated password replaced the old one")
         let customRows = app.buttons.matching(identifier: "copy-recovery code")
-        for index in 0..<3 {
-            customRows.element(boundBy: index).tap()
-            XCTAssertEqual(UIPasteboard.general.string, "row-secret-\(index)")
+        for index in 0..<4 {
+            let copy = index < 3 ? customRows.element(boundBy: index) : app.buttons.matching(identifier: "copy-password").element(boundBy: 1)
+            copy.tap()
+            app.buttons["edit-item"].tap()
+            let title = app.textFields["editor-title"]
+            title.tap()
+            expectation(for: NSPredicate(format: "hasKeyboardFocus == true"), evaluatedWith: title)
+            waitForExpectations(timeout: 10)
+            typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "GitHub".count), into: title, showing: "")
+            title.press(forDuration: 1)
+            let paste = app.menuItems["Paste"]
+            waitFor(paste)
+            paste.tap()
+            XCTAssertEqual(title.value as? String, "row-secret-\(index)")
+            app.buttons["editor-cancel"].tap()
+            let discard = app.buttons["editor-discard"].firstMatch
+            waitForHittable(discard)
+            discard.tap()
+            waitFor(passwordRow)
         }
-        app.buttons.matching(identifier: "copy-password").element(boundBy: 1).tap()
-        XCTAssertEqual(UIPasteboard.general.string, "row-secret-3")
         app.buttons.matching(identifier: "reveal-recovery code").element(boundBy: 1).tap()
         XCTAssertEqual(customRows.element(boundBy: 1).value as? String, "row-secret-1")
         XCTAssertEqual(customRows.element(boundBy: 0).value as? String, "Hidden")
