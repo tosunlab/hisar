@@ -6,7 +6,7 @@ struct ItemPasswordStrengthMeter: View {
     @State private var strength: PasswordStrength?
 
     var body: some View {
-        Group {
+        VStack(alignment: .leading) {
             if !password.isEmpty, let strength {
                 PasswordStrengthMeter(strength: strength)
             }

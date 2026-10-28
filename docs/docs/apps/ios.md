@@ -33,6 +33,8 @@ New items have a **Vault** picker that lists writable vaults and starts with the
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
 Text and secret fields retain visible labels above their values, including populated identity, address, credential,
 license, server and database editors. Labels and inputs stay vertically stacked at larger text sizes.
+Nonempty item passwords show their strength below the field in detail, the editor, and the generator,
+without revealing the password.
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, account deletion, and sign out.
 **Sign out** has its own final section below **Delete account** and still asks for confirmation.
 Help and About remain informational destinations on the Settings root.
