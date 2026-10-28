@@ -103,9 +103,10 @@ test under its Swift name and delete its line from
 
 CI's `android-build` job (`.github/workflows/ci.yml`) builds and lints the app and runs its JVM tests.
 The `android` job runs the instrumented tests in three parts on x86_64 API 36 emulators with Postgres.
-The emulator's host process grows by about 85 MB with each test, so one 16 GB runner holds about 80 tests.
-These headless emulators use SwiftShader OpenGL ES with Vulkan disabled: the Vulkan context can be lost during
-the tests, hanging QEMU and leaving the device offline.
+The emulator retains host memory as test processes restart, so partitions need memory headroom as well as balanced timings.
+The APKs build first with Gradle's `--no-daemon` and the Kotlin compiler in-process; that build JVM exits before the test
+invocation starts. Later Gradle calls use the same options, so idle build daemons do not hold gigabytes through the tests.
+These headless emulators use SwiftShader OpenGL ES with Vulkan disabled.
 
 ### Push notifications
 
