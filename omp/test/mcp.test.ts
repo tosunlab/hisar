@@ -87,4 +87,22 @@ describe("the hisar MCP server", () => {
     symlinkSync(plugin, join(root, "linked"));
     expect(startServer(join(root, "linked"), []).stdout[0]).toBe("bundled");
   });
+
+  test("in a Linux package, runs the package's hisar before one on PATH", () => {
+    const root = createScratch();
+    const plugin = join(root, "usr", "share", "hisar", "omp-plugin");
+    installPlugin(plugin);
+    installFakeHisar(join(root, "usr", "bin", "hisar"), "packaged");
+    installFakeHisar(join(root, "path", "hisar"), "path");
+    expect(startServer(plugin, [join(root, "path")]).stdout[0]).toBe("packaged");
+  });
+
+  test("copied out of an AppImage or a Flatpak, runs the hisar copied beside it", () => {
+    const root = createScratch();
+    const plugin = join(root, "home", ".local", "share", "hisar", "omp-plugin");
+    installPlugin(plugin);
+    installFakeHisar(join(root, "home", ".local", "share", "hisar", "bin", "hisar"), "copied");
+    installFakeHisar(join(root, "path", "hisar"), "path");
+    expect(startServer(plugin, [join(root, "path")]).stdout[0]).toBe("copied");
+  });
 });

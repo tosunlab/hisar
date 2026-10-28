@@ -92,3 +92,51 @@ func TestFlatpakLauncherRunsTheFlatpak(t *testing.T) {
 		t.Errorf("launcher:\n%s", launcher)
 	}
 }
+
+// The plugin goes beside the copied bin, so omp links a folder that outlives the AppImage's mount, and its run-hisar
+// finds the copied hisar; an update replaces the folder whole, and a package without the plugin copies none.
+func TestInstallCopiesTheOmpPluginBesideTheHelpers(t *testing.T) {
+	executableDirectory := createPackage(t)
+	plugin := filepath.Join(filepath.Dir(executableDirectory), "share", "hisar", "omp-plugin")
+	for path, content := range map[string]string{"package.json": "{}", "bin/run-hisar": "#!/bin/sh", "src/old.ts": "v1"} {
+		os.MkdirAll(filepath.Dir(filepath.Join(plugin, path)), 0o755)
+		os.WriteFile(filepath.Join(plugin, path), []byte(content), 0o644)
+	}
+	os.Chmod(filepath.Join(plugin, "bin", "run-hisar"), 0o755)
+	home := t.TempDir()
+	environment := Detect(buildEnvironment(map[string]string{"APPIMAGE": "/tmp/Hisar.AppImage"}), home)
+	paths, err := Install(environment, executableDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, ".local", "share", "hisar", "omp-plugin"); paths.OmpPlugin != want || paths.CommandLine != filepath.Join(filepath.Dir(want), "bin", "hisar") {
+		t.Fatalf("plugin at %q, hisar at %q", paths.OmpPlugin, paths.CommandLine)
+	}
+	if fileInfo, err := os.Stat(filepath.Join(paths.OmpPlugin, "bin", "run-hisar")); err != nil || fileInfo.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("run-hisar copy: %v, %v", fileInfo, err)
+	}
+
+	before, _ := os.Stat(filepath.Join(paths.OmpPlugin, "package.json"))
+	if _, err := Install(environment, executableDirectory); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := os.Stat(filepath.Join(paths.OmpPlugin, "package.json")); !os.SameFile(before, after) {
+		t.Error("an unchanged plugin was replaced")
+	}
+
+	os.Remove(filepath.Join(plugin, "src", "old.ts"))
+	os.WriteFile(filepath.Join(plugin, "src", "new.ts"), []byte("v2"), 0o644)
+	if _, err := Install(environment, executableDirectory); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(paths.OmpPlugin, "src", "old.ts")); !os.IsNotExist(err) {
+		t.Error("a file the new plugin dropped is still there")
+	}
+	if content, _ := os.ReadFile(filepath.Join(paths.OmpPlugin, "src", "new.ts")); string(content) != "v2" {
+		t.Errorf("new.ts after an update = %q", content)
+	}
+
+	if paths, err := Install(environment, createPackage(t)); err != nil || paths.OmpPlugin != "" {
+		t.Errorf("a package without the plugin: %+v, %v", paths, err)
+	}
+}

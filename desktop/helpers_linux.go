@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tryhisar/hisar/desktop/harness"
 	"github.com/tryhisar/hisar/desktop/portable"
 )
 
@@ -14,7 +15,8 @@ const (
 	packagedCommandLinePath = "/usr/bin/hisar"
 )
 
-// getHelperPaths copies the helpers out of an AppImage or a Flatpak first, so the browser and the terminal can run them.
+// getHelperPaths copies the helpers and the omp plugin out of an AppImage or a Flatpak first, so the browser, the
+// terminal and omp can run them.
 func getHelperPaths(executableDirectory string) helperPaths {
 	homeDirectory, _ := os.UserHomeDir()
 	if environment := portable.Detect(os.Getenv, homeDirectory); environment.IsPortable() && homeDirectory != "" {
@@ -22,11 +24,14 @@ func getHelperPaths(executableDirectory string) helperPaths {
 		if err != nil {
 			log.Printf("copying the helpers out of the %s: %v", environment.Kind, err)
 		}
-		return helperPaths{browserHost: paths.BrowserHost, commandLine: paths.CommandLine}
+		return helperPaths{browserHost: paths.BrowserHost, commandLine: paths.CommandLine, ompPlugin: paths.OmpPlugin}
 	}
 	browserHostPath := packagedBrowserHostPath
 	if _, err := os.Stat(browserHostPath); err != nil {
 		browserHostPath = filepath.Join(executableDirectory, "hisar-browser-host")
 	}
-	return helperPaths{browserHost: browserHostPath, commandLine: packagedCommandLinePath, isCommandLineFromPackage: true}
+	return helperPaths{
+		browserHost: browserHostPath, commandLine: packagedCommandLinePath, ompPlugin: harness.FindOmpPlugin(executableDirectory),
+		isCommandLineFromPackage: true,
+	}
 }

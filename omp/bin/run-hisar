@@ -1,22 +1,34 @@
 #!/bin/sh
-# run-hisar runs hisar with its arguments, for mcp.json. Inside Hisar.app (Contents/Resources/omp-plugin) it runs
-# the app's own hisar, which knows every flag this plugin passes; elsewhere the first hisar on PATH, then the one
-# in /Applications or ~/Applications. omp may reach the plugin through a link, so the folder is resolved first.
+# run-hisar runs hisar with its arguments, for mcp.json. Where the desktop app put the plugin, it runs the app's own hisar,
+# which knows every flag this plugin passes: Hisar.app's Contents/Helpers/hisar for Contents/Resources/omp-plugin, and
+# for a Linux package's share/hisar/omp-plugin the hisar in share/hisar/bin (copied out of an AppImage or a Flatpak)
+# or in the package's bin (/usr/bin/hisar for /usr/share/hisar/omp-plugin). Elsewhere the first hisar on PATH, then the
+# one in /Applications or ~/Applications. omp may reach the plugin through a link, so the folder is resolved first.
 set -eu
+
+runIfExecutable() {
+	if [ -f "$1" ] && [ -x "$1" ]; then
+		helper=$1
+		shift
+		exec "$helper" "$@"
+	fi
+}
 
 plugin=$(cd -P -- "$(dirname -- "$0")/.." && pwd -P)
 case $plugin in
 */Contents/Resources/omp-plugin)
-	bundled=${plugin%/Resources/omp-plugin}/Helpers/hisar
-	if [ -f "$bundled" ] && [ -x "$bundled" ]; then exec "$bundled" "$@"; fi
+	runIfExecutable "${plugin%/Resources/omp-plugin}/Helpers/hisar" "$@"
+	;;
+*/share/hisar/omp-plugin)
+	runIfExecutable "${plugin%/omp-plugin}/bin/hisar" "$@"
+	runIfExecutable "${plugin%/share/hisar/omp-plugin}/bin/hisar" "$@"
 	;;
 esac
 
 if onPath=$(command -v hisar); then exec "$onPath" "$@"; fi
 
 for applications in /Applications "${HOME:-}/Applications"; do
-	helper=$applications/Hisar.app/Contents/Helpers/hisar
-	if [ -f "$helper" ] && [ -x "$helper" ]; then exec "$helper" "$@"; fi
+	runIfExecutable "$applications/Hisar.app/Contents/Helpers/hisar" "$@"
 done
 
 echo "hisar is not installed: install the Hisar app, or put hisar on PATH" >&2

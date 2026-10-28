@@ -197,6 +197,12 @@ func TestFindOmpPlugin(t *testing.T) {
 		t.Fatalf("FindOmpPlugin(Hisar.app) = %q", got)
 	}
 
+	linuxPrefix := filepath.Join(root, "usr")
+	write(filepath.Join(linuxPrefix, "share", "hisar", "omp-plugin", "package.json"))
+	if got := FindOmpPlugin(filepath.Join(linuxPrefix, "bin")); got != filepath.Join(linuxPrefix, "share", "hisar", "omp-plugin") {
+		t.Fatalf("FindOmpPlugin(Linux package) = %q", got)
+	}
+
 	repository := filepath.Join(root, "hisar")
 	write(filepath.Join(repository, "omp", "package.json"))
 	if got := FindOmpPlugin(filepath.Join(repository, "desktop", "bin")); got != filepath.Join(repository, "omp") {
