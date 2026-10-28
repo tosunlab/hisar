@@ -238,7 +238,10 @@ abstract class HisarUITestCase {
         return secretKey
     }
 
-    /** Writes the Emergency Kit to a location chosen in the system file creator. */
+    /**
+     * Writes the Emergency Kit to a location chosen in the system file creator, then swipes away its "Emergency Kit saved"
+     * notice, which the test clock keeps up and which covers the bottom rows of every later screen.
+     */
     fun saveEmergencyKit(saveTag: String) {
         waitFor(saveTag, ACCOUNT_KEY_TIMEOUT)
         tap(saveTag)
@@ -252,6 +255,8 @@ abstract class HisarUITestCase {
         requireNotNull(device.wait(androidx.test.uiautomator.Until.findObject(By.clazz("android.widget.EditText")), 10_000)).text = "Hisar-test-${System.nanoTime()}.pdf"
         requireNotNull(device.wait(androidx.test.uiautomator.Until.findObject(By.res(Pattern.compile(".*:id/button1")).enabled(true)), 10_000)).click()
         composeRule.waitUntil("the file creator closes", 10_000) { !device.hasObject(documents) }
+        waitFor(hasText("Emergency Kit saved") and hasAnyAncestor(hasTestTag("notice")), 10_000)
+        dismissNotice()
     }
 
     /** Signs in to the harness server with an account another device created. */
