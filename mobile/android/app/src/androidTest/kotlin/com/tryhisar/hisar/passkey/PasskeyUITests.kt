@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.passkey
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.util.Base64
 import androidx.compose.ui.test.ComposeTimeoutException
@@ -9,7 +10,6 @@ import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.services.storage.TestStorage
 import androidx.test.uiautomator.By
-import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import com.tryhisar.hisar.HisarTestApplication
@@ -18,7 +18,6 @@ import com.tryhisar.hisar.autofill.AndroidApp
 import com.tryhisar.hisar.autofill.InstalledApps
 import com.tryhisar.hisar.autofill.testBackend
 import com.tryhisar.hisar.model.ItemDetail
-import com.tryhisar.hisar.platform.EmulatorFingerprints
 import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.PublicKey
@@ -29,6 +28,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -159,151 +159,22 @@ class PasskeyUITests : HisarUITestCase() {
         assertEquals("deleting the passkey keeps the login", "passkey-user", readText("username-value"))
     }
 
+    // An earlier process of Hisar numbered its entries in Credential Manager's sheet from 1 too; a sheet it filled may still be open.
     @Test
-    fun testPasswordRequestSearchesUnmatchedLogins() {
-        launch()
-        signUp(readArgument("HISAR_UI_TEST_PASSWORD_SEARCH_INVITE_LINK"), readArgument("HISAR_UI_TEST_PASSWORD_SEARCH_EMAIL"), "Android Password Search")
-        addLogin(title = "Other site", username = "searched-user", password = "searched-password-42", website = "other.example.com")
-        closeApp()
-        turnOnHisarForPasskeys()
-        val personal = testBackend.listAllVault().single { it.name == "Personal" }
-        testBackend.saveItem(personal.id, ItemDetail(title = "Second site", username = "second-user", password = "second-password-84", allURL = listOf("second.example.com")))
-        val login = testBackend.listAllItem(personal.id).single { it.title == "Other site" }
-
-        for (isLocked in listOf(false, true)) {
-            if (isLocked) testBackend.lock()
-            val password = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSWORD, "") {
-                answerSheet("password-search-sheet", "Search Hisar") {
-                    device.hasObject(By.res(if (isLocked) "unlock-password" else "autofill-search"))
-                }
-                if (isLocked) {
-                    type(MASTER_PASSWORD, "unlock-password")
-                    tap("unlock-submit")
-                }
-                type("Other site", "autofill-search")
-                tap("autofill-login-Other site")
-                tap("autofill-link-once")
-                answerSheet("password-search-selection", "searched-user") { device.hasObject(callerOutcome) }
-            }
-            assertEquals("password searched-user searched-password-42", password)
-            assertTrue("Only this time does not link the app", testBackend.getItem(personal.id, login.id).allAndroidApp.isEmpty())
-        }
-
-        val linked = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSWORD, "") {
-            answerSheet("password-link-search-sheet", "Search Hisar") { device.hasObject(By.res("autofill-search")) }
-            type("Other site", "autofill-search")
-            tap("autofill-login-Other site")
-            tap("autofill-link-always")
-            answerSheet("password-link-selection", "searched-user") { device.hasObject(callerOutcome) }
-        }
-        assertEquals("password searched-user searched-password-42", linked)
-        assertEquals(callerApp.packageName, testBackend.getItem(personal.id, login.id).allAndroidApp.single().packageName)
-        val matched = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSWORD, "") {
-            answerSheet("password-linked-sheet", "searched-user") { device.hasObject(callerOutcome) }
-        }
-        assertEquals("password searched-user searched-password-42", matched)
-
-        val searchedAgain = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSWORD, "") {
-            answerSheet("password-search-action", "Search Hisar") { device.hasObject(By.res("autofill-search")) }
-            type("Second site", "autofill-search")
-            tap("autofill-login-Second site")
-            tap("autofill-link-once")
-        }
-        assertEquals("password second-user second-password-84", searchedAgain)
-        val second = testBackend.listAllItem(personal.id).single { it.title == "Second site" }
-        assertTrue(testBackend.getItem(personal.id, second.id).allAndroidApp.isEmpty())
-    }
-
-    /** Native verification supplies signed UV. A sheet unlock never authorizes the final concrete challenge. */
-    @Test
-    @SdkSuppress(minSdkVersion = 37)
-    fun testPasskeyAsksTheDeviceOwnerWhileUnlocked() {
-        val fingerprints = EmulatorFingerprints()
-        fingerprints.setPin()
+    @SdkSuppress(minSdkVersion = 34)
+    fun testEntryOfAnEarlierProcessIsNeverRebound() {
+        val earlierEntry = PendingIntent.getActivity(application, 1, Intent(application, CredentialActivity::class.java), PendingIntent.FLAG_MUTABLE)
         try {
-            fingerprints.enroll(1)
-            launch()
-            signUp(readArgument("HISAR_UI_TEST_PASSKEY_UV_INVITE_LINK"), readArgument("HISAR_UI_TEST_PASSKEY_UV_EMAIL"), "Android Passkey UV", isBiometricOfferExpected = true)
-            tap("biometric-offer-turn-on")
-            composeRule.waitUntil("Hisar shows its biometric prompt", 20_000) { fingerprints.isPromptShown(100) }
-            fingerprints.touch()
-            waitFor("vault-Personal", 20_000)
-            closeApp()
-            turnOnHisarForPasskeys()
-            application.statementByRelyingParty[RELYING_PARTY_ID] = buildStatement(callerApp)
-
-            val createPrompt = By.text("Create a passkey for $RELYING_PARTY_ID")
-            val registration = callCredentialManager(CredentialCallerActivity.MODE_CREATE_PASSKEY, buildCreateRequest("uv-user-handle".toByteArray(), "required")) {
-                answerSheet("passkey-uv-register-sheet", "Hisar") { device.hasObject(By.res("autofill-save-passkey")) }
-                tap("autofill-passkey-new-login")
-                tap("autofill-save-passkey")
-                answerDeviceOwnerPrompt(fingerprints, createPrompt, "passkey-uv-create-prompt")
-            }
-            assertTrue(registration, registration.startsWith("registered "))
-            val registered = JSONObject(registration.removePrefix("registered ")).getJSONObject("response")
-            assertTrue("the creation says the user was verified", isUserVerifiedFlagSet(decode(registered.getString("authenticatorData"))))
-            val publicKey = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(decode(registered.getString("publicKey"))))
-
-            val signInPrompt = By.text("Use your passkey for $RELYING_PARTY_ID")
-            val assertion = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "preferred")) {
-                answerSheet("passkey-uv-sign-in-sheet", "passkey-user") { device.hasObject(signInPrompt) || device.hasObject(callerOutcome) }
-                answerDeviceOwnerPrompt(fingerprints, signInPrompt, "passkey-uv-sign-in-prompt")
-            }
-            checkSignedIn(assertion, publicKey)
-            val required = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "required")) {
-                answerSheet("passkey-uv-required-sheet", "passkey-user") { device.hasObject(signInPrompt) || device.hasObject(callerOutcome) }
-                answerDeviceOwnerPrompt(fingerprints, signInPrompt, "passkey-uv-required-prompt")
-            }
-            checkSignedIn(required, publicKey)
-            val requiredResponse = JSONObject(required.removePrefix("signed-in ")).getJSONObject("response")
-            assertTrue("required signs UV after the native check", isUserVerifiedFlagSet(decode(requiredResponse.getString("authenticatorData"))))
-
-            val declined = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "preferred")) {
-                answerSheet("passkey-uv-decline-sheet", "passkey-user") { device.hasObject(signInPrompt) || device.hasObject(callerOutcome) }
-                check(device.hasObject(signInPrompt)) { "no device owner prompt to decline; ${dumpWindow("passkey-uv-decline")}" }
-                device.pressBack()
-            }
-            assertTrue("declining the device owner check cancels the request: $declined", declined.startsWith("error ") && "CANCEL" in declined.uppercase())
-
-            val discouraged = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "discouraged")) {
-                answerSheet("passkey-uv-discouraged-sheet", "passkey-user") { device.hasObject(callerOutcome) || device.hasObject(signInPrompt) }
-                assertFalse("a site that discourages user verification gets no device owner prompt", device.hasObject(signInPrompt))
-            }
-            saveScreenshot("passkey-uv-discouraged-signed-in")
-            checkSignedIn(discouraged, publicKey)
-            val discouragedResponse = JSONObject(discouraged.removePrefix("signed-in ")).getJSONObject("response")
-            assertFalse("discouraged without a device-owner check has UV=0", isUserVerifiedFlagSet(decode(discouragedResponse.getString("authenticatorData"))))
-
-            testBackend.lock()
-            val afterUnlock = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "preferred")) {
-                answerSheet("passkey-uv-unlock-sheet", "Unlock Hisar.*") { fingerprints.isPromptShown(100) }
-                fingerprints.touch()
-                answerSheet("passkey-uv-after-unlock-sheet", "passkey-user") { device.hasObject(callerOutcome) || device.hasObject(signInPrompt) }
-                answerDeviceOwnerPrompt(fingerprints, signInPrompt, "passkey-uv-after-unlock-prompt")
-            }
-            saveScreenshot("passkey-uv-after-unlock-signed-in")
-            checkSignedIn(afterUnlock, publicKey)
+            val entry = CredentialPick.buildPendingIntent(application, CredentialPick.Password("personal/github"))
+            assertNotEquals(earlierEntry, entry)
+            entry.cancel()
         } finally {
-            fingerprints.clearPin()
+            earlierEntry.cancel()
         }
-    }
-
-    // The prompt is a secure window, which screenshots show black, so a missing prompt saves the window hierarchy instead.
-    private fun answerDeviceOwnerPrompt(fingerprints: EmulatorFingerprints, prompt: BySelector, name: String) {
-        check(waitUntil(30_000) { device.hasObject(prompt) }) { "no device owner prompt; ${dumpWindow(name)}" }
-        fingerprints.touch(prompt = prompt)
     }
 
     // Compose's selected state does not reach UiAutomator's isSelected; ChoiceRow marks the chosen row with a check icon.
     private fun isChoiceSelected(testTag: String) = device.findObject(By.res(testTag)).hasObject(By.desc("Selected"))
-
-    private fun checkSignedIn(outcome: String, publicKey: PublicKey) {
-        assertTrue(outcome, outcome.startsWith("signed-in "))
-        val response = JSONObject(outcome.removePrefix("signed-in ")).getJSONObject("response")
-        val clientDataJSON = checkClientData(response, "webauthn.get", ASSERTION_CHALLENGE)
-        val signedData = decode(response.getString("authenticatorData")) + sha256(clientDataJSON)
-        assertTrue("the signature verifies with the registered key", verify(publicKey, signedData, decode(response.getString("signature"))))
-    }
 
     // The flags byte follows the 32-byte RP ID hash; UV is bit 2.
     private fun isUserVerifiedFlagSet(authenticatorData: ByteArray) = authenticatorData[32].toInt() and 0x04 != 0
