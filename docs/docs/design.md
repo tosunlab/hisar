@@ -1702,7 +1702,7 @@ A grant ends at expiry, sign-out or **Revoke** under Settings → Developer tool
 
 Hisar never writes the view to disk. This is not a promise about OS paging or immutable strings and returned copies. The view holds values as of the lock. Changes on another device take effect after the next unlock. Its owned byte slices are zeroed on unlock, switch-off, revocation, sign-out or account switch. Quitting loses the view, so a restart needs an unlock. Explicit locks follow the same rule. Picking **Always** in the approval dialog explains whether this switch permits locked use.
 
-The Mac's duration summary uses the holder scope supplied by the command-line socket. It states the selected expiry, whether the grant survives sessions and restarts, that locking pauses access without revoking it, and where to revoke it.
+The Mac's duration summary uses the holder scope supplied by the command-line socket. It states the selected expiry, whether the grant survives sessions and restarts, and where to revoke it. For hour and day grants it says that locking pauses access without revoking them; for **Always** the lock note above says whether locked use is on.
 
 Agent identity disclosure distinguishes a verified harness signature from a match by program name or path. For a path match, the Mac offers the kernel-reported executable and interpreted entry point in a keyboard-accessible disclosure, or says those details are unavailable. The host app's signature is labelled separately and never verifies the agent.
 

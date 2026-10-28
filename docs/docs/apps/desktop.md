@@ -112,7 +112,7 @@ The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a 
 
 On macOS, Settings (⌘,) opens in its own window (`settingsWindowOptions` in `windows.go`, `SettingsWindowService`, `src/SettingsWindow.vue`); its page reloads whenever it closes, and it closes when Hisar locks or signs out. `SettingsWindowService` keeps the section Settings was asked to open at until the page takes it, so Settings asked for while Hisar is locked opens after the unlock. The window shows settings only: it never loads items or removed-vault notices. Import, a vault's sharing panel and the pending recovery after replacing the Secret Key open in the main window, which owns them; the website icon setting reaches every window as an event. On Linux and in the preview, Settings is an overlay in the main window; the preview shows the Settings window at `?window=settings&settingsSection=<section>`.
 
-Developer tools keeps vault availability, website sign-in, approval revocation, running-agent revocation, and host-removal errors in the section that owns the action. Settings search keeps each visible action's error visible. A successful action clears only its own section's error.
+Developer tools keeps vault availability, website sign-in, locked Always access, approval revocation, running-agent revocation, and host-removal errors in the section that owns the action. Settings search keeps each visible action's error visible. A successful action clears only its own section's error.
 
 **Vaults for coding agents** groups organization vaults under their organization, with other vaults under **Vaults**. Switch names include that group. Duplicate vault names inside a group show a stable vault-ID prefix so you can distinguish their availability switches.
 
