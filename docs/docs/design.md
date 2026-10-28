@@ -253,6 +253,19 @@ Users star items, and **Favorites** at the top of the sidebar (Mac) and of the V
 
 Sign-up needs an invite unless the admin opens registration (`openRegistration` in §8.3, off by default). With it open, anyone who knows the server's address signs up from the apps or `hisar signup -server <url>` with no invite: `POST /auth/register/start` and `/finish` take an empty `invite`, and the account is a `member`. With it closed, those requests answer 403 "Sign-ups are not open on this server. Ask an admin for an invitation.", which the apps show as it is. While setup still needs its first admin (§5.1 Setup), sign-up without an invite is refused the same way even with registration open, so the first account is always the admin from the setup page or `hisar-server invite`. An invite is an email address plus a one-time token (the server stores its SHA-256 hash in `invites`), valid for 7 days. The sign-up link is `https://<HISAR_PUBLIC_URL host>/invite/<token>` (`http` only for a loopback host, in development); the token alone is the invite code the apps accept.
 
+`GET /api/v1/auth/register/policy` reports `{"mode":"open"}`, `{"mode":"invite"}`, or `{"mode":"setup"}` without authentication.
+It sends `Cache-Control: no-store` and uses the minimum-version guard and version-check rate limit.
+`server/internal/service.registrationMode` decides both this answer and `checkInvite`'s enforcement. `setup` takes precedence while the first admin is missing.
+`apiclient.GetRegistrationPolicy` follows no redirects and limits the response to 1 KiB. `app.GetSignUpPolicy` preserves the canonical server's path prefix.
+A missing route (404 or 405) or an unrecognized mode becomes `unknown`, not permission to register.
+
+On the Mac and Android, Create account checks this policy before showing account fields.
+Only confirmed `open` hides **Invite link or code**. `invite` and `setup` require an invitation first.
+`unknown` keeps an optional invitation field and explains that the server does not advertise its policy.
+A discovery error shows the failure with **Try again**, rather than assuming registration is open.
+Stale answers from a previous server selection are ignored. If registration closes after an `open` answer, the form restores the invitation requirement without clearing the typed account fields.
+`hisar signup -server <url>` also checks before asking for email, name, or password. On `invite` or `setup`, it stops with `This server needs an invitation. Run: hisar signup <invite link>`.
+
 - **Any signed-in user** invites a person by email with `POST /invites {email}`. The server emails the invite itself (§8.5); the response is always `202 {"message": "Invitation sent"}` and never contains the link or the code. When the email already has an account, nothing is created or sent and the answer is the same, so invites do not reveal who has an account. Invites from users always create `member` accounts.
 - Without email configured on the server (§8.4), `POST /invites` answers `501 email is not configured on this server`.
 - Rate limits: 10 invites per account and 20 per IP address per day.
@@ -288,11 +301,11 @@ An accepted share no longer waits for completion without a deadline (S-16): its 
 
 **Invite page.** `GET /invite/{code}` (the link in the email) is a page rendered by `hisar-server` from an embedded template, in the share link page's style (§5.9), light and dark with the system, and usable at phone width.
 
-- **Valid invite:** who invited the person (the inviter's name and email, which the email already told them; operator invites name nobody), the address the invite is for, and when it expires. Then **Download for Mac** (`https://tryhisar.com/download`) and **Download for Linux** (`https://tryhisar.com/download#linux`), **Open in Hisar** (`hisar://invite/<code>?server=<public origin>`), the invite code with **Copy**, and for the terminal how to get `hisar` (on a Mac it comes with the app: Settings → Developer tools; on Linux the Hisar package installs it; on a server, the download page) and `hisar signup <invite link>` with **Copy**. The copy buttons appear only with JavaScript; without it the code is still selectable text.
+- **Valid invite:** who invited the person (the inviter's name and email, which the email already told them; operator invites name nobody), the address the invite is for, and when it expires. An iPhone or Android User-Agent gets **Open in Hisar** first, then "Need Hisar? See how to build and install it on your phone.", the matching **iPhone build instructions** or **Android build instructions**, **Other downloads**, **Download for Mac**, and **Download for Linux**. The build links use `core/project.GitHubURL` and point to `docs/docs/apps/ios.md` or `docs/docs/apps/mobile.md` in the repository. They do not promise an App Store, TestFlight, or APK installer. Other browsers get the Mac download first, then Linux and **Open in Hisar**. Mac and Other downloads use `https://tryhisar.com/download`; Linux uses its `#linux` anchor. The invite code and `hisar signup <invite link>` remain selectable with **Copy** buttons when JavaScript is available. Terminal guidance names the Mac's Settings → Developer tools, the Linux package, and the download page for a server.
 - **Used, expired or unknown code, or a malformed one:** one page, "This invite isn't valid", with the same status (404) and bytes, so the page tells nobody whether a code or an email exists. The lookup is one query whatever the state. Nothing on the page lists or looks up accounts.
 - **Headers:** the share link page's set. The style and script are inlined and allowed by their SHA-256 hashes (`default-src 'none'; script-src 'sha256-…'; style-src 'sha256-…'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`); there are no inline style attributes or event handlers. `Referrer-Policy: no-referrer` keeps the code out of the download site's logs; `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow`. Rendering escapes every value from the database, and the style and script are put in only around the rendered data, so a name can never become either.
 - **Rate limit:** 30 page loads per IP address, refilled at one every 2 seconds (429 with a plain-text page), like the public share link reads. Codes are 256 random bits, so the limit protects the server, not the codes.
-- **Opening the apps.** The Mac (`CFBundleURLTypes` in `Info.plist`, Wails' `ApplicationLaunchedWithUrl` event), the iPhone (the `hisar` scheme it already registers for the Emergency Kit's `hisar://sign-in`) and Android handle `hisar://invite/<code>?server=<origin>`: signed out, they open Create account with the invite filled in, as the bare code for `eu.tryhisar.com` or as `<server>/invite/<code>` for another server, which the form then shows ("Server: hisar.example.com"). Signed in or locked, they say to sign out first instead. A sign-up link an organization or a vault share invitation sent (`invites.organization_invitation_id`, `share_invitation_id`) also carries `invitation=organization|share` and `email=<the address>`: an app signed in to that address on that server opens the invitation instead, in Settings → Organizations or Settings → People, right after the unlock when it is locked; signed in as anyone else, it says "This invitation is for \<email\> on \<server\>. You're signed in as \<email\>." Older apps read only `server`. Universal links (`https://…/invite/…` opening the app directly) wait for the Apple Developer membership (§12 #7).
+- **Opening the apps.** The Mac (`CFBundleURLTypes` in `Info.plist`, Wails' `ApplicationLaunchedWithUrl` event), the iPhone, and Android register `hisar://invite/<code>?server=<origin>`. Every invite with an email also carries `email=<address>`, independently of its source. Setup invites have no email. Organization and vault-share sign-up links additionally carry `invitation=organization|share`. Older apps can ignore the added fields. Signed out, the Mac and Android open Create account with the invitation bound to its canonical server and show its email as fixed text. A bare code uses the selected server. Changing servers removes an incompatible invitation, not the typed account fields. Signed in or locked, a plain invite asks the user to sign out first. A source invitation for the same signed-in email and server opens Settings → Organizations or Settings → People, after unlocking if necessary. Another account gets "This invitation is for \<email\> on \<server\>. You're signed in as \<email\>." Universal links (`https://…/invite/…` opening the app directly) wait for the Apple Developer membership (§12 #7).
 
 **Roles.** `accounts.role` is `admin` or `member`. In the apps both are the same: any user invites (unless the server's invite policy says admins only, §8.3), shares and manages their own devices, and the apps neither show the role nor offer admin screens. Admins manage the server from the admin dashboard at `/admin`, and the operator's `hisar-server` command (`invite`, `migrate`) stays available on the server.
 
@@ -327,7 +340,31 @@ Opening `/admin/setup` later shows the step the server is at to its signed-in ad
 4. Without protected OS storage, including the browser, the durable record contains the prepared request but neither new nor prior Secret Key. The client first saves an actual Emergency Kit and obtains explicit delivery acknowledgment. After restart the user supplies that independent kit key and password; local verification opens the exact prepared keyset before any finish. This is not a password-only persisted-factor fallback. A `hisar` run with `HISAR_SECRET_KEY` set has no protected storage either: as for the Secret Key itself, the operation key never reaches the OS keychain, and `hisar signup` and `hisar account replace-secret-key` print the new Secret Key once the change has committed.
 5. Client uploads the prepared salt, Argon2 parameters, `encKeyset`, public keys and signature, then creates the **Personal** vault under an ID chosen before step 3 and staged with the operation. Resuming setup first lists the account's vaults and creates that vault only when none is Personal; two resumes that both find none send the same ID, so the server refuses the second (409) and the resume confirms the vault by listing again. A lost answer or a repeated resume therefore never leaves two Personal vaults. Invitations sent before signup remain available to accept (§5.8).
 6. Committed or uncertain partial setup returns a structured `pendingOperationId`, `setupState` and problems, without a method error that bridges would discard. The pending recovery screen stays available while signed out or locked. It can resume the exact operation and deliver its Emergency Kit. The default protected record is removed only after setup finishes and delivery is acknowledged; a no-keychain account retains visible manual-unlock metadata so the user can explicitly sign in with its kit.
-7. Biometric onboarding may use AUK retained only in memory. Lock, sign-out, switching accounts and onboarding completion invalidate that offer; pending recovery does not install a session automatically. The new Secret Key retained with the AUK is the same kind of proof: the apps' "Save your Secret Key" screen, which the Mac, iPhone and Android apps show right after a sign-up that waits only for its kit (setup state `delivery-pending`, a Secret Key and no problems), saves the Emergency Kit, records it as saved and acknowledges delivery from it without asking the master password again, and the same events end it. Acknowledgement waits for a saved kit: on the phones, "I saved my Emergency Kit" and the recovery screen's "I saved the new Emergency Kit" are enabled only after a completed save, print or share of the kit currently shown. The iPhone counts a share sheet that reports a completed activity other than Copy; Android counts a document its file creator saved, a print dialog that opened and a share sheet that opened, since Android does not report what the chosen app did. Copying the Secret Key never counts. **Finish later** keeps the record for the recovery screen. Every other pending operation, including one left for later, needs the password.
+7. Biometric onboarding and delivery of the installed account's owed Emergency Kit use `core/app.kitGrant`, held only in memory. The owed record is that account's own sign-up or Secret Key replacement, matched by canonical origin, account ID, and `RecoveryOperationID`, with phase `delivery-pending`, protected storage, and no problems. Creation, explicit recovery resume, a successful master-password unlock, or explicit kit authorization supplies its Secret Key and, when needed, AUK. A biometric unlock does not create this grant. Opening the kit then asks once, through the configured biometric check or the master password. The same password unlock therefore authorizes both the vault and the owed kit. Lock, auto-lock, sign-out, account switch, and process exit end the grant and outstanding export authorizations. Neither is persisted.
+
+`Status.emergencyKit` contains `operationId`, `kind`, `savedBy`, `postponedAt`, `reminder`, `isAuthorized`, and `isReminderHidden`.
+It is absent when no kit is owed. The Mac and Android use it for one **Save your Emergency Kit** screen, also used after Secret Key replacement.
+Reveal, saving, and acknowledgement need the live grant. Without it, `ErrNoNewAccountSecretKey` says "enter your master password to save your Emergency Kit".
+**Save later** records the first `postponedAt` and preserves authorization. The first unlock that still finds the kit owed also records that time if it is missing.
+`Status.biometricOfferAvailable` is true only while an authorized AUK can enable available biometric unlock that is currently off.
+On the Mac and Android, leaving the kit by acknowledgement or **Save later** shows that optional offer only when this field is true.
+Accepting or declining drops the offer's AUK, not the owed kit's Secret Key authorization.
+**I saved my Emergency Kit** requires recorded delivery, removes the owed record, and drops its Secret Key. An AUK may remain briefly for the offer.
+
+Temporary PDF generation never records delivery. A phone export returns an opaque `exportId`; `RecordNewAccountEmergencyKitDelivery` and `RecordPendingRecoveryEmergencyKitDelivery` accept only the current export of their original authorization.
+A lock followed by a new unlock does not make an old callback valid. A newer export also invalidates the previous identifier.
+The backend records `savedBy` (`file`, `print`, or `share`) only after the platform reports the accepted handoff. A legacy `kitSaved` flag without `savedBy` is not delivery and cannot enable acknowledgement.
+Copying the Secret Key and opening or cancelling a system sheet never count.
+
+| Platform | Accepted delivery |
+|---|---|
+| Mac | `SaveNewAccountEmergencyKit` or `SavePendingRecoveryEmergencyKit` records `file` after a successful native save. Completion after its grant or session ends records nothing. |
+| Android | `file` after a successful write and close to a user-chosen Storage Access Framework document. `share` only for a non-null `EXTRA_CHOSEN_COMPONENT` from the actual PDF chooser, bound to the originating export. Null callbacks, including Copy, do not count. Print remains available but never records delivery. |
+
+The onboarding study's S0 `s0-results.md` (2026-10-28, commit [`11d5872c`](https://github.com/tosunlab/hisar/commit/11d5872c)) records these Android signals on API 29, 34, and 37.
+It also records that saved PDFs and cancelled printing can both report `CREATED` at print-adapter completion.
+A chosen PDF share target proves selection, not that the receiving app retained the kit or transferred it to another device.
+Other recovery records keep their password-authorized **Finish account setup** path and separately scoped export authorization.
 
 On iPhone, explicitly choosing a protected sign-up record that waits only for delivery opens **Save your Secret Key**.
 It asks for the master password once to export that operation's kit and retains it only for this presentation's
@@ -337,7 +374,17 @@ Other phases, unprotected records, manual-unlock records and records with unreso
 
 A lost registration answer is reconciled using the staged factor and exact encrypted keyset; it never generates a replacement factor or treats observing old credentials as proof that finish failed. Existing active state and factors are not promoted until commit is known. Local cache, state or keychain finishing failures remain explicit partial setup, not secret-bearing errors. The recovery journal is `<state path>.recovery.sqlite`, independent of account cache reset, with durable transactions, bounded records and compare-and-swap revisions. No plaintext new factor is stored in the journal, state, logs or errors. A user-requested Emergency Kit is intentionally a secret-bearing export. Immutable Go and UI strings cannot be reliably wiped; this design makes no wipe claim.
 
-Postponed setup keeps a warning row in normal layout, including while locked or signed out. It names the account and next step, or opens an account chooser for several records. Opening the reminder never resumes an operation or switches accounts. The row disappears while setup is open and never covers the Mac account controls or the Android top bar.
+The app caches recovery summaries on first use and updates them for its own changes. A concurrent standalone CLI change is reflected in the owed-kit status after the app restarts.
+
+On the Mac and Android, the installed account's owed kit never opens **Finish account setup** over the lock screen.
+An in-flow banner is the first element of the Mac item-list column or Android Vaults list. It wraps without covering content or controls and never blocks the vault.
+**Not now** hides it until the next lock. Unsaved sign-up kits use initial, 3-day, and 14-day reminders measured from `postponedAt`.
+A replacement instead says that the old kit no longer works. A recorded delivery awaiting acknowledgement says **Confirm your Emergency Kit**, names its delivery method, and does not falsely escalate an unsaved warning.
+The lock screen shows a static saving or confirmation line. Ordinary unlock returns to the vault, not a forced kit presentation.
+If a lock interrupts an open kit, the app retains only a non-secret, operation-bound resume intent in memory and reopens that kit after unlock.
+Password unlock supplies its grant. Biometric unlock returns to the single authorization gate.
+Sign-out, account change, explicit abandonment, and process exit clear the intent.
+Other unfinished operations keep their separate warning row and chooser. Opening that row never resumes an operation or switches accounts.
 
 Setup selects a single pending record without resuming it. Several records keep an explicit chooser, and a result opens its own operation. Refresh preserves a valid selection; selecting a different operation clears entered factors and any temporary kit. Each phase shows one prominent next action. Preparing a temporary kit alone never promotes delivery acknowledgement above saving, printing, or sharing it.
 
@@ -349,6 +396,11 @@ The Android confirmation field's Go action submits with the current form values 
 The admin dashboard's setup page (§5.1) runs the same steps in its Web Worker as the "Admin dashboard" device. Its form refuses fewer than 10 characters and a repeated password that does not match; it has no strength meter.
 
 ### 5.3 Login on a new device
+
+On a fresh Mac or Android installation, **Welcome to Hisar** offers **Create account** and **I already have an account**, without credential or server fields.
+A returning device opens Sign in. Invitation and Emergency Kit links go directly to their form.
+Sign in and Create account name required fields. Submitting missing or invalid fields focuses the first error and does not submit to the backend.
+**Can't find your Secret Key?** opens help without clearing the form (§6).
 
 1. User enters email, Secret Key (or scans the Emergency Kit QR code) and master password. The server is `eu.tryhisar.com` unless the user opens **Use a different server…**, which shows the Server field. A remembered or scanned server stays behind that button too, and the line "Signs in to \<server>." names the server the form will use. Signing out (and a session the server ended) keeps only the server this device last signed in to (`lastServer` in the state file's device settings, which `State.Reset` fills from the account's server on every sign-out, so sessions from before the field existed keep theirs too; reported as the signed-out status's `server`), never the email, so signing back in goes to the same server, a self-hosted one included.
 2. Client fetches salt and params, derives `authKey`, runs OPAQUE login and gets a session. A server answers an unknown email with a fake salt and record, so signing in to the wrong server fails like a wrong password; the error names the server asked ("incorrect email, master password or Secret Key for eu.tryhisar.com; check that this is your account's server"). OPAQUE identities: client = account ID, server = the constant `"hisar"` (`core/pake`; `bytemare/opaque` v0.18.0 cannot decode key material with an empty identity). The server's OPAQUE key material and an HMAC key live in `hisar-secrets.json`, created on first start.
@@ -400,7 +452,7 @@ Biometric setup, the post-sign-up offer, and credential-change resealing also pe
 
 Password policy and presentation:
 
-- The master password is still required after every app launch and at least every 14 days (`LastPasswordUnlockAt` in the state file).
+- The master password is required after every launch of the Mac app and on every platform at least every 14 days (`LastPasswordUnlockAt` in the state file). The phones allow biometric unlock after launch through `IsBiometricAllowedAfterLaunch` in `mobile/hisarkit.New`; the password interval still applies.
 - While the process lives, the password interval also has a monotonic deadline. Backwards wall-clock observations more than five minutes below the process's highest observation and observed expiry require the password until the next password unlock. Smaller corrections do not move that highest observation or extend the deadline. Observed expiry clears the saved password-unlock timestamp. Between processes, the check still relies on the persisted password-unlock wall time rather than a persisted last-observed clock.
 - **In-window prompt**: like 1Password, the lock screen embeds Apple's `LAAuthenticationView` (`LocalAuthenticationEmbeddedUI`, macOS 12+) in Hisar's own window instead of the system dialog. The UI measures a slot on the lock screen and the app places the native view over it; "Use master password" cancels the evaluation (`LAContext.invalidate`).
 - Touch ID also approves SSH agent requests (§9.6). The iPhone unlocks with Face ID the same way, and Android with a strong biometric through `BiometricPrompt` (§9.3).
@@ -417,7 +469,12 @@ Password policy and presentation:
 - CLI dispatch uses a request-scoped service view with the original epoch and the same shared state and mutex as the app. The unlocked-session guard checks that epoch inside each operation's mutex hold, before selecting keys or performing account mutations. Wails method signatures do not change.
   Callbacks and goroutines that outlive a request retain only shared state, never its request-scoped epoch. The auto-lock timer follows this rule.
 
-Sign-out removes this device's saved Secret Key, biometric unlock and offline vault copy. Its Account and locked-screen confirmations disclose local removal and say that signing in again needs the master password and the Secret Key from an Emergency Kit or another signed-in device. The locked-screen message advises canceling, unlocking and saving a kit first, with the platform's Settings route. Unlocked Mac Account also opens the existing Security kit form through **Save Emergency Kit…**, without signing out. This cleanup does not remove the separately protected unfinished-setup recovery journal (§5.2).
+Sign-out removes this device's saved Secret Key, biometric unlock, and offline vault copy. Its Account and locked-screen confirmations disclose that removal and the need for the master password and a Secret Key to sign in again.
+On the Mac and Android, an owed kit adds "You haven't saved this account's Emergency Kit yet." or, after recorded delivery, "You haven't confirmed this account's Emergency Kit yet."
+The confirmation says that protected unfinished setup stays on the device but must not be the only recovery copy. It never claims the device holds the only Secret Key.
+Locked users are directed to cancel, unlock, and finish saving or confirming. Without an owed kit, the existing conditional warning names the platform's Settings route.
+Unlocked users also get **Save Emergency Kit…** on the Mac or **Save Emergency Kit** on Android, opening the owed kit without signing out. Without an owed kit, the Mac opens the Security kit form.
+**Cancel** is the safe choice and **Sign out** is destructive. Cleanup does not remove the separately protected unfinished-setup recovery journal (§5.2).
 
 ### 5.6 Public key authenticity
 
@@ -686,20 +743,30 @@ Removing someone from the organization removes them from its teams. Every change
 
 ## 6. Account recovery
 
-Recovery is only through the Emergency Kit (§4.1). With the email, server and Secret Key printed on it, plus their master password, a user signs in on any device (§5.3). There is no other path: no admin recovery, no recovery links, no trusted contacts.
+Signing in on a new device needs the email, server, Secret Key, and master password (§5.3). The Emergency Kit (§4.1) preserves the first three.
+There is no admin recovery, recovery link, or trusted-contact recovery.
 
-- **Lost Secret Key:** it is on the Emergency Kit, and on every device still signed in, where the desktop app saves a new Emergency Kit after the master password (Settings → Security → Emergency Kit) and the CLI has `hisar emergency-kit`. A Secret Key that may have leaked is replaced from a signed-in device (§5.7).
-- **Forgotten master password:** it cannot be recovered by anyone, including Hisar. The server never sees it, and nothing the server or a device stores opens the keyset without it, so the data only that account can open is lost; shared vaults stay with their other members. The apps say so plainly when the account is created and on the Secret Key / Emergency Kit screen.
-- Losing the Emergency Kit and every signed-in device loses the account as well.
+- **Lost Secret Key:** use the Emergency Kit or a separately recorded Secret Key. On a usable signed-in device, unlock with the master password and save another kit before signing out. The routes are Settings → Security on the Mac and Settings → Account → Secret Key and Emergency Kit on the phones. The CLI has `hisar emergency-kit`. A device that offers **Finish account setup** may resume its protected unfinished operation with the password chosen for it. A Secret Key that may have leaked is replaced from a signed-in device (§5.7).
+- **Forgotten master password:** neither Hisar nor the server's admin can reset it, and the Emergency Kit does not replace it. If a device can still open Hisar, preserve the accessible items without signing out. If no device can unlock and the password cannot be found, items only that account can open cannot be recovered. Shared vaults remain accessible to their other members.
+- Without a Secret Key, a usable signed-in device, or resumable protected unfinished setup, the account cannot be recovered.
+
+The Mac and Android's **Can't find your Secret Key?** help is available from Sign in and the lock screen.
+It explains these alternatives and limits without clearing entered credentials.
 
 On the Mac, Settings → Security → Recovery also offers **Show Secret Key…**. It verifies the current master password
 through the same account-unlock derivation as saving the kit, then returns the key and a sign-in QR code without writing
 a PDF. Verification and delivery are bound to the same unlocked session. Leaving Recovery, locking, or changing accounts
 clears the displayed key, QR code and pending response. **Copy Secret Key** uses the backend clipboard and its 90-second clearing.
 
+On Android, Settings → Account → Secret Key and Emergency Kit uses one password-verified `ExportEmergencyKit` result for the key, PDF, and sign-in QR.
+The QR says "Scan this with Hisar on your new device. Anyone with this code and your master password can open your vaults."
+Copy and PDF delivery remain available. Closing the screen, lock, sign-out, or account change clears the result, and stale responses cannot restore it.
+This is a phone-to-phone scanning option, not a claim that the Mac scans a live phone screen.
+
 **Interrupted setup is distinct from forgotten-password recovery.** The operation journal (§5.2) reconciles a particular already-prepared signup or factor replacement; it cannot recover a forgotten password or bypass the independent Secret Key. Native default recovery needs the OS-wrapped operation key and password. Without that OS protection, restart needs the explicitly user-saved Emergency Kit as well as the password because no factor is persisted in the journal. The CLI exposes `hisar account pending list|resume|kit|acknowledge|discard`; discard is restricted to prepared operations for which no finish may have been sent.
 
-The native page is **Finish account setup**. A record names whether account creation or Secret Key replacement needs
+On the Mac and Android, **Finish account setup** handles records that need attention, not the installed account's ordinary owed kit.
+A record names whether account creation or Secret Key replacement needs
 finishing, followed by its email and server host. Kind-by-phase sentences describe what happened and what remains;
 internal phase identifiers are never visible or spoken. **Continue** warns about an account switch only when it replaces
 a different open account. **Cancel this setup** is available only before a remote finish may have been sent.
