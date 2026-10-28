@@ -1305,7 +1305,8 @@ struct OrganizationVaultSharingView: View {
                             organizationID: organization.id,
                             organizationName: organization.name,
                             member: member,
-                            isAdmin: organization.isAdmin
+                            isAdmin: organization.isAdmin,
+                            organization: organization
                         ) {
                             await load()
                         }

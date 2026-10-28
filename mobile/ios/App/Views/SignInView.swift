@@ -20,7 +20,7 @@ struct SignInView: View {
     @State private var inviteLink = ""
     @State private var name = ""
     @State private var repeatedPassword = ""
-    @FocusState private var isRepeatPasswordFocused: Bool
+    @State private var isRepeatPasswordFocused = false
     @State private var hasValidatedRepeatedPassword = false
     @State private var isScannerShown = false
     @State private var scannerMessage: String?
