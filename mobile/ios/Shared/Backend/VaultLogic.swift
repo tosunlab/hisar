@@ -62,7 +62,7 @@ struct InviteLink: Equatable {
     // invitationOrganization or invitationShare when an organization or vault share invitation sent the link, else nil:
     // an app signed in to that account on that server shows the invitation instead of Create account.
     var invitation: String?
-    // The address the invitation is for, normalized, when invitation is set.
+    // The server checks this address against the invitation.
     var email = ""
 
     // hisar://invite/<code>?server=<origin>[&invitation=organization|share&email=<address>] from Open in Hisar.
@@ -82,14 +82,35 @@ struct InviteLink: Equatable {
         // An unknown invitation is a plain invite, as in an older app.
         let invitation = components.queryItems?.first { $0.name == "invitation" }?.value ?? ""
         if invitation == invitationOrganization || invitation == invitationShare {
-            let emailText = components.queryItems?.first { $0.name == "email" }?.value ?? ""
             link.invitation = invitation
-            link.email = emailText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
+        link.email = (components.queryItems?.first { $0.name == "email" }?.value ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return link
     }
 
-    private static func resolveServer(_ text: String) -> String? {
+    static func parseInput(_ text: String, server: String) -> InviteLink? {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let link = parse(text) { return link }
+        if text.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil,
+           let server = resolveServer(server) {
+            return InviteLink(invite: "\(server)/invite/\(text)", server: server)
+        }
+        guard let components = URLComponents(string: text),
+              let range = components.path.range(of: "/invite/", options: .backwards) else { return nil }
+        let code = String(components.path[range.upperBound...])
+        guard code.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil else { return nil }
+        var origin = components
+        origin.path = String(components.path[..<range.lowerBound])
+        origin.query = nil
+        origin.fragment = nil
+        guard let originText = origin.string, let server = resolveServer(originText) else { return nil }
+        let email = (components.queryItems?.first { $0.name == "email" }?.value ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return InviteLink(invite: "\(server)/invite/\(code)", server: server, email: email)
+    }
+
+    static func resolveServer(_ text: String) -> String? {
         var server = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasScheme = server.contains("://")
         while server.hasSuffix("/") {
@@ -98,10 +119,14 @@ struct InviteLink: Equatable {
         if !server.isEmpty && !hasScheme {
             server = "https://" + server
         }
-        guard let components = URLComponents(string: server),
+        guard var components = URLComponents(string: server),
               let scheme = components.scheme?.lowercased(), scheme == "https" || scheme == "http",
-              let host = components.host, !host.isEmpty else { return nil }
-        return server
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil else { return nil }
+        components.scheme = scheme
+        components.host = host.lowercased()
+        return components.string
     }
 }
 

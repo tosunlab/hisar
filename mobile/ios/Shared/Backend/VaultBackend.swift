@@ -7,6 +7,13 @@ protocol VaultBackend: AnyObject {
     func signUp(inviteLink: String, email: String, name: String, password: String) throws -> SignUpResult
     /// signUpWithoutInvite is signUp on a server whose admin opened registration: the server's address instead of an invite.
     func signUpWithoutInvite(server: String, email: String, name: String, password: String) throws -> SignUpResult
+    func getSignUpPolicy(server: String) throws -> SignUpPolicy
+    func authorizeNewAccountEmergencyKit(password: String) throws
+    func authorizeNewAccountEmergencyKitWithBiometric() throws
+    func recordNewAccountEmergencyKitDelivery(exportID: String, method: String) throws
+    func postponeNewAccountEmergencyKit() throws
+    func hideEmergencyKitReminder()
+    func recordPendingRecoveryEmergencyKitDelivery(exportID: String, method: String) throws
     func unlock(password: String) throws -> VaultStatus
     func unlockWithBiometric() throws -> VaultStatus
     func enableBiometricUnlock(password: String) throws -> VaultStatus

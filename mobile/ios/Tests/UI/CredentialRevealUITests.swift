@@ -1,11 +1,12 @@
 import XCTest
 
 final class CredentialRevealUITests: HisarUITestCase {
-    func testCredentialRevealNamesAndIndependentToggles() {
+    func testCredentialRevealNamesAndIndependentToggles() throws {
         app.launch()
+        selectSignInMode("Sign in")
         waitFor(app.buttons["sign-in-password-reveal"])
         XCTAssertEqual(app.buttons["sign-in-password-reveal"].label, "Show master password")
-        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
+        prepareCreateAccount(inviteLink: try readEnvironment("HISAR_UI_TEST_INVITE_LINK"))
         scrollTo(app.secureTextFields["sign-up-password"])
         type("long master password", into: app.secureTextFields["sign-up-password"])
         app.buttons["sign-up-password-reveal"].tap()
@@ -23,6 +24,7 @@ final class CredentialRevealUITests: HisarUITestCase {
 
     func testCredentialRevealConcealsOnNavigationAndInactivity() {
         app.launch()
+        selectSignInMode("Sign in")
         waitFor(app.buttons["sign-in-password-reveal"])
         type("typed credential", into: app.secureTextFields["sign-in-password"])
         app.buttons["sign-in-password-reveal"].tap()
@@ -39,6 +41,7 @@ final class CredentialRevealUITests: HisarUITestCase {
 
     func testCredentialRevealConcealsOnSubmission() {
         app.launch()
+        selectSignInMode("Sign in")
         waitFor(app.textFields["sign-in-email"])
         type("invalid@example.com", into: app.textFields["sign-in-email"])
         type("not-a-secret-key", into: app.textFields["sign-in-secret-key"])
