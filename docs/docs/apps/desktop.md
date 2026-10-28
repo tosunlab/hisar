@@ -316,6 +316,9 @@ The agent listens on `~/.hisar/agent.sock` while the app runs (`HISAR_SSH_AGENT_
 
 Browser passkey verification uses the same approval window. Its heading names the website, and its subtitle asks you to confirm it is you in your browser.
 
+The approval window stays open until every request notice closes. A timed-out request keeps its notice for three seconds,
+even if other requests are denied together. The window hides once after the last notice closes.
+
 ## Keeping Hisar running
 
 `ssh`, `git` and commit signing cannot start Hisar: while the app is not running, `~/.hisar/agent.sock` refuses connections and they
