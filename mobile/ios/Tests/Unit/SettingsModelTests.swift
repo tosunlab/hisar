@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import XCTest
 @testable import Hisar
@@ -71,6 +72,41 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertEqual(darkTint, UIColor(hexadecimal: 0x7EA6F8))
     }
 
+    func testNewPrivacyWindowsUseTheSelectedTheme() throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let underlyingWindow = try XCTUnwrap(scene.windows.first { $0.isKeyWindow })
+        let previousStyle = underlyingWindow.overrideUserInterfaceStyle
+        defer { underlyingWindow.overrideUserInterfaceStyle = previousStyle }
+        let shield = PrivacyShield()
+        for theme in [VaultTheme(appearance: .dark, color: .purple), VaultTheme(appearance: .light, color: .blue)] {
+            underlyingWindow.overrideUserInterfaceStyle = theme.appearance == .dark ? .light : .dark
+            let previousWindows = Set(scene.windows.map(ObjectIdentifier.init))
+            shield.setVisible(true, theme: theme)
+            defer { shield.setVisible(false, theme: theme) }
+            let window = try XCTUnwrap(scene.windows.first { !previousWindows.contains(ObjectIdentifier($0)) })
+            XCTAssertEqual(window.windowLevel, .alert + 1)
+            XCTAssertEqual(window.overrideUserInterfaceStyle, theme.userInterfaceStyle)
+            XCTAssertEqual(window.traitCollection.userInterfaceStyle, theme.userInterfaceStyle)
+            XCTAssertNotEqual(window.traitCollection.userInterfaceStyle, underlyingWindow.traitCollection.userInterfaceStyle)
+            let traits = UITraitCollection(userInterfaceStyle: theme.userInterfaceStyle)
+            XCTAssertEqual(window.tintColor.resolvedColor(with: traits), theme.palette.tint.uiColor.resolvedColor(with: traits))
+            XCTAssertEqual(window.rootViewController?.view.backgroundColor?.resolvedColor(with: traits), theme.palette.groupedBackground.uiColor.resolvedColor(with: traits))
+
+            let content = PrivacyCover().applyTheme(theme)
+                .environment(\.colorScheme, theme.colorScheme ?? .light)
+                .frame(width: 200, height: 200)
+            let image = try XCTUnwrap(ImageRenderer(content: content).cgImage)
+            var pixel = [UInt8](repeating: 0, count: 4)
+            let context = try XCTUnwrap(CGContext(
+                data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            context.draw(image, in: CGRect(x: 0, y: 0, width: CGFloat(image.width), height: CGFloat(image.height)))
+            let background = theme.appearance == .dark ? theme.palette.groupedBackground.dark : theme.palette.groupedBackground.light
+            XCTAssertEqual(Array(pixel.prefix(3)), [UInt8((background >> 16) & 0xFF), UInt8((background >> 8) & 0xFF), UInt8(background & 0xFF)])
+        }
+    }
+
     func testAutoLockRefusesOtherDelays() async {
         let model = await createUnlockedModel()
         let isOddDelaySet = await model.setAutoLock(seconds: 45)
@@ -137,7 +173,7 @@ final class SettingsModelTests: XCTestCase {
         await model.copySecretReference(vaultID: "personal", itemID: "github", fieldName: "password")
         XCTAssertEqual(model.copyCount, 2)
         XCTAssertEqual(backend.allCopiedReference, ["hisar://Personal/GitHub/password"])
-        XCTAssertEqual(model.noticeMessage, "Secret reference copied.")
+        XCTAssertEqual(model.noticeMessage, "Copied hisar://Personal/GitHub/password.")
     }
 
     func testTurningOffMacApprovalsHidesTheRequests() async {

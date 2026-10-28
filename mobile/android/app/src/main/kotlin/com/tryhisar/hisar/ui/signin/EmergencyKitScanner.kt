@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -46,6 +47,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -67,8 +71,9 @@ private enum class CameraAccess { ASKING, GRANTED, DENIED }
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EmergencyKitScannerSheet(onScanned: (String) -> Unit, onCancel: () -> Unit) {
+fun EmergencyKitScannerSheet(onScanned: (String) -> Unit, onCancel: () -> Unit, errorMessage: String? = null, onRetry: () -> Unit = {}) {
     val context = LocalContext.current
+    var scanAttempt by remember { mutableStateOf(0) }
     val isCameraAvailable = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
     var access by remember { mutableStateOf(if (context.hasCameraPermission()) CameraAccess.GRANTED else CameraAccess.ASKING) }
     val permissionRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -102,18 +107,26 @@ fun EmergencyKitScannerSheet(onScanned: (String) -> Unit, onCancel: () -> Unit) 
             when {
                 !isCameraAvailable -> ScannerNote("No camera is available. Type the details from your Emergency Kit instead.")
                 access == CameraAccess.GRANTED -> {
-                    QrCameraPreview(onScanned, Modifier.fillMaxSize())
-                    Text(
-                        "Point the camera at the QR code on your Emergency Kit.",
-                        style = HisarType.subheadline,
-                        color = HisarTheme.colors.label,
-                        modifier = Modifier
+                    key(scanAttempt) { QrCameraPreview(onScanned, Modifier.fillMaxSize()) }
+                    Column(
+                        Modifier
                             .align(Alignment.BottomCenter)
                             .windowInsetsPadding(WindowInsets.navigationBars)
                             .padding(24.dp)
                             .background(HisarTheme.colors.cellBackground.copy(alpha = 0.9f), RoundedCornerShape(16.dp))
                             .padding(14.dp),
-                    )
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            errorMessage ?: "Point the camera at the QR code on your Emergency Kit.",
+                            style = HisarType.subheadline,
+                            color = HisarTheme.colors.label,
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
+                        )
+                        if (errorMessage != null) {
+                            PlainButton("Try again", { onRetry(); scanAttempt += 1 }, testTag = "scanner-try-again")
+                        }
+                    }
                 }
                 access == CameraAccess.DENIED -> ScannerNote(
                     "Hisar needs the camera to scan the QR code. Allow it in Settings, or type the details from your Emergency Kit instead.",

@@ -172,6 +172,44 @@ describe("Settings sidebar", () => {
     await settings.find('[data-testid="settings-section-people"]').trigger("click");
     expect(settings.find('[data-testid="invite-form"]').exists()).toBe(false);
   });
+
+  it("generates and copies a password from General without an item draft", async () => {
+    api.generatePassword.mockResolvedValueOnce("first-password").mockResolvedValue("another-password");
+    store.editorMode = "view";
+    store.selectedItem = null;
+    const settings = await mountSettings();
+    await settings.get('[data-testid="open-password-generator"]').trigger("click");
+    await flushPromises();
+    const dialog = settings.get('[data-testid="password-generator-dialog"]');
+    const headingID = dialog.get('[role="dialog"]').attributes("aria-labelledby");
+    expect(dialog.get(`#${headingID}`).text()).toBe("Password generator");
+    expect(dialog.get('[data-testid="generated-password"]').text()).toBe("first-password");
+    await dialog.get('button[aria-label="Regenerate"]').trigger("click");
+    await flushPromises();
+    await dialog.findAll("button").find((button) => button.text() === "Copy")!.trigger("click");
+    await flushPromises();
+    expect(api.copyText).toHaveBeenCalledWith("another-password");
+    expect(store.noticeMessage).toBe("Password copied. It clears in 90 seconds.");
+    expect(store.editorMode).toBe("view");
+    expect(store.selectedItem).toBeNull();
+    await dialog.findAll("button").find((button) => button.text() === "Close")!.trigger("click");
+    expect(settings.find('[data-testid="password-generator-dialog"]').exists()).toBe(false);
+    expect(store.isSettingsOpen).toBe(true);
+  });
+
+  it("finds the same generator row through Settings search and closes only its modal on Escape", async () => {
+    api.generatePassword.mockResolvedValue("generated-password");
+    const settings = await mountSettings();
+    await search(settings, "password generator");
+    expect(readAllSectionLabel(settings)).toEqual(["General"]);
+    expect(settings.get('[data-testid="open-password-generator"]').isVisible()).toBe(true);
+    await settings.get('[data-testid="open-password-generator"]').trigger("click");
+    await flushPromises();
+    await settings.get('[data-testid="password-generator-dialog"] input[name="length"]').trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(settings.find('[data-testid="password-generator-dialog"]').exists()).toBe(false);
+    expect(store.isSettingsOpen).toBe(true);
+  });
 });
 
 describe("Sign-out disclosure", () => {

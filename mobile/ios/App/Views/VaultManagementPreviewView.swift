@@ -98,7 +98,7 @@ struct VaultManagementPreviewView: View {
                     .navigationBarTitleDisplayMode(.inline)
                 }
             }
-            .presentationDetents(mode == .export ? [.large] : [.medium, .large])
+            .presentationDetents([.large])
         }
         .onAppear {
             switch mode {

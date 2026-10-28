@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { ShareLink } from "../api";
-import { copyShareLink, revokeShareLink, store } from "../store";
+import { copyShareLink, openShareLinkSource, revokeShareLink, store } from "../store";
 import { describeShareLinkContent, formatDateTime, formatExpiresIn, formatShareLinkViews } from "../util";
 import AppIcon from "./AppIcon.vue";
 
@@ -25,7 +25,7 @@ async function confirmRevoke(shareLink: ShareLink): Promise<void> {
         <span class="share-link-icon"><AppIcon :name="shareLink.isText ? 'note' : 'link'" :size="15" /></span>
         <div class="share-link-text">
           <strong v-if="isTitleShown" class="share-link-title">{{ shareLink.title }}</strong>
-          <span class="share-link-fields">{{ describeShareLinkContent(shareLink) }}</span>
+          <span class="share-link-fields"><template v-if="isTitleShown && !shareLink.isText && store.allVault.find(vault => vault.id === shareLink.vaultID)">{{ store.allVault.find(vault => vault.id === shareLink.vaultID)?.name }} · </template>{{ describeShareLinkContent(shareLink) }}</span>
           <span class="share-link-meta muted">
             <span data-testid="share-link-views">{{ formatShareLinkViews(shareLink.maxViews, shareLink.viewCount) }}</span>
             <span aria-hidden="true">·</span>
@@ -34,6 +34,7 @@ async function confirmRevoke(shareLink: ShareLink): Promise<void> {
           </span>
         </div>
         <div class="share-link-actions">
+          <button v-if="isTitleShown && !shareLink.isText" class="ghost" :disabled="store.isBusy" :aria-label="`Open source item for ${shareLink.title}`" @click="openShareLinkSource(shareLink)">Open source item</button>
           <button class="ghost icon-button" :aria-label="`Copy link to ${shareLink.title}`" title="Copy link" @click="copyShareLink(shareLink)"><AppIcon name="copy" /></button>
           <button
             v-if="confirmingShareLinkID !== shareLink.id"

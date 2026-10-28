@@ -489,6 +489,7 @@ open class FakeBackend : VaultBackend {
         record("saveItem")
         requireUnlocked()
         if (item.title.trimmingWhitespaces().isEmpty()) throw BackendError("Enter a title")
+        if (item.allField.any { it.isNameMissing }) throw BackendError("Enter a name for each field that has a value")
         val oneTimePassword = item.oneTimePassword.trimmingWhitespacesAndNewlines()
         val isSecret = oneTimePassword.replace(" ", "").all { it.uppercaseChar() in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" }
         if (oneTimePassword.isNotEmpty() && !oneTimePassword.startsWith("otpauth://totp/") && !isSecret) {

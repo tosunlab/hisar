@@ -98,6 +98,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
         if (!context.status.value.isUnlocked || approvalList <= shownApprovalList) return
         shownApprovalList = approvalList
         val date = now()
+        removeAllExpiredApproval()
         mutableAllPendingApproval.value = allApproval.filter { it.requestID !in allFinishedApprovalID && !it.isExpired(date) }
         openAnnouncedApproval(approvalList)
         closeSheetOfFinishedApproval()
@@ -136,7 +137,12 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
 
     fun removeAllExpiredApproval() {
         val date = now()
-        mutableAllPendingApproval.value.filter { it.isExpired(date) }.forEach { removeApproval(it.requestID) }
+        mutableAllPendingApproval.value.filter { it.isExpired(date) }.forEach { approval ->
+            if (mutablePresentedApproval.value?.requestID == approval.requestID) {
+                context.showNotice("This request expired. Start it again on your Mac if you still need it.")
+            }
+            removeApproval(approval.requestID)
+        }
     }
 
     /** Approves the open sheet's request; [isRemembered] is its switch, which counts only for a request that offers it. */

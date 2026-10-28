@@ -31,6 +31,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/commandline"
 	"github.com/tryhisar/hisar/desktop/granthead"
 	"github.com/tryhisar/hisar/desktop/harness"
+	"github.com/tryhisar/hisar/desktop/kitreader"
 	"github.com/tryhisar/hisar/desktop/loginitem"
 	"github.com/tryhisar/hisar/desktop/pasteboard"
 	"github.com/tryhisar/hisar/desktop/portable"
@@ -59,6 +60,8 @@ func main() {
 	notifier := &appNotifier{}
 	fileSaver := &wailsFileSaver{}
 	fileOpener := &wailsFileOpener{}
+	var chooseEmergencyKit func() (string, error)
+	emergencyKitService := kitreader.New(func() (string, error) { return chooseEmergencyKit() })
 	requesterResolver := appinfo.NewSystemResolver()
 	var agentServer *sshagent.Server
 	var approver *agent.Approver
@@ -302,6 +305,7 @@ func main() {
 			application.NewService(inviteLinkService),
 			application.NewService(harnessService),
 			application.NewService(settingsWindowService),
+			application.NewService(emergencyKitService),
 		},
 		OnShutdown: func() {
 			app.ClearCopiedText(vaultService)
@@ -348,6 +352,14 @@ func main() {
 	fileOpener.chooseOpenPath = func() (string, error) {
 		return wailsApp.Dialog.OpenFile().
 			SetTitle("Import items").
+			CanChooseFiles(true).
+			AttachToWindow(getDialogWindow()).
+			PromptForSingleSelection()
+	}
+	chooseEmergencyKit = func() (string, error) {
+		return wailsApp.Dialog.OpenFile().
+			SetTitle("Open Emergency Kit").
+			AddFilter("PDF document", "*.pdf").
 			CanChooseFiles(true).
 			AttachToWindow(getDialogWindow()).
 			PromptForSingleSelection()

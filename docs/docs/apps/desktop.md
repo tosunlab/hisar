@@ -108,6 +108,11 @@ and navigation to another item, vault, Favorites, or a tag from Favorites. If th
 offers **Keep editing** and **Discard**. Locking keeps the draft in memory and restores it after unlock.
 ⌘S and ⌘↩ save after the form passes validation.
 
+**Settings → General → Password generator…** generates a password without an item draft.
+Search Settings for "Password generator" to find the same row.
+Set the length, digits and symbols, then use **Regenerate** or **Copy**. Copied passwords clear after 90 seconds.
+The inline generator in an item editor keeps **Cancel** and **Use password**.
+
 Item and Favorites lists are listboxes with keyboard navigation and `aria-selected` on each option.
 The item list's accessible name is its vault's name. The selected sidebar vault or Favorites entry has `aria-current="true"`.
 
@@ -134,16 +139,19 @@ Design: [Design](../design.md) §4.5 (icons and website icons).
 Design: [Design](../design.md) §4.4 (vault keys and rotation), §5.1 (invites) and §5.6 (public key pinning).
 
 - **Share a vault**: select a shared vault and press **Share** in the item list header. Everyone with access is listed with their role; owners can invite someone by email (owner, editor or reader), change roles and remove people. Editors and readers see the list read-only. Personal vaults show **Private** instead and cannot be shared.
+- **Share links** open without a Hisar account. Hisar encrypts the content before sending it, but opening a web link requires trusting the page supplied by the Hisar server. The dialog keeps this warning visible before and after creating the link.
 - **Removing someone** re-encrypts the vault: the owner's device generates a new vault key, re-encrypts every item and wraps the new key only for the remaining members (`session.RemoveVaultMember`). Copies the removed person already downloaded stay readable to them.
 - **Key pinning**: the first time this device shares with someone, it pins their signing key in `desktop.json` (`pins`), like the CLI (`localstate.State.CheckMemberPin`). Sharing, changing a role or re-encrypting the vault stops if a pinned key changes. Each person has a security code (`crypt.FormatKeyFingerprint`: the first 8 bytes of SHA-256 of their Ed25519 signing key, as 4 groups of 4 hex digits); expand a member in the sharing panel or open Settings → People to see it, and compare it over a channel you trust.
 - **Settings → People** lists the people you share a vault with and their security codes, and the share invitations you sent and received. Anyone can **Invite** someone to Hisar by email. The app shows no account roles; the admin role only matters to the operator's `hisar-server` command.
-- **Settings → Devices** lists the devices signed in to your account. **Revoke** signs another device out; to sign out this Mac, use **Sign out** in Settings → Account.
+- **Settings → Devices** lists the devices signed in to your account. **Sign out…** asks you to confirm **Sign out device** for another device. To sign out this Mac, use **Sign out** in Settings → Account.
 
 ## Signing in again: the Emergency Kit
 
 Design: [Design](../design.md) §6. The Emergency Kit (email, server and Secret Key) plus the master password is the only way to sign in again; there is no account recovery.
 
-- **Lost Secret Key**: it is on the Emergency Kit. Settings → Security → Emergency Kit saves a new kit after the master password, and the sign-in screen says where to find it.
+On the Mac, **Open Emergency Kit…** fills in the server, email and Secret Key from the QR code in a kit PDF. Hisar reads it locally and never uploads the PDF. Enter your master password and choose **Sign in**. You can still type or paste the account fields on the Mac and Linux.
+
+- **Lost Secret Key**: it is on the Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings. On the Mac, it is under Security → Emergency Kit.
 - **Forgotten master password**: nobody can recover it, including Hisar. The Create account form and the Secret Key screen after sign up say so.
 
 ## Secure notes

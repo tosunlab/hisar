@@ -66,6 +66,15 @@ final class FaceIDUITests: HisarUITestCase {
         }
     }
 
+    override func setUp() {
+        super.setUp()
+        // A cold LocalAuthentication UI can take longer than coreauthd's five-second activation deadline.
+        let authenticationUI = XCUIApplication(bundleIdentifier: "com.apple.LocalAuthenticationUIService")
+        authenticationUI.launch()
+        XCTAssertTrue(authenticationUI.wait(for: .runningForeground, timeout: 30))
+        XCUIDevice.shared.press(.home)
+    }
+
     override func tearDown() {
         setFaceIDEnrolled(false)
         super.tearDown()

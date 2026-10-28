@@ -62,6 +62,8 @@ class IosTestParityTest {
                 "Android receives the Credential Exchange JSON as the exporter wrote it; only iOS decodes it into Dates first",
             "testReplacingTheSecretKeyUpdatesTheStoredItemInPlace" to
                 "Android seals the Secret Key into an AtomicFile, which replaces the old copy in one rename; there is no keychain item to delete first",
+            "testNewPrivacyWindowsUseTheSelectedTheme" to
+                "Only iOS creates a separate UIKit privacy window; Android draws its privacy cover inside the themed Compose root",
             "testListsStayBesideWhatTheyOpenOnAWideScreen" to
                 "The iPhone app lays Vaults, Search and Settings out as split views for the open iPhone Duo; the Android app has one layout for every width so far",
             "testAnApprovalPreviewVerifiesWithTheAccountsKey" to

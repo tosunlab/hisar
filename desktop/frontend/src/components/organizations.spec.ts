@@ -365,7 +365,7 @@ describe("Organization screen", () => {
     await settings.find('[data-testid="organization-dialog-delete-organization"] form').trigger("submit");
     await flushPromises();
     expect(api.deleteOrganization).toHaveBeenCalledWith("acme");
-    expect(store.organizationAlert).toEqual({ title: "Delete organization", message: "the organization still has vaults; delete them first" });
+    expect(store.organizationAlert).toEqual({ title: "Couldn't delete Acme", message: "the organization still has vaults; delete them first" });
     expect(store.errorMessage).toBe("");
 
     const wrapper = mount(MainView, { attachTo: document.body });
@@ -634,7 +634,7 @@ describe("Organization vault sharing panel", () => {
     await wrapper.find('[data-testid="take-back-from-platform"]').trigger("click");
     await flushPromises();
     expect(api.takeVaultFromTeam).toHaveBeenCalledWith("acme", "platform", "deploy");
-    expect(wrapper.find('[data-testid="organization-alert"]').text()).toContain("Take back");
+    expect(wrapper.find('[data-testid="organization-alert"]').text()).toContain("Couldn't take Deploy back from Platform");
     expect(wrapper.find('[data-testid="organization-alert-message"]').text()).toBe(ownerTakeBackRefusal);
     expect(wrapper.find('[data-testid="vault-team-platform"]').exists()).toBe(true);
     wrapper.unmount();

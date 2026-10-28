@@ -29,6 +29,7 @@ data class ItemEditorDraft(
     val cardDescription: CardDescription = CardDescription(),
     /** The brand of the number last checked: the type follows it until the user picks a different one. */
     val numberBrand: String = "",
+    val isUnnamedFieldShown: Boolean = false,
     private val openedItem: ItemDetail = item,
 ) {
     val isNew: Boolean get() = original == null
@@ -48,6 +49,8 @@ data class ItemEditorDraft(
         }
 
     val canSave: Boolean get() = item.title.trimmingWhitespaces().isNotEmpty()
+
+    val unnamedFieldIndex: Int? get() = item.allField.indexOfFirst { it.isNameMissing }.takeIf { it >= 0 }
 
     fun fieldNameWarning(index: Int): String {
         val name = item.allField[index].name.trim().lowercase()

@@ -167,6 +167,11 @@ struct ItemField: Codable, Hashable {
     var name: String
     var value: String
     var concealed: Bool
+
+    var isNameMissing: Bool {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !value.isEmpty
+    }
+
     private static let builtInReferenceNames: Set<String> = ["username", "password", "url", "notes", "one-time code", "public key", "fingerprint", "connection string"]
 
     static func nameWarning(_ fields: [ItemField], index: Int) -> String {
@@ -1288,6 +1293,30 @@ struct Member: Codable, Identifiable, Hashable {
         isCurrentUser = try container.decodeIfPresent(Bool.self, forKey: .isCurrentUser) ?? false
         isKeyChanged = try container.decodeIfPresent(Bool.self, forKey: .isKeyChanged) ?? false
     }
+}
+
+struct InvitationLifetime {
+    let date: Date?
+
+    init(_ timestamp: String) {
+        date = PhoneApproval.parseDate(timestamp)
+    }
+
+    func isExpired(at now: Date) -> Bool { date.map { $0 <= now } ?? true }
+
+    func describe(at now: Date) -> String {
+        guard let date else { return "" }
+        let seconds = date.timeIntervalSince(now)
+        if seconds <= 0 { return "Expired" }
+        let minutes = Int(ceil(seconds / 60))
+        if minutes < 60 { return "Expires in \(minutes) \(minutes == 1 ? "minute" : "minutes")" }
+        let hours = Int(ceil(seconds / 3600))
+        if hours < 24 { return "Expires in \(hours) \(hours == 1 ? "hour" : "hours")" }
+        let days = Int(ceil(seconds / 86400))
+        return days == 1 ? "Expires tomorrow" : "Expires in \(days) days"
+    }
+
+    var exactDate: String { date?.formatted(date: .abbreviated, time: .shortened) ?? "" }
 }
 
 struct ReceivedShareInvitation: Codable, Identifiable, Hashable {

@@ -23,6 +23,10 @@ final class OneTimeCodeUITests: HisarUITestCase {
 
     func testSetupKeyShowsCodeThatCopiesAndFills() throws {
         let inviteLink = try readEnvironment("HISAR_UI_TEST_ONE_TIME_CODE_INVITE_LINK")
+        if ProcessInfo.processInfo.environment["HISAR_UI_TEST_REDUCED_MOTION"] == "1" {
+            XCTAssertTrue(UIAccessibility.isReduceMotionEnabled)
+        }
+        app.launchArguments.removeAll { $0 == "-HisarUITest" }
         app.launch()
         _ = signUp(inviteLink: inviteLink, email: "ios-one-time-code@example.com", name: "iOS One-Time Code")
 

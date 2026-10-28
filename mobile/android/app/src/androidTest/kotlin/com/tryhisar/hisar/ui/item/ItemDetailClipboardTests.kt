@@ -62,7 +62,7 @@ class ItemDetailClipboardTests : HisarUITestCase() {
         dismissNotice()
         tap("copy-secret-reference")
         waitUntil(10_000, "the clipboard holds the password's reference") { clipboardText == "hisar://Personal/GitHub/password" }
-        waitFor(hasText("Secret reference copied."))
+        waitFor(hasText("Copied hisar://Personal/GitHub/password."))
     }
 
     @Test

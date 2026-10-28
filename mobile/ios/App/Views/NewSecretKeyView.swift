@@ -36,7 +36,7 @@ struct NewSecretKeyView: View {
                 }
                 Section {
                     if let export {
-                        EmergencyKitShareButton(url: URL(fileURLWithPath: export.emergencyKitPath), label: "Save or Print Emergency Kit", onPresent: model.reportActivity) {
+                        EmergencyKitShareButton(url: URL(fileURLWithPath: export.emergencyKitPath), label: "Save or print Emergency Kit", onPresent: model.reportActivity) {
                             isKitShared = true
                             model.reportActivity()
                         }

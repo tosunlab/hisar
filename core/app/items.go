@@ -381,6 +381,11 @@ func (s *Service) saveItem(vaultID string, detail ItemDetail, importScope string
 	if strings.TrimSpace(detail.Title) == "" {
 		return ItemDetail{}, errors.New("enter a title")
 	}
+	for _, field := range detail.Fields {
+		if strings.TrimSpace(field.Name) == "" && field.Value != "" {
+			return ItemDetail{}, errors.New("enter a name for each field that has a value")
+		}
+	}
 	if detail.Icon != nil && len(detail.Icon.Image) > 0 && !item.IsIconImage(detail.Icon.Image) {
 		return ItemDetail{}, itemicon.ErrUnsupportedImage
 	}

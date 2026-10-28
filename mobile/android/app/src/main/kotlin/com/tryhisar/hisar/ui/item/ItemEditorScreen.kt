@@ -61,6 +61,8 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
     var isIconPickerShown by remember { mutableStateOf(false) }
     var isDeleteConfirmationShown by remember { mutableStateOf(false) }
     var isDiscardConfirmationShown by remember { mutableStateOf(false) }
+    val allFieldNameFocus = remember { mutableMapOf<Int, FieldNameFocus>() }
+    val fieldNameFocus: (Int) -> FieldNameFocus = { index -> allFieldNameFocus.getOrPut(index) { FieldNameFocus() } }
 
     LaunchedEffect(request) {
         model.itemEditor.clearError()
@@ -80,6 +82,13 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
 
     fun save() {
         val current = draft?.withTagsAdded() ?: return
+        current.unnamedFieldIndex?.let { index ->
+            model.itemEditor.updateDraft(current.copy(isUnnamedFieldShown = true))
+            val focus = fieldNameFocus(index)
+            focus.focusRequester.requestFocus()
+            scope.launch { focus.bringIntoViewRequester.bringIntoView() }
+            return
+        }
         model.itemEditor.updateDraft(current)
         scope.launch {
             val savedItem = model.itemEditor.saveItem(vaultID, current.buildItem()) ?: return@launch
@@ -158,28 +167,28 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                         label = "Notes",
                     )
                 }
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             item.isCreditCard -> {
                 CardDescriptionEffect(model, currentDraft) { description -> model.itemEditor.session.value?.takeIf { it.request === request }?.draft?.let { model.itemEditor.updateDraft(it.withCardDescription(description)) } }
                 CardSections(currentDraft, onChange, revealed, onRevealedChange)
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             item.isIdentity -> {
                 IdentitySections(currentDraft, onChange, revealed, onRevealedChange)
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             item.isAPICredential -> {
                 APICredentialSection(currentDraft, onChange, revealed, onRevealedChange)
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             item.isAddress -> {
                 AddressSection("Address", currentDraft, onChange)
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             item.isSoftwareLicense -> {
                 SoftwareLicenseSection(currentDraft, onChange, revealed, onRevealedChange)
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             !item.isSSHKey -> {
                 if (item.isServer) {
@@ -188,7 +197,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                 }
                 if (item.isDatabase) DatabaseSection(currentDraft, onChange)
                 LoginSections(currentDraft, onChange, revealed, onRevealedChange, onGeneratePassword = { isGeneratorShown = true })
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
         }
         if (!item.isSecureNote) {

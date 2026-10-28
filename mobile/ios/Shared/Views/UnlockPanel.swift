@@ -27,9 +27,11 @@ struct UnlockPanel: View {
                         .padding(.bottom, 6)
                     Text("Hisar is locked")
                         .font(.title2.weight(.bold))
+                        .multilineTextAlignment(.center)
                     Text(email)
                         .font(.subheadline)
                         .foregroundStyle(.themeSecondary)
+                        .multilineTextAlignment(.center)
                         .accessibilityIdentifier("lock-email")
                     if !requestDescription.isEmpty {
                         Text(requestDescription)
