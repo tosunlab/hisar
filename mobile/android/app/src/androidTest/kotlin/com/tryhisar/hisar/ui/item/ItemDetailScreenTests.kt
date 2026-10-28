@@ -136,7 +136,7 @@ class ItemDetailScreenTests {
         composeRule.tap("reveal-password")
         composeRule.onNodeWithTag("view-full-password").performScrollTo().performClick()
         composeRule.waitForTag("full-value-text")
-        composeRule.tap("full-value-copy")
+        composeRule.onNodeWithTag("full-value-copy").performClick()
         waitUntil(10_000, "the clipboard holds the complete secret") {
             clipboardManager.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString() == secret
         }
