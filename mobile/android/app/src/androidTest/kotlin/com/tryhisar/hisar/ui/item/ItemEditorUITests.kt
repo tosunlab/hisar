@@ -22,6 +22,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.services.storage.TestStorage
@@ -148,8 +149,10 @@ class ItemEditorUITests {
         find(tag).performClick()
     }
 
+    /** Closes the keyboard the field asked for, as HisarUITestCase.type does, so it cannot cover the next tap's target. */
     private fun type(tag: String, text: String) {
         find(tag).performTextInput(text)
+        Espresso.closeSoftKeyboard()
     }
 
     private fun saveScreenshot(name: String) {
