@@ -111,3 +111,37 @@ func TestRevokedAgentSessionLosesItsSSHApproval(t *testing.T) {
 	}
 	connect(2)
 }
+
+func TestMissingAgentKeyNoticeWithoutNativeNotifications(t *testing.T) {
+	fixture := startAgent(t, nil)
+	session, _ := startHarness(t)
+	fixture.resolver.setTernPeer(&session, false)
+	client := fixture.dialAgent(t)
+	if keys, err := client.List(); err != nil || len(keys) != 0 {
+		t.Fatalf("list = %v, %v", keys, err)
+	}
+	notices := fixture.server.ListMissingAgentKeys()
+	if len(notices) != 1 || notices[0].AgentName != session.Harness.Name {
+		t.Fatalf("missing-key notices = %+v", notices)
+	}
+	key := createTestKey(t, "id", "Agent key", getTestMaterials()["ed25519"])
+	fixture.source.mutex.Lock()
+	fixture.source.keys = []Key{key}
+	fixture.source.mutex.Unlock()
+	if notices := fixture.server.ListMissingAgentKeys(); len(notices) != 0 {
+		t.Fatalf("resolved notice = %+v", notices)
+	}
+	fixture.source.mutex.Lock()
+	fixture.source.keys = nil
+	fixture.source.mutex.Unlock()
+	if _, err := client.List(); err != nil {
+		t.Fatal(err)
+	}
+	if notices := fixture.server.ListMissingAgentKeys(); len(notices) != 1 {
+		t.Fatalf("missing notice = %+v", notices)
+	}
+	fixture.resolver.sessions.Revoke(session.PID, session.StartTime)
+	if notices := fixture.server.ListMissingAgentKeys(); len(notices) != 0 {
+		t.Fatalf("ended-session notices = %+v", notices)
+	}
+}

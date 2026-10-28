@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import PendingRecoveryReminder from "./PendingRecoveryReminder.vue";
+import EmergencyKitBanner from "./EmergencyKitBanner.vue";
 import {
   clearError,
   copyItemField,
@@ -8,6 +10,7 @@ import {
   createVault,
   duplicateItem,
   hasShareableField,
+  getOrganizationName,
   filterAllFavorite,
   filterAllItem,
   listAllTag,
@@ -22,6 +25,7 @@ import {
   openSharing,
   selectFavoriteItem,
   selectFavorites,
+  selectAllItems,
   selectItem,
   selectTag,
   selectVault,
@@ -64,6 +68,7 @@ import {
   getItemIcon,
   getWebsiteIconURL,
   identityCategory,
+  isApplicationCommand,
   isMacPlatform,
   secureNoteCategory,
   serverCategory,
@@ -73,6 +78,7 @@ import {
 } from "../util";
 import { allColumnBound, detailMinWidth, loadColumnWidths, saveColumnWidths } from "../columnWidths";
 import AppIcon from "./AppIcon.vue";
+import NewVaultDialog, { type TeamChoice } from "./NewVaultDialog.vue";
 import ColumnResizer from "./ColumnResizer.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
@@ -82,6 +88,7 @@ import DiscardChangesDialog from "./DiscardChangesDialog.vue";
 import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
 import MoveItemDialog from "./MoveItemDialog.vue";
 import ImportPanel from "./ImportPanel.vue";
+import CommitSigningSetupDialog from "./CommitSigningSetupDialog.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import OrganizationAlert from "./OrganizationAlert.vue";
@@ -102,13 +109,6 @@ const layoutStyle = computed(() => ({
   gridTemplateColumns: `minmax(${allColumnBound.sidebar.min}px, ${columnWidths.value.sidebar}px) 0 minmax(${allColumnBound.list.min}px, ${columnWidths.value.list}px) 0 minmax(${detailMinWidth}px, 1fr)`,
 }));
 
-interface TeamChoice {
-  key: string;
-  organizationID: string;
-  teamID: string;
-  teamName: string;
-  label: string;
-}
 
 interface VaultGroup {
   organizationID: string;
@@ -125,21 +125,41 @@ const isLoadingTeams = ref(false);
 let newVaultTeamLoad = 0;
 // newVaultErrorMessage is why the last Create failed, shown in the form.
 const newVaultErrorMessage = ref("");
+const newVaultTeamsError = ref("");
 const searchInput = ref<HTMLInputElement | null>(null);
 const isNewItemMenuOpen = ref(false);
 const newItemMenu = ref<HTMLElement | null>(null);
+const newItemTrigger = ref<HTMLElement | null>(null);
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const shiftModifier = isMacPlatform() ? "⇧" : "Shift+";
 const itemList = ref<HTMLElement | null>(null);
+const selectedCategory = ref("");
+const allCategory = [
+  { id: "login", label: "Logins" }, { id: secureNoteCategory, label: "Secure notes" },
+  { id: creditCardCategory, label: "Credit cards" }, { id: identityCategory, label: "Identities" },
+  { id: apiCredentialCategory, label: "API credentials" }, { id: addressCategory, label: "Addresses" },
+  { id: softwareLicenseCategory, label: "Software licenses" }, { id: serverCategory, label: "Servers" },
+  { id: databaseCategory, label: "Databases" }, { id: sshKeyCategory, label: "SSH keys" },
+];
 
-const allVisibleItem = computed(() => filterAllItem(store.allItem.filter((item) => !item.readIssue), store.searchQuery, store.selectedTag));
+const allVisibleItem = computed(() => filterAllItem(store.allItem.filter((item) => !item.readIssue), store.searchQuery, store.selectedTag, selectedCategory.value));
 const unreadableItemCount = computed(() => store.allItem.filter((item) => item.readIssue).length);
 const healthyItemCount = computed(() => store.allItem.length - unreadableItemCount.value);
-const allVisibleFavorite = computed(() => filterAllFavorite(store.allFavorite, store.searchQuery));
-const listEntryIndex = computed(() => Math.max(0, store.isFavoritesSelected
+const isReferenceScope = computed(() => store.isFavoritesSelected || store.isAllItemsSelected);
+const scopeReferences = computed(() => store.isAllItemsSelected ? store.allItemReference : store.allFavorite);
+const allVisibleFavorite = computed(() => filterAllFavorite(scopeReferences.value, store.searchQuery, store.selectedTag, selectedCategory.value));
+const listEntryIndex = computed(() => Math.max(0, isReferenceScope.value
   ? allVisibleFavorite.value.findIndex(isSelectedFavorite)
   : allVisibleItem.value.findIndex((item) => item.id === store.selectedItem?.id)));
-const allTag = computed(() => listAllTag(store.allItem));
+const allTag = computed(() => listAllTag(store.isAllItemsSelected ? store.allItemReference.map((reference) => reference.item) : store.allItem));
+const scopeItems = computed(() => isReferenceScope.value ? scopeReferences.value.map((reference) => reference.item) : store.allItem.filter((item) => !item.readIssue));
+const categoryCounts = computed(() => {
+  const counts = new Map<string, number>();
+  for (const item of scopeItems.value) counts.set(item.category || "login", (counts.get(item.category || "login") ?? 0) + 1);
+  return allCategory.map((category) => ({ ...category, count: counts.get(category.id) ?? 0 })).filter((category) => category.count > 0);
+});
+const selectedCategoryName = computed(() => allCategory.find((category) => category.id === selectedCategory.value)?.label ?? "");
+watch(() => store.isAllItemsSelected ? "all" : store.isFavoritesSelected ? "favorites" : store.listVaultID, () => { selectedCategory.value = ""; });
 // inbox gathers what does not need the sidebar's room: invitations to answer, shares waiting on someone's Hisar, and
 // organization vault keys on their way. actionCount is what waits for the user, as on Settings' badges; the row opens
 // the Settings section where that is answered first.
@@ -162,11 +182,20 @@ const emptyListMessage = computed(() => {
   }
   return store.allVault.some((vault) => vault.readIssues?.length) ? "No readable matches. Some records could not be opened." : store.selectedTag ? `No items are tagged ${store.selectedTag}.` : "This vault is empty.";
 });
+const allItemsEmptyMessage = computed(() => {
+  if (store.isLoadingAllItems) return "Loading items from your vaults…";
+  if (store.allItemsError) return "Search is incomplete. Retry loading your vaults.";
+  if (store.allVault.some((vault) => vault.readIssues?.length)) return "No readable matches. Some records could not be opened.";
+  return store.searchQuery || store.selectedTag || selectedCategory.value ? "No items match your search." : "No items in your vaults.";
+});
 const selectedVault = computed(() => store.allVault.find((vault) => vault.id === store.selectedVaultID));
+const listVault = computed(() => store.allVault.find((vault) => vault.id === store.listVaultID));
+const canEditList = computed(() => listVault.value !== undefined && listVault.value.role !== "reader");
 // canShareVault: shared and organization vaults have a sharing panel, personal vaults the Private badge.
-const canShareVault = computed(() => selectedVault.value !== undefined && selectedVault.value.type !== "personal");
+const canShareVault = computed(() => listVault.value !== undefined && listVault.value.type !== "personal");
 const canEdit = computed(() => selectedVault.value !== undefined && selectedVault.value.role !== "reader");
-const canCreate = computed(() => canEdit.value && !store.isFavoritesSelected);
+const canCreate = computed(() => canEditList.value && !isReferenceScope.value);
+const readerDescription = computed(() => listVault.value?.role === "reader" ? `You can view items in ${listVault.value.name}. You cannot add or change items.` : "");
 // allVaultGroup is the sidebar's vaults: the user's own and shared vaults, then a group per organization by name.
 const allVaultGroup = computed(() => {
   const groupByID = new Map<string, VaultGroup>();
@@ -174,7 +203,7 @@ const allVaultGroup = computed(() => {
     if (!vault.organizationId) {
       continue;
     }
-    const name = store.organizations.organizations.find((organization) => organization.id === vault.organizationId)?.name ?? "Organization";
+    const name = getOrganizationName(vault.organizationId);
     const group = groupByID.get(vault.organizationId) ?? { organizationID: vault.organizationId, name, allVault: [] };
     group.allVault.push(vault);
     groupByID.set(vault.organizationId, group);
@@ -191,7 +220,7 @@ const allTeamChoice = computed<TeamChoice[]>(() =>
         organizationID: organization.id,
         teamID: team.id,
         teamName: team.name,
-        label: `${organization.name} › ${team.name} (team vault)`,
+        label: `${team.name} in ${organization.name}`,
       })),
   ),
 );
@@ -199,19 +228,21 @@ const selectedTeamChoice = computed(() => allTeamChoice.value.find((choice) => c
 // canSubmitNewVault: Create needs a name, the loaded teams, and a Where the form lists: the user's own vault or one of the
 // teams. A team that is no longer listed (its organization or the user's place in it changed) never falls back to an own vault.
 const canSubmitNewVault = computed(
-  () => newVaultName.value.trim() !== "" && !isLoadingTeams.value && (newVaultWhere.value === "" || selectedTeamChoice.value !== undefined),
+  () => newVaultName.value.trim() !== "" && !isLoadingTeams.value && !newVaultTeamsError.value && (newVaultWhere.value === "" || selectedTeamChoice.value !== undefined),
 );
 // itemMenu is the right-click menu of a list item. detail arrives after the menu opens: list summaries carry no password
 // or fields, so the copy actions appear once it has loaded. favorite is set when the item was right-clicked in Favorites.
-const itemMenu = ref<{ vaultID: string; vaultItem: ItemDetail; favorite?: FavoriteItem; detail: ItemDetail | null; x: number; y: number } | null>(null);
+const itemMenu = ref<{ vaultID: string; vaultItem: ItemDetail; favorite?: FavoriteItem; detail: ItemDetail | null; x: number; y: number; invoker: HTMLElement } | null>(null);
 const itemToDelete = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
 const itemToMove = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
 // isOverlayOpen: a panel or dialog covers the main window, so its shortcuts and list keys stay out of the way.
 const isOverlayOpen = computed(
   () =>
     store.isSettingsOpen ||
+    store.isCreatingVault ||
     store.isSharingOpen ||
     store.isImportOpen ||
+    store.isCommitSigningSetupOpen ||
     store.isShareLinksOpen ||
     store.shareLinkDialog !== null ||
     store.vaultDialog !== null ||
@@ -224,7 +255,7 @@ const isOverlayOpen = computed(
 );
 
 async function openItemMenu(vaultID: string, vaultItem: ItemDetail, event: MouseEvent, favorite?: FavoriteItem): Promise<void> {
-  itemMenu.value = { vaultID, vaultItem, favorite, detail: null, x: event.clientX, y: event.clientY };
+  itemMenu.value = { vaultID, vaultItem, favorite, detail: null, x: event.clientX, y: event.clientY, invoker: event.currentTarget as HTMLElement };
   try {
     const detail = await api.getItem(vaultID, vaultItem.id);
     if (itemMenu.value?.vaultID === vaultID && itemMenu.value.vaultItem.id === vaultItem.id) {
@@ -249,7 +280,7 @@ function buildItemMenuActions(): (ContextMenuAction | null)[] {
     value ? { id, label: `Copy ${label.toLowerCase()}`, icon: "copy", run: () => copyItemField(vaultID, vaultItem.id, fieldName, label) } : null;
   const link = vaultItem.urls[0];
   const firstGroup = [
-    { id: "open", label: "Open", icon: "external" as const, run: open },
+    { id: "open", label: "Open", icon: "external" as const, opensDestination: true, run: open },
     copy("copy-username", "Username", "username", detail.username),
     copy("copy-password", "Password", "password", detail.password),
     copy("copy-one-time-code", "One-time code", "one-time code", detail.hasOneTimePassword),
@@ -269,6 +300,7 @@ function buildItemMenuActions(): (ContextMenuAction | null)[] {
           id: "share-link",
           label: "Share link…",
           icon: "link",
+          opensDestination: true,
           run: async () => {
             await open();
             if (store.selectedItem?.id === vaultItem.id) {
@@ -296,6 +328,7 @@ function buildItemMenuActions(): (ContextMenuAction | null)[] {
           id: "edit",
           label: "Edit",
           icon: "edit" as const,
+          opensDestination: true,
           run: async () => {
             await open();
             if (store.selectedItem?.id === vaultItem.id) {
@@ -303,9 +336,9 @@ function buildItemMenuActions(): (ContextMenuAction | null)[] {
             }
           },
         },
-        vaultItem.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate" as const, run: () => duplicateItem(vaultID, vaultItem.id) } : null,
-        hasMoveTarget ? { id: "move", label: "Move to…", icon: "move" as const, run: () => (itemToMove.value = target) } : null,
-        { id: "delete", label: "Delete…", icon: "trash" as const, isDanger: true, run: () => (itemToDelete.value = target) },
+        vaultItem.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate" as const, opensDestination: true, run: () => duplicateItem(vaultID, vaultItem.id) } : null,
+        hasMoveTarget ? { id: "move", label: "Move to…", icon: "move" as const, opensDestination: true, run: () => (itemToMove.value = target) } : null,
+        { id: "delete", label: "Delete…", icon: "trash" as const, isDanger: true, opensDestination: true, run: () => (itemToDelete.value = target) },
       ]
     : [];
   return [firstGroup, favoriteGroup, editGroup]
@@ -349,16 +382,16 @@ function getItemSubtitle(vaultItem: ItemDetail): string {
 function isSelectedFavorite(favorite: FavoriteItem): boolean {
   return store.selectedItem?.id === favorite.item.id && store.selectedVaultID === favorite.vaultId;
 }
-const vaultMenu = ref<{ vaultID: string; x: number; y: number } | null>(null);
+const vaultMenu = ref<{ vaultID: string; x: number; y: number; invoker: HTMLElement } | null>(null);
 const vaultMenuVault = computed(() => store.allVault.find((vault) => vault.id === vaultMenu.value?.vaultID));
 
 function openVaultMenuAtPointer(vaultID: string, event: MouseEvent): void {
-  vaultMenu.value = { vaultID, x: event.clientX, y: event.clientY };
+  vaultMenu.value = { vaultID, x: event.clientX, y: event.clientY, invoker: event.currentTarget as HTMLElement };
 }
 
-function openVaultMenuBelow(event: MouseEvent): void {
+function openVaultMenuBelow(event: MouseEvent | KeyboardEvent): void {
   const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  vaultMenu.value = { vaultID: store.selectedVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6 };
+  vaultMenu.value = { vaultID: store.listVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6, invoker: event.currentTarget as HTMLElement };
 }
 
 // prepareNewVaultForm clears the form and loads the teams for Where whenever the new-vault form opens, from the New vault
@@ -366,10 +399,16 @@ function openVaultMenuBelow(event: MouseEvent): void {
 async function prepareNewVaultForm(): Promise<void> {
   newVaultWhere.value = "";
   newVaultErrorMessage.value = "";
+  await loadNewVaultTeams();
+}
+
+async function loadNewVaultTeams(): Promise<void> {
   isLoadingTeams.value = true;
+  newVaultTeamsError.value = "";
   const load = ++newVaultTeamLoad;
-  await loadAllOrganizationQuietly();
+  const error = await loadAllOrganizationQuietly();
   if (load === newVaultTeamLoad) {
+    newVaultTeamsError.value = error;
     isLoadingTeams.value = false;
   }
 }
@@ -398,14 +437,21 @@ function chooseNewItem(create: () => void): void {
   create();
 }
 
-function closeNewItemMenu(event: Event): void {
-  if (!isNewItemMenuOpen.value) {
-    return;
-  }
-  if (event instanceof KeyboardEvent ? event.key === "Escape" : !newItemMenu.value?.contains(event.target as Node)) {
-    isNewItemMenuOpen.value = false;
-  }
-}
+const allNewItemAction: (ContextMenuAction | null)[] = [
+  { id: "login", label: "Login", icon: "globe", shortcut: `${shortcutModifier}N`, opensDestination: true, run: () => chooseNewItem(startCreatingItem) },
+  { id: "secure-note", label: "Secure note", icon: "note", opensDestination: true, run: () => chooseNewItem(startCreatingSecureNote) },
+  { id: "credit-card", label: "Credit card", icon: "card", opensDestination: true, run: () => chooseNewItem(startCreatingCard) },
+  { id: "identity", label: "Identity", icon: "identity", opensDestination: true, run: () => chooseNewItem(startCreatingIdentity) },
+  { id: "api-credential", label: "API credential", icon: "apiKey", opensDestination: true, run: () => chooseNewItem(startCreatingAPICredential) },
+  { id: "address", label: "Address", icon: "address", opensDestination: true, run: () => chooseNewItem(startCreatingAddress) },
+  { id: "software-license", label: "Software license", icon: "license", opensDestination: true, run: () => chooseNewItem(startCreatingSoftwareLicense) },
+  { id: "server", label: "Server", icon: "server", opensDestination: true, run: () => chooseNewItem(startCreatingServer) },
+  { id: "database", label: "Database", icon: "database", opensDestination: true, run: () => chooseNewItem(startCreatingDatabase) },
+  { id: "ssh-key", label: "SSH key", icon: "key", opensDestination: true, run: () => chooseNewItem(startCreatingSSHKey) },
+  null,
+  { id: "import", label: "Import…", icon: "import", opensDestination: true, run: () => chooseNewItem(openImport) },
+];
+
 
 // listRows are the rows of the list on screen, in the order of allVisibleItem or allVisibleFavorite.
 function listRows(): HTMLElement[] {
@@ -413,7 +459,7 @@ function listRows(): HTMLElement[] {
 }
 
 function selectRow(index: number): Promise<void> {
-  return store.isFavoritesSelected ? selectFavoriteItem(allVisibleFavorite.value[index]) : selectItem(allVisibleItem.value[index].id);
+  return isReferenceScope.value ? selectFavoriteItem(allVisibleFavorite.value[index]) : selectItem(allVisibleItem.value[index].id);
 }
 
 // focusRow moves the keyboard focus and the selection to the row; the search field is the row above the first.
@@ -429,7 +475,11 @@ function focusRow(index: number): void {
   rows[index].focus();
 }
 
-function selectFocusedRow(index: number): void {
+// A menu returning focus to the row it opened from does not move the selection; only moving focus does.
+function selectFocusedRow(index: number, event: FocusEvent): void {
+  if (event.relatedTarget instanceof Element && event.relatedTarget.closest('[role="menu"]')) {
+    return;
+  }
   if (listRows()[index]?.getAttribute("aria-selected") !== "true") {
     void selectRow(index);
   }
@@ -440,7 +490,7 @@ function enterList(): void {
 }
 
 async function openRowInEditor(index: number): Promise<void> {
-  const item = store.isFavoritesSelected ? allVisibleFavorite.value[index]?.item : allVisibleItem.value[index];
+  const item = isReferenceScope.value ? allVisibleFavorite.value[index]?.item : allVisibleItem.value[index];
   if (!item) {
     return;
   }
@@ -474,9 +524,9 @@ function copySelectedField(fieldName: "username" | "password", label: string): v
     return;
   }
   const index = listRows().indexOf(document.activeElement as HTMLElement);
-  const favorite = store.isFavoritesSelected ? allVisibleFavorite.value[index] : undefined;
+  const favorite = isReferenceScope.value ? allVisibleFavorite.value[index] : undefined;
   const selected = index >= 0 ? favorite?.item ?? allVisibleItem.value[index] : store.selectedItem;
-  const vaultID = favorite?.vaultId ?? store.selectedVaultID;
+  const vaultID = favorite?.vaultId ?? (index >= 0 ? store.listVaultID : store.selectedVaultID);
   if (selected && (index >= 0 || selected[fieldName])) {
     void copyItemField(vaultID, selected.id, fieldName, label);
   }
@@ -484,11 +534,11 @@ function copySelectedField(fieldName: "username" | "password", label: string): v
 
 // moveVaultSelection steps through the sidebar's rows: Favorites, then the vaults as listed.
 function moveVaultSelection(step: number): void {
-  const allVaultID = ["", ...allVaultGroup.value.flatMap((group) => group.allVault.map((vault) => vault.id))];
-  const current = store.isFavoritesSelected ? 0 : allVaultID.indexOf(store.selectedVaultID);
+  const allVaultID = ["all", "", ...allVaultGroup.value.flatMap((group) => group.allVault.map((vault) => vault.id))];
+  const current = store.isAllItemsSelected ? 0 : store.isFavoritesSelected ? 1 : allVaultID.indexOf(store.listVaultID);
   const next = Math.min(allVaultID.length - 1, Math.max(0, current + step));
   if (next !== current) {
-    void (next === 0 ? selectFavorites() : selectVault(allVaultID[next]));
+    void (next === 0 ? selectAllItems() : next === 1 ? selectFavorites() : selectVault(allVaultID[next]));
   }
 }
 
@@ -500,7 +550,7 @@ function handleShortcut(event: KeyboardEvent): void {
     }
     return;
   }
-  if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+  if (!isApplicationCommand(event) || event.altKey) {
     return;
   }
   const key = event.key.toLowerCase();
@@ -520,6 +570,7 @@ function handleShortcut(event: KeyboardEvent): void {
   if (key === "f") {
     event.preventDefault();
     searchInput.value?.focus();
+    searchInput.value?.select();
   } else if (key === "n" && canCreate.value) {
     event.preventDefault();
     startCreatingItem();
@@ -539,15 +590,11 @@ let syncTimer: ReturnType<typeof setInterval> | undefined;
 
 onMounted(() => {
   window.addEventListener("keydown", handleShortcut);
-  window.addEventListener("keydown", closeNewItemMenu);
-  window.addEventListener("pointerdown", closeNewItemMenu);
   window.addEventListener("focus", syncInBackground);
   syncTimer = setInterval(syncInBackground, syncInterval);
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleShortcut);
-  window.removeEventListener("keydown", closeNewItemMenu);
-  window.removeEventListener("pointerdown", closeNewItemMenu);
   window.removeEventListener("focus", syncInBackground);
   clearInterval(syncTimer);
 });
@@ -558,9 +605,15 @@ onBeforeUnmount(() => {
     <aside class="sidebar">
       <div class="title-bar"></div>
       <div class="sidebar-brand"><HisarLogo :size="24" show-wordmark /></div>
+      <div class="sidebar-navigation" data-testid="sidebar-navigation">
       <OrganizationBanner />
       <RemovedVaultBanner />
 
+      <nav aria-label="All items">
+        <button class="vault" :class="{ selected: store.isAllItemsSelected }" :aria-current="store.isAllItemsSelected ? 'true' : undefined" data-testid="open-all-items" @click="selectAllItems">
+          <AppIcon name="vault" /><span class="vault-name">All items</span>
+        </button>
+      </nav>
       <nav aria-label="Favorites" class="favorites-nav">
         <button
           class="vault"
@@ -596,8 +649,8 @@ onBeforeUnmount(() => {
             v-for="vault in group.allVault"
             :key="vault.id"
             class="vault"
-            :class="{ selected: !store.isFavoritesSelected && vault.id === store.selectedVaultID }"
-            :aria-current="!store.isFavoritesSelected && vault.id === store.selectedVaultID ? 'true' : undefined"
+            :class="{ selected: !isReferenceScope && vault.id === store.listVaultID }"
+            :aria-current="!isReferenceScope && vault.id === store.listVaultID ? 'true' : undefined"
             :data-testid="`vault-${vault.id}`"
             @click="selectVault(vault.id)"
             @contextmenu.prevent="openVaultMenuAtPointer(vault.id, $event)"
@@ -607,25 +660,7 @@ onBeforeUnmount(() => {
             <span class="vault-count">{{ vault.readIssues?.length ? `${vault.itemCount} + ${vault.readIssues.length} unreadable` : vault.itemCount }}</span>
           </button>
         </div>
-        <form v-if="store.isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
-          <input v-model="newVaultName" name="vaultName" placeholder="Vault name" autofocus />
-          <label v-if="allTeamChoice.length > 0 || newVaultWhere !== ''" class="new-vault-where">
-            <span>Where</span>
-            <select v-model="newVaultWhere" name="vaultWhere" data-testid="new-vault-where">
-              <option value="">Your own vault (share it later)</option>
-              <option v-for="choice in allTeamChoice" :key="choice.key" :value="choice.key">{{ choice.label }}</option>
-            </select>
-          </label>
-          <p v-if="selectedTeamChoice" class="muted new-vault-note" data-testid="new-vault-where-note">
-            {{ selectedTeamChoice.teamName }}'s members get this vault. Manage it in Settings → Organizations.
-          </p>
-          <p v-if="newVaultErrorMessage" class="error new-vault-error" role="alert" data-testid="new-vault-error">{{ newVaultErrorMessage }}</p>
-          <div class="row">
-            <button type="button" class="ghost" @click="store.isCreatingVault = false">Cancel</button>
-            <button class="primary" type="submit" data-testid="create-vault" :disabled="store.isBusy || !canSubmitNewVault">Create</button>
-          </div>
-        </form>
-        <button v-else class="ghost new-vault-button" data-testid="new-vault" @click="store.isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
+        <button class="ghost new-vault-button" data-testid="new-vault" @click="store.isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
       </nav>
 
       <nav v-if="allTag.length > 0" aria-label="Tags" class="tags-nav" data-testid="tag-list">
@@ -653,7 +688,7 @@ onBeforeUnmount(() => {
         </button>
       </nav>
 
-      <div class="spacer"></div>
+      </div>
       <div v-if="store.status.isOffline" class="offline" role="status" data-testid="offline-notice">
         <AppIcon name="offline" />
         <div>
@@ -661,6 +696,11 @@ onBeforeUnmount(() => {
           <p class="muted">Showing the copy saved on this device. Changes can be saved once Hisar reconnects.</p>
         </div>
       </div>
+      <PendingRecoveryReminder />
+      <button v-if="store.biometricResetReminder" class="vault" data-testid="restore-touch-id" @click="openSettings('security')">
+        <AppIcon name="fingerprint" />
+        <span class="vault-name">Turn on Touch ID…</span>
+      </button>
       <div class="account">
         <span class="avatar">{{ getInitials(store.status.name || store.status.email) }}</span>
         <div class="account-text">
@@ -673,18 +713,20 @@ onBeforeUnmount(() => {
     </aside>
     <ColumnResizer v-model="columnWidths.sidebar" column="sidebar" label="Sidebar width" @commit="saveColumnWidths(columnWidths)" />
 
-    <section class="list">
+    <section class="list" :aria-busy="store.isAllItemsSelected && store.isLoadingAllItems">
+      <EmergencyKitBanner />
       <ReadIssuesPanel />
-      <div v-if="store.isFavoritesSelected" class="title-bar list-title">
+      <div v-if="isReferenceScope" class="title-bar list-title">
         <div>
-          <h2>Favorites</h2>
-          <span class="muted">{{ store.allFavorite.length }} {{ store.allFavorite.length === 1 ? "item" : "items" }} · only you see them</span>
+          <h2>{{ store.isAllItemsSelected ? "All items" : "Favorites" }}</h2>
+          <span class="muted">{{ scopeReferences.length }} {{ scopeReferences.length === 1 ? "item" : "items" }}{{ store.isFavoritesSelected ? " · only you see them" : "" }}</span>
         </div>
       </div>
       <div v-else class="title-bar list-title">
         <div>
-          <h2>{{ selectedVault?.name ?? "" }}</h2>
+          <h2>{{ listVault?.name ?? "" }}</h2>
           <span class="muted">{{ healthyItemCount }} {{ healthyItemCount === 1 ? "item" : "items" }}<template v-if="unreadableItemCount"> · {{ unreadableItemCount }} unreadable</template></span>
+          <span v-if="readerDescription" class="reader-badge" aria-describedby="reader-access">Reader</span>
         </div>
         <div ref="newItemMenu" class="new-item">
           <button
@@ -696,11 +738,11 @@ onBeforeUnmount(() => {
           >
             <AppIcon name="users" :size="14" /> Share
           </button>
-          <span v-else-if="selectedVault" class="private-badge" :title="personalVaultNotice" data-testid="personal-vault-private">
+          <span v-else-if="listVault" class="private-badge" :title="personalVaultNotice" data-testid="personal-vault-private">
             <AppIcon name="lock" :size="13" /> Private
           </span>
           <button
-            v-if="selectedVault"
+            v-if="listVault"
             class="ghost icon-button"
             title="Vault actions"
             aria-label="Vault actions"
@@ -708,73 +750,77 @@ onBeforeUnmount(() => {
             data-testid="vault-actions"
             @pointerdown.stop
             @click="openVaultMenuBelow"
+            @keydown.down.prevent="openVaultMenuBelow"
+            @keydown.enter.prevent="openVaultMenuBelow"
+            @keydown.space.prevent="openVaultMenuBelow"
           >
             <AppIcon name="more" />
           </button>
+          <span :tabindex="readerDescription ? 0 : undefined" :role="readerDescription ? 'group' : undefined" :aria-label="readerDescription ? 'New item unavailable' : undefined" :aria-describedby="readerDescription ? 'reader-access' : undefined">
           <button
+            ref="newItemTrigger"
             class="primary icon-button"
-            :disabled="!canEdit"
-            :title="`New item (${shortcutModifier}N for a login)`"
+            :disabled="!canEditList"
+            :title="readerDescription || `New item (${shortcutModifier}N for a login)`"
+            :aria-describedby="readerDescription ? 'reader-access' : undefined"
             aria-label="New item"
             aria-haspopup="menu"
             :aria-expanded="isNewItemMenuOpen"
             @click="isNewItemMenuOpen = !isNewItemMenuOpen"
+            @keydown.down.prevent="isNewItemMenuOpen = true"
+            @keydown.enter.prevent="isNewItemMenuOpen = true"
+            @keydown.space.prevent="isNewItemMenuOpen = true"
           >
             <AppIcon name="plus" />
           </button>
-          <div v-if="isNewItemMenuOpen" class="card new-item-menu" role="menu" aria-label="New item">
-            <button class="ghost" role="menuitem" data-testid="new-login" @click="chooseNewItem(startCreatingItem)">
-              <AppIcon name="globe" /> Login <kbd>{{ shortcutModifier }}N</kbd>
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-secure-note" @click="chooseNewItem(startCreatingSecureNote)">
-              <AppIcon name="note" /> Secure note
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-credit-card" @click="chooseNewItem(startCreatingCard)">
-              <AppIcon name="card" /> Credit card
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-identity" @click="chooseNewItem(startCreatingIdentity)">
-              <AppIcon name="identity" /> Identity
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-api-credential" @click="chooseNewItem(startCreatingAPICredential)">
-              <AppIcon name="apiKey" /> API credential
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-address" @click="chooseNewItem(startCreatingAddress)">
-              <AppIcon name="address" /> Address
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-software-license" @click="chooseNewItem(startCreatingSoftwareLicense)">
-              <AppIcon name="license" /> Software license
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-server" @click="chooseNewItem(startCreatingServer)">
-              <AppIcon name="server" /> Server
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-database" @click="chooseNewItem(startCreatingDatabase)">
-              <AppIcon name="database" /> Database
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
-              <AppIcon name="key" /> SSH key
-            </button>
-            <hr class="new-item-separator" />
-            <button class="ghost" role="menuitem" data-testid="new-import" @click="chooseNewItem(openImport)">
-              <AppIcon name="import" /> Import…
-            </button>
-          </div>
+          </span>
+          <ContextMenu
+            v-if="isNewItemMenuOpen"
+            class="new-item-menu"
+            label="New item"
+            :x="0"
+            :y="0"
+            :anchor="newItemMenu"
+            :invoker="newItemTrigger"
+            :all-action="allNewItemAction"
+            test-id="new-item-menu"
+            action-test-id-prefix="new"
+            @close="isNewItemMenuOpen = false"
+          />
         </div>
       </div>
+      <p v-if="readerDescription && !isReferenceScope" id="reader-access" class="reader-notice">{{ readerDescription }}</p>
       <div class="search">
         <AppIcon name="search" />
-        <input ref="searchInput" v-model="store.searchQuery" name="search" type="search" placeholder="Search" aria-label="Search items" @keydown.down.prevent="enterList" />
+        <input ref="searchInput" v-model="store.searchQuery" name="search" type="search" :placeholder="store.isAllItemsSelected ? 'Search all vaults' : 'Search'" :aria-label="store.isAllItemsSelected ? 'Search all vaults' : 'Search items'" @keydown.down.prevent="enterList" />
         <kbd>{{ shortcutModifier }}F</kbd>
+      </div>
+      <label class="type-filter">
+        <span>Type</span>
+        <AppIcon :name="selectedCategory ? getItemIcon(selectedCategory) ?? 'globe' : 'vault'" :size="14" />
+        <select v-model="selectedCategory" aria-label="Type">
+          <option value="">All types ({{ scopeItems.length }})</option>
+          <option v-for="category in categoryCounts" :key="category.id" :value="category.id">{{ category.label }} ({{ category.count }})</option>
+        </select>
+      </label>
+      <div v-if="selectedCategory" class="tag-filter" data-testid="type-filter">
+        <AppIcon :name="getItemIcon(selectedCategory) ?? 'globe'" :size="13" /><span>{{ selectedCategoryName }}</span>
+        <button class="ghost icon-button" aria-label="Clear type filter" @click="selectedCategory = ''"><AppIcon name="close" :size="13" /></button>
       </div>
       <div v-if="store.selectedTag && !store.isFavoritesSelected" class="tag-filter" data-testid="tag-filter">
         <AppIcon name="tag" :size="13" />
         <span class="tag-filter-name">{{ store.selectedTag }}</span>
         <button class="ghost icon-button" aria-label="Show all items" title="Show all items" @click="selectTag(store.selectedTag)"><AppIcon name="close" :size="13" /></button>
       </div>
+      <p v-if="store.isAllItemsSelected && store.allItemsError" role="alert">{{ store.allItemsError }} <button @click="selectAllItems">Retry</button></p>
 
-      <template v-if="store.isFavoritesSelected">
+      <template v-if="isReferenceScope">
         <div v-if="allVisibleFavorite.length === 0" class="list-empty" data-testid="favorites-empty">
           <AppIcon :name="store.searchQuery ? 'search' : 'star'" :size="26" />
-          <template v-if="store.searchQuery">
+          <template v-if="store.isAllItemsSelected">
+            <p>{{ allItemsEmptyMessage }}</p>
+          </template>
+          <template v-else-if="store.searchQuery">
             <p>No favorites match your search.</p>
           </template>
           <template v-else>
@@ -782,7 +828,7 @@ onBeforeUnmount(() => {
             <p class="muted">Star an item with <AppIcon name="star" :size="12" /> or {{ shortcutModifier }}D to keep it here, across all your vaults and devices. Only you see your favorites.</p>
           </template>
         </div>
-        <ul v-else ref="itemList" role="listbox" aria-label="Favorites" data-testid="favorites-list" @keydown="handleListKey">
+        <ul v-else ref="itemList" role="listbox" :aria-label="store.isAllItemsSelected ? 'All items' : 'Favorites'" :data-testid="store.isAllItemsSelected ? 'all-items-list' : 'favorites-list'" @keydown="handleListKey">
           <li v-for="(favorite, index) in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`" role="presentation">
             <button
               class="item"
@@ -790,7 +836,7 @@ onBeforeUnmount(() => {
               role="option"
               :aria-selected="isSelectedFavorite(favorite)"
               :tabindex="index === listEntryIndex ? 0 : -1"
-              @focus="selectFocusedRow(index)"
+              @focus="selectFocusedRow(index, $event)"
               @click="selectFavoriteItem(favorite)"
               @contextmenu.prevent="openItemMenu(favorite.vaultId, favorite.item, $event, favorite)"
             >
@@ -814,9 +860,9 @@ onBeforeUnmount(() => {
       <div v-else-if="allVisibleItem.length === 0" class="list-empty">
         <AppIcon :name="store.searchQuery ? 'search' : store.selectedTag ? 'tag' : 'key'" :size="26" />
         <p>{{ emptyListMessage }}</p>
-        <button v-if="!store.searchQuery && !store.selectedTag && canEdit" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
+        <button v-if="!store.searchQuery && !store.selectedTag && canEditList" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
       </div>
-      <ul v-else ref="itemList" role="listbox" :aria-label="selectedVault?.name ?? 'Items'" @keydown="handleListKey">
+      <ul v-else ref="itemList" role="listbox" :aria-label="listVault?.name ?? 'Items'" @keydown="handleListKey">
         <li v-for="(vaultItem, index) in allVisibleItem" :key="vaultItem.id" role="presentation">
           <button
             class="item"
@@ -824,9 +870,9 @@ onBeforeUnmount(() => {
             role="option"
             :aria-selected="store.selectedItem?.id === vaultItem.id"
             :tabindex="index === listEntryIndex ? 0 : -1"
-            @focus="selectFocusedRow(index)"
+            @focus="selectFocusedRow(index, $event)"
             @click="selectItem(vaultItem.id)"
-            @contextmenu.prevent="openItemMenu(store.selectedVaultID, vaultItem, $event)"
+            @contextmenu.prevent="openItemMenu(store.listVaultID, vaultItem, $event)"
           >
             <ItemTile :title="vaultItem.title" :icon="getItemIcon(vaultItem.category)" :item-icon="vaultItem.icon" :websiteURL="getWebsiteIconURL(vaultItem)" />
             <span class="item-text">
@@ -843,7 +889,7 @@ onBeforeUnmount(() => {
     <main class="detail">
       <div class="title-bar"></div>
       <div class="detail-content">
-        <p v-if="store.errorMessage" class="error detail-error" role="alert">
+        <p v-if="store.errorMessage && (store.editorMode === 'view' || store.editorMode === 'create-ssh-key')" class="error detail-error" role="alert">
           <span>{{ store.errorMessage }}</span>
           <button class="ghost icon-button" aria-label="Dismiss" title="Dismiss" data-testid="dismiss-error" @click="clearError"><AppIcon name="close" :size="13" /></button>
         </p>
@@ -853,10 +899,10 @@ onBeforeUnmount(() => {
         <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :vault-type="selectedVault?.type ?? ''" />
         <div v-else class="detail-empty">
           <span class="detail-empty-icon"><AppIcon name="vault" :size="28" /></span>
-          <h3>{{ store.isFavoritesSelected ? "Favorites" : selectedVault ? selectedVault.name : "Hisar" }}</h3>
+          <h3>{{ store.isAllItemsSelected ? "All items" : store.isFavoritesSelected ? "Favorites" : listVault ? listVault.name : "Hisar" }}</h3>
           <p class="muted">Select an item to see its details.</p>
           <dl class="shortcut-list">
-            <div><dt><kbd>{{ shortcutModifier }}N</kbd></dt><dd>New item</dd></div>
+            <div v-if="canCreate"><dt><kbd>{{ shortcutModifier }}N</kbd></dt><dd>New item</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}F</kbd></dt><dd>Search</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}C</kbd></dt><dd>Copy username</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}{{ shiftModifier }}C</kbd></dt><dd>Copy password</dd></div>
@@ -866,12 +912,27 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </main>
+    <NewVaultDialog
+      v-if="store.isCreatingVault"
+      v-model:name="newVaultName"
+      v-model:where="newVaultWhere"
+      :all-team-choice="allTeamChoice"
+      :is-loading-teams="isLoadingTeams"
+      :teams-error="newVaultTeamsError"
+      :error-message="newVaultErrorMessage"
+      :can-submit="canSubmitNewVault"
+      :is-busy="store.isBusy"
+      @close="store.isCreatingVault = false"
+      @retry="loadNewVaultTeams"
+      @submit="submitNewVault"
+    />
     <SettingsPanel v-if="store.isSettingsOpen" />
     <VaultSharingPanel v-if="store.isSharingOpen" />
     <ImportPanel v-if="store.isImportOpen" />
+    <CommitSigningSetupDialog v-if="store.isCommitSigningSetupOpen" />
     <SharedLinksPanel v-if="store.isShareLinksOpen" />
     <VaultDialog v-if="store.vaultDialog" :key="`${store.vaultDialog.mode}-${store.vaultDialog.actions.vault.id}`" :dialog="store.vaultDialog" />
-    <VaultMenu v-if="vaultMenu && vaultMenuVault" :vault="vaultMenuVault" :x="vaultMenu.x" :y="vaultMenu.y" @close="vaultMenu = null" />
+    <VaultMenu v-if="vaultMenu && vaultMenuVault" :vault="vaultMenuVault" :x="vaultMenu.x" :y="vaultMenu.y" :invoker="vaultMenu.invoker" @close="vaultMenu = null" />
     <ContextMenu
       v-if="itemMenu"
       :key="`${itemMenu.vaultID}/${itemMenu.vaultItem.id}`"
@@ -879,6 +940,7 @@ onBeforeUnmount(() => {
       :x="itemMenu.x"
       :y="itemMenu.y"
       :all-action="allItemMenuAction"
+      :invoker="itemMenu.invoker"
       @close="itemMenu = null"
     />
     <MoveItemDialog v-if="itemToMove" :vault-i-d="itemToMove.vaultID" :item-i-d="itemToMove.itemID" :title="itemToMove.title" @close="itemToMove = null" />
@@ -901,6 +963,13 @@ onBeforeUnmount(() => {
   padding: 0 10px 10px;
   border-right: 1px solid var(--color-border);
   background: var(--color-sidebar);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar-navigation {
+  min-height: 0;
+  flex: 1;
   overflow-y: auto;
 }
 
@@ -964,9 +1033,6 @@ onBeforeUnmount(() => {
   color: var(--color-text-muted);
 }
 
-.new-vault {
-  margin: 6px 0;
-}
 
 .sharing-nav,
 .tags-nav {
@@ -1039,37 +1105,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.new-vault input {
-  margin-bottom: 6px;
-}
-
-.new-vault-where {
-  margin-bottom: 6px;
-}
-
-.new-vault-where span {
-  padding: 0 2px;
-}
-
-.new-vault-where select {
-  width: 100%;
-}
-
-.new-vault-note {
-  margin: 0 2px 8px;
-  font-size: var(--font-size-11);
-  line-height: 1.4;
-}
-
-.new-vault-error {
-  margin: 0 0 8px;
-  padding: 6px 8px;
-  font-size: var(--font-size-12);
-}
-
-.new-vault .row {
-  justify-content: flex-end;
-}
 
 .vault-group + .vault-group {
   margin-top: 14px;
@@ -1099,6 +1134,7 @@ onBeforeUnmount(() => {
 
 .account {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 10px;
   padding: 10px 8px;
@@ -1139,6 +1175,8 @@ onBeforeUnmount(() => {
 .list {
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
+  min-width: 0;
   border-right: 1px solid var(--color-border);
   background: var(--color-panel);
   overflow: hidden;
@@ -1185,36 +1223,28 @@ onBeforeUnmount(() => {
   cursor: default;
 }
 
-.new-item-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 5;
+
+.reader-badge {
+  margin-left: 6px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--color-selected);
+  font-size: var(--font-size-11);
+}
+.reader-notice {
+  margin: 0 14px 10px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
+}
+
+.type-filter {
   display: flex;
-  flex-direction: column;
-  min-width: 168px;
-  padding: 4px;
-  background: var(--color-surface-raised);
-  box-shadow: 0 12px 32px var(--color-shadow);
+  align-items: center;
+  gap: 6px;
+  margin: 0 14px 10px;
+  font-size: var(--font-size-12);
 }
-
-.new-item-menu button {
-  justify-content: flex-start;
-  gap: 10px;
-  padding: 7px 8px;
-  color: var(--color-text);
-}
-
-.new-item-menu kbd {
-  margin-left: auto;
-}
-
-.new-item-separator {
-  width: 100%;
-  margin: 4px 0;
-  border: none;
-  border-top: 1px solid var(--color-border);
-}
+.type-filter select { min-width: 0; flex: 1; }
 
 .search {
   position: relative;

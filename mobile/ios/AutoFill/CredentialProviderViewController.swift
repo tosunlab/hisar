@@ -4,9 +4,15 @@ import SwiftUI
 
 final class CredentialProviderViewController: ASCredentialProviderViewController {
     private var themeSubscription: AnyCancellable?
+    private lazy var lockEvents: LockEventRelay = {
+        let relay = LockEventRelay()
+        relay.setHandler { [weak self] in self?.model.handleLocked() }
+        relay.setUpdateRequiredHandler { [weak self] in self?.model.refreshStatus() }
+        return relay
+    }()
     private lazy var model = AutoFillModel(
-        createBackend: {
-            try BackendFactory.createBackend(configuration: .current, isClipboardIncluded: false, eventListener: nil)
+        createBackend: { [unowned self] in
+            try BackendFactory.createBackend(configuration: .current, isClipboardIncluded: false, eventListener: lockEvents)
         },
         completeRequest: { [weak self] credential in
             self?.extensionContext.completeRequest(withSelectedCredential: ASPasswordCredential(user: credential.username, password: credential.password))
@@ -56,6 +62,11 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             self?.view.tintColor = theme.palette.tint.uiColor
             self?.view.backgroundColor = theme.palette.groupedBackground.uiColor
         }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        model.refreshStatus()
     }
 
     override func prepareCredentialList(for allRequestedServiceIdentifier: [ASCredentialServiceIdentifier]) {

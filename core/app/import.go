@@ -93,15 +93,17 @@ type ImportPreview struct {
 }
 
 type ImportProgress struct {
-	FileName        string               `json:"fileName"`
-	FilePath        string               `json:"filePath"`
-	VaultID         string               `json:"vaultId"`
-	VaultName       string               `json:"vaultName"`
-	SavedCount      int                  `json:"savedCount"`
-	TotalCount      int                  `json:"totalCount"`
-	LeftBehindCount int                  `json:"leftBehindCount"`
-	IsDone          bool                 `json:"isDone"`
-	Failed          []ImportSkippedEntry `json:"allFailed"`
+	FileName          string               `json:"fileName"`
+	FilePath          string               `json:"filePath"`
+	VaultID           string               `json:"vaultId"`
+	VaultName         string               `json:"vaultName"`
+	SavedCount        int                  `json:"savedCount"`
+	TotalCount        int                  `json:"totalCount"`
+	LeftBehindCount   int                  `json:"leftBehindCount"`
+	IsDone            bool                 `json:"isDone"`
+	Failed            []ImportSkippedEntry `json:"allFailed"`
+	Skipped           []ImportSkippedEntry `json:"allSkipped"`
+	DuplicateOutcomes []ImportSkippedEntry `json:"allDuplicateOutcomes"`
 	// IsSourceKept: the file is not offered for deletion, see ImportPreview.
 	IsSourceKept bool `json:"isSourceKept"`
 }
@@ -109,19 +111,21 @@ type ImportProgress struct {
 // pendingImport holds the parsed export between the preview and saving; locking drops it. A Credential Exchange import
 // has no filePath; sourceName names the app it came from.
 type pendingImport struct {
-	filePath       string
-	sourceName     string
-	format         string
-	items          []item.Item
-	skipped        []importer.SkippedEntry
-	groups         []importDestination
-	queuedVaultIDs []string
-	scopes         map[string]string
-	isStarted      bool
-	vaultID        string
-	queuedItems    []item.Item
-	savedCount     int
-	failed         []ImportSkippedEntry
+	filePath                string
+	sourceName              string
+	format                  string
+	items                   []item.Item
+	skipped                 []importer.SkippedEntry
+	groups                  []importDestination
+	queuedVaultIDs          []string
+	scopes                  map[string]string
+	isStarted               bool
+	vaultID                 string
+	queuedItems             []item.Item
+	savedCount              int
+	failed                  []ImportSkippedEntry
+	duplicateOutcomes       []ImportSkippedEntry
+	queuedDuplicateOutcomes [][]ImportSkippedEntry
 	// favoriteItemIDs are saved items the other password manager starred; they become favorites when the import ends.
 	favoriteItemIDs []string
 	// content is an encrypted Hisar export waiting for its passphrase; the fields below describe an opened one.
@@ -429,12 +433,15 @@ func (s *Service) startSingleImport(pending *pendingImport, vaultID string, isSk
 	if err != nil {
 		return ImportProgress{}, err
 	}
-	duplicateMatches := map[int]int{}
+	allDuplicateMatches := importer.FindDuplicateMatches(pending.items, existingItems)
+	var duplicateMatches map[int]int
 	if isSkippingDuplicate {
-		duplicateMatches = importer.FindDuplicateMatches(pending.items, existingItems)
+		duplicateMatches = allDuplicateMatches
 	}
 	existingPasskeyIDs := collectPasskeyCredentialIDs(existingItems)
 	queuedItems := make([]item.Item, 0, len(pending.items))
+	queuedOutcomes := make([][]ImportSkippedEntry, 0, len(pending.items))
+	mergedPasskeyCounts := map[int]int{}
 	// mergedPositions maps an existing login that receives passkeys to its place in queuedItems, so two imported items
 	// that match it make one update.
 	mergedPositions := map[int]int{}
@@ -449,6 +456,11 @@ func (s *Service) startSingleImport(pending *pendingImport, vaultID string, isSk
 			vaultItem.Details.Passkeys = newPasskeys
 			item.UpdatePasskeyOverview(&vaultItem)
 			queuedItems = append(queuedItems, vaultItem)
+			var outcomes []ImportSkippedEntry
+			if _, matched := allDuplicateMatches[index]; matched {
+				outcomes = []ImportSkippedEntry{{Title: vaultItem.Overview.Title, Reason: "Included the duplicate as another item. Passkeys already in Hisar were not copied."}}
+			}
+			queuedOutcomes = append(queuedOutcomes, outcomes)
 		case len(newPasskeys) == 0 || !existingItems[existingIndex].IsCategory(item.CategoryLogin):
 			// A plain duplicate is skipped.
 		default:
@@ -459,10 +471,19 @@ func (s *Service) startSingleImport(pending *pendingImport, vaultID string, isSk
 				position = len(queuedItems)
 				mergedPositions[existingIndex] = position
 				queuedItems = append(queuedItems, merged)
+				queuedOutcomes = append(queuedOutcomes, nil)
 			}
 			merged := &queuedItems[position]
 			merged.Details.Passkeys = append(merged.Details.Passkeys, newPasskeys...)
 			item.UpdatePasskeyOverview(merged)
+			mergedPasskeyCounts[index] = len(newPasskeys)
+			passkeyLabel := "passkeys"
+			if len(newPasskeys) == 1 {
+				passkeyLabel = "passkey"
+			}
+			queuedOutcomes[position] = append(queuedOutcomes[position], ImportSkippedEntry{
+				Title: vaultItem.Overview.Title, Reason: fmt.Sprintf("Added %d new %s to the existing login in Hisar.", len(newPasskeys), passkeyLabel),
+			})
 		}
 	}
 	if len(mergedPositions) > 0 {
@@ -471,7 +492,24 @@ func (s *Service) startSingleImport(pending *pendingImport, vaultID string, isSk
 			existingItems[existingIndex] = queuedItems[position]
 		}
 	}
-	pending.skipped = append(pending.skipped, importer.FindUnsavedDuplicates(pending.items, existingItems, duplicateMatches)...)
+	for index, imported := range pending.items {
+		existingIndex, isDuplicate := duplicateMatches[index]
+		if !isDuplicate {
+			continue
+		}
+		isPresent := importer.ContainsImportedContent(imported, existingItems[existingIndex])
+		if !isPresent {
+			pending.skipped = append(pending.skipped, importer.SkippedEntry{Title: imported.Overview.Title, Reason: "The skipped duplicate has different content from the item in Hisar. That content remains only in the source."})
+		}
+		if mergedPasskeyCounts[index] == 0 {
+			reason := "Identical duplicate already present in Hisar. No new item was saved."
+			if !isPresent {
+				reason = "Skipped the duplicate. Its different content remains only in the source."
+			}
+			pending.duplicateOutcomes = append(pending.duplicateOutcomes, ImportSkippedEntry{Title: imported.Overview.Title, Reason: reason})
+		}
+	}
+	pending.queuedDuplicateOutcomes = queuedOutcomes
 	pending.isStarted, pending.vaultID, pending.queuedItems, pending.items = true, vault.ID, queuedItems, nil
 	pending.failed = []ImportSkippedEntry{}
 	return s.buildImportProgress(), nil
@@ -504,12 +542,21 @@ func (s *Service) ContinueImport() (ImportProgress, error) {
 			return ImportProgress{}, convertError(err)
 		}
 		pending.queuedItems = pending.queuedItems[1:]
+		var outcomes []ImportSkippedEntry
+		if len(pending.queuedDuplicateOutcomes) > 0 {
+			outcomes = pending.queuedDuplicateOutcomes[0]
+			pending.queuedDuplicateOutcomes = pending.queuedDuplicateOutcomes[1:]
+		}
 		pending.queuedVaultIDs = pending.queuedVaultIDs[1:]
 		if err != nil {
+			for _, outcome := range outcomes {
+				pending.duplicateOutcomes = append(pending.duplicateOutcomes, ImportSkippedEntry{Title: outcome.Title, Reason: "The duplicate could not be saved. Its new content remains only in the source. See the save failure."})
+			}
 			pending.failed = append(pending.failed, ImportSkippedEntry{Title: vaultItem.Overview.Title, Reason: convertError(err).Error()})
 			continue
 		}
 		pending.savedCount++
+		pending.duplicateOutcomes = append(pending.duplicateOutcomes, outcomes...)
 		s.replaceCachedItem(vault.ID, vaultItem)
 		if vaultItem.IsFavorite {
 			pending.favoriteItemIDs = append(pending.favoriteItemIDs, vaultItem.ID)
@@ -531,15 +578,19 @@ func isImportStoppingError(err error) bool {
 func (s *Service) buildImportProgress() ImportProgress {
 	pending := s.pendingImport
 	progress := ImportProgress{
-		FileName:        pending.getName(),
-		FilePath:        pending.filePath,
-		VaultID:         pending.vaultID,
-		SavedCount:      pending.savedCount,
-		TotalCount:      pending.savedCount + len(pending.failed) + len(pending.queuedItems),
-		LeftBehindCount: pending.countLeftBehind(),
-		IsDone:          len(pending.queuedItems) == 0,
-		Failed:          slices.Clone(pending.failed),
-		IsSourceKept:    pending.isSourceKept,
+		FileName:          pending.getName(),
+		FilePath:          pending.filePath,
+		VaultID:           pending.vaultID,
+		SavedCount:        pending.savedCount,
+		TotalCount:        pending.savedCount + len(pending.failed) + len(pending.queuedItems),
+		LeftBehindCount:   pending.countLeftBehind(),
+		IsDone:            len(pending.queuedItems) == 0,
+		Failed:            slices.Clone(pending.failed),
+		IsSourceKept:      pending.isSourceKept,
+		DuplicateOutcomes: slices.Clone(pending.duplicateOutcomes),
+	}
+	for _, skipped := range pending.skipped {
+		progress.Skipped = append(progress.Skipped, ImportSkippedEntry{Title: skipped.Title, Reason: skipped.Reason})
 	}
 	if vault, found := s.vaultsByID[pending.vaultID]; found {
 		progress.VaultName = vault.Name

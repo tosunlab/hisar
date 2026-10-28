@@ -4,6 +4,9 @@ import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.ItemAndroidApp
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.ItemField
+import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.model.VaultDestinations
+import com.tryhisar.hisar.model.OrganizationSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -20,6 +23,47 @@ class ItemModelTests {
     private fun AppModelHarness.seedLogin(item: ItemDetail): ItemDetail {
         backend.seedSignedIn()
         return backend.saveItem("personal", item)
+    }
+
+    @Test
+    fun testMovePreservesIdentityContentsFavoritesAndAutoFill() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        model.favorites.setItemFavorite("personal", "github", true)
+        val original = model.item.loadItem("personal", "github")
+        val moved = model.item.moveItem("personal", "github", "family")
+        assertEquals(original, moved)
+        assertFalse(model.unlockedData.value.listAllItemReference("personal").any { it.item.id == "github" })
+        assertTrue(model.unlockedData.value.listAllItemReference("family").any { it.item.id == "github" && it.item.isFavorite })
+        assertTrue(model.unlockedData.value.allPasskey.any { it.itemID == "github" && it.vaultID == "family" })
+    }
+
+    @Test
+    fun testMoveFiltersPermissionsAndKeepsTheSourceOnFailure() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.seedSignedIn()
+        harness.backend.allVault += VaultSummary(id = "reader", name = "Read only", type = "shared", role = "reader")
+        val model = harness.startModel().also { it.refreshAll() }
+        assertEquals(listOf("family"), model.item.moveDestinations("personal").map { it.id })
+        assertTrue(model.item.moveDestinations("reader").isEmpty())
+        harness.backend.moveErrorMessage = "The server could not be reached."
+        assertNull(model.item.moveItem("personal", "github", "family"))
+        assertEquals("The server could not be reached.", model.errorMessage.value)
+        assertTrue(model.unlockedData.value.listAllItemReference("personal").any { it.item.id == "github" })
+        harness.backend.moveErrorMessage = null
+        assertNotNull(model.item.moveItem("personal", "github", "family"))
+    }
+
+    @Test
+    fun testMoveDestinationsKeepPrivacyContextAndDuplicateNames() {
+        val groups = VaultDestinations.groups(listOf(
+            VaultSummary(id = "shared-a", name = "Production", type = "shared"),
+            VaultSummary(id = "shared-b", name = "Production", type = "shared"),
+            VaultSummary(id = "org", name = "Production", type = "organization", organizationID = "northwind"),
+        ), listOf(OrganizationSummary(id = "northwind", name = "Northwind")))
+        assertEquals(listOf("Northwind / Production", "Shared vault / Production (shared-a)", "Shared vault / Production (shared-b)"),
+            groups.flatMap { it.destinations }.map { it.label })
+        assertEquals("Shared through teams in Northwind.", groups.first().destinations.first().context)
     }
 
     @Test

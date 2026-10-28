@@ -1,6 +1,11 @@
 package com.tryhisar.hisar.app
 
 import com.tryhisar.hisar.model.FakeBackend
+import com.tryhisar.hisar.model.ImportPreview
+import com.tryhisar.hisar.model.ImportSourceGroup
+import com.tryhisar.hisar.model.ImportSkippedEntry
+import com.tryhisar.hisar.model.ImportProgress
+import com.tryhisar.hisar.model.backendJson
 import com.tryhisar.hisar.model.VaultStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +21,18 @@ import kotlinx.coroutines.test.runTest
 class CredentialImportTests {
     /** What the other app exported; FakeBackend reads it as the titles of the logins to import. */
     private val allExportedTitle = listOf("GitHub", "Docker", "Slack", "Figma")
+
+    @Test
+    fun testHisarExportPreviewExplainsOriginalVaultDestinations() {
+        for (format in listOf("hisar-export", "hisar-encrypted-export")) {
+            val preview = ImportPreview(format = format, groups = List(7) { ImportSourceGroup() })
+            assertTrue(preview.isHisarExport)
+            assertEquals("This export has 7 vaults. Each goes to the vault it came from, or your Personal vault, unless you choose another.", preview.groupDestinationExplanation)
+        }
+        val preview = ImportPreview(groups = List(2) { ImportSourceGroup() })
+        assertFalse(preview.isHisarExport)
+        assertEquals("The other app kept these items in 2 groups. Each goes to your Personal vault unless you choose another vault for it.", preview.groupDestinationExplanation)
+    }
 
     /** Stands in for the system's credential transfer: it answers with [result], after [answer] completes when set. */
     private inner class FakeReceiver(var result: CredentialExchangeResult? = null, val beforeAnswer: () -> Unit = {}) : CredentialExchangeReceiver {
@@ -37,6 +54,52 @@ class CredentialImportTests {
         model.credentialImport.start(receiver)
         runCurrent()
         assertTrue(model.credentialImport.preview != null, "the preview arrives")
+    }
+
+    @Test
+    fun testPreviewCountsOmissionsRatherThanRejectedItems() {
+        val preview = ImportPreview(fileName = "Passwords", vaultID = "personal", vaultName = "Personal", itemCount = 1,
+            loginCount = 1, passkeyCount = 1, allSkipped = listOf(
+                ImportSkippedEntry("GitHub", "Passkey extension data is not supported."),
+                ImportSkippedEntry("GitHub", "Provider associations are not imported."),
+            ))
+        assertEquals(1, preview.itemCount)
+        assertEquals(1, preview.loginCount)
+        assertEquals(1, preview.passkeyCount)
+        assertEquals("Not imported · 2", ImportSkippedEntry.heading(preview.allSkipped.size))
+        assertEquals("Some entries below are fields or credentials from items that will still be imported.", ImportSkippedEntry.EXPLANATION)
+        assertEquals(listOf("GitHub", "GitHub"), preview.allSkipped.map { it.title })
+        assertEquals("Provider associations are not imported.", preview.allSkipped.last().reason)
+    }
+
+    @Test
+    fun testCompletionKeepsReviewedPreviewAndFinalOutcomesUntilDone() = runTest {
+        val harness = AppModelHarness(this)
+        val reviewed = ImportPreview(fileName = "Passwords", vaultID = "personal", vaultName = "Personal", itemCount = 4,
+            allSkipped = listOf(ImportSkippedEntry("GitHub", "Unsupported extension data.")),
+            notice = "This is a cached partial export.", exportedFrom = "owner@example.com")
+        val report = backendJson.decodeFromString<ImportProgress>("""
+            {"fileName":"Passwords","vaultId":"personal","vaultName":"Personal","savedCount":2,"totalCount":3,"isDone":true,
+             "leftBehindCount":3,"isSourceKept":true,
+             "allSkipped":[{"title":"GitHub","reason":"Unsupported extension data."},{"title":"GitHub","reason":"Different recovery code remains only in the source."}],
+             "allFailed":[{"title":"Figma","reason":"Save refused."}],
+             "allDuplicateOutcomes":[{"title":"GitHub","reason":"Added 1 new passkey to the existing login in Hisar."},
+               {"title":"Slack","reason":"Identical duplicate already present in Hisar."},{"title":"Docker","reason":"Included the duplicate as another item."}]}
+        """.trimIndent())
+        harness.backend.importPreviewOverride = reviewed
+        harness.backend.importProgressOverride = report
+        val model = harness.startUnlockedModel()
+        receivePreview(model)
+        model.credentialImport.startCredentialImport(true)
+        val completed = model.credentialImport.sheet.value as CredentialImportSheet.Importing
+        assertEquals(reviewed, completed.preview)
+        assertEquals(report, completed.progress)
+        assertEquals(3, completed.progress.leftBehindCount)
+        assertEquals(2, completed.progress.allSkipped.size)
+        assertEquals(3, completed.progress.allDuplicateOutcomes.size)
+        assertEquals("Save refused.", completed.progress.allFailed.single().reason)
+        model.credentialImport.closeCredentialImport()
+        assertNull(model.credentialImport.sheet.value)
     }
 
     @Test
@@ -145,6 +208,7 @@ class CredentialImportTests {
         assertFalse(model.credentialImport.isShown)
         runCurrent()
         assertEquals(0, harness.backend.countCall("cancelImport"), "nothing was prepared to drop")
+        assertEquals(0, harness.backend.countCall("prepareCredentialExchangeImport"), "a failed transfer has nothing to preview")
     }
 
     @Test
@@ -270,6 +334,7 @@ class CredentialImportTests {
         val sheet = model.credentialImport.sheet.value
         assertTrue(sheet is CredentialImportSheet.EnteringPassphrase, "an encrypted export asks for its passphrase")
         assertEquals("Alice's export.hisar", sheet.fileName)
+        assertEquals("Alice's export.hisar", model.credentialImport.sourceFileName)
         assertNull(model.credentialImport.preview, "there is no preview until the export is opened")
         assertEquals(1, harness.backend.countCall("prepareHisarExportImport"))
         assertEquals(0, harness.backend.countCall("openImportFile"), "nothing is opened before a passphrase is entered")
@@ -291,6 +356,12 @@ class CredentialImportTests {
         model.credentialImport.openImportFile(FakeBackend.HISAR_EXPORT_PASSPHRASE)
         assertEquals("personal", model.credentialImport.preview?.vaultID, "the right passphrase opens the export")
         assertNull(model.errorMessage.value)
+        assertEquals("Alice's export.hisar", model.credentialImport.sourceFileName)
+        model.credentialImport.startCredentialImport(true)
+        runCurrent()
+        assertEquals("Alice's export.hisar", model.credentialImport.sourceFileName)
+        model.credentialImport.closeCredentialImport()
+        assertNull(model.credentialImport.sourceFileName)
     }
 
     @Test

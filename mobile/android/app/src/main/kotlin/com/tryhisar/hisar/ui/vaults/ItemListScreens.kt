@@ -15,7 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Sell
+import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -24,6 +26,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -37,6 +42,9 @@ import com.tryhisar.hisar.app.VaultsDestination
 import com.tryhisar.hisar.model.ItemCategory
 import com.tryhisar.hisar.model.VaultItemReference
 import com.tryhisar.hisar.model.VaultLogic
+import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.model.ReadIssueSummary
+import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.ContentUnavailable
 import com.tryhisar.hisar.ui.components.LargeTitle
 import com.tryhisar.hisar.ui.components.PushedTopBar
@@ -84,27 +92,90 @@ fun PushedListScaffold(
                 item(key = "title") { Box(Modifier.padding(horizontal = ScreenMargin)) { LargeTitle(title, topPadding = 0.dp) } }
                 if (searchField != null) item(key = "search") { searchField() }
                 content()
+                if (isEmpty) item(key = "empty") {
+                    Box(Modifier.padding(top = 24.dp, bottom = 24.dp)) { emptyContent() }
+                }
                 item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp + bottomClearance)) }
             }
-            if (isEmpty) Box(Modifier.padding(top = 120.dp, bottom = TabBarHeight)) { emptyContent() }
         }
     }
 }
 
 /** The search's empty result, as ContentUnavailableView.search. */
 @Composable
-fun NoSearchResults(searchText: String) {
-    ContentUnavailable("No results for “$searchText”", Icons.Outlined.Search, Modifier.testTag("no-results")) {
-        Text("Check the spelling or try a new search.", style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, textAlign = TextAlign.Center)
+fun NoSearchResults(searchText: String, isIncomplete: Boolean = false) {
+    ContentUnavailable(if (isIncomplete) "No readable matches" else "No results for “$searchText”", Icons.Outlined.Search, Modifier.testTag("no-results")) {
+        Text(if (isIncomplete) "No readable items match this search. Some saved data could not be searched." else "Check the spelling or try a new search.", style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, textAlign = TextAlign.Center)
     }
 }
 
 /** Items of every vault, each row naming its vault. */
-fun LazyListScope.crossVaultRows(model: AppModel, stack: NavigationStack, allReference: List<VaultItemReference>) {
+fun LazyListScope.crossVaultRows(model: AppModel, stack: NavigationStack, allReference: List<VaultItemReference>, isFavorites: Boolean = false) {
     cardSection("items", allReference, rowKey = { it.id }, dividerStart = { ItemRowTextStart }) { reference ->
-        ItemRow(model, reference.item, "item-${reference.item.title}", vaultName = reference.vaultName, onClick = {
-            stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
-        })
+        val row: @Composable () -> Unit = {
+            ItemRow(model, reference.item, "item-${reference.item.title}", vaultID = reference.vaultID, vaultName = reference.vaultName, onClick = {
+                stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
+            })
+        }
+        if (isFavorites) FavoriteSwipeRow(model, reference.vaultID, reference.item, isLeading = false, content = row) else row()
+    }
+}
+
+@Composable
+fun FavoritesItemsScreen(model: AppModel, stack: NavigationStack) {
+    val data by model.unlockedData.collectAsStateWithLifecycle()
+    val status by model.status.collectAsStateWithLifecycle()
+    var searchText by rememberSaveable { mutableStateOf("") }
+    val allMatch = VaultLogic.filterAllItem(data.listAllFavoriteReference(), searchText)
+    val damagedVaults = data.allVault.filter { it.readIssues.isNotEmpty() }
+    PushedListScaffold(
+        title = "Favorites",
+        onBack = stack::pop,
+        onRefresh = model::refreshAll,
+        isEmpty = allMatch.isEmpty() && damagedVaults.isEmpty(),
+        emptyContent = {
+            if (searchText.isEmpty()) ContentUnavailable("No favorites yet", Icons.Outlined.StarOutline) else NoSearchResults(searchText)
+        },
+        searchField = { SearchField(searchText, { searchText = it }, "Search favorites", "favorites-search") },
+    ) {
+        if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
+        cardSection("recovery", damagedVaults, rowKey = { it.id }) { vault ->
+            NavigationRow(
+                testTag = "favorites-recovery-${vault.id}",
+                onClick = { stack.push(VaultsDestination.Vault(vault.id)) },
+            ) { Text("${vault.name}: ${vault.readIssues.size} unreadable records. Retry or repair.", color = HisarTheme.colors.warning) }
+        }
+        crossVaultRows(model, stack, allMatch, isFavorites = true)
+    }
+}
+
+fun LazyListScope.crossVaultReadWarning(model: AppModel, stack: NavigationStack, allVault: List<VaultSummary>) {
+    val affected = allVault.filter { it.readIssues.isNotEmpty() }
+    if (affected.isEmpty()) return
+    cardSection("incomplete-results", listOf(Unit), rowKey = { "warning" }) {
+        val scope = rememberCoroutineScope()
+        var isReviewShown by remember { mutableStateOf(false) }
+        Column(Modifier.padding(16.dp).testTag("incomplete-results")) {
+            Text("Some saved data could not be opened. Results may be incomplete.", color = HisarTheme.colors.warning)
+            Text(ReadIssueSummary(affected.flatMap { it.readIssues }).text, style = HisarType.footnote)
+            PlainButton("Retry reads", { scope.launch { model.refreshAll() } }, testTag = "retry-cross-vault-reads")
+            PlainButton("Review affected vaults", { isReviewShown = true }, testTag = "review-affected-vaults")
+        }
+        if (isReviewShown) AlertDialog(
+            onDismissRequest = { isReviewShown = false },
+            title = { Text("Affected vaults") },
+            text = {
+                Column {
+                    affected.forEach { vault ->
+                        PlainButton(vault.name, {
+                            isReviewShown = false
+                            stack.push(VaultsDestination.Vault(vault.id))
+                        }, testTag = "review-vault-${vault.id}")
+                    }
+                }
+            },
+            confirmButton = { PlainButton("Done", { isReviewShown = false }, testTag = "affected-vaults-done") },
+        )
     }
 }
 
@@ -112,28 +183,82 @@ fun LazyListScope.crossVaultRows(model: AppModel, stack: NavigationStack, allRef
 @Composable
 fun CategoryItemsScreen(model: AppModel, stack: NavigationStack, category: ItemCategory) {
     val data by model.unlockedData.collectAsStateWithLifecycle()
-    val allReference = data.listAllItemReference().filter { category.includes(it.item) }
+    val status by model.status.collectAsStateWithLifecycle()
+    var searchText by rememberSaveable(category.id) { mutableStateOf("") }
+    val prompt = "Search ${category.title.lowercase()}"
+    val allReference = VaultLogic.filterAllItem(data.listAllItemReference().filter { category.includes(it.item) }, searchText)
     PushedListScaffold(
         title = category.title,
         onBack = stack::pop,
         onRefresh = model::refreshAll,
         isEmpty = allReference.isEmpty(),
-        emptyContent = { ContentUnavailable(category.emptyTitle, category.icon) },
-    ) { crossVaultRows(model, stack, allReference) }
+        searchField = { SearchField(searchText, { searchText = it }, prompt, "category-search", Modifier.semantics { stateDescription = prompt }) },
+        emptyContent = {
+            if (searchText.isNotEmpty()) {
+                NoSearchResults(searchText, data.readIssueSummary.issues.isNotEmpty())
+            } else {
+                ContentUnavailable(if (data.readIssueSummary.issues.isEmpty()) category.emptyTitle else "No readable ${category.title.lowercase()}", category.icon) {
+                    if (data.readIssueSummary.issues.isNotEmpty()) Text("Some saved data could not be searched.")
+                }
+            }
+        },
+    ) {
+        if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
+        crossVaultReadWarning(model, stack, data.allVault)
+        crossVaultRows(model, stack, allReference)
+    }
 }
 
 /** The items that carry one tag across every vault, from Tags. */
 @Composable
 fun TagItemsScreen(model: AppModel, stack: NavigationStack, tag: String) {
     val data by model.unlockedData.collectAsStateWithLifecycle()
-    val allReference = VaultLogic.filterAllItemByTag(data.listAllItemReference(), tag)
+    val status by model.status.collectAsStateWithLifecycle()
+    var searchText by rememberSaveable(tag) { mutableStateOf("") }
+    val prompt = "Search items tagged $tag"
+    val allReference = VaultLogic.filterAllItem(VaultLogic.filterAllItemByTag(data.listAllItemReference(), tag), searchText)
     PushedListScaffold(
         title = tag,
         onBack = stack::pop,
         onRefresh = model::refreshAll,
         isEmpty = allReference.isEmpty(),
-        emptyContent = { ContentUnavailable("No items are tagged $tag", Icons.Outlined.Sell) },
-    ) { crossVaultRows(model, stack, allReference) }
+        searchField = { SearchField(searchText, { searchText = it }, prompt, "tag-search", Modifier.semantics { stateDescription = prompt }) },
+        emptyContent = {
+            if (searchText.isNotEmpty()) {
+                NoSearchResults(searchText, data.readIssueSummary.issues.isNotEmpty())
+            } else {
+                ContentUnavailable(if (data.readIssueSummary.issues.isEmpty()) "No items are tagged $tag" else "No readable items are tagged $tag", Icons.Outlined.Sell) {
+                    if (data.readIssueSummary.issues.isNotEmpty()) Text("Some saved data could not be searched.")
+                }
+            }
+        },
+    ) {
+        if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
+        crossVaultReadWarning(model, stack, data.allVault)
+        crossVaultRows(model, stack, allReference)
+    }
+}
+
+@Composable
+fun TagsScreen(model: AppModel, stack: NavigationStack) {
+    val data by model.unlockedData.collectAsStateWithLifecycle()
+    val allTag = VaultLogic.listAllTag(data.listAllItemReference())
+    PushedListScaffold(
+        title = "Tags",
+        onBack = stack::pop,
+        onRefresh = model::refreshAll,
+        isEmpty = allTag.isEmpty(),
+        emptyContent = { ContentUnavailable("No tags", Icons.Outlined.Sell) },
+    ) {
+        cardSection("tags", allTag, rowKey = { it.name }, dividerStart = { SymbolRowTextStart }) { tag ->
+            NavigationRow(
+                testTag = "tag-${tag.name}",
+                onClick = { stack.push(VaultsDestination.Tag(tag.name)) },
+                badge = tag.itemCount,
+                leading = { RowSymbol(Icons.Outlined.Sell) },
+            ) { Text(tag.name, style = HisarType.body, color = HisarTheme.colors.label) }
+        }
+    }
 }
 
 /** The empty vault, which says who can add items. */

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
+import { computeAccessibleName } from "dom-accessibility-api";
 import { allTestVault, createApiMock, createItem, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
@@ -29,6 +30,7 @@ beforeEach(() => {
     status: createStatus("unlocked"),
     allVault: allTestVault.map((vault) => ({ ...vault })),
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [selectedItem],
     selectedItem,
     editorMode: "view",
@@ -39,6 +41,41 @@ beforeEach(() => {
 });
 
 describe("passkeys in the item view", () => {
+  it.each(["personal", "shared", "organization"])("names the account and %s vault consequences", async (vaultType) => {
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Production", vaultType }, attachTo: document.body });
+    const trigger = wrapper.findAll('[data-testid="delete-passkey"]')[1];
+    (trigger.element as HTMLElement).focus();
+    await trigger.trigger("click");
+    const dialog = wrapper.get('[role="dialog"]');
+    expect(computeAccessibleName(dialog.element)).toBe("Delete the passkey for github.com?");
+    expect(dialog.text()).toContain("You can no longer sign in to github.com as Alice at work with it.");
+    expect(dialog.text()).toContain(vaultType === "personal"
+      ? "It is removed from all your devices. Make sure you can sign in another way first."
+      : "It is removed from Production for everyone with access. Make sure they can sign in another way first.");
+    expect((document.activeElement as HTMLElement).textContent).toBe("Cancel");
+    await dialog.find("button.ghost").trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(trigger.element);
+    wrapper.unmount();
+  });
+
+  it("keeps a failed deletion in its dialog for retry and focuses the surviving section after success", async () => {
+    api.deletePasskey.mockRejectedValueOnce(new Error("The server could not be reached."));
+    api.deletePasskey.mockResolvedValueOnce(createItem({ id: "github", passkeys: [workPasskey] }));
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
+    await wrapper.findAll('[data-testid="delete-passkey"]')[0].trigger("click");
+    await wrapper.get('[data-testid="confirm-delete-passkey"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[role="dialog"] [role="alert"]').text()).toBe("The server could not be reached.");
+    expect(store.selectedItem?.passkeys).toHaveLength(2);
+    await wrapper.get('[data-testid="confirm-delete-passkey"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="passkey-section"]').element);
+    expect(api.deleteItem).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("lists each passkey with its site, user name and creation date", () => {
     const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     const allRow = wrapper.findAll('[data-testid="passkey-row"]');

@@ -151,6 +151,12 @@ func TestMergedPasskeyRetentionOnlyCountsOtherDifferences(t *testing.T) {
 					t.Fatalf("queued passkey appeared before its save: %+v, %v", beforeSave, err)
 				}
 				progress, _ := runImportToEnd(t, test.service)
+				if len(progress.DuplicateOutcomes) != 1 {
+					t.Fatalf("duplicate outcomes = %+v", progress.DuplicateOutcomes)
+				}
+				if round == 0 && !strings.Contains(progress.DuplicateOutcomes[0].Reason, "Added 1 new passkey") {
+					t.Errorf("merged passkey report = %+v", progress.DuplicateOutcomes)
+				}
 				want := 0
 				if different {
 					want = 1

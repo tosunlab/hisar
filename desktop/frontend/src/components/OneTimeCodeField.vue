@@ -94,6 +94,28 @@ onBeforeUnmount(() => clearInterval(clockTimer));
   min-width: 0;
 }
 
+@container detail (max-width: 479px) {
+  .field-copy-target {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: subgrid;
+  }
+
+  .field-label {
+    grid-row: 1;
+  }
+
+  .code-value {
+    grid-row: 2;
+  }
+
+  .field-actions {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
 [data-copy-target]:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
@@ -108,19 +130,13 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 .field-actions {
   display: flex;
   gap: 2px;
-  opacity: 0.55;
-  transition: opacity 120ms;
-}
-
-.field:hover .field-actions,
-.field:focus-within .field-actions {
-  opacity: 1;
 }
 
 .code-value {
   display: flex;
   align-items: center;
   gap: 10px;
+  white-space: nowrap;
 }
 
 .code {
@@ -129,6 +145,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 }
 
 .ring {
+  flex-shrink: 0;
   transform: rotate(-90deg);
 }
 

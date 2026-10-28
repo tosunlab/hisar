@@ -31,6 +31,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -44,12 +47,9 @@ import com.tryhisar.hisar.ui.theme.HisarType
 
 private val ButtonHeight = 52.dp
 
-/**
- * The iPhone app's main action, a full-width capsule in the theme's tint. Disabled, it greys out; busy, it shows a
- * spinner in place of its title.
- */
+/** A full-width primary capsule that keeps its action name while work is pending. */
 @Composable
-fun ProminentButton(text: String, onClick: () -> Unit, testTag: String, enabled: Boolean = true, isBusy: Boolean = false, icon: ImageVector? = null) {
+fun ProminentButton(text: String, onClick: () -> Unit, testTag: String, enabled: Boolean = true, isBusy: Boolean = false, icon: ImageVector? = null, busyLabel: String = "$text…") {
     val colors = HisarTheme.colors
     val isActive = enabled && !isBusy
     CapsuleButton(
@@ -60,13 +60,14 @@ fun ProminentButton(text: String, onClick: () -> Unit, testTag: String, enabled:
         content = colors.onTint.takeIf { isActive } ?: colors.label.copy(alpha = 0.6f),
         text = text,
         isBusy = isBusy,
+        busyLabel = busyLabel,
         icon = icon,
     )
 }
 
 /** A secondary full-width capsule on a grey fill, as the iPhone app's glass buttons. */
 @Composable
-fun GlassButton(text: String, onClick: () -> Unit, testTag: String, enabled: Boolean = true, isBusy: Boolean = false) {
+fun GlassButton(text: String, onClick: () -> Unit, testTag: String, enabled: Boolean = true, isBusy: Boolean = false, busyLabel: String = "$text…") {
     val colors = HisarTheme.colors
     CapsuleButton(
         onClick = onClick,
@@ -76,32 +77,43 @@ fun GlassButton(text: String, onClick: () -> Unit, testTag: String, enabled: Boo
         content = if (enabled) colors.label else colors.secondaryLabel,
         text = text,
         isBusy = isBusy,
+        busyLabel = busyLabel,
         icon = null,
     )
 }
 
 @Composable
-private fun CapsuleButton(onClick: () -> Unit, testTag: String, enabled: Boolean, background: Color, content: Color, text: String, isBusy: Boolean, icon: ImageVector?) {
+private fun CapsuleButton(onClick: () -> Unit, testTag: String, enabled: Boolean, background: Color, content: Color, text: String, isBusy: Boolean, busyLabel: String, icon: ImageVector?) {
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = ButtonHeight)
             .background(background, CircleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                if (isBusy) {
+                    contentDescription = text
+                    stateDescription = busyLabel
+                }
+            }
             .testTag(testTag)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (isBusy) {
-            CircularProgressIndicator(Modifier.size(22.dp), color = content, strokeWidth = 2.dp)
-        } else {
-            if (icon != null) {
-                Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.size(8.dp))
-            }
-            Text(text, style = HisarType.body, color = content)
+            CircularProgressIndicator(Modifier.size(22.dp).clearAndSetSemantics {}, color = content, strokeWidth = 2.dp)
+            Spacer(Modifier.size(8.dp))
+        } else if (icon != null) {
+            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.size(8.dp))
         }
+        Text(
+            if (isBusy) busyLabel else text,
+            style = HisarType.body,
+            color = content,
+            modifier = if (isBusy) Modifier.clearAndSetSemantics {} else Modifier,
+        )
     }
 }
 
@@ -114,11 +126,12 @@ fun PlainButton(
     color: Color = HisarTheme.colors.tint,
     enabled: Boolean = true,
     textStyle: TextStyle = HisarType.body,
+    onClickLabel: String? = null,
 ) {
     Box(
         Modifier
             .minimumInteractiveComponentSize()
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = onClickLabel, onClick = onClick)
             .testTag(testTag)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {

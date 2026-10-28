@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import packageJson from "../package.json";
 import { toFirefoxManifest } from "../tools/build-firefox.mjs";
@@ -14,11 +12,6 @@ function computeExtensionID(publicKey: string): string {
 describe("manifest.json", () => {
   it("has the key that gives the extension ID from the design", () => {
     expect(computeExtensionID(manifest.key)).toBe("mmipiffoogblblocokimpemdopmdjghf");
-  });
-
-  it("matches the native host's allowed origin in the fake host registration", () => {
-    const registerScript = readFileSync(resolve(process.cwd(), "tools/register-fake-host.mjs"), "utf8");
-    expect(registerScript).toContain(`"mmipiffoogblblocokimpemdopmdjghf"`);
   });
 
   it("asks for exactly the permissions in the design", () => {

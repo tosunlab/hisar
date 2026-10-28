@@ -6,6 +6,9 @@ data class OrganizationVaultGroup(val id: String, val name: String, val allVault
 /** The Vaults screen's vaults: those listed under Vaults, and one group per organization. */
 data class VaultGrouping(val allOtherVault: List<VaultSummary>, val allGroup: List<OrganizationVaultGroup>)
 
+data class ImportVaultChoice(val id: String, val label: String)
+data class ImportVaultGroup(val id: String, val name: String, val allChoice: List<ImportVaultChoice>)
+
 /** Where a new vault goes: a shared vault, or an organization vault for one of the user's teams. */
 data class VaultLocation(val organizationID: String, val organizationName: String, val teamID: String, val teamName: String) {
     val id: String get() = if (teamID.isEmpty()) "shared" else "$organizationID/$teamID"
@@ -35,6 +38,14 @@ data class OrganizationVaultSharing(
 }
 
 enum class OrganizationMemberAction { MAKE_ADMIN, MAKE_MEMBER, REMOVE }
+
+sealed interface OrganizationAccessChange {
+    data class RemoveTeam(val teamID: String) : OrganizationAccessChange
+    data class RemoveTeamMember(val teamID: String, val accountID: String) : OrganizationAccessChange
+    data class RemoveMember(val accountID: String) : OrganizationAccessChange
+    data class TakeVault(val teamID: String, val vaultID: String) : OrganizationAccessChange
+    data class TeamRole(val teamID: String, val vaultID: String, val role: String) : OrganizationAccessChange
+}
 
 data class MemberChoice(val title: String, val detail: String?)
 
@@ -82,6 +93,37 @@ object OrganizationLogic {
             )
         }
         return VaultGrouping(allOtherVault, allGroup.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }))
+    }
+
+    fun importVaultGroups(allVault: List<VaultSummary>, allOrganization: List<OrganizationSummary>): List<ImportVaultGroup> {
+        val grouped = groupVaults(allVault, allOrganization, emptyList())
+        val personal = grouped.allOtherVault.filter { it.type == VaultSummary.TYPE_PERSONAL }
+        val shared = grouped.allOtherVault.filter { !it.isOrganization && it.type != VaultSummary.TYPE_PERSONAL }
+        val missing = grouped.allOtherVault.filter { it.isOrganization }.groupBy { it.organizationID }.map { (id, vaults) ->
+            OrganizationVaultGroup(id, id, vaults, "")
+        }
+        val groups = listOf(
+            OrganizationVaultGroup("_personal", "Personal", personal, ""),
+            OrganizationVaultGroup("_shared", "Shared vaults", shared, ""),
+        ).filter { it.allVault.isNotEmpty() } + (grouped.allGroup.map { it.copy(name = it.name.ifEmpty { it.id }) } + missing).sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        val sameName = groups.groupBy { it.name.lowercase() }
+        return groups.map { group ->
+            val peers = sameName[group.name.lowercase()].orEmpty()
+            val name = if (peers.size > 1) "${group.name} (${shortImportID(group.id, peers.map { it.id })})" else group.name
+            val sameVaultName = group.allVault.groupBy { it.name.lowercase() }
+            val choices = group.allVault.map { vault ->
+                val siblings = sameVaultName[vault.name.lowercase()].orEmpty()
+                val vaultName = if (siblings.size > 1) "${vault.name} (${shortImportID(vault.id, siblings.map { it.id })})" else vault.name
+                ImportVaultChoice(vault.id, if (group.id == "_personal" && name == vaultName) name else "$name › $vaultName")
+            }
+            ImportVaultGroup(group.id, name, choices)
+        }
+    }
+
+    private fun shortImportID(id: String, allID: List<String>): String {
+        var length = minOf(8, id.length)
+        while (length < id.length && allID.any { it != id && it.take(length) == id.take(length) }) length++
+        return id.take(length)
     }
 
     fun describeWaiting(count: Int, organizationName: String): String = when (count) {
@@ -176,6 +218,44 @@ object OrganizationLogic {
         if (!organization.isAdmin) return emptyList()
         val roleAction = if (member.role == OrganizationRole.ADMIN) OrganizationMemberAction.MAKE_MEMBER else OrganizationMemberAction.MAKE_ADMIN
         return if (member.isCurrentUser) listOf(roleAction) else listOf(roleAction, OrganizationMemberAction.REMOVE)
+    }
+
+    fun accessConsequences(organization: Organization, change: OrganizationAccessChange): List<String> {
+        val after = organization.allTeam.filter { change !is OrganizationAccessChange.RemoveTeam || it.id != change.teamID }.map { team ->
+            team.copy(
+                allMember = team.allMember.filter { member ->
+                    !((change is OrganizationAccessChange.RemoveMember && member.accountID == change.accountID) ||
+                        (change is OrganizationAccessChange.RemoveTeamMember && team.id == change.teamID && member.accountID == change.accountID))
+                },
+                allVault = team.allVault.filter { !(change is OrganizationAccessChange.TakeVault && team.id == change.teamID && it.vaultID == change.vaultID) }.map { vault ->
+                    if (change is OrganizationAccessChange.TeamRole && team.id == change.teamID && vault.vaultID == change.vaultID) vault.copy(role = change.role) else vault
+                },
+            )
+        }
+        val rank = mapOf("reader" to 1, "editor" to 2, "owner" to 3)
+        fun strongest(teams: List<Team>, accountID: String, vaultID: String): String =
+            teams.filter { team -> team.allMember.any { it.accountID == accountID } }.flatMap { it.allVault }
+                .filter { it.vaultID == vaultID }.maxByOrNull { rank[it.role] ?: 0 }?.role.orEmpty()
+        val vaultByID = organization.allTeam.flatMap { it.allVault }.sortedBy { it.canOpen }.associateBy { it.vaultID }
+        val memberByID = organization.allTeam.flatMap { it.allMember }.associateBy { it.accountID }
+        val lines = vaultByID.toSortedMap().flatMap { (vaultID, vault) ->
+            val effects = memberByID.toSortedMap().mapNotNull { (accountID, member) ->
+                val beforeRole = strongest(organization.allTeam, accountID, vaultID)
+                val afterRole = strongest(after, accountID, vaultID)
+                val name = member.name.ifEmpty { member.email }
+                when {
+                    beforeRole == afterRole -> null
+                    afterRole.isEmpty() -> true to (if (member.isCurrentUser) "You lose access too." else "$name loses access.")
+                    else -> false to "${if (member.isCurrentUser) "Your role" else "$name's role"} changes from ${VaultLogic.describeVaultRole(beforeRole)} to ${VaultLogic.describeVaultRole(afterRole)}."
+                }
+            }
+            val name = if (vault.canOpen) vault.name else "A vault you can't open ($vaultID)"
+            listOf(true, false).mapNotNull { isLoss ->
+                effects.filter { it.first == isLoss }.map { it.second }.takeIf { it.isNotEmpty() }?.let { "$name: ${it.joinToString(" ")}" }
+            }
+        }
+        if (lines.isEmpty() && change is OrganizationAccessChange.RemoveMember) return listOf("They have no vault access through this organization's teams.")
+        return lines.ifEmpty { listOf(if (change is OrganizationAccessChange.RemoveTeamMember) "They keep their vault access through other teams." else "Everyone keeps their vault access through other teams.") }
     }
 
     fun describeMemberCount(count: Int): String = if (count == 1) "1 member" else "$count members"

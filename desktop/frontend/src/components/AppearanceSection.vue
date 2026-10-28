@@ -9,6 +9,15 @@ import { getThisDeviceName } from "../util";
 const isRowVisible = useSettingsRowVisibility();
 
 onMounted(loadWebsiteIconSetting);
+
+function moveRadio(event: KeyboardEvent): void {
+  const radios = [...(event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="radio"]')];
+  const index = radios.indexOf(document.activeElement as HTMLButtonElement);
+  const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+  const next = radios[(index + direction + radios.length) % radios.length]!;
+  next.click();
+  next.focus();
+}
 </script>
 
 <template>
@@ -20,13 +29,14 @@ onMounted(loadWebsiteIconSetting);
           <strong id="appearance-label">Appearance</strong>
           <p class="muted">Choose System to follow the system's light or dark appearance.</p>
         </div>
-        <div class="segmented" role="radiogroup" aria-labelledby="appearance-label">
+        <div class="segmented" role="radiogroup" aria-labelledby="appearance-label" @keydown.right.prevent="moveRadio" @keydown.left.prevent="moveRadio" @keydown.up.prevent="moveRadio" @keydown.down.prevent="moveRadio">
           <button
             v-for="option in allAppearanceOption"
             :key="option.id"
             type="button"
             role="radio"
             :aria-checked="themeStore.appearance === option.id"
+            :tabindex="themeStore.appearance === option.id ? 0 : -1"
             :data-testid="`appearance-${option.id}`"
             @click="chooseTheme(option.id, themeStore.color)"
           >
@@ -39,7 +49,7 @@ onMounted(loadWebsiteIconSetting);
           <strong id="theme-color-label">Color</strong>
           <p class="muted">Tints the sidebar, selection, buttons and approval dialogs on {{ getThisDeviceName() }}.</p>
         </div>
-        <div class="swatch-list" role="radiogroup" aria-labelledby="theme-color-label">
+        <div class="swatch-list" role="radiogroup" aria-labelledby="theme-color-label" @keydown.right.prevent="moveRadio" @keydown.left.prevent="moveRadio" @keydown.up.prevent="moveRadio" @keydown.down.prevent="moveRadio">
           <button
             v-for="option in allThemeColorOption"
             :key="option.id"
@@ -47,6 +57,7 @@ onMounted(loadWebsiteIconSetting);
             role="radio"
             class="swatch-button"
             :aria-checked="themeStore.color === option.id"
+            :tabindex="themeStore.color === option.id ? 0 : -1"
             :data-testid="`theme-color-${option.id}`"
             @click="chooseTheme(themeStore.appearance, option.id)"
           >

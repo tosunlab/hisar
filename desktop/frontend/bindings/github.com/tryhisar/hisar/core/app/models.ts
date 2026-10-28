@@ -165,6 +165,45 @@ export interface Device {
 }
 
 /**
+ * EmergencyKitStatus is the Emergency Kit this device still owes for the installed account: the account's own sign-up or
+ * Secret Key replacement, kept in protected storage, whose kit delivery is not acknowledged yet.
+ */
+export interface EmergencyKitStatus {
+    "operationId": string;
+
+    /**
+     * Kind is "signup" or "replace-secret-key".
+     */
+    "kind": string;
+
+    /**
+     * SavedBy is how the platform confirmed a delivery: "file", "print" or "share"; "" before one.
+     */
+    "savedBy": string;
+
+    /**
+     * PostponedAt is when the kit was first left unsaved, RFC 3339 in UTC: the first Save later, or the first unlock that
+     * found it still owed; "" before either.
+     */
+    "postponedAt": string;
+
+    /**
+     * Reminder is "new", "3-days" or "14-days" after PostponedAt.
+     */
+    "reminder": string;
+
+    /**
+     * IsAuthorized: this unlock may show the Secret Key, save the kit and acknowledge it without asking again.
+     */
+    "isAuthorized": boolean;
+
+    /**
+     * IsReminderHidden: Not now hid the reminder until the next lock.
+     */
+    "isReminderHidden": boolean;
+}
+
+/**
  * ExportOptions tells the Settings screen whether Touch ID can approve an export or the master password is needed.
  */
 export interface ExportOptions {
@@ -292,6 +331,8 @@ export interface ImportProgress {
     "leftBehindCount": number;
     "isDone": boolean;
     "allFailed": ImportSkippedEntry[] | null;
+    "allSkipped": ImportSkippedEntry[] | null;
+    "allDuplicateOutcomes": ImportSkippedEntry[] | null;
 
     /**
      * IsSourceKept: the file is not offered for deletion, see ImportPreview.
@@ -636,6 +677,11 @@ export interface OrganizationSummary {
 export interface Organizations {
     "organizations": OrganizationSummary[] | null;
     "invitations": OrganizationInvitation[] | null;
+
+    /**
+     * IsCached means only saved organization IDs and names are available, not live membership or invitations.
+     */
+    "isCached"?: boolean;
 }
 
 export interface PairedBrowser {
@@ -652,7 +698,9 @@ export interface PasswordConfig {
 }
 
 /**
- * PendingRecoverySummary contains no recovery factor or bearer. It is safe to show while signed out.
+ * PendingRecoverySummary contains no recovery factor or bearer. It is safe to show while signed out. KitSaved is kept for
+ * older apps; SavedBy ("file", "print" or "share") is the delivery a platform confirmed, and only it counts. PostponedAt is
+ * when the installed account's kit was first left unsaved, RFC 3339 in UTC.
  */
 export interface PendingRecoverySummary {
     "operationId": string;
@@ -663,6 +711,8 @@ export interface PendingRecoverySummary {
     "name": string;
     "phase": string;
     "kitSaved": boolean;
+    "savedBy"?: string;
+    "postponedAt"?: string;
     "problems": string[] | null;
     "manualUnlock": boolean;
     "keychainProtected": boolean;
@@ -728,6 +778,12 @@ export interface RemovedVaultNotice {
     "id": string;
     "name": string;
     "message": string;
+}
+
+export interface RevealedSecretKey {
+    "secretKey": string;
+    "qrPayload": string;
+    "qrCode": string;
 }
 
 /**
@@ -820,6 +876,26 @@ export interface ShareLinkRequest {
     "passphrase": string;
 }
 
+/**
+ * SignUpPolicy is who may create an account on a server without an invitation.
+ */
+export interface SignUpPolicy {
+    /**
+     * Server is the canonical server address, with its path prefix, e.g. http://127.0.0.1:19400/sub.
+     */
+    "server": string;
+
+    /**
+     * Host is the server as the forms show it, without https://.
+     */
+    "host": string;
+
+    /**
+     * Mode is "open", "invite", "setup" or "unknown" (a server without the policy route, or a mode this app does not know).
+     */
+    "mode": string;
+}
+
 export interface SignUpResult {
     "status": Status;
     "secretKey": string;
@@ -861,6 +937,17 @@ export interface Status {
      * UpdateRequired is set once the server refused this version; nothing works until Hisar updates.
      */
     "updateRequired": UpdateRequirement | null;
+
+    /**
+     * EmergencyKit is the Emergency Kit this device still owes for the installed account; nil when none is owed.
+     */
+    "emergencyKit"?: EmergencyKitStatus | null;
+
+    /**
+     * BiometricOfferAvailable: the optional biometric offer after a new account's kit screen can turn biometric unlock on
+     * without the master password, because this unlock still holds the account unlock key and biometric unlock is off.
+     */
+    "biometricOfferAvailable"?: boolean;
 }
 
 export interface Team {

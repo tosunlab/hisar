@@ -5,6 +5,7 @@ import XCTest
 private final class FakeIdentityStore: CredentialIdentitySaving {
     var allSaved: [CredentialIdentityRecord] = []
     var allRemoved: [CredentialIdentityRecord] = []
+    var onRemove: (() -> Void)?
 
     func saveIdentity(_ allIdentity: [CredentialIdentityRecord]) async {
         allSaved += allIdentity
@@ -12,6 +13,7 @@ private final class FakeIdentityStore: CredentialIdentitySaving {
 
     func removeIdentity(_ allIdentity: [CredentialIdentityRecord]) async {
         allRemoved += allIdentity
+        onRemove?()
     }
 }
 
@@ -22,6 +24,23 @@ private final class FakeLocalAuthenticator {
     func authenticate(reason: String) -> Bool {
         allReason.append(reason)
         return isSucceeding
+    }
+}
+
+private final class LockingAutoFillBackend: FakeBackend {
+    var locksCredentialRead = false
+    var locksCodeRead = false
+
+    override func getLoginForService(vaultID: String, itemID: String, serviceIdentifier: String) throws -> LoginCredential {
+        let credential = try super.getLoginForService(vaultID: vaultID, itemID: itemID, serviceIdentifier: serviceIdentifier)
+        if locksCredentialRead { _ = lock() }
+        return credential
+    }
+
+    override func getOneTimeCode(vaultID: String, itemID: String) throws -> OneTimeCode {
+        let code = try super.getOneTimeCode(vaultID: vaultID, itemID: itemID)
+        if locksCodeRead { _ = lock() }
+        return code
     }
 }
 
@@ -52,9 +71,9 @@ final class AutoFillModelTests: XCTestCase {
         rejectedRegistrationCount = 0
     }
 
-    private func createModel() -> AutoFillModel {
+    private func createModel(source: VaultBackend? = nil) -> AutoFillModel {
         AutoFillModel(
-            createBackend: { self.backend },
+            createBackend: { source ?? self.backend },
             completeRequest: { [unowned self] in allCompletedCredential.append($0) },
             completeOneTimeCodeRequest: { [unowned self] in allCompletedCode.append($0) },
             copyOneTimeCode: { [unowned self] in allCopiedCode.append($0) },
@@ -94,6 +113,69 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertEqual(model.allMatchingLogin.map(\.title), ["GitHub"], "the same login matched twice is listed once")
     }
 
+    func testOpenListHidesItsLoginsWhenHisarLocks() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        await model.prepareCredentialList(allServiceIdentifier: ["github.com"], passkeyRequest: PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash))
+        model.searchText = "bank"
+        await model.loadAllOtherLogin()
+        _ = backend.lock()
+        model.handleLocked()
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertTrue(model.allMatchingLogin.isEmpty)
+        XCTAssertTrue(model.allOtherLogin.isEmpty)
+        XCTAssertTrue(model.allMatchingPasskey.isEmpty)
+        XCTAssertEqual(model.searchText, "")
+        await model.unlock(password: FakeBackend.password)
+        XCTAssertEqual(model.allMatchingLogin.map(\.title), ["GitHub"])
+        XCTAssertEqual(model.allMatchingPasskey.count, 1)
+        await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "github.com", userName: "alice", userHandle: Data([5]), clientDataHash: clientDataHash))
+        XCTAssertNotNil(model.passkeyRegistrationOptions)
+        _ = backend.lock()
+        model.refreshStatus()
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertNil(model.passkeyRegistrationOptions)
+        XCTAssertNil(model.selectedRegistrationLoginID)
+    }
+
+    func testCredentialReadBeforeLockCannotCompleteAfterLock() async {
+        let source = LockingAutoFillBackend()
+        source.seedSignedIn()
+        source.locksCredentialRead = true
+        let model = createModel(source: source)
+        await model.prepareCredentialList(allServiceIdentifier: ["github.com"])
+        await model.select(model.allMatchingLogin[0])
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertTrue(allCompletedCredential.isEmpty)
+        XCTAssertTrue(allCopiedCode.isEmpty)
+    }
+
+    func testPasswordDoesNotCompleteWhenItsAutomaticCodeReadCrossesLock() async {
+        let source = LockingAutoFillBackend()
+        source.seedSignedIn()
+        source.locksCodeRead = true
+        let model = createModel(source: source)
+        await model.prepareCredentialList(allServiceIdentifier: ["github.com"])
+        await model.select(model.allMatchingLogin[0])
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertTrue(allCopiedCode.isEmpty)
+        XCTAssertTrue(allCompletedCredential.isEmpty)
+    }
+
+    func testConfirmedRegistrationCommittedBeforeLock() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "shop.example", userName: "buyer", userHandle: Data([5]), clientDataHash: clientDataHash))
+        identityStore.onRemove = { [unowned self] in
+            _ = backend.lock()
+            model.handleLocked()
+        }
+        await model.savePasskey()
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertEqual(allRegistration.count, 1)
+        XCTAssertEqual(backend.allPasskey.last?.relyingPartyID, "shop.example")
+    }
+
     func testWrongPasswordStaysLocked() async {
         backend.seedSignedIn(state: VaultStatus.stateLocked)
         let model = createModel()
@@ -126,7 +208,33 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertTrue(model.allVisibleMatchingLogin.isEmpty)
         XCTAssertEqual(model.allVisibleOtherLogin.map(\.title), ["Bank"])
         await model.select(model.allVisibleOtherLogin[0])
+        XCTAssertTrue(allCompletedCredential.isEmpty)
+        XCTAssertEqual(model.unmatchedLoginConfirmation?.login.title, "Bank")
+        XCTAssertTrue(model.unmatchedFillTitle.contains("github.com"))
+        XCTAssertFalse(model.unmatchedLoginConfirmation?.allWebsite.isEmpty ?? true)
+        model.dismissUnmatchedLogin()
+        XCTAssertTrue(allCompletedCredential.isEmpty)
+        await model.select(model.allVisibleOtherLogin[0])
+        let savedWebsites = try? backend.getItem(vaultID: "personal", itemID: "bank").allURL
+        await model.fillUnmatchedLogin()
+        XCTAssertEqual(try? backend.getItem(vaultID: "personal", itemID: "bank").allURL, savedWebsites)
         XCTAssertEqual(allCompletedCredential, [LoginCredential(username: "alice@example.com", password: "bank-password")])
+        await model.prepareCredentialList(allServiceIdentifier: [])
+        model.searchText = "bank"
+        await model.loadAllOtherLogin()
+        if let index = backend.allItemByVaultID["personal"]?.firstIndex(where: { $0.id == "bank" }) {
+            backend.allItemByVaultID["personal"]?[index].allURL = []
+        }
+        await model.select(model.allVisibleOtherLogin[0])
+        XCTAssertTrue(model.unmatchedFillTitle.contains("without a website"))
+        XCTAssertTrue(model.unmatchedFillMessage.contains("This request has no website."))
+        XCTAssertTrue(model.unmatchedFillMessage.contains("No website saved"))
+        let staleConfirmation = model.unmatchedLoginConfirmation
+        _ = backend.lock()
+        model.handleLocked()
+        await model.unlock(password: FakeBackend.password)
+        await model.fillUnmatchedLogin(staleConfirmation)
+        XCTAssertEqual(allCompletedCredential.count, 1, "a confirmation cannot release a login across a lock")
     }
 
     func testSearchHidesMatchingLoginsFromOtherSection() async {
@@ -178,6 +286,12 @@ final class AutoFillModelTests: XCTestCase {
         model.searchText = "hub"
         await model.loadAllOtherLogin()
         XCTAssertEqual(model.allVisibleOtherLogin.map(\.title), ["GitHub"])
+        await model.select(model.allVisibleOtherLogin[0])
+        XCTAssertTrue(model.unmatchedFillTitle.contains("one-time code"))
+        XCTAssertTrue(model.unmatchedFillTitle.contains("netflix.com"))
+        await model.fillUnmatchedLogin()
+        XCTAssertEqual(allCompletedCode.count, 2)
+        XCTAssertTrue(allCompletedCredential.isEmpty)
     }
 
     func testOneTimeCodeQuickTypeRequestUnlocksThenCompletes() async {
@@ -253,6 +367,19 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertEqual(allAssertion.first?.userHandle, Data("alice-handle".utf8))
         XCTAssertEqual(allAssertion.first?.signature, Data("signature over ".utf8) + clientDataHash)
         XCTAssertTrue(allCompletedCredential.isEmpty)
+    }
+
+    func testLoadsDuplicatePasskeyLabelsWithVaultNames() async {
+        backend.seedSignedIn()
+        var other = FakeBackend.gitHubPasskey
+        other.vaultID = "family"
+        other.credentialID = Base64URL.encode(Data([2, 2, 2]))
+        backend.allPasskey.append(other)
+        let model = createModel()
+        await model.prepareCredentialList(allServiceIdentifier: [], passkeyRequest: PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash))
+        XCTAssertEqual(model.allVisibleMatchingPasskey.map { model.subtitle(for: $0) }, ["alice · Personal", "alice · Family"])
+        await model.selectPasskey(model.allVisibleMatchingPasskey[1])
+        XCTAssertEqual(allAssertion.first?.credentialID, Data([2, 2, 2]))
     }
 
     func testPasskeyListAppliesAllowedCredentialsAndOtherRelyingParties() async {
@@ -443,6 +570,27 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertEqual(model.errorMessage, "the request is not valid")
         XCTAssertEqual(model.screen, .passkeyRegistration)
         XCTAssertTrue(identityStore.allSaved.isEmpty)
+        backend.preparePasskeyRegistrationError = BackendError(message: "Could not load destinations.")
+        await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "github.com", userName: "alice", userHandle: Data([5]), clientDataHash: clientDataHash))
+        XCTAssertEqual(model.registrationDestination, .failed)
+        XCTAssertEqual(model.errorMessage, "Could not load destinations.")
+        XCTAssertFalse(model.isBusy)
+        XCTAssertNil(model.passkeyRegistrationOptions)
+        backend.preparePasskeyRegistrationError = nil
+        await model.loadPasskeyRegistrationOptions()
+        XCTAssertNotNil(model.passkeyRegistrationOptions)
+        XCTAssertEqual(model.selectedRegistrationLoginID, "personal/github")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.passkeyRegistrationRequest?.relyingPartyID, "github.com")
+        for state in [VaultStatus.stateLocked, VaultStatus.stateSignedOut] {
+            backend.seedSignedIn()
+            backend.onPreparePasskeyRegistration = { self.backend.status.state = state }
+            backend.preparePasskeyRegistrationError = BackendError(message: "Session ended.")
+            await model.loadPasskeyRegistrationOptions()
+            XCTAssertEqual(model.screen, state == VaultStatus.stateLocked ? .locked : .signedOut)
+            XCTAssertEqual(model.registrationDestination, .idle)
+            XCTAssertNil(model.errorMessage)
+        }
     }
 
     func testSharedPasskeyDestinationRequiresExplicitSelection() async {

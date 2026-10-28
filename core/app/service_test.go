@@ -32,6 +32,18 @@ func TestSignedOutService(t *testing.T) {
 	}
 }
 
+func TestUnlockExplainsIncorrectMasterPassword(t *testing.T) {
+	fixture := createUnlockedTestService(t)
+	prepareTestApprovalUnlock(t, fixture, "correct master password")
+	fixture.service.Lock()
+	if _, err := fixture.service.Unlock("wrong password"); err == nil || err.Error() != "The master password is incorrect." {
+		t.Fatalf("wrong password: %v", err)
+	}
+	if fixture.service.GetStatus().State != StateLocked {
+		t.Fatal("a wrong password changed the locked session")
+	}
+}
+
 func TestBiometricNeedsPasswordAfterLaunch(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "desktop.json")
 	state, _ := localstate.Load(statePath)
@@ -349,6 +361,9 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	} else if document, err := os.ReadFile(kit.Path); err != nil || !strings.HasPrefix(string(document), "%PDF-") {
 		t.Errorf("exported kit is not a PDF: %v", err)
 	}
+	if err := service.AcknowledgeNewAccountRecovery(); err != nil {
+		t.Fatalf("confirm the saved kit: %v", err)
+	}
 	newAccountBiometric := service.config.Biometric.(*fakeBiometric)
 	newAccountBiometric.setAuthenticateError(errors.New("Touch ID was cancelled"))
 	if _, err := service.EnableNewAccountBiometricUnlock(); err == nil || service.GetStatus().BiometricEnabled {
@@ -413,7 +428,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if _, err := service.GetItem(personalID, saved.ID); !errors.Is(err, ErrLocked) {
 		t.Errorf("get while locked: %v", err)
 	}
-	if _, err := service.Unlock("wrong password"); err == nil || !strings.Contains(err.Error(), "incorrect") {
+	if _, err := service.Unlock("wrong password"); err == nil || err.Error() != "The master password is incorrect." {
 		t.Errorf("unlock with wrong password: %v", err)
 	}
 	if status, err := service.Unlock(password); err != nil || status.State != StateUnlocked || status.Name != "Desktop User" {
@@ -492,7 +507,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 
 	biometric.keys[accountID] = crypt.GenerateKey()
 	service.Lock()
-	if _, err := service.UnlockWithBiometric(); err == nil || !strings.Contains(err.Error(), "the Touch ID key does not match; Touch ID unlock was turned off") {
+	if _, err := service.UnlockWithBiometric(); err == nil || err.Error() != "Touch ID unlock was turned off. Unlock with your master password, then turn it on again in Settings, Security." {
 		t.Errorf("tampered Touch ID key: %v", err)
 	}
 	if status := service.GetStatus(); status.BiometricEnabled || len(biometric.keys) != 0 {

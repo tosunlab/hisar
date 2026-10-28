@@ -10,6 +10,8 @@ struct VaultManagementPreviewView: View {
         case leave
         case notice
         case export
+        case importReport
+        case tags
     }
 
     static func readMode() -> Mode? {
@@ -37,8 +39,45 @@ struct VaultManagementPreviewView: View {
         ]
     )
 
+    private static var importReportPreview: ImportPreview {
+        var preview = ImportPreview(fileName: "Passwords", vaultID: "personal", vaultName: "Personal")
+        preview.notice = "This is a cached partial export."
+        preview.exportedFrom = "owner@example.com"
+        preview.exportedAt = "2026-10-20T12:00:00Z"
+        preview.allDuplicate = [ImportDuplicate(title: "GitHub", username: "alice", detail: "alice · github.com · different password")]
+        return preview
+    }
+
+    private static var importReportProgress: ImportProgress {
+        var progress = ImportProgress(fileName: "Passwords", vaultID: "personal", vaultName: "Personal", savedCount: 2, totalCount: 3, isDone: true,
+            allFailed: [ImportSkippedEntry(title: "Figma", reason: "Save refused.")])
+        progress.leftBehindCount = 3
+        progress.allSkipped = [
+            ImportSkippedEntry(title: "GitHub", reason: "Unsupported extension data."),
+            ImportSkippedEntry(title: "GitHub", reason: "Different recovery code remains only in the source."),
+        ]
+        progress.allDuplicateOutcomes = [
+            ImportSkippedEntry(title: "GitHub", reason: "Added 1 new passkey to the existing login in Hisar."),
+            ImportSkippedEntry(title: "Slack", reason: "Identical duplicate already present in Hisar."),
+            ImportSkippedEntry(title: "Docker", reason: "Included the duplicate as another item."),
+        ]
+        return progress
+    }
+
     var body: some View {
         NavigationStack {
+            if mode == .tags {
+                List {
+                    TagRows(allTag: [
+                        TagSummary(name: "finance", itemCount: 2),
+                        TagSummary(name: "personal", itemCount: 1),
+                        TagSummary(name: "design-review", itemCount: 3),
+                    ])
+                }
+                .applyThemedListStyle()
+                .navigationTitle("Tags")
+                .navigationDestination(for: TagDestination.self) { ItemTagListView(tag: $0.tag) }
+            } else {
             List {
                 if mode == .notice {
                     RemovedVaultNoticeSection(allNotice: [
@@ -80,9 +119,19 @@ struct VaultManagementPreviewView: View {
                 Text("You lose access to its items on all your devices. An owner can invite you again.")
             }
         }
+        }
         .sheet(isPresented: $isSheetShown) {
             NavigationStack {
-                if mode == .export {
+                if mode == .importReport {
+                    Form { ImportCompletionReport(progress: Self.importReportProgress, preview: Self.importReportPreview) }
+                        .navigationTitle("Import from Passwords")
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { isSheetShown = false }
+                                    .accessibilityIdentifier("credential-import-done")
+                            }
+                        }
+                } else if mode == .export {
                     ExportDataForm(options: ExportOptions(isBiometricAvailable: true, minPassphraseLength: 10), isBusy: false, errorMessage: nil, result: nil) { format, _, _ in
                         resultMessage = "Exported \(format.rawValue)"
                         isSheetShown = false
@@ -102,9 +151,10 @@ struct VaultManagementPreviewView: View {
         }
         .onAppear {
             switch mode {
-            case .delete, .export: isSheetShown = true
+            case .delete, .export, .importReport: isSheetShown = true
             case .leave: isLeaveConfirmationShown = true
             case .notice: break
+            case .tags: break
             }
         }
     }

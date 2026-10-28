@@ -37,7 +37,14 @@ func (hisar *Hisar) ExportPendingRecoveryEmergencyKit(operationID, password, dir
 	return encodeJSON(struct {
 		SecretKey string `json:"secretKey"`
 		Path      string `json:"path"`
-	}{kit.SecretKey, kit.Path}, err)
+		ExportID  string `json:"exportId"`
+	}{kit.SecretKey, kit.Path, kit.ExportID}, err)
+}
+
+// RecordPendingRecoveryEmergencyKitDelivery records the delivery the platform confirmed for exportId of
+// ExportPendingRecoveryEmergencyKit: method is "file", "print" or "share".
+func (hisar *Hisar) RecordPendingRecoveryEmergencyKitDelivery(exportID, method string) error {
+	return hisar.service.RecordPendingRecoveryEmergencyKitDelivery(exportID, method)
 }
 
 func (hisar *Hisar) AcknowledgePendingRecovery(operationID, password string) error {
@@ -55,14 +62,47 @@ func (hisar *Hisar) DiscardPreparedRecovery(operationID, password string) error 
 	return hisar.service.DiscardPreparedRecovery(operationID, password)
 }
 
-// ExportNewAccountEmergencyKit writes the Emergency Kit of the account just created into directory, without the master
-// password, and returns {"secretKey", "emergencyKitPath"} as JSON; the app deletes the file once it is shared.
+// ExportNewAccountEmergencyKit writes the owed Emergency Kit into directory while this unlock is authorized and returns
+// {"secretKey", "emergencyKitPath", "exportId"} as JSON; the app deletes the file once it is shared. Writing it records
+// nothing: RecordNewAccountEmergencyKitDelivery records the delivery the platform confirmed for exportId.
 func (hisar *Hisar) ExportNewAccountEmergencyKit(directory string) (string, error) {
 	kit, err := app.ExportNewAccountEmergencyKitToDirectory(hisar.service, directory)
 	if err != nil {
 		return "", err
 	}
-	return encodeJSON(emergencyKitResult{SecretKey: kit.SecretKey, EmergencyKitPath: kit.Path}, nil)
+	return encodeJSON(emergencyKitResult{SecretKey: kit.SecretKey, EmergencyKitPath: kit.Path, ExportID: kit.ExportID}, nil)
+}
+
+// RecordNewAccountEmergencyKitDelivery records the delivery the platform confirmed for exportId of
+// ExportNewAccountEmergencyKit or ReplaceSecretKey: method is "file", "print" or "share".
+func (hisar *Hisar) RecordNewAccountEmergencyKitDelivery(exportID, method string) error {
+	return hisar.service.RecordNewAccountEmergencyKitDelivery(exportID, method)
+}
+
+// AuthorizeNewAccountEmergencyKit lets this unlock save the owed Emergency Kit after a biometric unlock.
+func (hisar *Hisar) AuthorizeNewAccountEmergencyKit(password string) error {
+	defer releaseMemory()
+	return hisar.service.AuthorizeNewAccountEmergencyKit(password)
+}
+
+// AuthorizeNewAccountEmergencyKitWithBiometric is AuthorizeNewAccountEmergencyKit with the biometric check.
+func (hisar *Hisar) AuthorizeNewAccountEmergencyKitWithBiometric() error {
+	return hisar.service.AuthorizeNewAccountEmergencyKitWithBiometric()
+}
+
+// RevealNewAccountSecretKey returns app.RevealedSecretKey ({"secretKey", "qrPayload", "qrCode"}) as JSON.
+func (hisar *Hisar) RevealNewAccountSecretKey() (string, error) {
+	return encodeJSON(hisar.service.RevealNewAccountSecretKey())
+}
+
+// PostponeNewAccountEmergencyKit is Save later.
+func (hisar *Hisar) PostponeNewAccountEmergencyKit() error {
+	return hisar.service.PostponeNewAccountEmergencyKit()
+}
+
+// HideEmergencyKitReminder is the reminder's Not now, until the next lock.
+func (hisar *Hisar) HideEmergencyKitReminder() {
+	hisar.service.HideEmergencyKitReminder()
 }
 
 // AcknowledgeNewAccountRecovery ends the pending sign-up operation once its kit was saved, for "I saved my Emergency Kit".

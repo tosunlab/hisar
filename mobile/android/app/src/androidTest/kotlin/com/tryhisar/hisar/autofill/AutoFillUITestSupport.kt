@@ -19,7 +19,8 @@ fun signUpWithLogins(accountPrefix: String, vararg allLogin: ItemDetail) {
     )
     assertTrue("signed up: ${signedUp.status}", signedUp.status.isUnlocked)
     // Until its Emergency Kit is saved and confirmed, a new account's setup stays pending, and Hisar opens on it.
-    testBackend.exportPendingRecoveryEmergencyKit(signedUp.pendingOperationId, HisarUITestCase.MASTER_PASSWORD, createTemporaryDirectory("emergency-kit"))
+    val kit = testBackend.exportPendingRecoveryEmergencyKit(signedUp.pendingOperationId, HisarUITestCase.MASTER_PASSWORD, createTemporaryDirectory("emergency-kit"))
+    testBackend.recordPendingRecoveryEmergencyKitDelivery(kit.exportId, "file")
     testBackend.acknowledgePendingRecovery(signedUp.pendingOperationId, HisarUITestCase.MASTER_PASSWORD)
     val personal = testBackend.listAllVault().single { it.name == "Personal" }
     for (login in allLogin) testBackend.saveItem(personal.id, login)

@@ -28,36 +28,47 @@ struct ChangeMasterPasswordView: View {
     var body: some View {
         Form {
             Section {
-                SecureField("Current master password", text: $currentPassword)
+                CredentialField("Current master password", text: $currentPassword, secretName: "current master password")
                     .textContentType(.password)
                     .accessibilityIdentifier("change-password-current")
+                    .concealWhen(model.isBusy || isConfirmationShown)
             } header: {
                 Text("Current master password")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 Text("Your Secret Key, your Emergency Kit and your items stay the same. Hisar never sends your master password to the server.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
-                SecureField("New master password", text: $newPassword, prompt: Text("At least 10 characters"))
+                CredentialField("New master password", text: $newPassword, prompt: "At least 10 characters", secretName: "new master password")
                     .textContentType(.newPassword)
                     .accessibilityIdentifier("change-password-new")
+                    .concealWhen(model.isBusy || isConfirmationShown)
                     .validationError(newPasswordProblem)
-                SecureField("Repeat new master password", text: $repeatedPassword)
+                CredentialField("Repeat new master password", text: $repeatedPassword, secretName: "repeated new master password")
                     .textContentType(.newPassword)
                     .accessibilityIdentifier("change-password-repeated")
+                    .concealWhen(model.isBusy || isConfirmationShown)
                     .validationError(newPasswordProblem == nil ? problem : nil)
             } header: {
                 Text("New master password")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     PasswordStrengthMeter(strength: newPasswordFeedback?.strength ?? PasswordStrength())
                     if let problem {
-                        Text(problem)
-                            .foregroundStyle(.red)
+                        Label {
+                            Text(problem).foregroundStyle(.primary)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                        }
                             .accessibilityIdentifier("change-password-problem")
                     } else if let hint = AccountLifecycleLogic.describeMasterPasswordHint(feedback: newPasswordFeedback) {
                         Text(hint)
+                            .foregroundStyle(.themeSecondary)
                     }
                     Text("A forgotten master password can't be recovered by anyone, including Hisar.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .task(id: newPassword) {
@@ -128,33 +139,17 @@ struct ReplaceSecretKeyView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var password = ""
-    @State private var result: CredentialChangeResult?
     @State private var isConfirmationShown = false
-    @State private var handedOffKitPath: String?
 
     var body: some View {
         Form {
-            if let result {
-                replacedSections(result)
-            } else {
-                confirmationSections
-            }
+            confirmationSections
         }
         .applyThemedListBackground()
-        .navigationTitle(result == nil ? "Replace Secret Key" : "Save your new Secret Key")
+        .navigationTitle("Replace Secret Key")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(result != nil)
         .onAppear { model.clearError() }
-        .onDisappear {
-            if let result {
-                model.finishSecretKeyReplacement(result)
-            }
-            result = nil
-            password = ""
-        }
-        .onChange(of: model.status.state) { _, _ in clearDelivery() }
-        .onChange(of: model.status.email) { _, _ in clearDelivery() }
-        .onChange(of: model.status.server) { _, _ in clearDelivery() }
+        .onDisappear { password = "" }
         .confirmationDialog("Replace your Secret Key?", isPresented: $isConfirmationShown, titleVisibility: .visible) {
             Button("Replace Secret Key", role: .destructive, action: submit)
                 .accessibilityIdentifier("replace-secret-key-confirm")
@@ -166,13 +161,16 @@ struct ReplaceSecretKeyView: View {
     @ViewBuilder
     private var confirmationSections: some View {
         Section {
-            SecureField("Master password", text: $password)
+            CredentialField("Master password", text: $password)
                 .textContentType(.password)
                 .accessibilityIdentifier("replace-secret-key-password")
+                .concealWhen(model.isBusy || isConfirmationShown)
         } header: {
             Text("Master password")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             Text("Replace it if your Secret Key or Emergency Kit may have been seen by someone else. Your master password and your items stay the same.")
+                .foregroundStyle(.themeSecondary)
         }
         if let errorMessage = model.errorMessage {
             Section {
@@ -201,98 +199,17 @@ struct ReplaceSecretKeyView: View {
         }
     }
 
-    @ViewBuilder
-    private func replacedSections(_ result: CredentialChangeResult) -> some View {
-        Section {
-            Text(result.secretKey)
-                .font(.body.monospaced())
-                .textSelection(.enabled)
-                .accessibilityIdentifier("new-secret-key-value")
-            Button {
-                model.copyText(result.secretKey, label: "Secret Key")
-            } label: {
-                Label("Copy Secret Key", systemImage: "doc.on.doc")
-            }
-        } header: {
-            Text("New Secret Key")
-        } footer: {
-            Text("\(AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount)) Your old Secret Key and Emergency Kit no longer work.")
-        }
-        if let errorMessage = model.errorMessage {
-            Section { ErrorBanner(message: errorMessage) }
-        }
-        let kitPath = result.pendingOperationId.isEmpty ? result.emergencyKitPath : model.pendingRecoveryExport?.path ?? ""
-        let isWaitingForHandoff = !result.pendingOperationId.isEmpty && (kitPath.isEmpty || handedOffKitPath != kitPath)
-        Section {
-            if !kitPath.isEmpty {
-                EmergencyKitShareButton(url: URL(fileURLWithPath: kitPath), label: "Save or print Emergency Kit", onPresent: model.reportActivity) {
-                    handedOffKitPath = kitPath
-                    model.reportActivity()
-                }
-                .accessibilityIdentifier("share-new-emergency-kit")
-            } else if !result.pendingOperationId.isEmpty {
-                Button("Prepare Emergency Kit") {
-                    Task { await model.exportPendingRecoveryKit(operationID: result.pendingOperationId, password: password) }
-                }
-                .disabled(model.isBusy)
-            }
-        } header: {
-            Text("New Emergency Kit")
-        } footer: {
-            Text("The Emergency Kit holds your Secret Key and has a space to write your master password. Save the new one now, and destroy the old one.")
-        }
-        Section {
-            Button {
-                Task {
-                    if !result.pendingOperationId.isEmpty {
-                        guard await model.acknowledgePendingRecovery(operationID: result.pendingOperationId, password: password) else { return }
-                    }
-                    clearDelivery()
-                }
-            } label: {
-                Text(result.pendingOperationId.isEmpty ? "Done" : "I saved the new Emergency Kit")
-                    .frame(maxWidth: .infinity)
-            }
-            .applyProminentGlassStyle()
-            .controlSize(.large)
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets())
-            .disabled(model.isBusy || isWaitingForHandoff)
-            .accessibilityIdentifier("replace-secret-key-done")
-        } footer: {
-            if isWaitingForHandoff {
-                Text("Save or print the Emergency Kit to continue.")
-                    .accessibilityIdentifier("replace-secret-key-handoff-hint")
-            }
-        }
-        if !result.pendingOperationId.isEmpty {
-            Section {
-                Button("Finish later", action: clearDelivery)
-            }
-        }
-    }
 
     private func submit() {
         let enteredPassword = password
         Task {
-            if let replaced = await model.replaceSecretKey(password: enteredPassword) {
-                if replaced.pendingOperationId.isEmpty || replaced.isWaitingOnlyForKit {
-                    result = replaced
-                } else {
-                    password = ""
-                    dismiss()
-                }
+            if await model.replaceSecretKey(password: enteredPassword) != nil {
+                password = ""
+                dismiss()
             }
         }
     }
 
-    private func clearDelivery() {
-        if let result { model.finishSecretKeyReplacement(result) }
-        result = nil
-        handedOffKitPath = nil
-        password = ""
-        dismiss()
-    }
 }
 
 struct DeleteAccountView: View {
@@ -322,9 +239,10 @@ struct DeleteAccountView: View {
                 consequenceSections(preview)
             }
             Section {
-                SecureField("Master password", text: $password)
+                CredentialField("Master password", text: $password)
                     .textContentType(.password)
                     .accessibilityIdentifier("delete-account-password")
+                    .concealWhen(model.isBusy || isConfirmationShown)
                 TextField("Email", text: $typedEmail, prompt: Text(verbatim: model.status.email))
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -332,8 +250,10 @@ struct DeleteAccountView: View {
                     .accessibilityIdentifier("delete-account-email")
             } header: {
                 Text("Confirm")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 Text("Enter your master password and type \(model.status.email) to confirm. Hisar checks your master password without sending it to the server.")
+                    .foregroundStyle(.themeSecondary)
             }
             if let errorMessage = model.errorMessage {
                 Section {
@@ -385,31 +305,43 @@ struct DeleteAccountView: View {
     @ViewBuilder
     private func consequenceSections(_ preview: AccountDeletionPreview) -> some View {
         if !preview.allOwnedVault.isEmpty {
-            Section("Vaults that are deleted") {
+            Section {
                 ForEach(preview.allOwnedVault) { vault in
                     LabeledContent(vault.name, value: AccountLifecycleLogic.describeOwnedVault(vault))
                 }
+            } header: {
+                Text("Vaults that are deleted")
+                    .foregroundStyle(.themeSecondary)
             }
         }
         if !preview.allMemberVault.isEmpty {
-            Section("Vaults you leave") {
+            Section {
                 ForEach(preview.allMemberVault) { vault in
                     LabeledContent(vault.name, value: AccountLifecycleLogic.describeMemberVault(vault))
                 }
+            } header: {
+                Text("Vaults you leave")
+                    .foregroundStyle(.themeSecondary)
             }
         }
         if !preview.allOrganization.isEmpty {
-            Section("Organizations") {
+            Section {
                 ForEach(preview.allOrganization) { organization in
                     Text(AccountLifecycleLogic.describeOrganization(organization))
                         .accessibilityIdentifier("deletion-organization-\(organization.name)")
                 }
+            } header: {
+                Text("Organizations")
+                    .foregroundStyle(.themeSecondary)
             }
         }
-        Section("Also") {
+        Section {
             ForEach(AccountLifecycleLogic.describeAllOtherConsequence(preview), id: \.self) { consequence in
                 Text(consequence)
             }
+        } header: {
+            Text("Also")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -436,13 +368,11 @@ struct DeleteAccountView: View {
 
 struct PendingRecoveryView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var selectedID: String?
+    private var selectedID: String? { model.selectedPendingRecoveryID }
     @State private var password = ""
     @State private var secretKey = ""
     @State private var priorSecretKey = ""
     @State private var isDiscardConfirmationShown = false
-    // The kit file a share sheet completed a save, print or share of; a new export or another record needs its own.
-    @State private var handedOffKitPath: String?
 
     private func clearCredentials() {
         password = ""
@@ -451,37 +381,51 @@ struct PendingRecoveryView: View {
         isDiscardConfirmationShown = false
     }
 
+    private func handleOutcome(_ succeeded: Bool, isFinal: Bool = false) {
+        if succeeded && isFinal { clearCredentials() }
+        else if !succeeded && model.lastErrorCode == BackendError.pendingRecoveryPassword { password = "" }
+    }
+
     private var selected: PendingRecovery? {
         model.allPendingRecovery.first { $0.operationId == selectedID }
     }
+
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Account setup needs finishing. These records stay on this phone until you save the new Emergency Kit and confirm it. Your current account stays unchanged unless you explicitly resume another account.")
+                    Text("Save and confirm your Emergency Kit to finish this setup.")
                 }
-                Section("Choose an account") {
-                    ForEach(model.allPendingRecovery) { recovery in
-                        Button {
-                            clearCredentials()
-                            model.clearPendingRecoveryExport()
-                            selectedID = recovery.operationId
-                        } label: {
-                            VStack(alignment: .leading) {
-                                Text(recovery.email)
-                                Text(recovery.origin).font(.caption)
-                                Text(recovery.kind).font(.caption)
-                                Text(recovery.phase).font(.caption)
+                if model.allPendingRecovery.count > 1 {
+                    Section {
+                        ForEach(model.allPendingRecovery) { recovery in
+                            Button {
+                                if selectedID != recovery.operationId {
+                                    clearCredentials()
+                                    model.selectPendingRecovery(recovery.operationId)
+                                }
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(PendingRecoveryCopy.heading(recovery.kind))
+                                        Text("\(recovery.email) · \(PendingRecoveryCopy.host(recovery.origin))").font(.caption)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right").accessibilityHidden(true)
+                                }
                             }
+                            .accessibilityIdentifier("pending-recovery-\(recovery.operationId)")
                         }
-                        .accessibilityIdentifier("pending-recovery-\(recovery.operationId)")
+                    } header: {
+                        Text("Choose an account")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
                 if let recovery = selected {
                     Section {
-                        Text(recovery.origin)
-                        Text(recovery.phase)
+                        LabeledContent("Server", value: recovery.origin)
+                        Text(PendingRecoveryCopy.status(kind: recovery.kind, phase: recovery.phase))
                             .accessibilityIdentifier("pending-recovery-phase")
                         if !recovery.keychainProtected {
                             Text("The OS keychain is unavailable. Save the Emergency Kit before continuing. After a restart, enter the Secret Key from that kit. Hisar does not store the Secret Key in this recovery record.")
@@ -498,91 +442,118 @@ struct PendingRecoveryView: View {
                             }
                         }
                         ForEach(recovery.problems, id: \.self) { Text($0) }
-                        SecureField("Master password for this recovery", text: $password)
+                        CredentialField("Master password", text: $password)
                             .textContentType(.password)
                             .accessibilityIdentifier("pending-recovery-password")
-                        Button(recovery.phase == "manual-unlock" ? "Sign in with saved Emergency Kit" : "Resume account setup") {
-                            let enteredPassword = password
-                            let enteredKey = secretKey
-                            let enteredPriorKey = priorSecretKey
-                            clearCredentials()
-                            Task {
-                                await model.resumePendingRecovery(operationID: recovery.operationId, password: enteredPassword, secretKey: enteredKey, priorSecretKey: enteredPriorKey)
-                            }
-                        }
-                        .disabled(password.isEmpty || model.isBusy || recovery.phase == "awaiting-kit")
-                        .accessibilityIdentifier("pending-recovery-resume")
-                        Button("Prepare Emergency Kit") {
-                            let enteredPassword = password
-                            clearCredentials()
-                            Task { await model.exportPendingRecoveryKit(operationID: recovery.operationId, password: enteredPassword) }
-                        }
-                        .disabled(password.isEmpty || model.isBusy || recovery.phase == "outcome-unknown")
-                        .accessibilityIdentifier("pending-recovery-export")
-                        if let export = model.pendingRecoveryExport {
-                            Text(export.secretKey)
-                                .font(.body.monospaced())
-                                .textSelection(.enabled)
-                                .accessibilityIdentifier("pending-recovery-secret-key")
-                            EmergencyKitShareButton(url: URL(fileURLWithPath: export.path), label: "Save or print Emergency Kit", onPresent: model.reportActivity) {
-                                handedOffKitPath = export.path
-                                model.reportActivity()
-                            }
-                            .accessibilityIdentifier("pending-recovery-share-kit")
-                        }
-                        Button("I saved the new Emergency Kit") {
-                            let enteredPassword = password
-                            clearCredentials()
-                            Task { await model.acknowledgePendingRecovery(operationID: recovery.operationId, password: enteredPassword) }
-                        }
-                        .disabled(password.isEmpty || model.isBusy || !recovery.kitSaved || handedOffKitPath == nil || handedOffKitPath != model.pendingRecoveryExport?.path
-                            || (recovery.phase != "delivery-pending" && recovery.phase != "awaiting-kit"))
-                        .accessibilityIdentifier("pending-recovery-acknowledge")
-                        if (recovery.phase == "delivery-pending" || recovery.phase == "awaiting-kit") && (handedOffKitPath == nil || handedOffKitPath != model.pendingRecoveryExport?.path) {
-                            Text("Save or print the Emergency Kit to continue.")
+                            .concealWhen(model.isBusy || isDiscardConfirmationShown)
+                        if password.isEmpty {
+                            Text("Enter your master password to continue.")
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .accessibilityIdentifier("pending-recovery-handoff-hint")
+                                .foregroundStyle(.themeSecondary)
+                        }
+                        if model.status.state != VaultStatus.stateSignedOut && (model.status.email != recovery.email || model.status.server != recovery.origin) {
+                            Text("Continuing signs this device in to \(recovery.email) on \(PendingRecoveryCopy.host(recovery.origin)).")
+                        }
+                        if ["manual-unlock", "prepared", "needs-finishing", "outcome-unknown"].contains(recovery.phase) {
+                            Button(recovery.phase == "manual-unlock" ? "Sign in with saved Emergency Kit" : "Continue") {
+                                let enteredPassword = password
+                                let enteredKey = secretKey
+                                let enteredPriorKey = priorSecretKey
+                                Task {
+                                    let succeeded = await model.resumePendingRecovery(operationID: recovery.operationId, password: enteredPassword, secretKey: enteredKey, priorSecretKey: enteredPriorKey)
+                                    handleOutcome(succeeded)
+                                }
+                            }
+                            .applyProminentGlassStyle()
+                            .disabled(password.isEmpty || model.isBusy)
+                            .accessibilityIdentifier("pending-recovery-resume")
+                        } else if model.pendingRecoveryExport == nil {
+                            Button("Prepare Emergency Kit") {
+                                let enteredPassword = password
+                                Task { handleOutcome(await model.exportPendingRecoveryKit(operationID: recovery.operationId, password: enteredPassword)) }
+                            }
+                            .disabled(password.isEmpty || model.isBusy || recovery.phase == "outcome-unknown")
+                            .applyProminentGlassStyle()
+                            .accessibilityIdentifier("pending-recovery-export")
+                        }
+                    } header: {
+                        Text(PendingRecoveryCopy.heading(recovery.kind))
+                            .foregroundStyle(.themeSecondary)
+                    } footer: {
+                        Text("Preparing a kit does not confirm that you saved it.")
+                            .foregroundStyle(.themeSecondary)
+                    }
+                    if let export = model.pendingRecoveryExport {
+                        SecretKeySection(secretKey: export.secretKey, valueIdentifier: "pending-recovery-secret-key", copyIdentifier: "pending-recovery-copy-secret-key")
+                        Section {
+                            EmergencyKitShareButton(url: URL(fileURLWithPath: export.path), label: "Save or print Emergency Kit", onPresent: model.reportActivity) { method in
+                                Task { await model.recordPendingKitDelivery(method: method, path: export.path) }
+                            }
+                            .applyGlassButtonStyle(isProminent: recovery.savedBy?.isEmpty != false)
+                            .accessibilityIdentifier("pending-recovery-share-kit")
+                            if recovery.savedBy?.isEmpty != false {
+                                Text("Save, print or share the Emergency Kit first.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.themeSecondary)
+                                    .accessibilityIdentifier("pending-recovery-handoff-hint")
+                            }
+                        } header: {
+                            Text("Emergency Kit")
+                                .foregroundStyle(.themeSecondary)
+                        }
+                    }
+                    Section {
+                        if recovery.savedBy?.isEmpty == false && ["delivery-pending", "awaiting-kit"].contains(recovery.phase) {
+                            Button("I saved my Emergency Kit") {
+                                let enteredPassword = password
+                                Task {
+                                    handleOutcome(await model.acknowledgePendingRecovery(operationID: recovery.operationId, password: enteredPassword), isFinal: recovery.phase == "delivery-pending")
+                                }
+                            }
+                            .applyProminentGlassStyle()
+                            .disabled(password.isEmpty || model.isBusy || !recovery.kitSaved)
+                            .accessibilityIdentifier("pending-recovery-acknowledge")
                         }
                         if recovery.phase == "awaiting-kit" || recovery.phase == "prepared" {
-                            Button("Discard uncommitted setup", role: .destructive) { isDiscardConfirmationShown = true }
+                            Button("Cancel this setup", role: .destructive) { isDiscardConfirmationShown = true }
                                 .disabled(password.isEmpty || model.isBusy)
                                 .accessibilityIdentifier("pending-recovery-discard")
                         }
-                    } header: {
-                        Text(recovery.email)
-                    } footer: {
-                        Text("Use the password you chose for this change. Resume may switch the account open on this phone. Preparing a kit does not confirm that you saved it.")
                     }
                 }
                 if model.isBusy {
                     Section {
-                        ProgressView("Finishing account recovery")
+                        ProgressView("Finishing account setup")
                             .accessibilityIdentifier("pending-recovery-progress")
                     }
                 }
                 if let message = model.errorMessage { Section { ErrorBanner(message: message) } }
                 Section {
-                    Button("Finish later") { model.closePendingRecovery() }
+                    Button("Finish later") { clearCredentials(); model.closePendingRecovery() }
                         .accessibilityIdentifier("pending-recovery-later")
                 }
             }
             .applyThemedListBackground()
-            .navigationTitle("Account recovery")
+            .navigationTitle("Finish account setup")
         }
-        .confirmationDialog("Discard this uncommitted setup?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
-            Button("Discard setup", role: .destructive) {
+        .confirmationDialog("Cancel this setup?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
+            Button("Cancel this setup", role: .destructive) {
                 guard let recovery = selected else { return }
                 let enteredPassword = password
-                clearCredentials()
-                Task { await model.discardPreparedRecovery(operationID: recovery.operationId, password: enteredPassword) }
+                Task { handleOutcome(await model.discardPreparedRecovery(operationID: recovery.operationId, password: enteredPassword), isFinal: true) }
             }
             .accessibilityIdentifier("pending-recovery-discard-confirm")
         } message: {
             Text("No server change has been sent. This removes only the local prepared setup so you can start again.")
         }
-        .onChange(of: model.status.state) { _, _ in clearCredentials() }
+        .onChange(of: model.status.state) { _, state in
+            if state == VaultStatus.stateLocked || state == VaultStatus.stateSignedOut { clearCredentials() }
+        }
+        .onChange(of: selectedID) { _, _ in
+            clearCredentials()
+        }
         .onChange(of: model.status.email) { _, _ in clearCredentials() }
+        .onChange(of: model.status.server) { _, _ in clearCredentials() }
         .onDisappear {
             clearCredentials()
             model.clearPendingRecoveryExport()

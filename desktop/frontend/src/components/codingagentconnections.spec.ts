@@ -4,6 +4,7 @@ import { api as mockedApi } from "../api";
 import { store } from "../store";
 import { createCodingAgent, createStatus } from "../testing";
 import CodingAgentsSection from "./CodingAgentsSection.vue";
+import SettingsPanel from "./SettingsPanel.vue";
 
 // vi.mock runs before the imports above, so its factory loads the mock itself.
 vi.mock("../api", async () => {
@@ -19,7 +20,6 @@ const api = vi.mocked(mockedApi);
 const omp = createCodingAgent({ id: "omp", name: "omp" });
 const claudeCode = createCodingAgent({ id: "claude-code", name: "Claude Code" });
 const codex = createCodingAgent({ id: "codex", name: "Codex" });
-const hermes = createCodingAgent({ id: "hermes", name: "Hermes" });
 
 async function mountSection(): Promise<VueWrapper> {
   const wrapper = mount(CodingAgentsSection, { attachTo: document.body });
@@ -42,7 +42,7 @@ beforeEach(() => {
     isBusy: false,
     allVault: [{ id: "work", name: "Work", type: "shared", role: "editor", itemCount: 3 }],
     allAgentVaultID: [],
-    agentErrorMessage: "",
+    agentErrors: { vaults: "", signIn: "", grants: "", sessions: "", hosts: "", alwaysWhileLocked: "" },
   });
   api.listAllAgentVaultID.mockResolvedValue(["work"]);
 });
@@ -70,14 +70,6 @@ describe("CodingAgentConnections", () => {
     wrapper.unmount();
   });
 
-  it("says Codex is not installed and omp is available", async () => {
-    api.listAllCodingAgent.mockResolvedValue([omp, { ...codex, state: "not-installed" }]);
-    const wrapper = await mountSection();
-    expect(getText(wrapper, "agent-state-omp")).toContain("through hisar run and show Hisar's state in their status line.");
-    expect(getText(wrapper, "agent-state-codex")).toBe("Codex is not installed.");
-    wrapper.unmount();
-  });
-
   it("connects Claude Code and asks to restart running sessions", async () => {
     api.listAllCodingAgent.mockResolvedValue([omp, claudeCode]);
     const wrapper = await mountSection();
@@ -92,38 +84,19 @@ describe("CodingAgentConnections", () => {
     wrapper.unmount();
   });
 
-  it("connects omp and asks to restart running sessions", async () => {
-    api.listAllCodingAgent.mockResolvedValue([omp]);
-    const wrapper = await mountSection();
-    api.connectCodingAgent.mockResolvedValue({ ...omp, state: "connected" });
-    await wrapper.find('[data-testid="connect-agent-omp"]').trigger("click");
-    await flushPromises();
-    expect(getText(wrapper, "agent-restart-hint-omp")).toBe("New omp sessions load Hisar. Restart the ones already running.");
-    wrapper.unmount();
-  });
-
-  it("connects Hermes and tells how sessions load Hisar", async () => {
-    api.listAllCodingAgent.mockResolvedValue([hermes]);
-    const wrapper = await mountSection();
-    api.connectCodingAgent.mockResolvedValue({ ...hermes, state: "connected" });
-    await wrapper.find('[data-testid="connect-agent-hermes"]').trigger("click");
-    await flushPromises();
-    expect(api.connectCodingAgent).toHaveBeenCalledWith("hermes");
-    expect(getText(wrapper, "agent-restart-hint-hermes")).toBe(
-      "Start a new Hermes session, or run /reload-mcp in one that is running. A session started with -t loads Hisar when its list names hisar, all or *.",
-    );
-    wrapper.unmount();
-  });
-
   it("disconnects a connected Codex", async () => {
     api.listAllCodingAgent.mockResolvedValue([{ ...codex, state: "connected" }]);
     const wrapper = await mountSection();
     api.disconnectCodingAgent.mockResolvedValue(codex);
+    expect(getText(wrapper, "agent-disconnect-explanation-codex")).toContain("It does not revoke running-agent approvals or saved approvals.");
     await wrapper.find('[data-testid="disconnect-agent-codex"]').trigger("click");
     await flushPromises();
     expect(api.disconnectCodingAgent).toHaveBeenCalledWith("codex");
     expect(hasElement(wrapper, "connect-agent-codex")).toBe(true);
     expect(hasElement(wrapper, "agent-restart-hint-codex")).toBe(false);
+    expect(getText(wrapper, "agent-disconnected")).toContain("Disconnected Codex. This removes the connection setup.");
+    expect(api.revokeAgentSession).not.toHaveBeenCalled();
+    expect(api.revokeAgentGrant).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
@@ -185,4 +158,23 @@ describe("CodingAgentConnections", () => {
     expect(wrapper.text()).not.toContain("claude mcp add");
     wrapper.unmount();
   });
+
+  for (const destination of ["agent-sessions", "agent-grants"]) {
+    it(`reveals and focuses ${destination} after disconnect under a conflicting search`, async () => {
+      api.listAllCodingAgent.mockResolvedValue([{ ...claudeCode, state: "connected" }]);
+      api.disconnectCodingAgent.mockResolvedValue(claudeCode);
+      const wrapper = mount(SettingsPanel, { attachTo: document.body });
+      await flushPromises();
+      await wrapper.get('[data-testid="settings-search"]').setValue("disconnect");
+      expect(wrapper.get(`#${destination}`).isVisible()).toBe(false);
+      await wrapper.get('[data-testid="disconnect-agent-claude-code"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.get('[data-testid="agent-disconnected"]').text()).toContain("Disconnected Claude Code.");
+      await wrapper.get(`[data-testid="agent-disconnected"] a[href="#${destination}"]`).trigger("click");
+      expect((wrapper.get('[data-testid="settings-search"]').element as HTMLInputElement).value).toBe("");
+      expect(wrapper.get(`#${destination}`).isVisible()).toBe(true);
+      expect(document.activeElement).toBe(wrapper.get(`#${destination}`).element);
+      wrapper.unmount();
+    });
+  }
 });

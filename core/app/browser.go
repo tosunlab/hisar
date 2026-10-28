@@ -394,11 +394,7 @@ func (bridge *BrowserBridge) RemovePairedBrowser(instanceID string) (BrowserStat
 }
 
 func (bridge *BrowserBridge) SetExactHostMatch(isExactHostMatch bool) (BrowserStatus, error) {
-	s := bridge.service
-	s.mutex.Lock()
-	s.state.IsExactHostMatch = isExactHostMatch
-	err := s.state.Save()
-	s.mutex.Unlock()
+	err := SetExactHostMatch(bridge.service, isExactHostMatch)
 	return bridge.GetBrowserStatus(), err
 }
 

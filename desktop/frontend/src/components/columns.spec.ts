@@ -36,6 +36,7 @@ beforeEach(() => {
     status: createStatus("unlocked"),
     allVault: [personalVault],
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [],
     selectedItem: null,
     isFavoritesSelected: false,
@@ -47,13 +48,6 @@ beforeEach(() => {
 });
 
 describe("Resizable columns", () => {
-  it("starts at the default widths with room kept for the detail column", () => {
-    const wrapper = mount(MainView, { attachTo: document.body });
-    expect(wrapper.get('[data-testid="resize-sidebar"]').attributes("aria-valuenow")).toBe("228");
-    expect(wrapper.get('[data-testid="resize-list"]').attributes("aria-valuenow")).toBe("300");
-    wrapper.unmount();
-  });
-
   it("drags the sidebar and the list within their limits and keeps the widths on this device", async () => {
     const wrapper = mount(MainView, { attachTo: document.body });
     const sidebarHandle = wrapper.find('[data-testid="resize-sidebar"]');

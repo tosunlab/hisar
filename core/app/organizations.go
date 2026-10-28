@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -79,6 +81,11 @@ func (s *Service) ListOrganizations() (Organizations, error) {
 	defer cancel()
 	organizationList, err := s.unlockedSession.Client.ListOrganizations(ctx)
 	if err != nil {
+		if apiclient.IsUnreachable(err) {
+			if cached, cacheErr := s.loadOrganizationNames(); cacheErr == nil {
+				return cached, nil
+			}
+		}
 		return Organizations{}, convertOrganizationError(err)
 	}
 	result := Organizations{
@@ -96,6 +103,58 @@ func (s *Service) ListOrganizations() (Organizations, error) {
 			ID: invitation.ID, OrganizationID: invitation.OrganizationID, OrganizationName: invitation.OrganizationName, Role: invitation.Role,
 			InvitedByName: invitation.InvitedByName, InvitedByEmail: invitation.InvitedByEmail, ExpiresAt: formatTime(invitation.ExpiresAt),
 		})
+	}
+	if err := s.saveOrganizationNames(result.Organizations); err != nil {
+		log.Printf("organization names could not be cached: %v", err)
+	}
+	return result, nil
+}
+
+type cachedOrganizationName struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (s *Service) saveOrganizationNames(organizations []OrganizationSummary) error {
+	if s.getCache() == nil {
+		return nil
+	}
+	names := make([]cachedOrganizationName, 0, len(organizations))
+	for _, organization := range organizations {
+		names = append(names, cachedOrganizationName{ID: organization.ID, Name: organization.Name})
+	}
+	plaintext, err := json.Marshal(names)
+	if err != nil {
+		return err
+	}
+	defer clear(plaintext)
+	sealed, err := crypt.SealOrganizationNames(s.unlockedSession.Keyset.UserKey, s.unlockedSession.AccountID, plaintext)
+	if err != nil {
+		return err
+	}
+	return s.localCache.SaveOrganizationNames(s.unlockedSession.AccountID, sealed)
+}
+
+func (s *Service) loadOrganizationNames() (Organizations, error) {
+	result := Organizations{Organizations: []OrganizationSummary{}, Invitations: []OrganizationInvitation{}, IsCached: true}
+	if s.getCache() == nil {
+		return result, ErrOffline
+	}
+	sealed, err := s.localCache.LoadOrganizationNames(s.unlockedSession.AccountID)
+	if err != nil || len(sealed) == 0 {
+		return result, ErrOffline
+	}
+	plaintext, err := crypt.OpenOrganizationNames(s.unlockedSession.Keyset.UserKey, s.unlockedSession.AccountID, sealed)
+	if err != nil {
+		return result, err
+	}
+	defer clear(plaintext)
+	var names []cachedOrganizationName
+	if err := json.Unmarshal(plaintext, &names); err != nil {
+		return result, err
+	}
+	for _, name := range names {
+		result.Organizations = append(result.Organizations, OrganizationSummary{ID: name.ID, Name: name.Name})
 	}
 	return result, nil
 }

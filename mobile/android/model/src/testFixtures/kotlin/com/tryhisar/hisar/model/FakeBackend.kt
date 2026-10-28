@@ -25,8 +25,10 @@ open class FakeBackend : VaultBackend {
     /** Starred items as "vaultID/itemID"; the account keeps them apart from the items. */
     var allFavoriteRecordID: MutableSet<String> = mutableSetOf()
     var favoriteErrorMessage: String? = null
+    var moveErrorMessage: String? = null
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
+    var biometricUnlockError: BackendError? = null
     var verifyPasskey: (String) -> Boolean = { true }
     override fun cancelPasskeyCeremonies() {}
     var isOffline = false
@@ -48,6 +50,8 @@ open class FakeBackend : VaultBackend {
     var allVaultMemberByVaultID: MutableMap<String, MutableList<Member>> = mutableMapOf()
     val allInvitedEmail = mutableListOf<String>()
     var shareInvitations = ShareInvitations()
+    var peopleErrorMessage: String? = null
+    var cancelShareInvitationErrorMessage: String? = null
     var allShareAwaitingUnlock: List<ShareAwaitingUnlock> = emptyList()
     var isShareAwaitingUnlockFailing = false
     val allAnsweredInvitation = mutableListOf<String>()
@@ -57,6 +61,7 @@ open class FakeBackend : VaultBackend {
     /** While set, listing the devices fails with this sentence. */
     var listAllDeviceErrorMessage: String? = null
     var isMacApprovalAllowedValue = true
+    var isExactHostMatchValue = false
     var isWebsiteIconsEnabledValue = true
     /** The Web Push endpoint the app registered; null before it has one and after it removed it. */
     var webPushEndpoint: String? = null
@@ -66,6 +71,8 @@ open class FakeBackend : VaultBackend {
     @get:JvmName("themeValue") @set:JvmName("themeValue")
     var theme = VaultTheme.standard
     var isThemeSaveFailing = false
+    var revokeDeviceErrorMessage: String? = null
+    var macApprovalErrorMessage: String? = null
     val allCopiedReference = mutableListOf<String>()
     var allPendingRemovedVault: List<RemovedVaultNotice> = emptyList()
     val allDeletionRequest = mutableListOf<VaultDeletionRequest>()
@@ -82,10 +89,39 @@ open class FakeBackend : VaultBackend {
     var pendingSignUpResult: SignUpResult? = null
     /** Whether the backend still keeps the new account's Secret Key, the proof Save your Secret Key acts on. */
     var isNewAccountSecretKeyKept = false
+    /** While set, exportNewAccountEmergencyKit fails with it, as when the kit PDF cannot be written. */
+    var newAccountEmergencyKitError: BackendError? = null
+    val allNewAccountEmergencyKitDirectory = mutableListOf<File>()
     /** The server signUpWithoutInvite was last asked to create an account on; null until it is called. */
     var signUpWithoutInviteServer: String? = null
     /** While set, signUpWithoutInvite fails with this sentence: the server's admin has not opened registration. */
     var signUpWithoutInviteErrorMessage: String? = null
+    var signUpPolicyMode = "unknown"
+    var signUpPolicyAnswer: ((String) -> SignUpPolicy)? = null
+    var signUpPolicyErrorMessage: String? = null
+    private var isKitReminderHidden = false
+    private var hasKitUnlockKey = false
+    private val kitExports = mutableMapOf<String, String>()
+
+    private fun owedRecovery(): PendingRecovery? = allPendingRecovery.firstOrNull {
+        status.isSignedIn && it.origin == status.server && it.email == status.email &&
+            it.kind in listOf("signup", "replace-secret-key") && it.phase == "delivery-pending" &&
+            it.keychainProtected && it.problems.isEmpty() && !it.manualUnlock
+    }
+
+    private fun updateKitStatus(): VaultStatus {
+        status = status.copy(emergencyKit = owedRecovery()?.let {
+            EmergencyKitStatus(it.operationId, it.kind, it.savedBy, it.postponedAt,
+                isAuthorized = status.isUnlocked && isNewAccountSecretKeyKept, isReminderHidden = isKitReminderHidden)
+        }, biometricOfferAvailable = status.isUnlocked && hasKitUnlockKey && status.biometricAvailable && !status.biometricEnabled)
+        return status
+    }
+
+    override fun getSignUpPolicy(server: String): SignUpPolicy {
+        record("getSignUpPolicy")
+        signUpPolicyErrorMessage?.let { throw BackendError(it) }
+        return signUpPolicyAnswer?.invoke(server) ?: SignUpPolicy(server, server.removePrefix("https://"), signUpPolicyMode)
+    }
     var pendingCredentialChangeResult: CredentialChangeResult? = null
     /** The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence. */
     var allOrganization: MutableList<Organization> = mutableListOf()
@@ -107,6 +143,8 @@ open class FakeBackend : VaultBackend {
     val allImportedCredentialData = mutableListOf<ByteArray>()
     /** While set, the next continueImport fails with this sentence and saves nothing. */
     var continueImportErrorMessage: String? = null
+    var importPreviewOverride: ImportPreview? = null
+    var importProgressOverride: ImportProgress? = null
     /** Whether the next prepareHisarExportImport reads an encrypted export, which asks for its passphrase first. */
     var isHisarExportEncrypted = true
     /** The logins a Hisar export would import, as one source group named for its vault. */
@@ -192,6 +230,7 @@ open class FakeBackend : VaultBackend {
     override fun listAllPerson(): List<Member> {
         record("listAllPerson")
         requireUnlocked()
+        peopleErrorMessage?.let { throw BackendError(it) }
         val allSharedAccountID = allVaultMemberByVaultID.values.filter { members -> members.any { it.isCurrentUser } }
             .flatMap { members -> members.map { it.accountID } }.toSet()
         return allMember.filter { it.isCurrentUser || it.accountID in allSharedAccountID }
@@ -236,6 +275,7 @@ open class FakeBackend : VaultBackend {
     override fun cancelShareInvitation(invitationID: String) {
         record("cancelShareInvitation")
         requireUnlocked()
+        cancelShareInvitationErrorMessage?.let { throw BackendError(it) }
         if (shareInvitations.allSent.none { it.id == invitationID }) throw BackendError("This invitation no longer exists")
         shareInvitations = shareInvitations.copy(allSent = shareInvitations.allSent.filter { it.id != invitationID })
     }
@@ -320,7 +360,7 @@ open class FakeBackend : VaultBackend {
 
     override fun getStatus(): VaultStatus {
         record("getStatus")
-        return status
+        return updateKitStatus()
     }
 
     var onCheckMinimumVersion: (() -> Unit)? = null
@@ -343,11 +383,11 @@ open class FakeBackend : VaultBackend {
 
     override fun signUp(inviteLink: String, email: String, name: String, password: String): SignUpResult {
         record("signUp")
-        if ("/invite/" !in inviteLink) throw BackendError("Invalid invite link")
+        if (inviteLink.isEmpty() || "/invite/" !in inviteLink && !inviteLink.all { it.isLetterOrDigit() || it == '_' || it == '-' }) throw BackendError("Invalid invite link")
         pendingSignUpResult?.let { return it }
         seedSignedIn()
         allItemByVaultID = mutableMapOf("personal" to mutableListOf(), "family" to mutableListOf())
-        status = status.copy(email = email, name = name)
+        status = status.copy(server = inviteLink.substringBeforeLast("/invite/").takeIf { "://" in it } ?: InviteLink.DEFAULT_SERVER, email = email, name = name)
         return startNewAccount()
     }
 
@@ -369,22 +409,26 @@ open class FakeBackend : VaultBackend {
             email = status.email, name = status.name, phase = "delivery-pending", keychainProtected = true,
         )
         isNewAccountSecretKeyKept = true
-        return SignUpResult(status, SECRET_KEY, NEW_ACCOUNT_OPERATION_ID, "delivery-pending")
+        hasKitUnlockKey = true
+        return SignUpResult(updateKitStatus(), SECRET_KEY, NEW_ACCOUNT_OPERATION_ID, "delivery-pending")
     }
 
     override fun unlock(password: String): VaultStatus {
         record("unlock")
-        if (password != PASSWORD) throw BackendError("Incorrect email, master password or Secret Key")
+        if (password != PASSWORD) throw BackendError("The master password is incorrect.")
         status = status.copy(state = VaultStatus.STATE_UNLOCKED, biometricReady = status.biometricReady || status.biometricEnabled)
-        return status
+        isNewAccountSecretKeyKept = owedRecovery() != null
+        hasKitUnlockKey = isNewAccountSecretKeyKept
+        return updateKitStatus()
     }
 
     override fun unlockWithBiometric(): VaultStatus {
         record("unlockWithBiometric")
         if (!status.biometricReady) throw BackendError("Unlock with your master password first")
+        biometricUnlockError?.let { throw it }
         if (!isBiometricSucceeding) throw BackendError("Face ID was cancelled.")
         status = status.copy(state = VaultStatus.STATE_UNLOCKED)
-        return status
+        return updateKitStatus()
     }
 
     override fun enableBiometricUnlock(password: String): VaultStatus {
@@ -398,37 +442,97 @@ open class FakeBackend : VaultBackend {
     override fun enableNewAccountBiometricUnlock(): VaultStatus {
         record("enableNewAccountBiometricUnlock")
         requireUnlocked()
+        if (!hasKitUnlockKey) throw BackendError("Authorize this account's Emergency Kit first.")
         if (!isBiometricSucceeding) throw BackendError("Face ID was cancelled.")
+        hasKitUnlockKey = false
         status = status.copy(biometricEnabled = true, biometricReady = true)
-        return status
+        return updateKitStatus()
     }
 
     override fun forgetNewAccountSecretKey() {
         record("forgetNewAccountSecretKey")
-        isNewAccountSecretKeyKept = false
+        if (owedRecovery() == null) isNewAccountSecretKeyKept = false
+        hasKitUnlockKey = false
+        updateKitStatus()
+    }
+
+    override fun revealNewAccountSecretKey(): RevealedSecretKey {
+        record("revealNewAccountSecretKey")
+        findNewAccountRecovery()
+        return RevealedSecretKey(currentSecretKey)
+    }
+
+    override fun authorizeNewAccountEmergencyKit(password: String) {
+        record("authorizeNewAccountEmergencyKit")
+        requireUnlocked()
+        if (password != PASSWORD) throw BackendError("The master password is incorrect.")
+        if (owedRecovery() == null) throw BackendError("No Emergency Kit is owed.")
+        isNewAccountSecretKeyKept = true
+        hasKitUnlockKey = true
+        updateKitStatus()
+    }
+
+    override fun authorizeNewAccountEmergencyKitWithBiometric() {
+        record("authorizeNewAccountEmergencyKitWithBiometric")
+        requireUnlocked()
+        if (!status.biometricEnabled || !isBiometricSucceeding) throw BackendError("Biometric authentication was cancelled.")
+        if (owedRecovery() == null) throw BackendError("No Emergency Kit is owed.")
+        isNewAccountSecretKeyKept = true
+        hasKitUnlockKey = true
+        updateKitStatus()
+    }
+
+    override fun postponeNewAccountEmergencyKit() {
+        record("postponeNewAccountEmergencyKit")
+        val index = findNewAccountRecovery()
+        if (allPendingRecovery[index].postponedAt.isEmpty()) {
+            allPendingRecovery[index] = allPendingRecovery[index].copy(postponedAt = java.time.Instant.now().toString())
+        }
+        updateKitStatus()
+    }
+
+    override fun hideEmergencyKitReminder() {
+        record("hideEmergencyKitReminder")
+        isKitReminderHidden = true
+        updateKitStatus()
     }
 
     private fun findNewAccountRecovery(): Int {
         requireUnlocked()
         if (!isNewAccountSecretKeyKept) throw BackendError("the new account's Secret Key is no longer in memory; save the Emergency Kit from Settings")
-        val index = allPendingRecovery.indexOfFirst { it.operationId == NEW_ACCOUNT_OPERATION_ID }
+        val index = allPendingRecovery.indexOfFirst { it.operationId == owedRecovery()?.operationId }
         if (index < 0) throw BackendError("this account's setup needs finishing from the account recovery screen")
         return index
     }
 
     override fun exportNewAccountEmergencyKit(directory: File): EmergencyKitExport {
         record("exportNewAccountEmergencyKit")
+        allNewAccountEmergencyKitDirectory += directory
+        newAccountEmergencyKitError?.let { throw it }
         val index = findNewAccountRecovery()
         val kit = writeEmergencyKit(directory)
-        allPendingRecovery[index] = allPendingRecovery[index].copy(kitSaved = true)
-        return EmergencyKitExport(SECRET_KEY, kit.path)
+        val id = UUID.randomUUID().toString()
+        kitExports.entries.removeAll { it.value == allPendingRecovery[index].operationId }
+        kitExports[id] = allPendingRecovery[index].operationId
+        return EmergencyKitExport(SECRET_KEY, kit.path, exportId = id)
+    }
+
+    override fun recordNewAccountEmergencyKitDelivery(exportID: String, method: String) {
+        record("recordNewAccountEmergencyKitDelivery")
+        val index = findNewAccountRecovery()
+        if (kitExports[exportID] != allPendingRecovery[index].operationId || method !in listOf("file", "share", "print")) {
+            throw BackendError("This Emergency Kit export is no longer authorized.")
+        }
+        allPendingRecovery[index] = allPendingRecovery[index].copy(kitSaved = true, savedBy = method)
+        updateKitStatus()
     }
 
     override fun acknowledgeNewAccountRecovery() {
         record("acknowledgeNewAccountRecovery")
         val index = findNewAccountRecovery()
-        if (!allPendingRecovery[index].kitSaved) throw BackendError("finish setup and save the Emergency Kit before acknowledging delivery")
+        if (allPendingRecovery[index].savedBy.isEmpty()) throw BackendError("finish setup and save the Emergency Kit before acknowledging delivery")
         allPendingRecovery.removeAt(index)
+        updateKitStatus()
     }
 
     override fun disableBiometricUnlock(): VaultStatus {
@@ -441,6 +545,10 @@ open class FakeBackend : VaultBackend {
         record("lock")
         if (status.isSignedIn) status = status.copy(state = VaultStatus.STATE_LOCKED)
         isNewAccountSecretKeyKept = false
+        hasKitUnlockKey = false
+        kitExports.clear()
+        isKitReminderHidden = false
+        updateKitStatus()
         return status
     }
 
@@ -450,6 +558,8 @@ open class FakeBackend : VaultBackend {
         // out on this device, then reports that the server was not told.
         status = VaultStatus.signedOut.copy(server = status.server)
         isNewAccountSecretKeyKept = false
+        hasKitUnlockKey = false
+        kitExports.clear()
         if (isOffline) throw BackendError(SIGN_OUT_OFFLINE_MESSAGE)
         return status
     }
@@ -574,6 +684,22 @@ open class FakeBackend : VaultBackend {
         requireUnlocked()
         allItemByVaultID[vaultID]?.removeAll { it.id == itemID }
         allPasskey.removeAll { it.vaultID == vaultID && it.itemID == itemID }
+    }
+
+    override fun moveItem(vaultID: String, itemID: String, targetVaultID: String): ItemDetail {
+        record("moveItem")
+        requireUnlocked()
+        moveErrorMessage?.let { throw BackendError(it) }
+        val source = allVault.firstOrNull { it.id == vaultID }
+        val target = allVault.firstOrNull { it.id == targetVaultID }
+        if (vaultID == targetVaultID || source == null || target == null || !VaultLogic.isWritable(source) || !VaultLogic.isWritable(target)) throw BackendError("Choose another writable vault.")
+        val item = getItem(vaultID, itemID)
+        allItemByVaultID[vaultID]?.removeAll { it.id == itemID }
+        allItemByVaultID.getOrPut(targetVaultID) { mutableListOf() }.add(item)
+        if (allFavoriteRecordID.remove("$vaultID/$itemID")) allFavoriteRecordID.add("$targetVaultID/$itemID")
+        allPasskey = allPasskey.map { if (it.vaultID == vaultID && it.itemID == itemID) it.copy(vaultID = targetVaultID) else it }.toMutableList()
+        allVault = allVault.map { if (it.id == vaultID || it.id == targetVaultID) it.copy(itemCount = allItemByVaultID[it.id]?.size ?: 0) else it }.toMutableList()
+        return item
     }
 
     override fun deleteUnreadableItem(vaultID: String, itemID: String, revision: String) {
@@ -888,6 +1014,7 @@ open class FakeBackend : VaultBackend {
     override fun revokeDevice(deviceID: String) {
         record("revokeDevice")
         requireUnlocked()
+        revokeDeviceErrorMessage?.let { throw BackendError(it) }
         val device = allDevice.firstOrNull { it.id == deviceID } ?: throw BackendError("this device is already signed out")
         if (device.isCurrent) throw BackendError("sign out this device instead")
         allDevice.removeAll { it.id == deviceID }
@@ -1005,7 +1132,7 @@ open class FakeBackend : VaultBackend {
             ImportSourceGroup(group.id, group.name, true, group.allTitle.size, vault.id, vault.name, allVaultMemberByVaultID[vault.id].orEmpty())
         }
         val itemCount = allGroup.sumOf { it.allTitle.size }
-        return ImportPreview(
+        return importPreviewOverride ?: ImportPreview(
             fileName = "Other Manager", vaultID = commonVault?.id.orEmpty(), vaultName = commonVault?.name ?: "the mapped vaults", itemCount = itemCount,
             loginCount = itemCount, allDuplicate = allDuplicate, groups = allSourceGroup,
         )
@@ -1109,7 +1236,7 @@ open class FakeBackend : VaultBackend {
         return buildImportProgress()
     }
 
-    private fun buildImportProgress(): ImportProgress = ImportProgress(
+    private fun buildImportProgress(): ImportProgress = importProgressOverride?.takeIf { allQueuedImport.isEmpty() } ?: ImportProgress(
         fileName = "Other Manager", vaultID = pendingImportVaultID, vaultName = allVault.firstOrNull { it.id == pendingImportVaultID }?.name ?: "the mapped vaults",
         savedCount = importSavedCount, totalCount = importSavedCount + allQueuedImport.size, isDone = allQueuedImport.isEmpty(),
     )
@@ -1220,15 +1347,25 @@ open class FakeBackend : VaultBackend {
             throw BackendError("Enter the Secret Key from your saved Emergency Kit.")
         }
         val kit = writeEmergencyKit(directory)
-        allPendingRecovery[index] = allPendingRecovery[index].copy(kitSaved = true)
-        return PendingRecoveryExport(pendingRecoverySecretKey, kit.path)
+        val id = UUID.randomUUID().toString()
+        kitExports.entries.removeAll { it.value == operationID }
+        kitExports[id] = operationID
+        return PendingRecoveryExport(pendingRecoverySecretKey, kit.path, id)
+    }
+
+    override fun recordPendingRecoveryEmergencyKitDelivery(exportID: String, method: String) {
+        record("recordPendingRecoveryEmergencyKitDelivery")
+        val operationID = kitExports[exportID] ?: throw BackendError("This Emergency Kit export is no longer authorized.")
+        val index = allPendingRecovery.indexOfFirst { it.operationId == operationID }
+        if (index < 0 || method !in listOf("file", "share", "print")) throw BackendError("This Emergency Kit export is no longer authorized.")
+        allPendingRecovery[index] = allPendingRecovery[index].copy(kitSaved = true, savedBy = method)
     }
 
     override fun acknowledgePendingRecovery(operationID: String, password: String) {
         record("acknowledgePendingRecovery")
         val recovery = allPendingRecovery.firstOrNull { it.operationId == operationID }
         if (password != pendingRecoveryPassword || recovery == null ||
-            (recovery.phase != "delivery-pending" && recovery.phase != "awaiting-kit") || !recovery.kitSaved
+            (recovery.phase != "delivery-pending" && recovery.phase != "awaiting-kit") || recovery.savedBy.isEmpty()
         ) {
             throw BackendError("Save the new Emergency Kit before finishing recovery.")
         }
@@ -1259,7 +1396,15 @@ open class FakeBackend : VaultBackend {
 
     override fun setMacApprovalAllowed(isAllowed: Boolean) {
         record("setMacApprovalAllowed")
+        macApprovalErrorMessage?.let { throw BackendError(it) }
         isMacApprovalAllowedValue = isAllowed
+    }
+
+    override fun isExactHostMatch(): Boolean = isExactHostMatchValue
+
+    override fun setExactHostMatch(isExact: Boolean) {
+        record("setExactHostMatch")
+        isExactHostMatchValue = isExact
     }
 
     override fun prepareItemIcon(image: ByteString): ByteString {

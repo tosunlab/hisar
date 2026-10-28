@@ -3,6 +3,8 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.ImportPreview
 import com.tryhisar.hisar.model.ImportProgress
+import com.tryhisar.hisar.model.ImportVaultGroup
+import com.tryhisar.hisar.model.OrganizationLogic
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.model.VaultSummary
@@ -41,7 +43,18 @@ sealed interface CredentialImportSheet {
     /** An encrypted Hisar export is open: the user enters its export passphrase and openImportFile opens it. */
     data class EnteringPassphrase(val fileName: String) : CredentialImportSheet
 
-    data class Importing(val progress: ImportProgress) : CredentialImportSheet
+    data class Importing(
+        val progress: ImportProgress,
+        val preview: ImportPreview? = null,
+        val isOutcomeUncertain: Boolean = false,
+    ) : CredentialImportSheet
+
+    data class Stopped(
+        val preview: ImportPreview,
+        val progress: ImportProgress?,
+        val isSettling: Boolean,
+        val isOutcomeUncertain: Boolean = false,
+    ) : CredentialImportSheet
 }
 
 /**
@@ -58,6 +71,10 @@ class CredentialImportModel(private val context: ModelContext) {
 
     /** Grows when the sheet closes, so work a closed sheet started leaves the next one alone. */
     private var session = 0
+    private var stoppingSession: Int? = null
+    private var reviewedPreview: ImportPreview? = null
+    private val mutableStoppedReport = MutableStateFlow<CredentialImportSheet.Stopped?>(null)
+    val stoppedReport: StateFlow<CredentialImportSheet.Stopped?> = mutableStoppedReport.asStateFlow()
 
     val sheet: StateFlow<CredentialImportSheet?> = mutableSheet.asStateFlow()
 
@@ -68,6 +85,8 @@ class CredentialImportModel(private val context: ModelContext) {
     val message = MutableStateFlow<String?>(null)
 
     val isShown: Boolean get() = sheet.value != null
+    var sourceFileName: String? = null
+        private set
     val preview: ImportPreview? get() = (sheet.value as? CredentialImportSheet.Previewing)?.preview
     val progress: ImportProgress? get() = (sheet.value as? CredentialImportSheet.Importing)?.progress
 
@@ -76,6 +95,11 @@ class CredentialImportModel(private val context: ModelContext) {
 
     /** The vaults an import can go to: the personal vault and those the user may edit. */
     val allVault: List<VaultSummary> get() = context.unlockedData.value.allVault.filter(::isWritableVault)
+    val allDestinationGroup: List<ImportVaultGroup>
+        get() = OrganizationLogic.importVaultGroups(allVault, context.unlockedData.value.allOrganization)
+
+    fun destinationLabel(vaultID: String, fallback: String = vaultID): String =
+        allDestinationGroup.asSequence().flatMap { it.allChoice.asSequence() }.firstOrNull { it.id == vaultID }?.label ?: fallback
 
     init {
         context.addStatusListener(::handleStatus)
@@ -88,7 +112,8 @@ class CredentialImportModel(private val context: ModelContext) {
             message.value = SIGNED_OUT_MESSAGE
             return
         }
-        if (!status.isUnlocked || isShown) return
+        if (!status.isUnlocked || isShown || mutableIsImporting.value || stoppedReport.value?.isSettling == true) return
+        sourceFileName = null
         context.errorMessage.value = null
         val current = session
         mutableSheet.value = CredentialImportSheet.Receiving
@@ -103,11 +128,12 @@ class CredentialImportModel(private val context: ModelContext) {
             content.fill(0)
             return
         }
-        if (!status.isUnlocked || isShown) {
+        if (!status.isUnlocked || isShown || mutableIsImporting.value || stoppedReport.value?.isSettling == true) {
             content.fill(0)
             return
         }
         context.errorMessage.value = null
+        sourceFileName = fileName
         val current = session
         mutableSheet.value = CredentialImportSheet.Receiving
         context.scope.launch { prepareHisarExport(current, fileName, content) }
@@ -164,13 +190,13 @@ class CredentialImportModel(private val context: ModelContext) {
     }
 
     private fun handleStatus(previous: VaultStatus, current: VaultStatus) {
-        if (!current.isSignedIn && (isShown || pendingCredentialData != null)) {
+        if (!current.isSignedIn && (isShown || pendingCredentialData != null || stoppedReport.value != null)) {
             if (sheet.value == CredentialImportSheet.Receiving) message.value = SIGNED_OUT_MESSAGE
             close()
             return
         }
         // Locking drops the prepared import in the backend too; a transfer still under way waits for the unlock.
-        if (previous.isUnlocked && !current.isUnlocked && isShown && sheet.value != CredentialImportSheet.Receiving) close()
+        if (previous.isUnlocked && !current.isUnlocked && (isShown || stoppedReport.value != null) && sheet.value != CredentialImportSheet.Receiving) close()
         handlePendingCredentials()
     }
 
@@ -234,11 +260,16 @@ class CredentialImportModel(private val context: ModelContext) {
         val preview = preview ?: return
         if (mutableIsImporting.value) return
         mutableIsImporting.value = true
+        reviewedPreview = preview
         try {
             val current = session
-            val progress = context.perform(isBusyShown = false) { it.startImport(preview.vaultID, isSkippingDuplicate) } ?: return
+            val progress = context.perform(isBusyShown = false) { it.startImport(preview.vaultID, isSkippingDuplicate) }
             if (session != current) return
-            mutableSheet.value = CredentialImportSheet.Importing(progress)
+            if (stoppingSession == current) {
+                finishStop(current, progress, progress == null)
+                return
+            }
+            mutableSheet.value = CredentialImportSheet.Importing(progress ?: return, preview)
             continueUntilDone(current)
         } finally {
             mutableIsImporting.value = false
@@ -270,17 +301,63 @@ class CredentialImportModel(private val context: ModelContext) {
                 context.errorMessage.value = null
                 return
             }
-            mutableSheet.value = CredentialImportSheet.Importing(nextProgress ?: return)
+            if (stoppingSession == current) {
+                finishStop(current, nextProgress ?: progress, nextProgress == null)
+                return
+            }
+            if (nextProgress == null) {
+                mutableSheet.value = CredentialImportSheet.Importing(progress, reviewedPreview, isOutcomeUncertain = true)
+                return
+            }
+            mutableSheet.value = CredentialImportSheet.Importing(nextProgress, reviewedPreview)
         }
     }
 
-    /** Cancel and Done: drops the import in the backend. Items a cancelled import already saved stay, so the vaults are listed again. */
     fun closeCredentialImport() {
         if (!isShown) return
-        val isPartlySaved = progress?.isDone == false
+        if (sheet.value is CredentialImportSheet.Stopped) {
+            mutableSheet.value = null
+            if (stoppedReport.value?.isSettling == false) showStoppedNotice()
+            return
+        }
+        if (mutableIsImporting.value || progress?.isDone == false) {
+            val preview = reviewedPreview ?: preview ?: return
+            stoppingSession = session
+            val report = CredentialImportSheet.Stopped(
+                preview, progress, isSettling = true,
+                isOutcomeUncertain = (sheet.value as? CredentialImportSheet.Importing)?.isOutcomeUncertain == true,
+            )
+            mutableStoppedReport.value = report
+            mutableSheet.value = report
+            context.errorMessage.value = null
+            if (!mutableIsImporting.value) context.scope.launch { finishStop(session, report.progress, report.isOutcomeUncertain) }
+            return
+        }
         close()
         context.errorMessage.value = null
-        if (isPartlySaved) context.scope.launch { context.refreshAll() }
+    }
+
+    fun reopenStoppedReport() {
+        if (context.status.value.isUnlocked && !isShown) mutableSheet.value = stoppedReport.value
+    }
+
+    private suspend fun finishStop(current: Int, progress: ImportProgress?, isOutcomeUncertain: Boolean) {
+        val report = stoppedReport.value ?: return
+        context.attempt { it.cancelImport() }
+        if (session != current || !context.status.value.isSignedIn) return
+        val finished = report.copy(progress = progress, isSettling = false, isOutcomeUncertain = isOutcomeUncertain)
+        mutableStoppedReport.value = finished
+        if (sheet.value is CredentialImportSheet.Stopped) mutableSheet.value = finished else showStoppedNotice()
+        stoppingSession = null
+        context.errorMessage.value = null
+        context.refreshAll()
+    }
+
+    private fun showStoppedNotice() {
+        val report = stoppedReport.value ?: return
+        val saved = report.progress?.savedCount ?: 0
+        val count = if (report.isOutcomeUncertain) "At least $saved items saved." else "$saved items saved."
+        context.showNotice("Import stopped. $count", Notice.Action("View report", ::reopenStoppedReport))
     }
 
     private fun close() {
@@ -289,8 +366,12 @@ class CredentialImportModel(private val context: ModelContext) {
         receiveJob = null
         pendingCredentialData?.fill(0)
         pendingCredentialData = null
+        stoppingSession = null
+        reviewedPreview = null
+        mutableStoppedReport.value = null
         // A previewed, running, or waiting (encrypted, not yet opened) import is dropped in the backend too.
-        if (preview != null || progress != null || sheet.value is CredentialImportSheet.EnteringPassphrase) cancelBackendImport()
+        if (preview != null || progress != null || sheet.value is CredentialImportSheet.EnteringPassphrase || sheet.value is CredentialImportSheet.Stopped) cancelBackendImport()
+        sourceFileName = null
         mutableSheet.value = null
     }
 

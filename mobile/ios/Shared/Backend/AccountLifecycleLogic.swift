@@ -7,11 +7,20 @@ enum AccountLifecycleLogic {
     static let exportAdvice = "Export your items first in Settings → Account → Export data."
     static let signOutTitle = "Sign out of Hisar on this iPhone?"
     static let signOutMessage = "Hisar removes this iPhone's saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device."
-    static let lockedSignOutMessage = signOutMessage + " If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit."
+    static func signOutMessage(isLocked: Bool, emergencyKit: EmergencyKitStatus?) -> String {
+        if let emergencyKit {
+            let prefix = emergencyKit.savedBy.isEmpty
+                ? "You haven't saved this account's Emergency Kit yet."
+                : "You haven't confirmed this account's Emergency Kit yet."
+            return "\(prefix) \(signOutMessage) The protected unfinished setup stays on this iPhone. Don't rely on it as your only recovery copy." + (isLocked ? " Cancel, unlock Hisar and finish saving or confirming your Emergency Kit." : "")
+        }
+        return signOutMessage + (isLocked ? " If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit." : "")
+    }
 
     static func isWaitingOnlyForKit(setupState: String, secretKey: String, problems: [String]) -> Bool {
         setupState == "delivery-pending" && !secretKey.isEmpty && problems.isEmpty
     }
+
 
     /// The sentence that refuses a new master password: fewer than 10 characters, counted as the user sees them, or core's
     /// rule (`MasterPasswordFeedback`) blocks it. feedback is core's rating of this password, nil while it is on its way.

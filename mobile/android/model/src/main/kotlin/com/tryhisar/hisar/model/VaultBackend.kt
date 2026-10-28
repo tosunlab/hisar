@@ -16,12 +16,19 @@ interface VaultBackend {
     fun signUp(inviteLink: String, email: String, name: String, password: String): SignUpResult
     /** signUpWithoutInvite is signUp on a server whose admin opened registration: the server's address instead of an invite. */
     fun signUpWithoutInvite(server: String, email: String, name: String, password: String): SignUpResult
+    fun getSignUpPolicy(server: String): SignUpPolicy
     fun unlock(password: String): VaultStatus
     fun unlockWithBiometric(): VaultStatus
     fun enableBiometricUnlock(password: String): VaultStatus
     fun enableNewAccountBiometricUnlock(): VaultStatus
     fun forgetNewAccountSecretKey()
-    /** The Emergency Kit of the account just created, written into [directory] and recorded as saved, without the password. */
+    fun authorizeNewAccountEmergencyKit(password: String)
+    fun authorizeNewAccountEmergencyKitWithBiometric()
+    fun revealNewAccountSecretKey(): RevealedSecretKey
+    fun recordNewAccountEmergencyKitDelivery(exportID: String, method: String)
+    fun postponeNewAccountEmergencyKit()
+    fun hideEmergencyKitReminder()
+    /** Writes a temporary PDF. Only a confirmed platform handoff records delivery. */
     fun exportNewAccountEmergencyKit(directory: File): EmergencyKitExport
     /** Ends the sign-up's pending record once its kit was saved, for "I saved my Emergency Kit". */
     fun acknowledgeNewAccountRecovery()
@@ -109,6 +116,7 @@ interface VaultBackend {
     fun getItem(vaultID: String, itemID: String): ItemDetail
     fun saveItem(vaultID: String, item: ItemDetail): ItemDetail
     fun deleteItem(vaultID: String, itemID: String)
+    fun moveItem(vaultID: String, itemID: String, targetVaultID: String): ItemDetail
     fun deleteUnreadableItem(vaultID: String, itemID: String, revision: String)
     fun deleteUnreadableVault(vaultID: String, revision: String)
     fun repairVaultName(vaultID: String, revision: String, name: String): VaultSummary
@@ -171,11 +179,14 @@ interface VaultBackend {
     fun resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String): SignUpResult
     fun discardPreparedRecovery(operationID: String, password: String)
     fun exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: File): PendingRecoveryExport
+    fun recordPendingRecoveryEmergencyKitDelivery(exportID: String, method: String)
     fun acknowledgePendingRecovery(operationID: String, password: String)
     fun dismissSignedOutReason(): VaultStatus
     fun copySecretReference(vaultID: String, itemID: String, fieldName: String): String
     fun isMacApprovalAllowed(): Boolean
     fun setMacApprovalAllowed(isAllowed: Boolean)
+    fun isExactHostMatch(): Boolean
+    fun setExactHostMatch(isExact: Boolean)
     fun getTheme(): VaultTheme
     fun setTheme(theme: VaultTheme): VaultTheme
 
@@ -214,6 +225,7 @@ class BackendError(override val message: String, val code: String? = null) : Exc
     override fun hashCode(): Int = 31 * message.hashCode() + (code?.hashCode() ?: 0)
     companion object {
         const val PASSKEY_VERIFICATION_FAILED = "passkey-verification-failed"
+        const val PENDING_RECOVERY_PASSWORD = "pending-recovery-password"
     }
 }
 

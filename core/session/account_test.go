@@ -16,15 +16,15 @@ import (
 )
 
 func TestStrongerArgon2ParamsNeverLowersTheCost(t *testing.T) {
-	stronger := crypt.Argon2Params{Time: 40, MemoryKiB: 128 * 1024, Threads: 2}
-	if params := strongerArgon2Params(stronger); params != (crypt.Argon2Params{Time: 40, MemoryKiB: 128 * 1024, Threads: 4}) {
-		t.Errorf("stronger account: %+v", params)
+	mixed := crypt.Argon2Params{Time: 40, MemoryKiB: 128 * 1024, Threads: 1}
+	if params := strongerArgon2Params(mixed); params != (crypt.Argon2Params{Time: 40, MemoryKiB: 128 * 1024, Threads: crypt.NewAccountArgon2Params().Threads}) {
+		t.Errorf("account stronger in time and memory: %+v", params)
 	}
-	weaker := crypt.Argon2Params{Time: 2, MemoryKiB: 32 * 1024, Threads: 1}
-	if params := strongerArgon2Params(weaker); params != crypt.DefaultArgon2Params() {
+	weaker := crypt.MinArgon2Params()
+	if params := strongerArgon2Params(weaker); params != crypt.NewAccountArgon2Params() {
 		t.Errorf("weaker account: %+v", params)
 	}
-	if params := strongerArgon2Params(crypt.Argon2Params{Time: 1 << 30}); params != crypt.DefaultArgon2Params() {
+	if params := strongerArgon2Params(crypt.Argon2Params{Time: 1 << 30}); params != crypt.NewAccountArgon2Params() {
 		t.Errorf("out of range: %+v", params)
 	}
 }
@@ -160,6 +160,29 @@ func TestCredentialChangeReportsACachedAccountItCouldNotReplace(t *testing.T) {
 	clear(change.AccountUnlockKey)
 	if !change.IsCachedAccountStale {
 		t.Error("a cache that still holds the old keyset was not reported")
+	}
+}
+
+func TestInterruptedReplacementRequestsThePreviousSecretKey(t *testing.T) {
+	account := createCredentialTestAccount(t, []byte("current master password"))
+	ctx := context.Background()
+	var pending PendingFactor
+	stopped := errors.New("stopped before sending")
+	_, err := account.session.ReplaceSecretKeyWithRecovery(ctx, account.password, account.secretKey, func(value PendingFactor) error {
+		pending = value
+		return stopped
+	})
+	if !errors.Is(err, stopped) {
+		t.Fatal(err)
+	}
+	pending.PriorSecretKey = ""
+	account.server.isUnavailable = true
+	_, _, err = ResumePendingFactor(ctx, account.session.Client, account.server.account.Email, account.password, pending, apitypes.DeviceInfo{})
+	if err == nil || err.Error() != "enter the previous Secret Key to resume this interrupted replacement" {
+		t.Fatalf("missing prior factor was not requested: %v", err)
+	}
+	if account.server.changeCount != 0 {
+		t.Fatal("a request was sent before the staged operation was resumed")
 	}
 }
 

@@ -1,4 +1,7 @@
 import type { IconName } from "./components/AppIcon.vue";
+import type { EmergencyKitStatus } from "./api";
+
+export const touchIDConsent = "Touch ID unlocks Hisar after it locks, so you type your master password less often. Any fingerprint set up for your account on this Mac can unlock Hisar. Hisar still asks for your master password when it starts and at least every 14 days. Changing these fingerprints turns off Touch ID unlock until you turn it on again with your master password. You can change this later in Settings, Security.";
 
 // themes.json defines tile0 to tile9 with their text colours for every theme.
 const tileColorCount = 10;
@@ -68,17 +71,27 @@ export function isMacPlatform(): boolean {
   return /Mac/i.test(navigator.platform || navigator.userAgent);
 }
 
+export function isApplicationCommand(event: Pick<KeyboardEvent, "metaKey" | "ctrlKey">): boolean {
+  return isMacPlatform() ? event.metaKey : event.ctrlKey;
+}
+
 // thisDevice is how the UI names the computer it runs on: "this Mac", or "this computer" on Linux.
 export function getThisDeviceName(): string {
   return isMacPlatform() ? "this Mac" : "this computer";
 }
 
-export function getSignOutCopy(isLocked: boolean): { title: string; message: string } {
+export function getSignOutCopy(isLocked: boolean, kit?: EmergencyKitStatus | null): { title: string; message: string } {
   const device = getThisDeviceName();
-  const message = `Hisar removes ${device}'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.`;
+  let message = `Hisar removes ${device}'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.`;
+  if (kit) {
+    message = `You haven't ${kit.savedBy ? "confirmed" : "saved"} this account's Emergency Kit yet. ${message} The protected unfinished setup stays on ${device}. Don't rely on it as your only recovery copy.`;
+    if (isLocked) message += ` Cancel, unlock Hisar and finish ${kit.savedBy ? "confirming" : "saving"} your Emergency Kit.`;
+  } else if (isLocked) {
+    message += " If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Security.";
+  }
   return {
     title: `Sign out of Hisar on ${device}?`,
-    message: isLocked ? `${message} If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Security.` : message,
+    message,
   };
 }
 
@@ -113,6 +126,14 @@ const allCategoryIcon: Record<string, CategoryIcon> = {
 // getItemIcon is the tile icon of an item's category; logins show their initials instead.
 export function getItemIcon(category: string): CategoryIcon | undefined {
   return allCategoryIcon[category];
+}
+
+const defaultIconPreset: Record<string, string> = {
+  [creditCardCategory]: "card", [serverCategory]: "server", [databaseCategory]: "database", [sshKeyCategory]: "key",
+};
+
+export function getDefaultIconPreset(category: string): string {
+  return defaultIconPreset[category] ?? "lock";
 }
 
 // The names of a card's custom fields, as core/item stores them; copying and secret references use them.

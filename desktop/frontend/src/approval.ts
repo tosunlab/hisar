@@ -38,12 +38,15 @@ function getRememberedAnswer(requestID: string): boolean {
 }
 
 export function addApproval(approval: ApprovalEvent): void {
-  if (!approvalStore.allApproval.some((pending) => pending.requestID === approval.requestID)) {
-    approvalStore.allApproval.push(approval);
-    if (approvalStore.allApproval.length === 1) {
-      approvalStore.isRemembered = approval.isRememberedByDefault ?? true;
-      applyAgentChoice(approval);
-    }
+  const existing = approvalStore.allApproval.find((pending) => pending.requestID === approval.requestID);
+  if (existing) {
+    Object.assign(existing, approval);
+    return;
+  }
+  approvalStore.allApproval.push(approval);
+  if (approvalStore.allApproval.length === 1) {
+    approvalStore.isRemembered = approval.isRememberedByDefault ?? true;
+    applyAgentChoice(approval);
   }
 }
 

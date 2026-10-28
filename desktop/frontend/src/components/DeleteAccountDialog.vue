@@ -4,6 +4,7 @@ import type { AccountDeletionPreview, DeletionVault } from "../api";
 import { clearError, deleteAccount, loadAccountDeletionPreview, store } from "../store";
 import { getThisDeviceName } from "../util";
 import AccountDialog from "./AccountDialog.vue";
+import CredentialField from "./CredentialField.vue";
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -101,7 +102,7 @@ function close(): void {
       </ul>
       <label>
         <span>Master password</span>
-        <input v-model="password" name="deleteAccountPassword" type="password" autocomplete="current-password" autofocus />
+        <CredentialField><input v-model="password" name="deleteAccountPassword" type="password" autocomplete="current-password" autofocus /></CredentialField>
       </label>
       <label>
         <span>Type {{ preview.email }} to confirm</span>

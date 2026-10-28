@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.outlined.Cancel
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -52,21 +53,22 @@ import kotlinx.coroutines.launch
 @Composable
 fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
+    val refreshError by model.sharing.peopleErrorMessage.collectAsStateWithLifecycle()
+    val remoteChangeCount by model.remoteChangeCount.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    var allPerson by remember { mutableStateOf<List<Member>?>(null) }
-    var shareInvitations by remember { mutableStateOf(ShareInvitations()) }
+    var people by remember { mutableStateOf<com.tryhisar.hisar.app.PeopleSnapshot?>(null) }
+    val allPerson = people?.allPerson
+    val shareInvitations = people?.invitations ?: ShareInvitations()
     var isInviteShown by rememberSaveable { mutableStateOf(false) }
     var invitationToCancel by remember { mutableStateOf<SentShareInvitation?>(null) }
     var openPerson by rememberSaveable(stateSaver = memberSaver) { mutableStateOf<Member?>(null) }
+    var actionError by remember { mutableStateOf<String?>(null) }
 
     suspend fun load() {
-        model.errorMessage.value = null
-        allPerson = model.sharing.loadAllPerson() ?: allPerson ?: emptyList()
-        model.invitations.loadShareInvitations()?.let { shareInvitations = it }
-        model.invitations.refreshInvitations()
+        people = model.sharing.loadPeople(people)
     }
 
-    LaunchedEffect(Unit) { load() }
+    LaunchedEffect(remoteChangeCount) { load() }
 
     val shownPerson = openPerson
     if (shownPerson != null) {
@@ -76,8 +78,8 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
     }
 
     RefreshablePage(bar = { PushedTopBar(if (it) "People" else "", onBack) }, onRefresh = { load() }, largeTitle = "People", bottomInset = TabBarHeight) {
-        errorMessage?.let { FormSection { ErrorBanner(it) } }
-        if (shareInvitations.allReceived.isNotEmpty()) {
+        (actionError ?: refreshError ?: errorMessage)?.let { FormSection { ErrorBanner(it) } }
+        if (shareInvitations.allReceived.isNotEmpty() || shareInvitations.allWaiting.isNotEmpty()) {
             FormSection(header = "Invitations for you") {
                 shareInvitations.allReceived.forEachIndexed { index, invitation ->
                     if (index > 0) SymbolRowDivider(50.dp)
@@ -90,28 +92,39 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
                         testTagName = "invitation",
                         onDecline = {
                             scope.launch {
+                                actionError = null
                                 if (model.invitations.declineShareInvitation(invitation.id)) {
                                     model.showNotice("Invitation declined.")
                                     load()
+                                } else {
+                                    actionError = model.errorMessage.value
                                 }
                             }
                         },
                         onAccept = {
                             scope.launch {
+                                actionError = null
                                 if (model.invitations.acceptShareInvitation(invitation.id)) {
                                     model.showNotice("Accepted. The vault appears once ${invitation.inviterName}'s Hisar finishes sharing.")
                                     load()
+                                } else {
+                                    actionError = model.errorMessage.value
                                 }
                             }
                         },
                     )
+                }
+                shareInvitations.allWaiting.forEach { invitation ->
+                    LabelRow(androidx.compose.material.icons.Icons.Outlined.Schedule, HisarTheme.colors.secondaryLabel, testTag = "waiting-${invitation.id}") {
+                        TitleAndDetail(invitation.describe(java.time.Instant.now()), invitation.invitedByEmail)
+                    }
                 }
             }
         }
         val loadedPeople = allPerson
         FormSection(
             header = "People you share vaults with",
-            footer = { Text("People appear here once you share a vault with them. Compare security codes with them once, in person or over a channel you trust.") },
+            footer = { Text("People appear here once you share a vault with them. To compare codes, ask each person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match the code you see for them.") },
         ) {
             if (loadedPeople == null) {
                 LoadingRow("Loading people…")
@@ -139,10 +152,9 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
                             onAction = { invitationToCancel = invitation }, actionColor = HisarTheme.colors.destructive,
                         ) {
                             SentInvitationRow(
-                                invitation, isVaultNameShown = true, testTag = "sent-invitation-${invitation.email}",
-                                model = model, onResent = { load() },
+                                model, invitation, isVaultNameShown = true, testTag = "sent-invitation-${invitation.email}",
                                 onCancel = { invitationToCancel = invitation },
-                                onConfirm = { snapshot -> scope.launch { if (model.sharing.confirmShareRecipient(snapshot)) load() } },
+                                onChanged = { load() },
                             )
                         }
                     }
@@ -167,9 +179,12 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
             confirmTestTag = "confirm-cancel-invitation",
             onConfirm = {
                 scope.launch {
+                    actionError = null
                     if (model.sharing.cancelShareInvitation(invitation.id)) {
                         model.showNotice("Invitation to ${invitation.email} cancelled.")
                         load()
+                    } else {
+                        actionError = model.errorMessage.value
                     }
                 }
             },
@@ -186,16 +201,12 @@ private fun PersonScreen(person: Member, onBack: () -> Unit) {
         PersonHeader(person)
         if (person.isKeyChanged) {
             FormSection {
-                WarningRow("Their key changed since you last shared with them. Check the security code with them before sharing again.", testTag = "person-key-changed")
+                WarningRow("Key changed. Hisar stopped sharing with them.", testTag = "person-key-changed")
             }
         }
         SecurityCodeSection(
             person,
-            footer = if (person.isCurrentUser) {
-                "Others see this code for you. When they compare it with you, they know vaults they share reach you and nobody else."
-            } else {
-                "Compare it with ${person.name} once, in person or over a channel you trust. If it matches what their Hisar shows, vaults you share reach them and nobody else."
-            },
+            footer = describeSecurityCode(person),
             testTag = "person-security-code",
             isShareable = false,
         )

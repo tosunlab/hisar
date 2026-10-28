@@ -23,14 +23,107 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 |---|---|
 | master password | password (when the master password is meant), passphrase |
 | Secret Key | secret key, account key |
-| Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." After replacing the Secret Key: "Save the new one now, and destroy the old one." | "has both places to keep them", sign-in address (use server) |
+| Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." | "has both places to keep them", sign-in address (use server) |
+| Secret Key (phone section header); Your Secret Key (Mac block) · Copy Secret Key · "Copied · clears in 90 seconds" (iPhone), "Copied · clears in about 2 minutes" (Android) | An unlabelled key; copying the key as proof that the Emergency Kit was saved |
+| "Hisar keeps a copy on this Mac / this iPhone / this device. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults." (Settings only, not on the kit screen) | nobody else has a copy; the only copy is on this device |
 | Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock; Use Touch ID (the Mac retry button and tooltip use Unlock with Touch ID) |
+| Explain enabled biometric unlock that needs the master password separately from unavailable hardware. Keep the offline explanation visible too. | Treat every not-ready state as biometric unlock being turned off |
 | Sign in, Sign out, Create account; Sign out… then Sign out device (Mac Settings → Devices) | Log in, Register, Revoke (a device session) |
 | Change master password…, Replace Secret Key… | Reset password, Rotate key, Regenerate Secret Key |
 | "Your other devices will be signed out. Sign in on them with the new master password." / "…with your master password and the new Secret Key from the new Emergency Kit." | Logged out, session invalidated |
 | "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one." | Session expired, unauthorized |
+| The master password is incorrect. | incorrect email, master password or Secret Key (on the password-only lock screen) |
+| Hisar can't reach \<server>. Check your internet connection and the server address. | changes can be saved once you are back online (before signing in or creating an account) |
 | Delete account…, Delete account (the confirm button, after typing the email) | Close account, Remove account, Deactivate |
 | "Export your items first in Settings → Import & Export." (Mac), "… in Settings → Account → Export data." (iPhone, Android), "… with `hisar export`" (CLI) | Back up your data |
+
+### Onboarding on the Mac, iPhone and Android
+
+In this section, \<device> is "this Mac" on macOS, "this computer" on Linux, "this iPhone" on the iPhone, and "this device" on Android.
+These strings describe the installed account's owed kit, not an unrelated operation in **Finish account setup**.
+
+| Where | Copy |
+|---|---|
+| Fresh installation | Welcome to Hisar · Create account · I already have an account |
+| Mac Sign in | Or enter the details. All fields are required. |
+| Mac Create account | All account fields are required. |
+| iPhone Sign in and Create account | All fields are required. |
+| Android Create account | Email, name and both master password fields are required. |
+| Create account field order | Email, then Name on the iPhone and Android; Name, then Email on the Mac. Keep a field between Email and the master password on the iPhone: directly above them, the email makes iOS offer a generated password ([Design](../design.md) §5.2). |
+| Required fields on submit | Enter your name. · Enter your email. · Enter your Secret Key. · Enter your master password. |
+| Required invitation on submit | Enter your invite link or code. (Mac); Enter an invite link or code. (iPhone, Android) |
+| Master password on Create account | Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you. |
+| Secret Key on Create account | Next, Hisar creates your Secret Key. You don't choose one. |
+| Kit title | Save your Emergency Kit |
+| Replacement kit title | Save your new Emergency Kit |
+| New-account kit body | Hisar created a Secret Key for your account. You need it and your master password to sign in on a new device. You don't need to remember it. |
+| Replacement kit body | Your Secret Key changed, so your old Emergency Kit no longer works. Save the new one. |
+| Kit authorization | Enter your master password to show your Secret Key. · Continue · Continue with Touch ID (Mac), Continue with Face ID or Touch ID (iPhone), Continue with biometrics (Android) · Use master password · Cancel |
+| Kit storage guidance | Keep it where you can get to it without \<device>: print it, or save it to storage you can open from another device. Don't keep the only copy in Hisar. |
+| Delivery actions | Save Emergency Kit… and Save another copy… (Mac); Save or print Emergency Kit (iPhone); Save Emergency Kit, Print Emergency Kit, Share Emergency Kit (Android) |
+| Recorded file delivery | Emergency Kit saved. |
+| Recorded print delivery | Emergency Kit sent to the printer. |
+| Recorded share delivery | Emergency Kit shared. |
+| After delivery | A copy saved only on \<device> is lost with it. Print it, or keep another copy somewhere else. |
+| Acknowledge recorded delivery | I saved my Emergency Kit |
+| Postpone | Save later |
+| Save later explanation and initial reminder body | Save a copy you can reach without \<device>. Losing access to your signed-in devices before you save it could lock you out. |
+| Cancelled file save | The Emergency Kit wasn't saved. |
+| Unconfirmed Android Share or Print | Hisar can't tell whether the other app kept the kit. Save it to a file to finish. |
+
+The saved sentences describe the backend's recorded `savedBy`, not an open sheet or a temporary PDF.
+The iPhone records `file` for Save to Files, `print` for Print, and `share` for any other completed activity except Copy.
+Android records `file` only after a successful Storage Access Framework write and `share` only after the PDF chooser reports a non-null chosen component.
+Android Print never records delivery or enables **I saved my Emergency Kit**. A chosen share target is not proof that the receiving app kept the file.
+Copy never counts. Do not reintroduce the Mac's saved-kit checkbox or "only on this device" warnings.
+
+### Emergency Kit reminders
+
+The Mac, the iPhone and Android show the following copy in the vault list's normal flow, not over content or controls.
+The age starts at the first **Save later**, or the first unlock that finds the kit still owed.
+Recorded delivery awaiting acknowledgement takes precedence over the age and replacement warnings.
+
+| State | Heading | Body |
+|---|---|---|
+| Unsaved sign-up kit, less than 3 days | Save your Emergency Kit | Save a copy you can reach without \<device>. Losing access to your signed-in devices before you save it could lock you out. |
+| Unsaved sign-up kit, at least 3 days | Your Emergency Kit still isn't saved | You haven't saved an Emergency Kit yet. Losing access to your signed-in devices could lock you out. |
+| Unsaved sign-up kit, at least 14 days | Save your Emergency Kit now | It's been at least 2 weeks. Save a copy you can reach without \<device> so losing your devices doesn't mean losing access. |
+| Unsaved replacement kit | Save your new Emergency Kit | Your old Emergency Kit no longer works. Save the new one where you can reach it without \<device>. |
+| Delivered, not acknowledged | Confirm your Emergency Kit | The recorded delivery sentence above, then "A copy saved only on \<device> is lost with it. Print it, or keep another copy somewhere else." |
+
+The unsaved action is **Save Emergency Kit…** on the Mac or **Save Emergency Kit** on the iPhone and Android.
+A delivered kit uses **Continue to confirmation**. Both states offer **Not now**, with the accessible action label "Hide until Hisar locks" on the Mac and Android and the accessibility hint "Hides until Hisar locks" on the iPhone.
+Both actions stay fully readable at the largest text sizes. A long label wraps instead of truncating.
+The locked screen has static text, not an action that opens recovery over Unlock.
+
+| Locked state | Copy |
+|---|---|
+| Unsaved kit | Your Emergency Kit isn't saved yet. Unlock Hisar to save it. |
+| Delivered kit, Mac | Your Emergency Kit needs confirmation. Unlock Hisar to continue. |
+| Delivered kit, iPhone | Your Emergency Kit still needs confirming. Unlock Hisar to continue. |
+| Delivered kit, Android | Your Emergency Kit isn't confirmed yet. Unlock Hisar to confirm it. |
+| Kit interrupted by lock | Hisar locked while you were saving your Emergency Kit. Unlock to continue. |
+
+### Lost Secret Key help
+
+On the Mac, the iPhone and Android, **Can't find your Secret Key?** opens the same help from Sign in and the lock screen.
+Closing it with **Done** preserves the form. The paragraphs are:
+
+> It's on your Emergency Kit, the PDF or printout you saved when you created your account. If you saved the Secret Key separately, you can use that too.
+>
+> Still signed in on another device? Unlock Hisar there with your master password and save a new Emergency Kit: on a Mac in Settings, Security; on an iPhone in Settings, Account, Secret Key and Emergency Kit; on Android in Settings, Account, Secret Key and Emergency Kit. Don't sign out of that device first.
+>
+> If this device offers Finish account setup for an unfinished operation, try that with the master password you chose for it.
+>
+> Without your Secret Key, a usable signed-in device or a protected unfinished setup you can resume, neither Hisar nor the server's admin can recover your account.
+
+Under **Forgot your master password?**, the help says:
+
+> Hisar can't reset it, and neither can the server's admin. The Emergency Kit doesn't replace it. If you can still open Hisar on a device, don't sign out; preserve the items you can access. If you can no longer unlock any device and cannot find your master password, items only your account can open cannot be recovered. Shared vaults remain accessible to their other members.
+
+The iPhone's and Android's Settings → Account → Secret Key and Emergency Kit show the sign-in QR only after the master password.
+Its caption is "Scan this with Hisar on your new device. Anyone with this code and your master password can open your vaults."
+Copy and PDF delivery remain alternatives.
 
 ### Sign-out confirmations
 
@@ -42,10 +135,22 @@ The message is "Hisar removes \<device>'s saved Secret Key and offline copy of y
 | Mac | this Mac | Settings, Security |
 | Linux | this computer | Settings, Security |
 | iPhone | this iPhone | Settings, Account, Secret Key and Emergency Kit |
-| Android | this device | Settings, Account |
+| Android | this device | Settings, Account, Secret Key and Emergency Kit |
 
-The locked-screen confirmation adds "If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in \<route>."
-Keep **Cancel** and destructive **Sign out**. Unlocked Mac Account also offers **Save Emergency Kit…**, which opens the Security kit form without signing out.
+Without an owed kit, the locked-screen confirmation adds "If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in \<route>."
+On the Mac, the iPhone and Android, an owed kit changes the copy without dropping the full local-removal and sign-in disclosure above:
+
+| State | Additional copy |
+|---|---|
+| No recorded delivery | Prepend "You haven't saved this account's Emergency Kit yet." |
+| Delivered but not acknowledged | Prepend "You haven't confirmed this account's Emergency Kit yet." |
+| Either owed-kit state | Append "The protected unfinished setup stays on \<device>. Don't rely on it as your only recovery copy." |
+| Locked Mac | Append "Cancel, unlock Hisar and finish saving your Emergency Kit." or, after delivery, "Cancel, unlock Hisar and finish confirming your Emergency Kit." |
+| Locked iPhone and Android | Append "Cancel, unlock Hisar and finish saving or confirming your Emergency Kit." |
+
+Keep **Cancel** as the safe choice and destructive **Sign out**.
+Unlocked Mac Account also offers **Save Emergency Kit…**. The iPhone and Android offer **Save Emergency Kit** when a kit is owed.
+These open the owed kit without signing out. Without an owed kit, the Mac opens the Security kit form.
 Sign-out removes the active account's local data, not separately protected unfinished-setup recovery records.
 
 ## People and sharing
@@ -56,11 +161,17 @@ Sign-out removes the active account's local data, not separately protected unfin
 | Share, Invite by email, Send invitation | Gives someone a vault. Share opens the panel (Mac) or sheet (iPhone and Android). Send invitation submits the email invitation. |
 | invitation | A pending vault share ("Invitations for you", "Invitations you sent"). |
 | Review recipient · Give this person access? · Give access | Confirms the concrete account, security code, vault, and role before delivering a key to an identity not bound by the original invitation. Available on Mac, iPhone, and Android. |
+| Codes don't match | Cancels the reviewed invitation, without confirming its recipient or resetting a key pin. Keep the review open if cancellation fails. On success, "Cancelled the invitation to \<email>." |
 | Review recipients | Accepted first shares waiting for the owner's identity review. Shown above received invitations on Vaults on both phones and included in the People badge. |
 | "\<name> accepted your invitation to a vault. Unlock to continue sharing." | Locked notice. Unlocking may still require Review recipient before the vault key is shared. |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
-| Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
+| Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac shows one visible legend per panel: "Readers view items, editors also change them, owners also share, rename and delete the vault." Phones describe the chosen role: "Readers view items but can't change them.", "Editors view and change items.", or "Owners view and change items, share, rename and delete the vault, change roles and remove people." |
+| Make Ada an owner of Work? · Change Ada's role from Owner to Editor? | Confirm granting or removing Owner before submitting. Name the vault's management rights, including rename and delete. Team changes preview each person's strongest role through all remaining teams. Cancel leaves the saved role unchanged. |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
+| "Ask \<name> for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code." | Another person's code. Compare the code for one identity, not the codes each person sees for the other. |
+| "This is your security code. Read it to someone who is checking the code they see for you." | Your own code. Comparison is optional and does not prove the server is honest. |
+| "\<name> is removed from \<vault>, and Hisar encrypts the vault again with a new key for the people who remain. \<name> can still read copies their devices already downloaded. Change any password or secret they should no longer know." | Removal confirmations name the person, falling back to email. Both removal entry points use the same wording. Never imply downloaded copies can be revoked or infer pronouns from a name. |
+| Key changed. Hisar stopped sharing with them. | Compact changed-key warning. The full warning names the person and this Mac, iPhone or device, asks them to make contact over a trusted channel, and says "Comparing security codes does not restore sharing." Never present comparison as recovery. |
 | Loading members… | The sharing panel omits its member count until members have loaded. |
 | Cancel invitation · Keep invitation | The phones' cancellation confirmation says "Their invitation link stops working. You can invite them again later." |
 
@@ -73,6 +184,7 @@ Sign-out removes the active account's local data, not separately protected unfin
 | Members, Teams, Invitations | The segments of the Mac's organization page. |
 | organization vault | A vault that belongs to an organization and reaches people through its teams. |
 | Create organization…, New team…, Invite by email, Send invitation, Give a vault…, Give to a team…, Take back, Add member, Remove, Make admin, Make member | Actions (Settings → Organizations, the organization screen, an organization vault's sharing panel). |
+| "Owners view and change items, share, rename and delete the vault. Access is managed through the organization's teams." | Owner ability in team grants. Prefix the Give sheet footer with the selected role's ability, then "Everyone in the team gets the vault with this role. Someone in several teams gets the strongest of their roles." |
 | Add member choices show the name and email, or only the email when there is no distinct name. The current account keeps "(you)". | Distinguishes people before granting all the team's vaults. |
 | "Ada invited you to Acme as a member" · Accept · Decline | A received organization invitation in Settings → Organizations. The Mac's Inbox row leads there; the phones also show it above the vaults. |
 | Remove from Acme…, Leave Acme…, Rename organization…, Delete organization…, Rename…, Delete team… | Confirmed actions; each confirmation names what goes: "Bob loses the vaults they have through Acme's teams." · "Its members lose the vaults they have only through Platform." · "Leave Acme?" / "You lose the vaults you have through Acme's teams." · "Delete Acme?" / "Its teams and pending invitations are deleted with it." · "Everyone in Acme sees the new name." |
@@ -96,9 +208,11 @@ Sign-out removes the active account's local data, not separately protected unfin
 | one-time code | TOTP, 2FA code, verification code |
 | Other fields (custom fields below username and password) | Fields, Custom fields, Extra fields |
 | One-time code setup key (Mac editor field) | One-time password |
+| AutoFill with no matches and an empty search: "No logins saved for this site. Search all logins to choose one." / "No login for this site has a one-time code. Search all logins to choose one." | Search above, one-time password |
 | Discard changes to “X”? · Keep editing · Discard (Esc on a changed Mac draft) | Losing an unsaved draft without asking |
 | Item actions (the ⋯ button in the Mac's item header) | Unlabelled ⋯ |
 | Secret (a field hidden until revealed) | Concealed, Hidden |
+| Delete item · "It is removed from all your devices. It can't be undone." for Personal · "It is removed from \<vault name> for everyone with access to the vault. It can't be undone." for shared and organization vaults | A device-only deletion, or "all your devices" for an unresolved vault |
 | secret reference | secret URI, reference link |
 | "Copied \<reference>." (secret-reference copy notices on all three apps) | "Secret reference copied.", repeated command-line instructions |
 | "\<Field> copied. It clears in 90 seconds." (Mac and iPhone copy notices) | "\<Field> copied, clears in 90 seconds" |
@@ -106,23 +220,48 @@ Sign-out removes the active account's local data, not separately protected unfin
 | Add to Favorites, Remove from Favorites (the star's label, the context menu, swipe actions; ⌘D on the Mac) | Favorite, Unfavorite, Star (as a button label) |
 | Added to Favorites · Removed from Favorites (notices; the iPhone ends them with a period) · `Added "GitHub" (Personal) to Favorites.` (`hisar favorite`) | Starred!, Pinned |
 | "No favorites yet" · "Star an item with ★ or ⌘D to keep it here, across all your vaults and devices. Only you see your favorites." (Mac) · "Star an item to keep it here, on all your devices. Only you see your favorites." (Android) · "No favorites yet. Add one with: hisar favorite \<item> [-v vault]" (CLI) | Shared favorites, favorites for the vault |
+| Search all items · Search Hisar · Find items in every vault. (iPhone empty-state description only) | Logins, keys and notes |
+| Offline. Showing items saved on this iPhone; changes need a connection. (iPhone) · Offline. Showing items saved on this device; changes need a connection. (Android) | Destination-specific offline wording |
+
+The one-time code setup and failure copy is shared across the apps.
+
+| Surface | Mac | iPhone and Android |
+|---|---|---|
+| Editor heading or field label | One-time code setup key | One-time code |
+| Setup placeholder | Setup key or otpauth:// link | Setup key or otpauth:// link |
+| Unreadable code | The one-time code could not be read. | The one-time code could not be read. |
 
 ## Vaults and your data
 
 | Use | Not |
 |---|---|
 | Rename…, Delete vault…, Leave vault… (the vault's menu; ⋯ is labelled "Vault actions") | Remove vault, Archive, Exit vault |
+| Secret references that use Work need the new name after you rename this vault. · Renamed Work to Engineering. Secret references that use Work need the new name. | Every vault rename warns about name-based references. Shared and organization vaults also say "Everyone who has this vault sees the new name." Stable-ID references are unchanged. |
 | Delete “Work”? · These people lose access: · Move its N items to [vault] · Delete the vault and its N items · Type Work to confirm · Delete vault | Are you sure?, Destroy, Wipe |
+| Share links are separate copies. Deleting this vault doesn't revoke them. Review them in Shared links. | Mac deletion disclosure, with Review shared links leaving deletion unsubmitted. Phones name the Mac's Shared links and `hisar share-links`, and refer only to links you created. Item deletion uses the same disclosure with "item". |
 | Leave “Work”? · You lose access to its items on all your devices. An owner can invite you again. · Leave vault | Unsubscribe, Quit vault |
 | Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there. | Cannot delete default vault |
 | “Work” is no longer available: it was deleted, or you no longer have access to it. | Vault removed by admin |
 | Moved N items to Personal and deleted Work. · Deleted Work. · You left Work. | — |
 | Import & Export (Settings section on the Mac), Export data… (iPhone and Android, Settings → Account), `hisar export` | Backup, Download my data, Takeout |
+| Hisar import help names each export path: Settings → Import & Export on a Mac, Settings → Account → Export data… on an iPhone or Android phone, or `hisar export`. | Settings → Export your data on any device |
 | encrypted export, export passphrase ("at least 10 characters"; Hisar can't recover it) | export password, backup key, master password (for the export's own passphrase) |
 | Plain JSON, with the warning "Plain JSON is not encrypted. Anyone who gets the file can read every password, one-time code secret and SSH private key in it. Delete it when you are done." | unencrypted backup, raw export |
 | Export with Touch ID… / Export with Face ID / Export with biometrics (Android) · Exported N items from M vaults to \<path>. | — |
 | that passphrase doesn't open this export | wrong password, decryption failed |
 | `.env` import: "Store N values in Personal › shop", "Kept as they are: PORT", "Run a command with them: hisar run --env-file .env -- \<command>" | migrate, vault-ify |
+
+### Read recovery
+
+The apps explain read failures with this table. Item and vault IDs appear only under **Details**.
+
+| Read issue kind | Explanation |
+|---|---|
+| `vault-name` | Vault name could not be opened. Its readable items remain available. |
+| `vault-key` | Vault key could not be opened. Items in this vault cannot be displayed. |
+| `item` | Item could not be opened. It remains saved. |
+
+The summary counts known unreadable items and affected vaults with singular or plural nouns, for example "1 known unreadable item in 1 affected vault." A failed vault key does not establish an item count. Its summary adds "Items behind unopened vault keys are not counted." Show **Retry reads** once above the issue list.
 
 ## Developer tools
 
@@ -131,6 +270,7 @@ Sign-out removes the active account's local data, not separately protected unfin
 | the hisar command-line tool (`hisar`) | the CLI (in app copy), the binary |
 | SSH agent, Use Hisar for SSH | key agent |
 | Approve requests on my smart device (Mac) / Approve requests from my Mac (iPhone, Android) · or approve on your smart device (Mac approval window) · Your smart device can now approve requests | Approve requests on my iPhone, Allow approvals from my iPhone, Allow approving Mac requests |
+| Set up Mac approvals (empty Approvals list) · "On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device." (phone settings) · "On your phone, turn on Settings → Mac approvals → Approve requests from my Mac." (Mac settings) | Claiming to know the other device's switch |
 | SSH keys, the command-line tool, coding agents and apps | The request kinds listed in Mac approvals settings on all three apps. Notifications use "an SSH key, the command-line tool, a coding agent or an app". |
 | Approve, Deny | Allow, Reject |
 | "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet, for a request approved once) · "Approving also lets \<app> use Hisar without asking until then. It does not unlock Hisar on your Mac." (phone approval sheet for a command-line request, under its **Lasts** row: "Until 10 minutes after this terminal’s last command, or until Hisar locks", "Until 10 minutes after the last request from \<app>, or until Hisar locks", "For this connection only, at most until 10 minutes after its last request or until Hisar locks", which the Mac's dialog says after "Lasts") · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
@@ -152,6 +292,13 @@ The Hisar server knows the invitation details it encrypts. Do not say that shari
 |---|---|---|
 | "Ada invited you to Hisar"; Download for Mac; Open in Hisar; invite code | sign-up token, registration link | Invite page and invite email |
 | This invite isn't valid | expired, already used, not found (never say which) | Invite page for any code that does not work |
+| Need Hisar? See how to build and install it on your phone. · iPhone build instructions / Android build instructions · Other downloads | App Store, TestFlight or APK download claims | Phone invite page, after its primary Open in Hisar action; build links use the repository's platform instructions |
+| You need an invitation to create an account on \<host>. Ask someone with an account there to invite you. | An optional invitation on a confirmed invite-only server | Mac, iPhone and Android Create account |
+| \<host> is still being set up. You need an invitation from its admin. | Claiming that anyone can create its first account | Mac, iPhone and Android Create account |
+| This server doesn't say whether it needs an invitation. If it does, Hisar tells you when you create the account. | Assuming a missing policy route means open registration | Mac, iPhone and Android, unknown sign-up policy |
+| Checking sign-up options on \<host>… · Try again | Sign-ups unavailable (on a discovery error) | Policy discovery |
+| Invite link or code; Invite link or code (if you have one) | A required field on confirmed open registration | Required on invite/setup servers; optional when unknown |
+| Invitation for \<email> · on \<host> · Remove invitation · This invitation is for this address. | Editable email for an email-bound invitation | Invitation card and fixed Email field; without email, the card says Invitation (Mac), Invitation then on \<host> (iPhone) or Invitation on \<host> (Android) |
 | Update required (screen title); This server needs Hisar 0.2.0 or later. This Mac has 0.1.0. (This computer has 0.1.0. on Linux; This device has 0.1.0. on Android) | Your app is outdated, unsupported version | Mac, Linux, iPhone and Android blocking screen |
 | Update now (Mac, Sparkle); Install the latest Hisar (iPhone and Android, until the stores have Hisar); Check again | Upgrade | Blocking screen buttons |
 | Hisar needs an update | update required error, 426 | What the SSH agent, the command-line tool, coding agents and the extension are told |
@@ -207,8 +354,10 @@ The web page at `/admin` where admins of the Hisar server manage it. The apps ne
 | Use | Not |
 |---|---|
 | Help (Settings section on the Mac, row on the iPhone) | About & support, Feedback |
-| Contact support, `support@tryhisar.com` | — |
-| Copy diagnostics: app version and build, OS version, server URL, this device's ID | Anything secret, item names, other people's emails |
+| Contact support, `support@tryhisar.com` · Copy address | — |
+| Copy diagnostics: app version and build, OS version and device model, server URL, this device's ID. Diagnostics are optional and are not attached when opening a support message. | Anything secret, item names, other people's emails |
+
+On the iPhone, **Contact support** opens a mailto message. **Copy address** remains available when no mail app can open it.
 
 ## Android
 

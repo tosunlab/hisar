@@ -91,6 +91,13 @@ func (s *Service) applySSHRemember() {
 	}
 }
 
+func (s *Service) ListMissingAgentKeys() []sshagent.MissingAgentKey {
+	if s.config.Server == nil {
+		return []sshagent.MissingAgentKey{}
+	}
+	return s.config.Server.ListMissingAgentKeys()
+}
+
 func (s *Service) buildStatus() Status {
 	status := Status{
 		SocketPath:    s.config.SocketPath,

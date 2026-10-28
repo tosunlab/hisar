@@ -1,17 +1,40 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { api } from "../api";
 import { loadShareAwaitingUnlockQuietly, signOut, store, unlock, unlockWithBiometric } from "../store";
 import { describePerson, getSignOutCopy } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
+import PendingRecoveryReminder from "./PendingRecoveryReminder.vue";
+import CredentialField from "./CredentialField.vue";
+import SecretKeyHelp from "./SecretKeyHelp.vue";
 
-const signOutCopy = getSignOutCopy(true);
+const signOutCopy = computed(() => getSignOutCopy(true, store.status.emergencyKit));
+const isHelpShown = ref(false);
+const kitReminder = computed(() => store.interruptedKitOperationID
+  ? "Hisar locked while you were saving your Emergency Kit. Unlock to continue."
+  : store.status.emergencyKit?.savedBy
+    ? "Your Emergency Kit needs confirmation. Unlock Hisar to continue."
+    : "Your Emergency Kit isn't saved yet. Unlock Hisar to save it.");
 const password = ref("");
 const isConfirmingSignOut = ref(false);
 const isWaitingForTouchID = ref(false);
 const promptSlot = ref<HTMLElement | null>(null);
 const passwordInput = ref<HTMLInputElement | null>(null);
+const signOutLink = ref<HTMLButtonElement | null>(null);
+const cancelSignOutButton = ref<HTMLButtonElement | null>(null);
+
+async function confirmSignOut(): Promise<void> {
+  isConfirmingSignOut.value = true;
+  await nextTick();
+  cancelSignOutButton.value?.focus();
+}
+
+async function cancelSignOut(): Promise<void> {
+  isConfirmingSignOut.value = false;
+  await nextTick();
+  signOutLink.value?.focus();
+}
 
 function sendPromptFrame(): void {
   const slot = promptSlot.value;
@@ -32,7 +55,9 @@ async function startTouchID(): Promise<void> {
   await unlockWithBiometric();
   isWaitingForTouchID.value = false;
   api.clearTouchIDPromptFrame().catch(() => undefined);
-  nextTick(() => passwordInput.value?.focus());
+  nextTick(() => {
+    if (!isConfirmingSignOut.value) passwordInput.value?.focus();
+  });
 }
 
 function cancelTouchID(): void {
@@ -54,10 +79,9 @@ onMounted(() => {
   window.addEventListener("focus", loadShareAwaitingUnlockQuietly);
   window.addEventListener("resize", sendPromptFrame);
   layoutObserver?.observe(document.body);
+  passwordInput.value?.focus();
   if (store.status.biometricReady) {
     startTouchID();
-  } else {
-    passwordInput.value?.focus();
   }
 });
 
@@ -81,6 +105,8 @@ onBeforeUnmount(() => {
           <h1>Hisar is locked</h1>
           <p class="muted" data-testid="locked-account">{{ store.status.email }} · {{ store.status.server.replace(/^https?:\/\//, "") }}</p>
         </div>
+        <p v-if="store.status.emergencyKit" class="muted" data-testid="locked-kit-reminder">{{ kitReminder }}</p>
+        <PendingRecoveryReminder />
         <ul v-if="store.allShareAwaitingUnlock.length > 0" class="awaiting-list" data-testid="share-awaiting-unlock">
           <li v-for="awaiting in store.allShareAwaitingUnlock" :key="awaiting.invitationId" class="awaiting" role="status">
             <AppIcon name="users" :size="15" />
@@ -93,6 +119,7 @@ onBeforeUnmount(() => {
         <form class="unlock-form" @submit.prevent="submitUnlock">
           <label class="password-field">
             <AppIcon name="lock" />
+            <CredentialField>
             <input
               ref="passwordInput"
               v-model="password"
@@ -103,6 +130,7 @@ onBeforeUnmount(() => {
               autocomplete="current-password"
               required
             />
+            </CredentialField>
             <button
               v-if="store.status.biometricReady"
               type="button"
@@ -118,19 +146,23 @@ onBeforeUnmount(() => {
               </span>
             </button>
           </label>
+          <p v-if="store.status.biometricEnabled && !store.status.biometricReady && !store.status.biometricSetupError" class="muted" data-testid="biometric-password-reason">
+            {{ store.status.biometricAvailable ? "Enter your master password to use Touch ID again. Hisar requires it after starting and at least every 14 days." : "Touch ID isn't available right now. Enter your master password." }}
+          </p>
           <button class="primary" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Unlocking…" : "Unlock" }}</button>
         </form>
         <p class="muted status" aria-live="polite" data-testid="unlock-status">
           {{ isWaitingForTouchID ? "Touch ID is waiting. Or type your master password." : "" }}
         </p>
+        <button class="link" @click="isHelpShown = true">Can't find your Secret Key?</button>
 
         <div class="sign-out">
-          <button v-if="!isConfirmingSignOut" class="link" @click="isConfirmingSignOut = true">Sign out of this device</button>
-          <div v-else class="card confirm">
+          <button v-if="!isConfirmingSignOut" ref="signOutLink" class="link" @click="confirmSignOut">Sign out of this device</button>
+          <div v-else class="card confirm" @keydown.esc.stop.prevent="cancelSignOut">
             <p><strong>{{ signOutCopy.title }}</strong></p>
             <p>{{ signOutCopy.message }}</p>
             <div class="row">
-              <button class="ghost" @click="isConfirmingSignOut = false">Cancel</button>
+              <button ref="cancelSignOutButton" class="ghost" @click="cancelSignOut">Cancel</button>
               <button class="danger-solid" data-testid="confirm-sign-out" @click="signOut"><AppIcon name="signOut" /> Sign out</button>
             </div>
           </div>
@@ -138,6 +170,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </div>
+  <SecretKeyHelp v-if="isHelpShown" @close="isHelpShown = false" />
 </template>
 
 <style scoped>

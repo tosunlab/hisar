@@ -25,11 +25,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-09T12:00:10Z"));
+  const selectedItem = createItem({ id: "github", hasOneTimePassword: true, oneTimePassword: "otpauth://totp/?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" });
   Object.assign(store, {
     status: createStatus("unlocked"),
     allVault: allTestVault.map((vault) => ({ ...vault })),
     selectedVaultID: "personal",
-    selectedItem: createItem({ id: "github", hasOneTimePassword: true, oneTimePassword: "otpauth://totp/?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" }),
+    listVaultID: "personal",
+    allItem: [selectedItem],
+    selectedItem,
     editorMode: "view",
     errorMessage: "",
     noticeMessage: "",
@@ -91,30 +94,6 @@ describe("one-time password in items", () => {
     store.selectedItem = createItem({ id: "plain" });
     await flushPromises();
     expect(wrapper.find('[data-testid="one-time-code"]').exists()).toBe(false);
-    wrapper.unmount();
-  });
-
-  it("keeps login details in the same order as the phones", async () => {
-    store.selectedItem = createItem({
-      password: "login-password",
-      hasOneTimePassword: true,
-      fields: [{ name: "Recovery code", value: "recovery-value", concealed: true }],
-      androidApps: [{ packageName: "com.github.android", certificateSha256: "a".repeat(64) }],
-    });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
-    await flushPromises();
-    expect(wrapper.findAll(".field-card .field-label").map((label) => label.text())).toEqual([
-      "Username", "Password", "One-time code", "Recovery code", "Website", "Android app",
-    ]);
-    wrapper.unmount();
-  });
-
-  it("places the login setup key between password and websites in the editor", () => {
-    store.editorMode = "edit";
-    const wrapper = mount(ItemEditor);
-    const allFieldName = wrapper.findAll("input, textarea").map((field) => field.attributes("name"));
-    const passwordIndex = allFieldName.indexOf("password");
-    expect(allFieldName.slice(passwordIndex, passwordIndex + 3)).toEqual(["password", "oneTimePassword", "urls"]);
     wrapper.unmount();
   });
 

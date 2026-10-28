@@ -12,6 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as sshagent$0 from "../../core/sshagent/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -30,6 +34,10 @@ export function FitSSHApprovalWindow(isCompact: boolean, height: number): $Cance
 
 export function GetStatus(): $CancellablePromise<$models.Status> {
     return $Call.ByID(1154302022);
+}
+
+export function ListMissingAgentKeys(): $CancellablePromise<sshagent$0.MissingAgentKey[] | null> {
+    return $Call.ByID(3503927801);
 }
 
 export function ListPendingSSHApprovals(): $CancellablePromise<$models.ApprovalEvent[] | null> {

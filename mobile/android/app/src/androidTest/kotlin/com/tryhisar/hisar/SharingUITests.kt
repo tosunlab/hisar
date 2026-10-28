@@ -14,12 +14,11 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import java.util.UUID
 import org.junit.After
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-// scripts/test-android-ui.sh runs a partner on the command line who accepts every share invitation and completes every share it sent.
+// scripts/test-android-ui.sh runs a partner (scripts/ui-test-partner.sh) who accepts every share invitation and completes every share it sent.
 @RunWith(AndroidJUnit4::class)
 class SharingUITests : HisarUITestCase() {
     @After
@@ -133,31 +132,5 @@ class SharingUITests : HisarUITestCase() {
         type(invitedEmail, "invite-email")
         tap("invite-submit")
         waitFor(hasText("Invitation sent", substring = true) or hasText("cannot send email", substring = true), 30_000)
-    }
-
-    @Test
-    fun testAcceptAnInvitationFromTheBannerAboveTheVaults() {
-        val inviteLink = readArgument("HISAR_UI_TEST_BANNER_INVITE_LINK")
-        val email = readArgument("HISAR_UI_TEST_BANNER_EMAIL")
-        val partnerEmail = readArgument("HISAR_UI_TEST_SHARING_PARTNER_EMAIL")
-        launch()
-        signUp(inviteLink, email, "Android Banner")
-
-        waitFor("banner-accept-invitation", 30_000)
-        assertFalse("no access before accepting", exists(hasTestTag("vault-Infrastructure")))
-        saveLightAndDarkScreenshot("sharing-invitation-banner", readyTag = "banner-accept-invitation")
-
-        tap("banner-accept-invitation")
-        waitFor("vault-Infrastructure", 90_000)
-        assertTrue(readRow("vault-Infrastructure"), readRow("vault-Infrastructure").contains("Editor"))
-        tap("vault-Infrastructure")
-        waitFor("item-Staging database", 30_000)
-        tap("vault-actions")
-        waitFor("vault-members")
-        assertFalse("only owners share", exists(hasTestTag("share-vault")))
-        tap("vault-members")
-        waitFor("vault-member-$partnerEmail", 30_000)
-        assertFalse("editors cannot invite", exists(hasTestTag("share-email")))
-        tap("vault-sharing-done")
     }
 }

@@ -4,6 +4,7 @@ import { api, type ExportOptions } from "../api";
 import { exportAllData, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 import AppIcon from "./AppIcon.vue";
+import CredentialField from "./CredentialField.vue";
 
 type ExportFormat = "encrypted" | "plain";
 
@@ -14,6 +15,8 @@ const passphrase = ref("");
 const repeatedPassphrase = ref("");
 const masterPassword = ref("");
 const resultMessage = ref("");
+const authentication = ref<"biometric" | "password">("biometric");
+const isPasswordNeeded = computed(() => authentication.value === "password" || !exportOptions.value.isBiometricAvailable);
 const validationAnnouncement = ref("");
 const isPassphraseTooShort = computed(() => format.value === "encrypted" && passphrase.value !== "" && [...passphrase.value].length < exportOptions.value.minPassphraseLength);
 const isPassphraseMismatched = computed(() => format.value === "encrypted" && !isPassphraseTooShort.value && repeatedPassphrase.value !== "" && repeatedPassphrase.value !== passphrase.value);
@@ -35,7 +38,7 @@ const canExport = computed(() => {
   if (store.isBusy) {
     return false;
   }
-  if (!exportOptions.value.isBiometricAvailable && masterPassword.value === "") {
+  if (isPasswordNeeded.value && masterPassword.value === "") {
     return false;
   }
   if (format.value === "plain") {
@@ -52,10 +55,15 @@ async function submitExport(): Promise<void> {
   const result = await exportAllData({
     format: format.value,
     passphrase: format.value === "encrypted" ? passphrase.value : "",
-    password: exportOptions.value.isBiometricAvailable ? "" : masterPassword.value,
+    password: isPasswordNeeded.value ? masterPassword.value : "",
   });
   masterPassword.value = "";
   if (!result) {
+    try {
+      exportOptions.value = await api.getExportOptions();
+    } catch {
+      authentication.value = "password";
+    }
     return;
   }
   passphrase.value = "";
@@ -88,6 +96,7 @@ onMounted(async () => {
         </span>
       </label>
       <div v-if="format === 'encrypted'" class="settings-group-detail passphrase-fields">
+        <CredentialField secret-name="export passphrase">
         <input
           v-model="passphrase"
           name="exportPassphrase"
@@ -100,6 +109,8 @@ onMounted(async () => {
           :aria-describedby="isPassphraseTooShort ? 'export-passphrase-problem' : undefined"
           @blur="validationAnnouncement = isPassphraseTooShort ? passphraseProblem : ''"
         />
+        </CredentialField>
+        <CredentialField secret-name="repeated export passphrase">
         <input
           v-model="repeatedPassphrase"
           name="repeatedExportPassphrase"
@@ -112,6 +123,7 @@ onMounted(async () => {
           :aria-describedby="isPassphraseMismatched ? 'export-passphrase-problem' : undefined"
           @blur="validationAnnouncement = isPassphraseMismatched ? passphraseProblem : ''"
         />
+        </CredentialField>
         <p v-if="passphraseProblem" id="export-passphrase-problem" class="problem" data-testid="export-passphrase-problem">{{ passphraseProblem }}</p>
         <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ validationAnnouncement }}</p>
         <p class="muted">Keep the passphrase somewhere safe. Hisar can't recover it, and without it the export can't be opened.</p>
@@ -130,8 +142,8 @@ onMounted(async () => {
         </div>
       </div>
       <div class="settings-group-detail export-actions">
+        <CredentialField v-if="isPasswordNeeded">
         <input
-          v-if="!exportOptions.isBiometricAvailable"
           v-model="masterPassword"
           name="exportMasterPassword"
           type="password"
@@ -140,8 +152,12 @@ onMounted(async () => {
           placeholder="Master password to export"
           data-testid="export-master-password"
         />
+        </CredentialField>
         <button class="primary" type="submit" :disabled="!canExport" data-testid="export-submit">
-          {{ exportOptions.isBiometricAvailable ? "Export with Touch ID…" : "Export…" }}
+          {{ isPasswordNeeded ? "Export…" : "Export with Touch ID…" }}
+        </button>
+        <button v-if="exportOptions.isBiometricAvailable" class="link" type="button" :disabled="store.isBusy" data-testid="export-switch-authentication" @click="authentication = isPasswordNeeded ? 'biometric' : 'password'">
+          {{ isPasswordNeeded ? "Use Touch ID instead" : "or use your master password" }}
         </button>
       </div>
     </form>
@@ -204,6 +220,7 @@ onMounted(async () => {
 
 .export-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   padding-top: 10px;
@@ -219,6 +236,11 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
+
+.export-actions .link {
+  flex-basis: 100%;
+  text-align: right;
+}
 .result {
   display: flex;
   gap: 8px;

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { acceptTouchIDOffer, declineTouchIDOffer, store } from "../store";
+import { touchIDConsent } from "../util";
 import AppIcon from "./AppIcon.vue";
 </script>
 
@@ -10,10 +11,7 @@ import AppIcon from "./AppIcon.vue";
       <div class="card page-card touch-id-offer-card" data-testid="touch-id-offer">
         <span class="touch-id-icon"><AppIcon name="fingerprint" :size="28" /></span>
         <h1>Unlock with Touch ID?</h1>
-        <p class="subtitle">
-          Touch ID unlocks Hisar after it locks, so you type your master password less often. Hisar still asks for the master password when it
-          starts and at least every 14 days. You can change this later in Settings, Security.
-        </p>
+        <p class="subtitle">{{ touchIDConsent }}</p>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
         <button class="primary full-width" data-testid="accept-touch-id-offer" :disabled="store.isBusy" @click="acceptTouchIDOffer">
           {{ store.isBusy ? "Waiting for Touch ID…" : "Turn on Touch ID" }}

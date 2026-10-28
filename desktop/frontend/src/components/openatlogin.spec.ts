@@ -26,6 +26,27 @@ beforeEach(() => {
 });
 
 describe("OpenAtLoginSection", () => {
+  it("refreshes external approval and off changes on focus and stops after unmount", async () => {
+    api.getLoginItemStatus.mockResolvedValue(createLoginItemStatus({ systemState: "requires-approval" }));
+    const wrapper = mount(OpenAtLoginSection);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Waiting for your approval");
+    api.getLoginItemStatus.mockResolvedValue(createLoginItemStatus());
+    window.dispatchEvent(new Event("focus"));
+    await flushPromises();
+    expect(wrapper.get('[data-testid="login-item-state"]').text()).toContain("opens locked at login");
+    expect(wrapper.find('[data-testid="open-login-items"]').exists()).toBe(false);
+    api.getLoginItemStatus.mockResolvedValue(createLoginItemStatus({ isOpenAtLogin: false, systemState: "not-registered" }));
+    window.dispatchEvent(new Event("focus"));
+    await flushPromises();
+    expect(wrapper.get('[data-testid="login-item-state"]').text()).toBe("Off.");
+    wrapper.unmount();
+    const count = api.getLoginItemStatus.mock.calls.length;
+    window.dispatchEvent(new Event("focus"));
+    await flushPromises();
+    expect(api.getLoginItemStatus).toHaveBeenCalledTimes(count);
+  });
+
   it("shows the switch on and that Hisar opens at login", async () => {
     const wrapper = mount(OpenAtLoginSection);
     await flushPromises();

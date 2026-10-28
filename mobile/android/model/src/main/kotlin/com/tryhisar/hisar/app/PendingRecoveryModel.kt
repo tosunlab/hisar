@@ -11,15 +11,31 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** Durable setup recovery is separate from the account currently open on this phone. */
-class PendingRecoveryModel(private val context: ModelContext, private val onSignupDelivered: () -> Unit = {}) {
+class PendingRecoveryModel(private val context: ModelContext, private val onInstalledKitReady: () -> Unit = {}) {
     private val mutableAllRecovery = MutableStateFlow<List<PendingRecovery>>(emptyList())
     private val mutableIsShown = MutableStateFlow(false)
     private val mutableExport = MutableStateFlow<PendingRecoveryExport?>(null)
+    private val mutableSelectedOperationID = MutableStateFlow<String?>(null)
+    val selectedOperationID = mutableSelectedOperationID.asStateFlow()
     val allRecovery = mutableAllRecovery.asStateFlow()
     val isShown = mutableIsShown.asStateFlow()
     val export = mutableExport.asStateFlow()
     private var epoch = 0L
     private var exportGeneration = 0L
+    var isPasswordRejected = false
+        private set
+
+    private suspend fun <Value> perform(operation: (com.tryhisar.hisar.model.VaultBackend) -> Value): Value? {
+        isPasswordRejected = false
+        return context.perform {
+            try {
+                operation(it)
+            } catch (error: com.tryhisar.hisar.model.BackendError) {
+                isPasswordRejected = error.code == com.tryhisar.hisar.model.BackendError.PENDING_RECOVERY_PASSWORD
+                throw error
+            }
+        }
+    }
 
     init {
         context.addStatusListener { previous, current ->
@@ -31,7 +47,7 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
     }
 
     /** Shows the records when they appear where there were none, unless [isOpening] is false, as for a clean sign-up. */
-    suspend fun refresh(isOpening: Boolean = true) {
+    suspend fun refresh(isOpening: Boolean = true, operationID: String? = null) {
         val listing = context.attempt {
             try {
                 Result.success(it.listPendingRecovery())
@@ -46,11 +62,25 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
             return
         }
         val hadNone = mutableAllRecovery.value.isEmpty()
-        mutableAllRecovery.value = records
-        if (records.isEmpty()) close() else if (hadNone && isOpening) mutableIsShown.value = true
+        val needsAttention = records.filterNot { it.operationId == context.status.value.emergencyKit?.operationId }
+        mutableAllRecovery.value = needsAttention
+        val selection = operationID?.takeIf { id -> needsAttention.any { it.operationId == id } }
+            ?: mutableSelectedOperationID.value?.takeIf { id -> needsAttention.any { it.operationId == id } }
+            ?: needsAttention.singleOrNull()?.operationId
+        select(selection)
+        if (needsAttention.isEmpty()) close() else if (hadNone && isOpening) mutableIsShown.value = true
     }
 
-    fun open() { mutableIsShown.value = true }
+    fun open() {
+        if (mutableAllRecovery.value.size == 1) select(mutableAllRecovery.value.single().operationId)
+        mutableIsShown.value = true
+    }
+
+    fun select(operationID: String?) {
+        if (mutableSelectedOperationID.value == operationID) return
+        clearExport()
+        mutableSelectedOperationID.value = operationID
+    }
 
     fun clearExport() {
         exportGeneration++
@@ -65,7 +95,7 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
 
     suspend fun resume(operationID: String, password: String, secretKey: String = "", priorSecretKey: String = ""): Boolean = context.runInModel {
         val startedEpoch = epoch
-        val result = context.perform {
+        val result = perform {
             if (secretKey.isEmpty()) it.resumePendingRecovery(operationID, password)
             else it.resumePendingRecoveryWithSecretKey(operationID, password, VaultLogic.formatSecretKey(secretKey), VaultLogic.formatSecretKey(priorSecretKey))
         }
@@ -78,18 +108,23 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         context.refreshStatus()
         if (context.status.value.isUnlocked) context.refreshAll()
         refresh()
+        if (context.status.value.isUnlocked && context.status.value.emergencyKit?.operationId == operationID) {
+            close()
+            onInstalledKitReady()
+        }
         if (result.problems.isNotEmpty()) context.errorMessage.value = result.problems.joinToString("\n")
         result.setupState == "delivery-pending"
     }
 
     suspend fun discard(operationID: String, password: String): Boolean = context.runInModel {
-        context.perform { it.discardPreparedRecovery(operationID, password) } ?: return@runInModel false
+        perform { it.discardPreparedRecovery(operationID, password) } ?: return@runInModel false
         clearExport()
         refresh()
         true
     }
 
     suspend fun exportKit(operationID: String, password: String): Boolean = context.runInModel {
+        select(operationID)
         clearExport()
         val startedEpoch = epoch
         val generation = exportGeneration
@@ -98,7 +133,7 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         // finishes; perform then throws once it returns. Whatever is not published here is deleted, the file with it.
         var isPublished = false
         try {
-            val result = context.perform { it.exportPendingRecoveryEmergencyKit(operationID, password, directory) }
+            val result = perform { it.exportPendingRecoveryEmergencyKit(operationID, password, directory) }
             if (result == null || startedEpoch != epoch || generation != exportGeneration) {
                 // A lock, sign-out or account switch hides the Secret Key; a newer export, another record or closing the
                 // screen is the user's own choice and needs no word.
@@ -116,17 +151,19 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         true
     }
 
+    suspend fun recordDelivery(exportID: String, method: String): Boolean {
+        if (mutableExport.value?.exportId != exportID) return false
+        perform { it.recordPendingRecoveryEmergencyKitDelivery(exportID, method) } ?: return false
+        refresh(isOpening = false)
+        return true
+    }
+
     suspend fun acknowledge(operationID: String, password: String): Boolean = context.runInModel {
         val startedEpoch = epoch
-        val recovery = mutableAllRecovery.value.firstOrNull { it.operationId == operationID }
-        context.perform { it.acknowledgePendingRecovery(operationID, password) } ?: return@runInModel false
+        perform { it.acknowledgePendingRecovery(operationID, password) } ?: return@runInModel false
         if (startedEpoch != epoch) return@runInModel false
         clearExport()
         refresh()
-        val current = context.status.value
-        if (startedEpoch == epoch && recovery?.kind == "signup" && recovery.phase == "delivery-pending" && !recovery.manualUnlock && current.isUnlocked &&
-            current.email == recovery.email && current.server == recovery.origin
-        ) onSignupDelivered()
         true
     }
 }

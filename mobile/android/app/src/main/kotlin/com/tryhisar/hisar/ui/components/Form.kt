@@ -33,12 +33,23 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.IconButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -105,7 +116,7 @@ fun LargeTitle(title: String, topPadding: Dp = 44.dp) {
         title,
         style = HisarType.largeTitle,
         color = HisarTheme.colors.label,
-        modifier = Modifier.padding(top = topPadding, bottom = 8.dp),
+        modifier = Modifier.padding(top = topPadding, bottom = 8.dp).then(if (title.isNotBlank()) Modifier.semantics { heading() } else Modifier),
     )
 }
 
@@ -118,12 +129,12 @@ fun FormSection(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.padding(top = 20.dp)) {
-        if (header != null) {
+        if (!header.isNullOrBlank()) {
             Text(
                 header,
                 style = HisarType.sectionHeader,
                 color = HisarTheme.colors.secondaryLabel,
-                modifier = Modifier.padding(start = RowInset, end = RowInset, bottom = 10.dp),
+                modifier = Modifier.padding(start = RowInset, end = RowInset, bottom = 10.dp).semantics { heading() },
             )
         }
         Column(
@@ -185,34 +196,50 @@ fun FormTextField(
     modifier: Modifier = Modifier,
     isSecure: Boolean = false,
     isSecret: Boolean = isSecure,
+    revealName: String? = null,
+    concealWhen: Boolean = false,
     textStyle: TextStyle = HisarType.body,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
     val color = HisarTheme.colors.label
-    SecretInput(isSecret) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            textStyle = textStyle.copy(color = color),
-            cursorBrush = SolidColor(HisarTheme.colors.tint),
-            visualTransformation = if (isSecure) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            modifier = modifier
-                .fillMaxWidth()
-                .heightIn(min = RowMinHeight)
-                .secretInput(isSecret)
+    var isRevealed by remember(testTag, concealWhen) { mutableStateOf(false) }
+    LaunchedEffect(value.isEmpty()) { if (value.isEmpty()) isRevealed = false }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        SecretInput(isSecret) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = textStyle.copy(color = color),
+                cursorBrush = SolidColor(HisarTheme.colors.tint),
+                visualTransformation = if (isSecure && !isRevealed) PasswordVisualTransformation() else VisualTransformation.None,
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                modifier = modifier
+                    .weight(1f)
+                    .heightIn(min = RowMinHeight)
+                    .secretInput(isSecret)
                 .then(fieldAccessibility(label, errorMessage, announceErrorOnBlur))
-                .testTag(testTag),
-            decorationBox = { innerTextField ->
-                Box(Modifier.padding(horizontal = RowInset, vertical = 14.dp), contentAlignment = Alignment.CenterStart) {
-                    if (value.isEmpty()) Text(placeholder, style = textStyle, color = HisarTheme.colors.placeholder)
-                    innerTextField()
-                }
-            },
-        )
+                    .testTag(testTag),
+                decorationBox = { innerTextField ->
+                    Box(Modifier.padding(horizontal = RowInset, vertical = 14.dp), contentAlignment = Alignment.CenterStart) {
+                        if (value.isEmpty()) Text(placeholder, style = textStyle, color = HisarTheme.colors.placeholder)
+                        innerTextField()
+                    }
+                },
+            )
+        }
+        if (isSecure && revealName != null) {
+            IconButton(onClick = { isRevealed = !isRevealed }, enabled = !concealWhen, modifier = Modifier.size(48.dp).testTag("$testTag-reveal")) {
+                Icon(
+                    if (isRevealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                    contentDescription = "${if (isRevealed) "Hide" else "Show"} $revealName",
+                    tint = HisarTheme.colors.secondaryLabel,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
     }
 }
 

@@ -68,7 +68,9 @@ object AutoFillPreview {
         return {
             val message by resultMessage.collectAsStateWithLifecycle()
             Box(Modifier.fillMaxSize()) {
-                AutoFillRoot(model)
+                AutoFillRoot(model) {
+                    activity.startActivity(Intent(activity, com.tryhisar.hisar.MainActivity::class.java))
+                }
                 message?.let {
                     val theme by model.theme.collectAsStateWithLifecycle()
                     HisarTheme(theme) {

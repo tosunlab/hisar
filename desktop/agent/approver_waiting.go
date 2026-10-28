@@ -112,16 +112,20 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 	phoneApprover := approver.config.PhoneApprover
 	pending.phoneChannel = make(chan approval.AcceptedAnswer, 1)
 	timeout := approver.config.Timeout
+	var phonePostedChannel chan bool
 	if phoneApprover != nil && pending.event.Kind != ApprovalKindPasskey && !pending.event.IsUnlockRequired && !pending.isMacOnly && phoneApprover.IsPhoneApprovalAvailable() {
+		phonePostedChannel = make(chan bool, 1)
 		phoneTimeout := max(timeout, approver.config.PhoneApprovalTimeout)
-		finishPhoneApproval, err := phoneApprover.StartPhoneApproval(pending.phoneRequest, pending.receivedAt.Add(phoneTimeout), func(answer approval.AcceptedAnswer) { approver.respondFromPhone(pending, answer) })
+		finishPhoneApproval, err := phoneApprover.StartPhoneApproval(pending.phoneRequest, pending.receivedAt.Add(phoneTimeout), func(isSent bool) { phonePostedChannel <- isSent }, func(answer approval.AcceptedAnswer) { approver.respondFromPhone(pending, answer) })
 		switch {
 		case err == nil:
 			defer finishPhoneApproval()
 			pending.event.IsPhoneApproval, timeout = true, phoneTimeout
+			pending.event.PhoneApprovalState = "pending"
 		case errors.Is(err, approval.ErrSealedTooLarge):
 			pending.event.IsTooLongForPhone = true
 		default:
+			pending.event.PhoneApprovalState = "failed"
 			log.Printf("phone approval: %v", err)
 		}
 	}
@@ -132,6 +136,7 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 	defer timer.Stop()
 	approver.mutex.Lock()
 	approver.pendingRequests = append(approver.pendingRequests, pending)
+	approver.openNotices++
 	isFirstCompact := approver.pendingRequests[0].event.IsCompact
 	approver.mutex.Unlock()
 	defer approver.finishApproval(pending)
@@ -148,6 +153,15 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 			responseChannel = nil
 		}
 		select {
+		case isSent := <-phonePostedChannel:
+			approver.mutex.Lock()
+			pending.event.PhoneApprovalState = "failed"
+			if isSent {
+				pending.event.PhoneApprovalState = "sent"
+			}
+			event := pending.event
+			approver.mutex.Unlock()
+			approver.emit(ApprovalEventName, event)
 		case phoneAnswer := <-pending.phoneChannel:
 			return approver.acceptPhoneAnswer(pending, phoneAnswer)
 		case response := <-responseChannel:
@@ -304,9 +318,6 @@ func (approver *Approver) finishApproval(pending *pendingApproval) {
 	pending.isFinished = true
 	isTouchIDWaiting := pending.isAuthenticating && approver.config.CancelBiometric != nil
 	isCancellingFirst := approver.markTouchIDCancelled(pending)
-	if pending.timedOutAfter > 0 {
-		approver.expiredNotices++
-	}
 	approver.mutex.Unlock()
 	if isTouchIDWaiting {
 		go approver.cancelTouchIDUntilEnded(pending, isCancellingFirst)
@@ -314,10 +325,8 @@ func (approver *Approver) finishApproval(pending *pendingApproval) {
 	closeNotice := func() {
 		approver.presenter.present(func() {
 			approver.mutex.Lock()
-			if pending.timedOutAfter > 0 {
-				approver.expiredNotices--
-			}
-			isLastNotice := len(approver.pendingRequests) == 0 && approver.expiredNotices == 0
+			approver.openNotices--
+			isLastNotice := approver.openNotices == 0
 			approver.mutex.Unlock()
 			approver.config.Emit(ApprovalClosedEventName, pending.event.RequestID)
 			if isLastNotice && approver.config.HideApprovalWindow != nil {

@@ -53,6 +53,8 @@ struct VaultStatus: Codable, Equatable {
     var autoLockSeconds: Int
     var signedOutReason = ""
     var updateRequired: UpdateRequirement?
+    var emergencyKit: EmergencyKitStatus?
+    var biometricOfferAvailable = false
 
     static let defaultAutoLockSeconds = 300
     static let allAutoLockSeconds = [30, 60, 300, 600, 3600]
@@ -88,6 +90,8 @@ struct VaultStatus: Codable, Equatable {
         autoLockSeconds = decodedAutoLockSeconds > 0 ? decodedAutoLockSeconds : Self.defaultAutoLockSeconds
         signedOutReason = try container.decodeIfPresent(String.self, forKey: .signedOutReason) ?? ""
         updateRequired = try container.decodeIfPresent(UpdateRequirement.self, forKey: .updateRequired)
+        emergencyKit = try container.decodeIfPresent(EmergencyKitStatus.self, forKey: .emergencyKit)
+        biometricOfferAvailable = try container.decodeIfPresent(Bool.self, forKey: .biometricOfferAvailable) ?? false
     }
 
     static func describeAutoLock(seconds: Int) -> String {
@@ -116,6 +120,30 @@ struct ReadIssue: Codable, Hashable, Identifiable {
     var canRename: Bool
     var canDelete: Bool
     var id: String { "\(vaultId)/\(itemId ?? "")/\(kind)" }
+    var explanation: String {
+        switch kind {
+        case "vault-name": return "Vault name could not be opened. Its readable items remain available."
+        case "vault-key": return "Vault key could not be opened. Items in this vault cannot be displayed."
+        case "item": return "Item could not be opened. It remains saved."
+        default: return "Saved data could not be opened. It remains saved."
+        }
+    }
+}
+
+struct ReadIssueSummary {
+    var issues: [ReadIssue]
+    var affectedVaultCount: Int { Set(issues.map(\.vaultId)).count }
+    var knownItemCount: Int {
+        Set(issues.filter { $0.kind == "item" }.compactMap { issue in
+            issue.itemId.map { "\(issue.vaultId)/\($0)" }
+        }).count
+    }
+    var text: String {
+        let vaults = "\(affectedVaultCount) affected \(affectedVaultCount == 1 ? "vault" : "vaults")"
+        let items = "\(knownItemCount) known unreadable \(knownItemCount == 1 ? "item" : "items")"
+        let counts = knownItemCount > 0 ? "\(items) in \(vaults)." : "\(vaults)."
+        return issues.contains { $0.kind == "vault-key" } ? "\(counts) Items behind unopened vault keys are not counted." : counts
+    }
 }
 
 struct VaultSummary: Codable, Identifiable, Hashable {
@@ -134,6 +162,14 @@ struct VaultSummary: Codable, Identifiable, Hashable {
     var isPersonalExtra = false
 
     var isOrganization: Bool { type == Self.typeOrganization }
+
+    static func itemDeletionMessage(_ vault: VaultSummary?) -> String {
+        if vault?.type == typePersonal {
+            return "It is removed from all your devices. It can't be undone."
+        }
+        let name = vault.flatMap { $0.name.isEmpty ? nil : $0.name } ?? "this vault"
+        return "It is removed from \(name) for everyone with access to the vault. It can't be undone."
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, name, type, role, itemCount
@@ -390,6 +426,13 @@ struct ChosenIcon: Codable, Hashable {
 
     /// The symbol to draw, or nil for an image or a preset from a newer app, which draws the category's symbol.
     var symbol: String? { image == nil ? Self.symbolByPreset[preset] : nil }
+
+    private static let defaultPreset = ["credit-card": "card", "server": "server", "database": "database", "ssh-key": "key"]
+
+    static func applyingColor(_ color: String, to icon: ChosenIcon?, category: String) -> ChosenIcon? {
+        guard icon?.image == nil else { return icon }
+        return ChosenIcon(preset: icon.flatMap { $0.preset.isEmpty ? nil : $0.preset } ?? defaultPreset[category] ?? "lock", color: color)
+    }
 }
 
 /// The names core/item stores an address's values under; identities and cards keep their address under the same names, and
@@ -909,6 +952,56 @@ struct CardDescription: Codable, Equatable {
     var expiryWarning = ""
 }
 
+struct SignUpPolicy: Codable, Equatable {
+    var server: String
+    var host: String
+    var mode: String
+}
+
+struct EmergencyKitStatus: Codable, Equatable {
+    var operationId: String
+    var kind: String
+    var savedBy = ""
+    var postponedAt = ""
+    var reminder = "new"
+    var isAuthorized = false
+    var isReminderHidden = false
+
+    var title: String {
+        if !savedBy.isEmpty { return "Confirm your Emergency Kit" }
+        if kind == "replace-secret-key" { return "Save your new Emergency Kit" }
+        switch reminder {
+        case "3-days": return "Your Emergency Kit still isn't saved"
+        case "14-days": return "Save your Emergency Kit now"
+        default: return "Save your Emergency Kit"
+        }
+    }
+
+    static let postponementAdvice = "Save a copy you can reach without this iPhone. Losing access to your signed-in devices before you save it could lock you out."
+    static let savedAdvice = "A copy saved only on this iPhone is lost with it. Print it, or keep another copy somewhere else."
+
+    var deliveryMessage: String {
+        switch savedBy {
+        case "file": return "Emergency Kit saved."
+        case "print": return "Emergency Kit sent to the printer."
+        case "share": return "Emergency Kit shared."
+        default: return ""
+        }
+    }
+
+    var reminderMessage: String {
+        if !savedBy.isEmpty { return "\(deliveryMessage) \(Self.savedAdvice)" }
+        if kind == "replace-secret-key" {
+            return "Your old Emergency Kit no longer works. Save the new one where you can reach it without this iPhone."
+        }
+        switch reminder {
+        case "3-days": return "You haven't saved an Emergency Kit yet. Losing access to your signed-in devices could lock you out."
+        case "14-days": return "It's been at least 2 weeks. Save a copy you can reach without this iPhone so losing your devices doesn't mean losing access."
+        default: return Self.postponementAdvice
+        }
+    }
+}
+
 struct SignUpResult: Codable, Equatable {
     var status: VaultStatus
     var secretKey: String
@@ -946,12 +1039,29 @@ struct PendingRecovery: Codable, Equatable, Identifiable {
     var problems: [String]
     var manualUnlock: Bool = false
     var keychainProtected: Bool = false
+    var savedBy: String?
+    var postponedAt: String?
     var id: String { operationId }
+    var reminderLabel: String {
+        if phase == "manual-unlock" { return "Sign in with your saved Emergency Kit." }
+        if phase == "awaiting-kit" || phase == "delivery-pending" {
+            return kind == "signup"
+                ? "Save your Emergency Kit to finish setting up \(email)."
+                : "Save your new Emergency Kit to finish replacing your Secret Key."
+        }
+        return "Finish setting up \(email)."
+    }
+    var reminderHint: String {
+        if phase == "manual-unlock" { return "Opens sign-in with your saved Emergency Kit" }
+        if phase == "awaiting-kit" || phase == "delivery-pending" { return "Opens the Emergency Kit step" }
+        return "Opens the unfinished account setup"
+    }
 }
 
 struct PendingRecoveryExport: Codable, Equatable {
     var secretKey: String
     var path: String
+    var exportId: String?
 }
 
 struct LoginMatch: Codable, Hashable, Identifiable {
@@ -1058,6 +1168,18 @@ struct ItemPasskey: Codable, Hashable, Identifiable {
     var userName: String
     var userDisplayName: String
     var createdAt: String
+
+    func deletionMessage(vault: VaultSummary?) -> String {
+        let account = userName.isEmpty ? userDisplayName : userName
+        let consequence: String
+        if vault?.type == VaultSummary.typePersonal {
+            consequence = "It is removed from all your devices. Make sure you can sign in another way first."
+        } else {
+            let name = vault.flatMap { $0.name.isEmpty ? nil : $0.name } ?? "this vault"
+            consequence = "It is removed from \(name) for everyone with access. Make sure they can sign in another way first."
+        }
+        return "You can no longer sign in to \(relyingPartyID) as \(account) with it. \(consequence)"
+    }
 
     enum CodingKeys: String, CodingKey {
         case userName, userDisplayName, createdAt
@@ -1347,13 +1469,14 @@ struct SentShareInvitation: Codable, Identifiable, Hashable {
     var expiresAt: String
     var requiresConfirmation: Bool? = nil
     var recipientID: String? = nil
+    var recipientName: String? = nil
     var securityCode: String? = nil
     var reviewToken: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, vaultName, email, role, state, expiresAt
         case vaultID = "vaultId"
-        case requiresConfirmation, securityCode, reviewToken
+        case requiresConfirmation, securityCode, reviewToken, recipientName
         case recipientID = "recipientId"
     }
 }
@@ -1559,9 +1682,15 @@ struct Device: Codable, Identifiable, Hashable {
     }
 }
 
+struct RevealedSecretKey: Codable, Equatable {
+    var secretKey: String
+}
+
 struct EmergencyKitExport: Codable, Equatable {
     var secretKey: String
     var emergencyKitPath: String
+    var qrCode: String?
+    var exportId: String?
 }
 
 // VaultActions says who may rename, delete or leave a vault and what deleting it means; members leave out the user.
@@ -1664,6 +1793,9 @@ enum ExportFormat: String, CaseIterable, Identifiable {
 struct ImportSkippedEntry: Codable, Hashable {
     var title: String
     var reason: String
+
+    static func heading(count: Int) -> String { "Not imported · \(count)" }
+    static let explanation = "Some entries below are fields or credentials from items that will still be imported."
 }
 
 /// ImportDuplicate is an item the chosen vault already has. passkeyCount is how many of its passkeys the existing login
@@ -1842,11 +1974,15 @@ struct ImportProgress: Codable, Equatable {
     var totalCount: Int
     var isDone: Bool
     var allFailed: [ImportSkippedEntry] = []
+    var leftBehindCount = 0
+    var allSkipped: [ImportSkippedEntry] = []
+    var allDuplicateOutcomes: [ImportSkippedEntry] = []
     /// isSourceKept: the file is not offered for deletion, as in ImportPreview.
     var isSourceKept = false
 
     enum CodingKeys: String, CodingKey {
         case fileName, filePath, vaultName, savedCount, totalCount, isDone, allFailed, isSourceKept
+        case leftBehindCount, allSkipped, allDuplicateOutcomes
         case vaultID = "vaultId"
     }
 
@@ -1871,6 +2007,9 @@ struct ImportProgress: Codable, Equatable {
         isDone = try container.decodeIfPresent(Bool.self, forKey: .isDone) ?? false
         allFailed = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allFailed) ?? []
         isSourceKept = try container.decodeIfPresent(Bool.self, forKey: .isSourceKept) ?? false
+        leftBehindCount = try container.decodeIfPresent(Int.self, forKey: .leftBehindCount) ?? 0
+        allSkipped = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allSkipped) ?? []
+        allDuplicateOutcomes = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allDuplicateOutcomes) ?? []
     }
 }
 
@@ -1884,6 +2023,7 @@ struct CredentialChangeResult: Codable, Equatable {
     var pendingOperationId: String = ""
     var setupState: String = ""
     var problems: [String] = []
+    var exportId: String?
 
     var isWaitingOnlyForKit: Bool {
         AccountLifecycleLogic.isWaitingOnlyForKit(setupState: setupState, secretKey: secretKey, problems: problems)
@@ -1913,6 +2053,7 @@ struct CredentialChangeResult: Codable, Equatable {
         pendingOperationId = try container.decodeIfPresent(String.self, forKey: .pendingOperationId) ?? ""
         setupState = try container.decodeIfPresent(String.self, forKey: .setupState) ?? ""
         problems = try container.decodeIfPresent([String].self, forKey: .problems) ?? []
+        exportId = try container.decodeIfPresent(String.self, forKey: .exportId)
     }
 }
 

@@ -10,10 +10,33 @@ struct CredentialImportView: View {
     private var preview: ImportPreview? { model.credentialImportPreview }
     private var progress: ImportProgress? { model.credentialImportProgress }
     private var isDone: Bool { progress?.isDone == true }
+    private var allDestinationGroup: [ImportVaultGroup] {
+        OrganizationLogic.importVaultGroups(model.allCredentialImportVault, allOrganization: model.allOrganization)
+    }
+
+    private func destinationLabel(_ vaultID: String, fallback: String) -> String {
+        allDestinationGroup.flatMap(\.allChoice).first { $0.id == vaultID }?.label ?? fallback
+    }
+
+    private var destinationChoices: some View {
+        ForEach(allDestinationGroup) { group in
+            Section {
+                ForEach(group.allChoice) { choice in
+                    Text(choice.label).tag(choice.id)
+                }
+            } header: {
+                Text(group.name)
+                    .foregroundStyle(.themeSecondary)
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
             Form {
+                if model.isHisarExportImport, let fileName = preview?.fileName ?? progress?.fileName {
+                    Section { ImportFileNameRow(fileName: fileName) }
+                }
                 if let progress {
                     progressSections(progress)
                 } else if let preview {
@@ -37,7 +60,7 @@ struct CredentialImportView: View {
                     }
                 }
             }
-            .navigationTitle(preview.map { "Import from \($0.fileName)" } ?? "Import")
+            .navigationTitle(model.isHisarExportImport ? "Import Hisar export" : preview.map { "Import from \($0.fileName)" } ?? "Import")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if isDone {
@@ -53,16 +76,17 @@ struct CredentialImportView: View {
                 }
             }
         }
-        .interactiveDismissDisabled(model.isImportingCredentials)
+        .interactiveDismissDisabled(model.isImportingCredentials || isDone)
         .accessibilityIdentifier("credential-import")
     }
 
     @ViewBuilder
     private func passphraseSection(_ preview: ImportPreview) -> some View {
         Section {
-            SecureField("Export passphrase", text: $exportPassphrase)
+            CredentialField("Export passphrase", text: $exportPassphrase, secretName: "export passphrase")
                 .textContentType(.password)
                 .accessibilityIdentifier("credential-import-passphrase")
+                .concealWhen(model.isBusy)
             if let errorMessage = model.errorMessage {
                 ErrorBanner(message: errorMessage)
             }
@@ -89,8 +113,10 @@ struct CredentialImportView: View {
             .accessibilityIdentifier("credential-import-open")
         } header: {
             Text("Enter the export passphrase")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             Text("This export is encrypted. Enter the passphrase it was exported with.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -119,26 +145,23 @@ struct CredentialImportView: View {
                 Picker("Vault", selection: Binding(get: { preview.vaultID }, set: { vaultID in
                     Task { await model.previewCredentialImport(vaultID: vaultID) }
                 })) {
-                    ForEach(model.allCredentialImportVault) { vault in
-                        Text(vault.name).tag(vault.id)
-                    }
+                    destinationChoices
                 }
                 .disabled(model.isBusy)
                 .accessibilityIdentifier("credential-import-vault")
             }
         } footer: {
             Text("\(AppModel.describeItemCount(preview.itemCount)) from \(preview.fileName).")
+                .foregroundStyle(.themeSecondary)
         }
         ForEach(Array(preview.groups.enumerated()), id: \.element.id) { index, group in
-            Section("Source and destination access") {
-                Text("\(group.name) to \(group.vaultName)")
+            Section {
+                Text("\(group.name) to \(destinationLabel(group.vaultID, fallback: group.vaultName))")
                 if isGrouped {
                     Picker("Vault for \(AppModel.describeItemCount(group.itemCount))", selection: Binding(get: { group.vaultID }, set: { vaultID in
                         Task { await model.mapCredentialImportGroup(groupID: group.id, vaultID: vaultID) }
                     })) {
-                        ForEach(model.allCredentialImportVault) { vault in
-                            Text(vault.name).tag(vault.id)
-                        }
+                        destinationChoices
                     }
                     .disabled(model.isBusy)
                     .accessibilityIdentifier("credential-import-group-vault-\(index)")
@@ -150,21 +173,27 @@ struct CredentialImportView: View {
                 }
                 Text("Imported items are readable by the destination's current members. Access can change later.")
                     .font(.footnote)
+            } header: {
+                Text("Source and destination access")
+                    .foregroundStyle(.themeSecondary)
             }
             .accessibilityIdentifier("credential-import-access")
         }
         let allCountRow = preview.allCountRow
         if !allCountRow.isEmpty {
-            Section("Items") {
+            Section {
                 ForEach(allCountRow) { row in
                     LabeledContent(row.label, value: "\(row.count)")
                 }
+            } header: {
+                Text("Items")
+                    .foregroundStyle(.themeSecondary)
             }
             .accessibilityIdentifier("credential-import-counts")
         }
         if !preview.allDuplicate.isEmpty {
             Section {
-                Toggle("Skip items already in \(preview.vaultName)", isOn: $isSkippingDuplicate)
+                Toggle("Skip items already in \(destinationLabel(preview.vaultID, fallback: preview.vaultName))", isOn: $isSkippingDuplicate)
                     .accessibilityIdentifier("credential-import-skip-duplicates")
                 ForEach(Array(preview.allDuplicate.enumerated()), id: \.offset) { _, duplicate in
                     VStack(alignment: .leading, spacing: 2) {
@@ -179,17 +208,19 @@ struct CredentialImportView: View {
                 }
             } header: {
                 Text(preview.allDuplicate.count == 1 ? "1 item is already there" : "\(preview.allDuplicate.count) items are already there")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 if preview.duplicatePasskeyCount > 0 {
                     Text(preview.duplicatePasskeyCount == 1
                         ? "The passkey of a skipped login is still added to the login \(preview.vaultName) has."
                         : "Passkeys of skipped logins are still added to the logins \(preview.vaultName) has.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .accessibilityIdentifier("credential-import-duplicates")
         }
         if !preview.allSkipped.isEmpty {
-            skippedSection(preview.allSkipped, header: preview.allSkipped.count == 1 ? "1 item can't be imported" : "\(preview.allSkipped.count) items can't be imported")
+            ImportOmissionSection(entries: preview.allSkipped, header: ImportSkippedEntry.heading(count: preview.allSkipped.count), footer: ImportSkippedEntry.explanation)
                 .accessibilityIdentifier("credential-import-skipped")
         }
         if let errorMessage = model.errorMessage {
@@ -205,7 +236,7 @@ struct CredentialImportView: View {
                     if model.isImportingCredentials {
                         ProgressView()
                     } else {
-                        Text("Import into \(preview.vaultName)")
+                        Text("Import into \(destinationLabel(preview.vaultID, fallback: preview.vaultName))")
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -222,15 +253,7 @@ struct CredentialImportView: View {
     @ViewBuilder
     private func progressSections(_ progress: ImportProgress) -> some View {
         if progress.isDone {
-            Section {
-                Label {
-                    Text("Imported \(AppModel.describeItemCount(progress.savedCount)) into \(progress.vaultName).")
-                } icon: {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.tint)
-                }
-                .accessibilityIdentifier("credential-import-finished")
-            }
+            ImportCompletionReport(progress: progress, preview: preview)
         } else {
             Section {
                 ProgressView(value: Double(progress.savedCount + progress.allFailed.count), total: Double(max(progress.totalCount, 1))) {
@@ -249,18 +272,84 @@ struct CredentialImportView: View {
                     .accessibilityIdentifier("credential-import-retry")
                 } footer: {
                     Text("The import is paused. Items saved so far stay in \(progress.vaultName).")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
-        if !progress.allFailed.isEmpty {
-            skippedSection(progress.allFailed, header: progress.allFailed.count == 1 ? "1 item couldn't be saved" : "\(progress.allFailed.count) items couldn't be saved")
+        if !progress.isDone && !progress.allFailed.isEmpty {
+            ImportOmissionSection(entries: progress.allFailed, header: progress.allFailed.count == 1 ? "1 item couldn't be saved" : "\(progress.allFailed.count) items couldn't be saved")
                 .accessibilityIdentifier("credential-import-failed")
         }
     }
 
-    private func skippedSection(_ allEntry: [ImportSkippedEntry], header: String) -> some View {
-        Section(header) {
-            ForEach(Array(allEntry.enumerated()), id: \.offset) { _, entry in
+}
+
+struct ImportCompletionReport: View {
+    var progress: ImportProgress
+    var preview: ImportPreview?
+
+    var body: some View {
+        Section {
+            Label("Imported \(AppModel.describeItemCount(progress.savedCount)) into \(progress.vaultName).", systemImage: "checkmark.circle.fill")
+                .accessibilityIdentifier("credential-import-finished")
+        }
+        if let preview, preview.exportedDescription != nil || !preview.notice.isEmpty {
+            Section {
+                if let origin = preview.exportedDescription { Text(origin) }
+                if !preview.notice.isEmpty { Text(preview.notice).foregroundStyle(.themeWarning) }
+            }
+            .accessibilityIdentifier("credential-import-result-provenance")
+        }
+        let entries = progress.allSkipped.isEmpty ? preview?.allSkipped ?? [] : progress.allSkipped
+        if !entries.isEmpty {
+            ImportOmissionSection(entries: entries, header: ImportSkippedEntry.heading(count: entries.count),
+                footer: "Some entries below are fields or credentials from items that were imported.")
+                .accessibilityIdentifier("credential-import-result-skipped")
+        }
+        if let preview, !preview.allDuplicate.isEmpty {
+            Section {
+                ForEach(preview.allDuplicate.indices, id: \.self) { index in
+                    let entry = preview.allDuplicate[index]
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.title)
+                        Text(entry.detail.isEmpty ? entry.username : entry.detail)
+                            .font(.footnote)
+                            .foregroundStyle(.themeSecondary)
+                    }
+                }
+            } header: {
+                Text("Reviewed duplicate matches")
+                    .foregroundStyle(.themeSecondary)
+            }
+            .accessibilityIdentifier("credential-import-result-reviewed-duplicates")
+        }
+        if !progress.allDuplicateOutcomes.isEmpty {
+            ImportOmissionSection(entries: progress.allDuplicateOutcomes, header: "Duplicate outcomes · \(progress.allDuplicateOutcomes.count)")
+                .accessibilityIdentifier("credential-import-result-duplicates")
+        }
+        if !progress.allFailed.isEmpty {
+            ImportOmissionSection(entries: progress.allFailed, header: "Could not be saved · \(progress.allFailed.count)")
+                .accessibilityIdentifier("credential-import-failed")
+        }
+        Section {
+            Text("Keep the other app or source file until you have checked these entries.")
+            if progress.leftBehindCount > 0 {
+                Text("\(progress.leftBehindCount) omission or save-failure entries need review.")
+            }
+        }
+        .accessibilityIdentifier("credential-import-keep-source")
+    }
+}
+
+private struct ImportOmissionSection: View {
+    var entries: [ImportSkippedEntry]
+    var header: String
+    var footer = ""
+
+    var body: some View {
+        Section {
+            ForEach(entries.indices, id: \.self) { index in
+                let entry = entries[index]
                 VStack(alignment: .leading, spacing: 2) {
                     Text(entry.title.isEmpty ? "Untitled" : entry.title)
                     Text(entry.reason)
@@ -268,6 +357,30 @@ struct CredentialImportView: View {
                         .foregroundStyle(.themeSecondary)
                 }
             }
+        } header: {
+            Text(header)
+                .foregroundStyle(.themeSecondary)
+        } footer: {
+            if !footer.isEmpty { Text(footer) }
         }
+    }
+}
+
+struct ImportFileNameRow: View {
+    var fileName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("File name")
+                .font(.footnote)
+                .foregroundStyle(.themeSecondary)
+            Text(fileName)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("credential-import-filename")
     }
 }

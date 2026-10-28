@@ -232,6 +232,7 @@ func main() {
 			application.InvokeAsync(func() { placeApprovalWindow(approvalWindow, isCompact, height, false) })
 		},
 	})
+	agentServer.SetMissingAgentKeyListener(func() { wailsApp.Event.Emit(eventMissingAgentKeysChanged, "") })
 	agentContext, stopAgent := context.WithCancel(context.Background())
 	agentStopped := make(chan struct{})
 
@@ -408,7 +409,9 @@ func main() {
 	})
 	createMenuBarItem(wailsApp, vaultService, showWindow)
 	if runtime.GOOS == "darwin" {
-		wailsApp.Menu.SetApplicationMenu(createApplicationMenu(hideWindow))
+		wailsApp.Menu.SetApplicationMenu(createApplicationMenu(hideWindow, func() {
+			openSettingsFromMenu(settingsWindowService.Show, settingsWindowService.isUnlocked(), showWindow)
+		}))
 	}
 
 	approvalWindow = wailsApp.Window.NewWithOptions(approvalWindowOptions())

@@ -1,50 +1,139 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
-import { api, getErrorMessage } from "../api";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { api, getErrorMessage, type SignUpPolicy } from "../api";
 import { clearError, dismissSignedOutReason, signIn, signUp, signUpWithoutInvite, store } from "../store";
 import { useMasterPasswordFeedback } from "../passwordStrength";
 import { getThisDeviceName, isMacPlatform } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import StrengthMeter from "./StrengthMeter.vue";
+import PendingRecoveryReminder from "./PendingRecoveryReminder.vue";
+import CredentialField from "./CredentialField.vue";
+import SecretKeyHelp from "./SecretKeyHelp.vue";
+import { canonicalServer, defaultServer, parseSignUpInvitation, type SignUpInvitation } from "../signupPolicy";
 
-type Mode = "sign-in" | "create-account";
-
-const defaultServer = "eu.tryhisar.com";
+type Mode = "welcome" | "sign-in" | "create-account";
+type PolicyState = { state: "checking" } | { state: "ready"; policy: SignUpPolicy } | { state: "error"; message: string };
+type FieldName = "server" | "inviteCode" | "name" | "email" | "secretKey" | "password" | "repeatedPassword";
 const tagline = "Passwords, SSH keys and secrets for developers, end-to-end encrypted.";
-
-function getDisplayServer(serverURL: string): string {
-  return (serverURL || defaultServer).replace(/^https:\/\//, "").replace(/\/$/, "");
-}
-
-const mode = ref<Mode>("sign-in");
-const server = ref(getDisplayServer(store.status.server));
-// The server stays behind "Use a different server…" even when it is a remembered self-hosted one; the hint names it.
+const displayServer = (value: string) => value.replace(/^https:\/\//, "").replace(/\/$/, "");
+const mode = ref<Mode>(!store.status.server && !store.pendingRecovery.length && !store.pendingInvite ? "welcome" : "sign-in");
+const server = ref(displayServer(store.status.server || defaultServer));
 const isServerShown = ref(false);
 const email = ref(store.status.email);
-// At launch this view opens before the backend's first status, which brings the remembered server and email.
-watch(
-  () => [store.status.server, store.status.email],
-  ([statusServer, statusEmail]) => {
-    if (!isServerShown.value) {
-      server.value = getDisplayServer(statusServer);
-    }
-    if (!email.value) {
-      email.value = statusEmail;
-    }
-  },
-);
 const secretKey = ref("");
 const password = ref("");
 const inviteCode = ref("");
-const pastedInviteLink = ref("");
+const invitation = ref<SignUpInvitation | null>(null);
+const invitationNotice = ref("");
+const invitationError = ref("");
 const name = ref("");
 const repeatedPassword = ref("");
 const serverInput = ref<HTMLInputElement | null>(null);
-const emailInput = ref<HTMLInputElement | null>(null);
-const secretKeyInput = ref<HTMLInputElement | null>(null);
 const passwordInput = ref<HTMLInputElement | null>(null);
+const form = ref<HTMLFormElement | null>(null);
 const isOpeningKit = ref(false);
+const isKitImported = ref(false);
+const isHelpShown = ref(false);
+const errors = ref<Partial<Record<FieldName, string>>>({});
+const policy = ref<PolicyState>({ state: "checking" });
+const showChecking = ref(false);
+const requiresInvitationAfterRefusal = ref(false);
+let policyGeneration = 0;
+let policyTimer: ReturnType<typeof setTimeout> | undefined;
+let checkingTimer: ReturnType<typeof setTimeout> | undefined;
+const host = computed(() => displayServer(canonicalServer(server.value) || server.value));
+const policyMode = computed(() => policy.value.state === "ready" ? policy.value.policy.mode : "");
+const requiresInvitation = computed(() => requiresInvitationAfterRefusal.value || ["invite", "setup"].includes(policyMode.value));
+const showsInviteField = computed(() => !invitation.value && (policyMode.value !== "open" || requiresInvitationAfterRefusal.value));
+const showsAccountFields = computed(() => !!invitation.value || requiresInvitationAfterRefusal.value || (policy.value.state === "ready" && !requiresInvitation.value));
+const isChecking = computed(() => !invitation.value && policy.value.state === "checking");
+const { value: passwordFeedback, isCurrent: isPasswordFeedbackCurrent } = useMasterPasswordFeedback(() => mode.value === "create-account" ? password.value : "");
+const isHostedSignup = computed(() => canonicalServer(server.value) === defaultServer);
+
+async function checkPolicy(): Promise<void> {
+  clearTimeout(policyTimer);
+  clearTimeout(checkingTimer);
+  if (mode.value !== "create-account") return;
+  const generation = ++policyGeneration;
+  const requestedServer = canonicalServer(server.value);
+  policy.value = { state: "checking" };
+  showChecking.value = false;
+  checkingTimer = setTimeout(() => { showChecking.value = true; }, 400);
+  try {
+    const answer = await api.getSignUpPolicy(requestedServer || server.value);
+    if (generation !== policyGeneration || requestedServer !== canonicalServer(server.value) || answer.server !== requestedServer) return;
+    policy.value = { state: "ready", policy: answer };
+  } catch (error) {
+    if (generation === policyGeneration) policy.value = { state: "error", message: getErrorMessage(error) };
+  } finally {
+    if (generation === policyGeneration) clearTimeout(checkingTimer);
+  }
+}
+
+watch(server, () => {
+  policyGeneration++;
+  clearTimeout(policyTimer);
+  clearError();
+  invitationError.value = "";
+  requiresInvitationAfterRefusal.value = false;
+  errors.value = {};
+  if (invitation.value && canonicalServer(server.value) !== invitation.value.server) {
+    invitationNotice.value = `This invitation is for ${displayServer(invitation.value.server)}, so Hisar removed it.`;
+    invitation.value = null;
+    inviteCode.value = "";
+  }
+  if (mode.value === "create-account") {
+    policy.value = { state: "checking" };
+    showChecking.value = false;
+    policyTimer = setTimeout(checkPolicy, 500);
+  }
+}, { flush: "sync" });
+
+function acceptInvitation(value = inviteCode.value, invitedEmail = "", invitedServer = server.value): void {
+  const parsed = parseSignUpInvitation(value, invitedServer);
+  if (!parsed) return;
+  server.value = displayServer(parsed.server);
+  invitation.value = { ...parsed, email: invitedEmail || parsed.email };
+  if (invitation.value.email) email.value = invitation.value.email;
+  inviteCode.value = parsed.token;
+  invitationError.value = "";
+  invitationNotice.value = "";
+  errors.value = {};
+}
+
+function pasteInvitation(event: ClipboardEvent): void {
+  const text = event.clipboardData?.getData("text") ?? "";
+  if (!parseSignUpInvitation(text, server.value)) return;
+  event.preventDefault();
+  acceptInvitation(text);
+}
+
+function removeInvitation(): void {
+  invitation.value = null;
+  inviteCode.value = "";
+  invitationError.value = "";
+  void checkPolicy();
+}
+
+watch(() => store.pendingInvite, (link) => {
+  if (!link) return;
+  switchMode("create-account");
+  acceptInvitation(link.invite, link.email, link.server || server.value);
+  store.pendingInvite = null;
+}, { immediate: true });
+
+watch(() => [store.status.server, store.status.email], ([statusServer, statusEmail]) => {
+  if (mode.value === "welcome" && (statusServer || store.pendingRecovery.length)) mode.value = "sign-in";
+  if (!isServerShown.value && !invitation.value && statusServer) server.value = displayServer(statusServer);
+  if (!email.value) email.value = statusEmail;
+});
+watch([name, email, secretKey, password, repeatedPassword, inviteCode], () => { errors.value = {}; });
+watch(isServerShown, async shown => { if (shown) { await nextTick(); serverInput.value?.focus(); } });
+onMounted(() => {
+  if (mode.value === "sign-in") Array.from(form.value?.querySelectorAll<HTMLInputElement>("input") ?? []).find(input => !input.value)?.focus();
+});
+onBeforeUnmount(() => { policyGeneration++; clearTimeout(policyTimer); clearTimeout(checkingTimer); });
 
 async function openEmergencyKit(): Promise<void> {
   clearError();
@@ -52,10 +141,12 @@ async function openEmergencyKit(): Promise<void> {
   try {
     const fields = await api.openEmergencyKit();
     if (!fields) return;
-    server.value = getDisplayServer(fields.server);
+    server.value = displayServer(fields.server);
     email.value = fields.email;
     secretKey.value = fields.secretKey;
     password.value = "";
+    errors.value = {};
+    isKitImported.value = true;
     await nextTick();
     passwordInput.value?.focus();
   } catch (error) {
@@ -65,29 +156,14 @@ async function openEmergencyKit(): Promise<void> {
   }
 }
 
-onMounted(() => {
-  const firstEmpty = [emailInput.value, secretKeyInput.value, passwordInput.value].find((input) => input && !input.value);
-  firstEmpty?.focus();
-});
-
-watch(isServerShown, async (isShown) => {
-  if (isShown) {
-    await nextTick();
-    serverInput.value?.focus();
-  }
-});
-const validationAnnouncement = ref("");
-
-const passwordMismatch = computed(
-  () => mode.value !== "sign-in" && repeatedPassword.value !== "" && password.value !== repeatedPassword.value,
-);
-const { value: passwordFeedback, isCurrent: isPasswordFeedbackCurrent } = useMasterPasswordFeedback(() => (mode.value === "sign-in" ? "" : password.value));
-const isPasswordRefused = computed(() => passwordFeedback.value.isBlocking || !isPasswordFeedbackCurrent.value);
-const allSubtitle: Record<Mode, string> = {
-  "sign-in": `Sign in to Hisar on ${getThisDeviceName()}.`,
-  "create-account": "Enter the invite code you received, or paste the whole invite link. Some servers let anyone sign up without one.",
-};
-
+async function validate(fields: [FieldName, string][]): Promise<boolean> {
+  errors.value = Object.fromEntries(fields.filter(([, message]) => message));
+  const first = fields.find(([, message]) => message);
+  if (!first) return true;
+  await nextTick();
+  form.value?.querySelector<HTMLInputElement>(`[name="${first[0]}"]`)?.focus();
+  return false;
+}
 type Feature = { icon: IconName; title: string; text: string };
 const allSignInFeature: Feature[] = [
   {
@@ -113,74 +189,69 @@ const allCreateAccountFeature: Feature[] = [
     title: "Two secrets, only yours",
     text: "Your master password and a Secret Key you get next. Neither is ever sent to the server.",
   },
-  { icon: "note", title: "An Emergency Kit to keep", text: "Print it or store it offline. With it, you can sign in again on any new device." },
+  { icon: "note", title: "An Emergency Kit to keep", text: "Print it or store it offline. With it and your master password, you can sign in on a new device." },
 ];
-const allBrandFeature = computed(() => (mode.value === "create-account" ? allCreateAccountFeature : allSignInFeature));
-
-function readInviteCode(): void {
-  const match = inviteCode.value.trim().match(/\/invite\/([A-Za-z0-9_-]+)\/?$/);
-  if (match) {
-    pastedInviteLink.value = inviteCode.value.trim();
-    inviteCode.value = match[1];
-  }
-}
-
-const inviteServer = computed(() => {
-  const invite = getInvite();
-  if (!invite.includes("/invite/")) {
-    return "";
-  }
-  const host = invite.replace(/^https?:\/\//, "").split("/")[0];
-  return host === defaultServer ? "" : host;
-});
-
-function getInvite(): string {
-  return pastedInviteLink.value.endsWith(`/invite/${inviteCode.value}`) ? pastedInviteLink.value : inviteCode.value;
-}
-
-// Without an invite the account is created on the chosen server, which must have opened registration.
-const hasInvite = computed(() => inviteCode.value.trim() !== "");
-
-// An invite opened through hisar://invite/… arrives as the bare code, or as the invite link on another server.
-watch(
-  () => store.pendingInvite,
-  (invite) => {
-    if (!invite) {
-      return;
-    }
-    switchMode("create-account");
-    inviteCode.value = invite;
-    readInviteCode();
-    store.pendingInvite = "";
-  },
-  { immediate: true },
-);
+const allBrandFeature = computed(() => mode.value === "sign-in" ? allSignInFeature : allCreateAccountFeature);
 
 function switchMode(nextMode: Mode): void {
+  policyGeneration++;
+  clearTimeout(policyTimer);
+  clearTimeout(checkingTimer);
   mode.value = nextMode;
   password.value = "";
   repeatedPassword.value = "";
+  errors.value = {};
   clearError();
+  if (nextMode === "create-account") void checkPolicy();
+}
+
+function moveTab(event: KeyboardEvent): void {
+  const modes: Mode[] = ["sign-in", "create-account"];
+  const index = modes.indexOf(mode.value);
+  const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? modes.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + modes.length) % modes.length;
+  switchMode(modes[nextIndex]!);
+  (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(`#account-tab-${mode.value}`)?.focus();
 }
 
 async function submitSignIn(): Promise<void> {
-  const succeeded = await signIn(server.value, email.value, secretKey.value, password.value);
-  if (succeeded) {
+  if (store.isBusy || isOpeningKit.value) return;
+  if (!await validate([
+    ["email", !email.value.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value) ? "Enter your email." : ""],
+    ["secretKey", !secretKey.value.trim() ? "Enter your Secret Key." : ""],
+    ["password", !password.value ? "Enter your master password." : ""],
+  ])) return;
+  if (await signIn(server.value, email.value, secretKey.value, password.value)) {
     password.value = "";
     secretKey.value = "";
   }
 }
 
 async function submitCreateAccount(): Promise<void> {
-  if (password.value !== repeatedPassword.value || isPasswordRefused.value) {
-    return;
-  }
-  const succeeded = hasInvite.value
-    ? await signUp(getInvite(), email.value, name.value, password.value)
+  if (store.isBusy || isChecking.value || policy.value.state === "error" && !invitation.value) return;
+  if (!invitation.value && inviteCode.value.trim()) acceptInvitation();
+  if (!await validate([
+    ["inviteCode", !invitation.value && (requiresInvitation.value || inviteCode.value.trim()) ? "Enter your invite link or code." : ""],
+    ["name", !name.value.trim() ? "Enter your name." : ""],
+    ["email", !email.value.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value) ? "Enter your email." : ""],
+    ["password", password.value.length < 10 ? "Use a master password with at least 10 characters." : passwordFeedback.value.isBlocking ? passwordFeedback.value.message : ""],
+    ["repeatedPassword", password.value !== repeatedPassword.value ? "The master passwords don't match." : ""],
+  ])) return;
+  if (!isPasswordFeedbackCurrent.value) return;
+  const target = invitation.value;
+  const succeeded = target
+    ? await signUp(`${target.server}/invite/${target.token}`, email.value, name.value, password.value)
     : await signUpWithoutInvite(server.value, email.value, name.value, password.value);
   if (succeeded) {
     password.value = "";
     repeatedPassword.value = "";
+  } else if (/sign-ups are not open|registration.*closed|needs? an invitation/i.test(store.errorMessage)) {
+    requiresInvitationAfterRefusal.value = true;
+    invitationError.value = `Sign-ups on ${host.value} need an invitation now. Ask someone with an account there to invite you.`;
+    clearError();
+    void checkPolicy();
+  } else if (target && /invit/i.test(store.errorMessage)) {
+    invitationError.value = "This invitation can't be used. It may have expired or been used already. Ask for a new one.";
+    clearError();
   }
 }
 </script>
@@ -207,11 +278,22 @@ async function submitCreateAccount(): Promise<void> {
     <main class="form-side">
       <div class="title-bar"></div>
       <div class="form-container">
-        <div class="segmented" role="tablist">
-          <button role="tab" :aria-selected="mode === 'sign-in'" :class="{ active: mode === 'sign-in' }" @click="switchMode('sign-in')">
+        <template v-if="mode === 'welcome'">
+          <h1>Welcome to Hisar</h1>
+          <p class="subtitle">{{ tagline }}</p>
+          <button class="primary full-width" @click="switchMode('create-account')">Create account</button>
+          <button class="ghost full-width" @click="switchMode('sign-in')">I already have an account</button>
+        </template>
+        <template v-else>
+        <div class="segmented" role="tablist" aria-label="Account" @keydown.right.prevent="moveTab" @keydown.left.prevent="moveTab" @keydown.home.prevent="moveTab" @keydown.end.prevent="moveTab">
+          <button id="account-tab-sign-in" type="button" role="tab" aria-controls="account-panel-sign-in" :tabindex="mode === 'sign-in' ? 0 : -1" :aria-selected="mode === 'sign-in'" :class="{ active: mode === 'sign-in' }" @click="switchMode('sign-in')">
             Sign in
           </button>
           <button
+            id="account-tab-create-account"
+            type="button"
+            aria-controls="account-panel-create-account"
+            :tabindex="mode === 'create-account' ? 0 : -1"
             role="tab"
             :aria-selected="mode === 'create-account'"
             :class="{ active: mode === 'create-account' }"
@@ -221,8 +303,9 @@ async function submitCreateAccount(): Promise<void> {
           </button>
         </div>
 
-        <h1 v-if="mode === 'create-account'">Create your account</h1>
-        <p class="subtitle">{{ allSubtitle[mode] }}</p>
+        <h1>{{ mode === 'create-account' ? 'Create account' : store.status.server ? 'Welcome back' : 'Sign in' }}</h1>
+        <p v-if="mode === 'sign-in'" class="subtitle">Sign in to Hisar on {{ getThisDeviceName() }}.</p>
+        <PendingRecoveryReminder />
 
         <div v-if="store.status.signedOutReason" class="signed-out-notice" role="status" data-testid="signed-out-reason">
           <AppIcon name="shield" />
@@ -231,100 +314,86 @@ async function submitCreateAccount(): Promise<void> {
         </div>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
 
-        <form v-if="mode === 'sign-in'" @submit.prevent="submitSignIn">
+        <form v-if="mode === 'sign-in'" id="account-panel-sign-in" ref="form" role="tabpanel" aria-labelledby="account-tab-sign-in" novalidate @submit.prevent="submitSignIn">
           <div v-if="isMacPlatform()" class="kit-import">
-            <button type="button" class="ghost" data-testid="open-emergency-kit" :disabled="store.isBusy || isOpeningKit" @click="openEmergencyKit">
-              {{ isOpeningKit ? "Opening…" : "Open Emergency Kit…" }}
-            </button>
+            <button type="button" class="ghost" data-testid="open-emergency-kit" :disabled="store.isBusy || isOpeningKit" @click="openEmergencyKit">{{ isOpeningKit ? "Opening…" : "Open Emergency Kit…" }}</button>
             <p class="hint muted">The QR code fills in your server, email and Secret Key.</p>
           </div>
-          <label v-if="isServerShown">
-            <span>Server</span>
-            <span class="input-with-icon"><AppIcon name="globe" /><input ref="serverInput" v-model="server" name="server" autocomplete="url" required /></span>
-          </label>
-          <label>
-            <span>Email</span>
-            <span class="input-with-icon"><AppIcon name="user" /><input ref="emailInput" v-model="email" name="email" type="email" autocomplete="username" placeholder="you@example.com" required /></span>
-          </label>
-          <label>
-            <span>Secret Key</span>
-            <span class="input-with-icon">
-              <AppIcon name="key" />
-              <input ref="secretKeyInput" v-model="secretKey" name="secretKey" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" required />
-            </span>
-          </label>
-          <label>
-            <span>Master password</span>
-            <span class="input-with-icon"><AppIcon name="lock" /><input ref="passwordInput" v-model="password" name="password" type="password" autocomplete="current-password" required /></span>
-          </label>
+          <p v-if="!isKitImported" class="hint muted">Or enter the details. All fields are required.</p>
+          <div v-if="isKitImported" class="invitation-card" data-testid="imported-kit">
+            <strong>{{ email }} on {{ host }}</strong>
+            <p>Secret Key added from your Emergency Kit.</p>
+            <button type="button" class="ghost" @click="isKitImported = false">Enter different details</button>
+          </div>
+          <p class="hint"><span class="muted" data-testid="sign-in-server">Signs in to {{ host }}.</span> <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button></p>
+          <label v-if="isServerShown"><span>Server</span><input ref="serverInput" v-model="server" name="server" autocomplete="url" required /></label>
+          <template v-if="!isKitImported">
+            <label><span>Email</span><input v-model="email" name="email" type="email" autocomplete="username" placeholder="you@example.com" aria-label="Email, required" required :aria-invalid="!!errors.email" aria-describedby="sign-in-email-error" /></label>
+            <p v-if="errors.email" id="sign-in-email-error" class="error" role="alert">{{ errors.email }}</p>
+            <label><span>Secret Key</span><input v-model="secretKey" name="secretKey" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" aria-label="Secret Key, required" required :aria-invalid="!!errors.secretKey" aria-describedby="secret-key-hint sign-in-key-error" /></label>
+            <p id="secret-key-hint" class="muted">Starts with H1-. It's on your Emergency Kit.</p>
+            <p v-if="errors.secretKey" id="sign-in-key-error" class="error" role="alert">{{ errors.secretKey }}</p>
+          </template>
+          <label><span>Master password</span><CredentialField><input ref="passwordInput" v-model="password" name="password" type="password" autocomplete="current-password" aria-label="Master password, required" required :aria-invalid="!!errors.password" aria-describedby="sign-in-password-error" /></CredentialField></label>
+          <p v-if="errors.password" id="sign-in-password-error" class="error" role="alert">{{ errors.password }}</p>
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy || isOpeningKit">{{ store.isBusy ? "Signing in…" : "Sign in" }}</button>
-          <p class="hint muted" data-testid="secret-key-note">Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.</p>
-          <p v-if="!isServerShown" class="hint">
-            <span class="muted" data-testid="sign-in-server">Signs in to {{ server }}.</span>
-            {{ ' ' }}
-            <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>
-          </p>
+          <button type="button" class="link-button help" data-testid="secret-key-note" @click="isHelpShown = true">Can't find your Secret Key?</button>
         </form>
 
-        <form v-else @submit.prevent="submitCreateAccount">
-          <label>
-            <span>Invite code or link (optional)</span>
-            <span class="input-with-icon">
-              <AppIcon name="external" />
-              <input
-                v-model="inviteCode"
-                name="inviteCode"
-                placeholder="Invite code or link"
-                autocomplete="off"
-                spellcheck="false"
-                @input="readInviteCode"
-              />
-            </span>
-            <span v-if="inviteServer" class="muted invite-server" data-testid="invite-server">Server: {{ inviteServer }}</span>
-            <span v-else-if="!hasInvite" class="muted invite-server" data-testid="invite-hint">Leave it empty if the server lets anyone sign up.</span>
-          </label>
-          <label v-if="isServerShown && !hasInvite">
-            <span>Server</span>
-            <span class="input-with-icon"><AppIcon name="globe" /><input ref="serverInput" v-model="server" name="server" autocomplete="url" required /></span>
-          </label>
-          <div class="two-columns">
-            <label>
-              <span>Name</span>
-              <input v-model="name" name="name" autocomplete="name" required />
-            </label>
-            <label>
-              <span>Email</span>
-              <input v-model="email" name="email" type="email" autocomplete="username" required />
-            </label>
+        <form v-else id="account-panel-create-account" ref="form" role="tabpanel" aria-labelledby="account-tab-create-account" novalidate @submit.prevent="submitCreateAccount">
+          <p class="hint"><span class="muted" data-testid="create-account-server">Creates your account on {{ host }}.</span> <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button></p>
+          <label v-if="isServerShown"><span>Server</span><input ref="serverInput" v-model="server" name="server" autocomplete="url" required @blur="policy.state === 'checking' && checkPolicy()" /></label>
+          <p v-if="invitationNotice" role="status">{{ invitationNotice }}</p>
+          <p v-if="invitationError" class="error" role="alert">{{ invitationError }}</p>
+          <div v-if="invitation" class="invitation-card" data-testid="invitation-card">
+            <strong>{{ invitation.email ? `Invitation for ${invitation.email}` : 'Invitation' }}</strong>
+            <p data-testid="invite-server">on {{ displayServer(invitation.server) }}</p>
+            <button type="button" class="ghost" @click="removeInvitation">Remove invitation</button>
           </div>
-          <label>
-            <span>Master password</span>
-            <input v-model="password" name="password" type="password" autocomplete="new-password" minlength="10" placeholder="At least 10 characters" required aria-describedby="sign-up-password-feedback" :aria-invalid="passwordFeedback.isBlocking && !!password" @blur="validationAnnouncement = passwordFeedback.isBlocking && password ? passwordFeedback.message : ''" />
-          </label>
-          <StrengthMeter :password="password" />
-          <p id="sign-up-password-feedback" class="password-feedback" :class="passwordFeedback.isBlocking ? 'blocking' : 'muted'" data-testid="password-feedback">{{ passwordFeedback.message }}</p>
-          <label>
-            <span>Repeat master password</span>
-            <input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" required :aria-invalid="passwordMismatch" :aria-describedby="passwordMismatch ? 'sign-up-password-mismatch' : undefined" @blur="validationAnnouncement = passwordMismatch ? 'The passwords do not match.' : ''" />
-          </label>
-          <p v-if="passwordMismatch" id="sign-up-password-mismatch" class="error">The passwords do not match.</p>
-          <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ validationAnnouncement }}</p>
-          <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch || isPasswordRefused">
-            {{ store.isBusy ? "Creating account…" : "Create account" }}
-          </button>
-          <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://eu.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://eu.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
-          <p v-if="!isServerShown && !hasInvite" class="hint">
-            <span class="muted" data-testid="create-account-server">Creates the account on {{ server }}.</span>
-            {{ ' ' }}
-            <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>
-          </p>
+          <template v-else>
+            <p v-if="isChecking && showChecking" role="status"><span class="spinner"></span> Checking sign-up options on {{ host }}…</p>
+            <template v-if="policy.state === 'error'">
+              <p class="error" role="alert">{{ policy.message }}</p>
+              <button type="button" class="primary" @click="checkPolicy">Try again</button>
+            </template>
+            <p v-else-if="policyMode === 'invite'">You need an invitation to create an account on {{ host }}. Ask someone with an account there to invite you.</p>
+            <p v-else-if="policyMode === 'setup'">{{ host }} is still being set up. You need an invitation from its admin.</p>
+            <p v-else-if="policyMode === 'unknown'" data-testid="invite-hint">This server doesn't say whether it needs an invitation. If it does, Hisar tells you when you create the account.</p>
+            <label v-if="showsInviteField && !isChecking">
+              <span>{{ requiresInvitation ? 'Invite link or code' : 'Invite link or code (if you have one)' }}</span>
+              <input v-model="inviteCode" name="inviteCode" placeholder="Invite link or code" autocomplete="off" spellcheck="false" :required="requiresInvitation" :aria-label="requiresInvitation ? 'Invite link or code, required' : 'Invite link or code (if you have one)'" :aria-invalid="!!errors.inviteCode" aria-describedby="invite-error" @change="acceptInvitation()" @paste="pasteInvitation" />
+            </label>
+            <p v-if="errors.inviteCode" id="invite-error" class="error" role="alert">{{ errors.inviteCode }}</p>
+          </template>
+          <template v-if="showsAccountFields">
+            <p class="hint muted">All account fields are required.</p>
+            <label><span>Name</span><input v-model="name" name="name" placeholder="Your name" autocomplete="name" aria-label="Name, required" required :aria-invalid="!!errors.name" aria-describedby="name-error" /></label>
+            <p v-if="errors.name" id="name-error" class="error" role="alert">{{ errors.name }}</p>
+            <div v-if="invitation?.email"><strong>Email</strong><p data-testid="invited-email">{{ email }}</p><p class="muted">This invitation is for this address.</p></div>
+            <label v-else><span>Email</span><input v-model="email" name="email" type="email" autocomplete="username" aria-label="Email, required" required :aria-invalid="!!errors.email" aria-describedby="email-error" /></label>
+            <p v-if="errors.email" id="email-error" class="error" role="alert">{{ errors.email }}</p>
+            <label><span>Master password</span><CredentialField><input v-model="password" name="password" type="password" autocomplete="new-password" minlength="10" placeholder="At least 10 characters" aria-label="Master password, required" required aria-describedby="sign-up-password-feedback password-error" :aria-invalid="!!errors.password || passwordFeedback.isBlocking && !!password" /></CredentialField></label>
+            <StrengthMeter :password="password" />
+            <p id="sign-up-password-feedback" class="password-feedback" :class="passwordFeedback.isBlocking ? 'blocking' : 'muted'" data-testid="password-feedback">{{ passwordFeedback.message }}</p>
+            <p v-if="errors.password" id="password-error" class="error" role="alert">{{ errors.password }}</p>
+            <label><span>Repeat master password</span><CredentialField secret-name="repeated master password"><input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" aria-label="Repeat master password, required" required :aria-invalid="!!errors.repeatedPassword" aria-describedby="sign-up-password-mismatch" /></CredentialField></label>
+            <p v-if="errors.repeatedPassword" id="sign-up-password-mismatch" class="error" role="alert">{{ errors.repeatedPassword }}</p>
+            <p class="hint muted">Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.</p>
+            <p class="hint muted">Next, Hisar creates your Secret Key. You don't choose one.</p>
+          </template>
+          <button v-if="policy.state !== 'error' || invitation" class="primary full-width submit" type="submit" :disabled="store.isBusy || isChecking">{{ store.isBusy ? "Creating account…" : "Create account" }}</button>
+          <p v-if="isHostedSignup && showsAccountFields" class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://eu.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://eu.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
         </form>
+        </template>
       </div>
     </main>
   </div>
+  <SecretKeyHelp v-if="isHelpShown" @close="isHelpShown = false" />
 </template>
 
 <style scoped>
+.invitation-card { margin: 12px 0; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius); overflow-wrap: anywhere; }
+.help { display: block; margin: 14px auto 0; }
 .signed-out-notice {
   display: flex;
   align-items: flex-start;

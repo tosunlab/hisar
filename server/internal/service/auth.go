@@ -83,8 +83,9 @@ func (s *Service) Prelogin(ctx context.Context, email string) (apitypes.Prelogin
 	}
 	account, err := s.store.GetAccountByEmail(ctx, email)
 	switch {
+	// An unknown email answers with what a new account gets, so the answer does not tell it apart from a real one.
 	case errors.Is(err, store.ErrNotFound):
-		return apitypes.PreloginResponse{Salt: s.computeMAC("prelogin-salt", email)[:crypt.SaltSize], Argon2: crypt.DefaultArgon2Params()}, nil
+		return apitypes.PreloginResponse{Salt: s.computeMAC("prelogin-salt", email)[:crypt.SaltSize], Argon2: crypt.NewAccountArgon2Params()}, nil
 	case err != nil:
 		return apitypes.PreloginResponse{}, err
 	}
@@ -95,12 +96,28 @@ func (s *Service) Prelogin(ctx context.Context, email string) (apitypes.Prelogin
 	return apitypes.PreloginResponse{Salt: account.Salt, Argon2: argon2Params}, nil
 }
 
+// registrationMode allows open sign-up only after setup has its first admin.
+func registrationMode(current settings.Settings) string {
+	switch {
+	case current.SetupState == settings.SetupNeedsAdmin:
+		return apitypes.RegistrationModeSetup
+	case current.OpenRegistration:
+		return apitypes.RegistrationModeOpen
+	default:
+		return apitypes.RegistrationModeInvite
+	}
+}
+
+func (s *Service) GetRegistrationPolicy() apitypes.RegistrationPolicy {
+	return apitypes.RegistrationPolicy{Mode: registrationMode(*s.currentSettings())}
+}
+
 // checkInvite accepts a usable invite for the email, or a setup invite, which has no email, for any valid email. An
 // empty token is a sign-up without an invite, which only a server with open registration accepts, and not before
 // setup has made its first admin: the account would be a member and the server would have no admin.
 func (s *Service) checkInvite(ctx context.Context, token, email string) error {
 	if token == "" {
-		if current := s.currentSettings(); !current.OpenRegistration || current.SetupState == settings.SetupNeedsAdmin {
+		if registrationMode(*s.currentSettings()) != apitypes.RegistrationModeOpen {
 			return errSignUpClosed
 		}
 		_, err := parseEmail(email)

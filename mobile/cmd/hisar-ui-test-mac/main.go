@@ -33,10 +33,11 @@ type scriptedRequest struct {
 var scriptedRequests = []scriptedRequest{
 	{"SSH request", approval.Description{
 		Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22",
-		CommandLine: "git push origin main", KeyName: "hisar gitlab", RememberLabel: "Also allows Terminal for 1 hour", IsRememberedByDefault: true,
+		CommandLine: "git push origin main", KeyName: "hisar gitlab", RememberLabel: "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", IsRememberedByDefault: true,
 	}},
 	{"Command-line request", approval.Description{
 		Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar",
+		Allowance:   "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time.",
 		CommandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003",
 	}},
 }
@@ -110,7 +111,11 @@ func finishSignUp(mac *app.Service, signUp app.SignUpResult, password, directory
 	if signUp.SetupState != "delivery-pending" {
 		return fmt.Errorf("sign-up stopped at %s: %s", signUp.SetupState, strings.Join(signUp.Problems, " "))
 	}
-	if _, err := app.ExportPendingRecoveryEmergencyKitToDirectory(mac, signUp.PendingOperationID, password, directory); err != nil {
+	kit, err := app.ExportPendingRecoveryEmergencyKitToDirectory(mac, signUp.PendingOperationID, password, directory)
+	if err != nil {
+		return err
+	}
+	if err := mac.RecordPendingRecoveryEmergencyKitDelivery(kit.ExportID, app.EmergencyKitSavedByFile); err != nil {
 		return err
 	}
 	return mac.AcknowledgePendingRecovery(signUp.PendingOperationID, password)
@@ -146,7 +151,7 @@ func askPhone(phoneApprover *app.PhoneApprover, description approval.Description
 		}
 		answers := make(chan approval.AcceptedAnswer, 1)
 		expiresAt := time.Now().Add(approval.MaximumLifetime)
-		finish, err := phoneApprover.StartPhoneApproval(description, expiresAt, func(answer approval.AcceptedAnswer) { answers <- answer })
+		finish, err := phoneApprover.StartPhoneApproval(description, expiresAt, nil, func(answer approval.AcceptedAnswer) { answers <- answer })
 		if err != nil {
 			log.Printf("could not ask the phone: %v", err)
 			time.Sleep(time.Second)

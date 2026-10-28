@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -194,7 +195,7 @@ func (test *phoneApprovalTest) start(t *testing.T) (fakeApproval, func()) {
 func (test *phoneApprovalTest) startUntil(t *testing.T, dialogTimeoutAt time.Time) (fakeApproval, func()) {
 	t.Helper()
 	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22", KeyName: "hisar gitlab"}
-	finish, err := test.phoneApprover.StartPhoneApproval(description, dialogTimeoutAt, func(answer approval.AcceptedAnswer) {
+	finish, err := test.phoneApprover.StartPhoneApproval(description, dialogTimeoutAt, nil, func(answer approval.AcceptedAnswer) {
 		test.decisionChannel <- answer.Decision == approval.DecisionApprove
 	})
 	if err != nil {
@@ -293,7 +294,7 @@ func TestPhoneApprovalApprovedAndDenied(t *testing.T) {
 
 func TestPhoneApprovalCarriesTheRememberChoice(t *testing.T) {
 	test := createPhoneApprovalTest(t)
-	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", KeyName: "hisar gitlab", RememberLabel: "Also allows Terminal for 1 hour", IsRememberedByDefault: true}
+	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", KeyName: "hisar gitlab", RememberLabel: "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", IsRememberedByDefault: true}
 	cases := []struct {
 		name             string
 		answer           func(stored fakeApproval, request approval.Request) []byte
@@ -315,7 +316,7 @@ func TestPhoneApprovalCarriesTheRememberChoice(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		answerChannel := make(chan approval.AcceptedAnswer, 1)
-		finish, err := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(2*time.Minute), func(answer approval.AcceptedAnswer) { answerChannel <- answer })
+		finish, err := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(2*time.Minute), nil, func(answer approval.AcceptedAnswer) { answerChannel <- answer })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -395,7 +396,7 @@ func TestPhoneApprovalAvailability(t *testing.T) {
 	if test.phoneApprover.IsPhoneApprovalAvailable() {
 		t.Error("available with the switch off")
 	}
-	if _, err := test.phoneApprover.StartPhoneApproval(approval.Description{Kind: approval.KindSSH}, time.Now().Add(time.Minute), func(approval.AcceptedAnswer) { t.Error("decided with the switch off") }); err == nil {
+	if _, err := test.phoneApprover.StartPhoneApproval(approval.Description{Kind: approval.KindSSH}, time.Now().Add(time.Minute), nil, func(approval.AcceptedAnswer) { t.Error("decided with the switch off") }); err == nil {
 		t.Error("started with the switch off")
 	}
 	preference.SetPhoneApproval(true)
@@ -416,10 +417,37 @@ func TestPhoneApprovalAvailability(t *testing.T) {
 	test.apiServer.mutex.Unlock()
 }
 
+func TestPhoneApprovalReportsPostResult(t *testing.T) {
+	for _, isSent := range []bool{true, false} {
+		t.Run(fmt.Sprint(isSent), func(t *testing.T) {
+			test := createPhoneApprovalTest(t)
+			if !isSent {
+				test.apiServer.mutex.Lock()
+				test.apiServer.failingApprovalPostCount = phoneApprovalPostAttemptCount
+				test.apiServer.mutex.Unlock()
+			}
+			result := make(chan bool, 1)
+			finish, err := test.phoneApprover.StartPhoneApproval(approval.Description{Kind: approval.KindSSH}, time.Now().Add(time.Minute), func(sent bool) { result <- sent }, func(approval.AcceptedAnswer) { t.Error("unexpected answer") })
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer finish()
+			select {
+			case sent := <-result:
+				if sent != isSent {
+					t.Errorf("sent = %v, want %v", sent, isSent)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("post result never arrived")
+			}
+		})
+	}
+}
+
 func TestPhoneApprovalTooLargeIsNotSent(t *testing.T) {
 	test := createPhoneApprovalTest(t)
 	description := approval.Description{Kind: approval.KindCommandLine, AppName: "omp", Purpose: "run a command with 1 secret", CommandLine: "sh -c '" + strings.Repeat("true; ", 4000) + "'"}
-	finish, err := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(time.Minute), func(approval.AcceptedAnswer) { t.Error("decided a request that was never sent") })
+	finish, err := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(time.Minute), nil, func(approval.AcceptedAnswer) { t.Error("decided a request that was never sent") })
 	if !errors.Is(err, approval.ErrSealedTooLarge) || finish != nil {
 		t.Fatalf("StartPhoneApproval = %v, want approval.ErrSealedTooLarge", err)
 	}
@@ -650,7 +678,7 @@ func TestPhoneApprovalOutlivesAHangingDeviceRefresh(t *testing.T) {
 		}
 	}
 	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "sign a commit"}
-	later, err := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(time.Hour+time.Minute), func(answer approval.AcceptedAnswer) {
+	later, err := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(time.Hour+time.Minute), nil, func(answer approval.AcceptedAnswer) {
 		test.decisionChannel <- answer.Decision == approval.DecisionApprove
 	})
 	if err != nil {

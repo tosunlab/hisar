@@ -2,10 +2,41 @@ import AVFoundation
 import SwiftUI
 import UIKit
 
+enum EmergencyKitCameraState: Equatable {
+    case unavailable, requesting, authorized, denied, restricted
+
+    init(hasCamera: Bool, authorization: AVAuthorizationStatus) {
+        guard hasCamera else { self = .unavailable; return }
+        switch authorization {
+        case .notDetermined: self = .requesting
+        case .authorized: self = .authorized
+        case .denied: self = .denied
+        case .restricted: self = .restricted
+        @unknown default: self = .restricted
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .denied:
+            return "Camera access is off. Allow camera access in Settings to scan the QR code, or type the details from your Emergency Kit."
+        case .restricted:
+            return "Camera access is restricted on this iPhone. Type the details from your Emergency Kit instead."
+        default:
+            return "No camera is available. Type the details from your Emergency Kit instead."
+        }
+    }
+}
+
 struct EmergencyKitScannerSheet: View {
     var handleScannedKit: (SignInLink) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var isCameraAvailable = AVCaptureDevice.default(for: .video) != nil
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
+    @State private var cameraState = EmergencyKitCameraState(
+        hasCamera: AVCaptureDevice.default(for: .video) != nil,
+        authorization: AVCaptureDevice.authorizationStatus(for: .video)
+    )
     @State private var scannerMessage: String?
     @State private var scanAttempt = 0
 
@@ -13,7 +44,7 @@ struct EmergencyKitScannerSheet: View {
         NavigationStack {
             ZStack {
                 Color(.systemGroupedBackground).ignoresSafeArea()
-                if isCameraAvailable {
+                if cameraState == .authorized && scenePhase == .active {
                     QRCodeCameraView { text in
                         if let link = SignInLink.parse(text) {
                             handleScannedKit(link)
@@ -44,14 +75,21 @@ struct EmergencyKitScannerSheet: View {
                         .glassEffect(.regular, in: .rect(cornerRadius: 16))
                         .padding(24)
                     }
+                } else if cameraState == .requesting {
+                    ProgressView("Requesting camera access…")
                 } else {
                     VStack(spacing: 12) {
                         Image(systemName: "camera.fill")
                             .font(.largeTitle)
                             .foregroundStyle(.themeSecondary)
-                        Text("No camera is available. Type the details from your Emergency Kit instead.")
+                        Text(cameraState.explanation)
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.themeSecondary)
+                            .accessibilityIdentifier("scanner-camera-message")
+                        if cameraState == .denied, let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                            Button("Open Settings") { openURL(settingsURL) }
+                                .accessibilityIdentifier("scanner-open-settings")
+                        }
                     }
                     .padding(32)
                 }
@@ -62,6 +100,17 @@ struct EmergencyKitScannerSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+            }
+        }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            let hasCamera = AVCaptureDevice.default(for: .video) != nil
+            let authorization = AVCaptureDevice.authorizationStatus(for: .video)
+            cameraState = EmergencyKitCameraState(hasCamera: hasCamera, authorization: authorization)
+            if hasCamera && authorization == .notDetermined {
+                let isGranted = await AVCaptureDevice.requestAccess(for: .video)
+                guard !Task.isCancelled else { return }
+                cameraState = isGranted ? .authorized : .denied
             }
         }
     }
@@ -88,10 +137,8 @@ final class QRCodeCameraController: UIViewController, AVCaptureMetadataOutputObj
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        AVCaptureDevice.requestAccess(for: .video) { [weak self] isGranted in
-            guard isGranted else { return }
-            DispatchQueue.main.async { self?.configureSession() }
-        }
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return }
+        configureSession()
     }
 
     private func configureSession() {

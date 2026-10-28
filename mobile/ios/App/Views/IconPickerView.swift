@@ -11,7 +11,7 @@ struct IconPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var color: String
     @State private var photo: PhotosPickerItem?
-    @State private var isPreparing = false
+    @StateObject private var preparation = IconPhotoPreparation()
 
     init(icon: Binding<ChosenIcon?>, item: ItemDetail) {
         _icon = icon
@@ -19,19 +19,18 @@ struct IconPickerView: View {
         _color = State(initialValue: icon.wrappedValue?.color ?? "")
     }
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 6)
-
     var body: some View {
+        let photoLabel = preparation.isPreparing ? "Preparing…" : "Choose photo"
         NavigationStack {
             List {
-                if let errorMessage = model.errorMessage {
+                if let errorMessage = preparation.errorMessage {
                     Section {
                         ErrorBanner(message: errorMessage)
                     }
                 }
                 Section {
                     Button {
-                        model.clearError()
+                        preparation.cancel()
                         icon = nil
                     } label: {
                         HStack(spacing: 12) {
@@ -52,35 +51,27 @@ struct IconPickerView: View {
                     }
                     .accessibilityIdentifier("icon-automatic")
                     PhotosPicker(selection: $photo, matching: .images) {
-                        Label(isPreparing ? "Preparing…" : "Choose photo", systemImage: "photo")
+                        Label(photoLabel, systemImage: "photo")
                     }
-                    .disabled(isPreparing)
                     .accessibilityIdentifier("icon-photo")
-                }
-                Section("Icons") {
-                    LazyVGrid(columns: columns, spacing: 8) {
-                        ForEach(ChosenIcon.allPreset, id: \.self) { preset in
-                            let isChosen = icon?.image == nil && icon?.preset == preset
-                            Button {
-                                model.clearError()
-                                icon = ChosenIcon(preset: preset, color: color)
-                            } label: {
-                                ItemIcon(item: buildPreviewItem(icon: ChosenIcon(preset: preset, color: color)), size: 40)
-                                    .padding(3)
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                            .strokeBorder(isChosen ? Color.accentColor : .clear, lineWidth: 2)
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(preset.capitalized)
-                            .accessibilityAddTraits(isChosen ? .isSelected : [])
-                            .accessibilityIdentifier("icon-preset-\(preset)")
+                    if preparation.isPreparing {
+                        Button("Cancel preparation") {
+                            preparation.cancel()
+                            photo = nil
                         }
+                        .accessibilityIdentifier("icon-cancel-preparation")
                     }
-                    .padding(.vertical, 4)
                 }
-                Section("Color") {
+                Section {
+                    IconPresetGrid(item: item, icon: icon, color: color) { preset in
+                        preparation.cancel()
+                        icon = ChosenIcon(preset: preset, color: color)
+                    }
+                } header: {
+                    Text("Icons")
+                        .foregroundStyle(.themeSecondary)
+                }
+                Section {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
                             buildSwatch("")
@@ -90,6 +81,15 @@ struct IconPickerView: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .disabled(icon?.image != nil)
+                    if icon?.image != nil {
+                        Text("Choose a preset icon to color it.")
+                            .font(.footnote)
+                            .foregroundStyle(.themeSecondary)
+                    }
+                } header: {
+                    Text("Color")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .navigationTitle("Icon")
@@ -97,12 +97,19 @@ struct IconPickerView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .disabled(preparation.isPreparing)
                         .accessibilityIdentifier("icon-done")
                 }
             }
+            .onAppear { preparation.activate() }
+            .onDisappear { preparation.dismiss() }
             .onChange(of: photo) { _, newPhoto in
                 guard let newPhoto else { return }
-                Task { await preparePhoto(newPhoto) }
+                preparation.prepare(
+                    load: { try await newPhoto.loadTransferable(type: Data.self) },
+                    convert: { try await model.prepareItemIcon($0) },
+                    apply: { icon = $0 }
+                )
             }
         }
     }
@@ -110,9 +117,8 @@ struct IconPickerView: View {
     private func buildSwatch(_ hue: String) -> some View {
         Button {
             color = hue
-            if let chosen = icon, chosen.image == nil, !chosen.preset.isEmpty {
-                icon = ChosenIcon(preset: chosen.preset, color: hue)
-            }
+            if icon?.image == nil { preparation.cancel() }
+            icon = ChosenIcon.applyingColor(hue, to: icon, category: item.category)
         } label: {
             Circle()
                 .fill(ItemIcon.getColor(hue).map { AnyShapeStyle($0) } ?? AnyShapeStyle(.fill.tertiary))
@@ -120,6 +126,7 @@ struct IconPickerView: View {
                 .overlay {
                     Circle().strokeBorder(color == hue ? Color.accentColor : .clear, lineWidth: 2.5)
                 }
+                .iconButtonHitArea()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(hue.isEmpty ? "No color" : hue.capitalized)
@@ -133,18 +140,44 @@ struct IconPickerView: View {
         return preview
     }
 
-    private func preparePhoto(_ newPhoto: PhotosPickerItem) async {
-        isPreparing = true
-        defer {
-            isPreparing = false
-            photo = nil
+}
+
+struct IconPresetGrid: View {
+    var item: ItemDetail
+    var icon: ChosenIcon?
+    var color: String
+    var onChoose: (String) -> Void
+
+    @ScaledMetric(relativeTo: .body) private var bodyRelativeScale: CGFloat = 1
+
+    var body: some View {
+        let minimum = max(44, 40 * bodyRelativeScale + 6)
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum), spacing: 8)], spacing: 8) {
+            ForEach(ChosenIcon.allPreset, id: \.self) { preset in
+                let isChosen = icon?.image == nil && icon?.preset == preset
+                Button {
+                    onChoose(preset)
+                } label: {
+                    ItemIcon(item: previewItem(preset), size: 40)
+                        .padding(3)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .strokeBorder(isChosen ? Color.accentColor : .clear, lineWidth: 2)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(preset.capitalized)
+                .accessibilityAddTraits(isChosen ? .isSelected : [])
+                .accessibilityIdentifier("icon-preset-\(preset)")
+            }
         }
-        guard let data = try? await newPhoto.loadTransferable(type: Data.self) else {
-            model.errorMessage = AppModel.unreadablePhotoMessage
-            return
-        }
-        if let image = await model.prepareItemIcon(data) {
-            icon = ChosenIcon(image: image)
-        }
+        .padding(.vertical, 4)
+    }
+
+    private func previewItem(_ preset: String) -> ItemDetail {
+        var preview = item
+        preview.icon = ChosenIcon(preset: preset, color: color)
+        return preview
     }
 }

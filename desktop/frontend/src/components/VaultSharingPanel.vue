@@ -8,14 +8,16 @@ import {
   closeSharing,
   getAllSentShareInvitation,
   getFirstName,
+  getOrganizationName,
   getSelectedVault,
   giveVaultToTeam,
   removeVaultMember,
   shareVault,
   store,
-  takeVaultFromTeam,
 } from "../store";
 import { formatRole, vaultRoleDescription } from "../util";
+import { vaultRoleChangeMessage, vaultRoleChangeTitle } from "../organizationAccess";
+import OrganizationDialog, { type OrganizationDialogRequest } from "./OrganizationDialog.vue";
 import { formatDateTime, formatExpiresIn } from "../util";
 import { useInvitationClock } from "../invitationClock";
 import AppIcon from "./AppIcon.vue";
@@ -29,6 +31,8 @@ const removingAccountID = ref("");
 const newMemberEmail = ref("");
 const newMemberRole = ref<VaultRole>("editor");
 const cancellingInvitationID = ref("");
+const roleChange = ref<{ member: VaultMember; role: VaultRole } | null>(null);
+const organizationDialog = ref<OrganizationDialogRequest | null>(null);
 const now = useInvitationClock();
 
 const vault = computed(() => getSelectedVault());
@@ -44,7 +48,7 @@ const ownRole = computed(() => store.allVaultMember.find((vaultMember) => vaultM
 const organizationID = computed(() => vault.value?.organizationId ?? "");
 const organization = computed(() => (organizationID.value ? store.organizationByID[organizationID.value] : undefined));
 const organizationName = computed(
-  () => organization.value?.name ?? store.organizations.organizations.find((candidate) => candidate.id === organizationID.value)?.name ?? "",
+  () => getOrganizationName(organizationID.value),
 );
 const allTeamWithVault = computed(() =>
   (organization.value?.teams ?? []).flatMap((team) => {
@@ -73,8 +77,13 @@ async function submitGiveToTeam(): Promise<void> {
 
 async function changeTeamRole(team: Team, teamVault: TeamVault, event: Event): Promise<void> {
   const select = event.target as HTMLSelectElement;
-  if (organization.value && select.value !== teamVault.role && !(await giveVaultToTeam(organization.value, team, teamVault.vaultId, select.value as VaultRole))) {
+  const role = select.value as VaultRole;
     select.value = teamVault.role;
+  if (!organization.value || role === teamVault.role) return;
+  if (role === "owner" || teamVault.role === "owner") {
+    organizationDialog.value = { kind: "change-team-role", team, teamVault, role };
+  } else {
+    await giveVaultToTeam(organization.value, team, teamVault.vaultId, role);
   }
 }
 
@@ -100,9 +109,20 @@ async function confirmCancel(invitation: SentShareInvitation): Promise<void> {
 }
 
 async function changeRole(member: VaultMember, event: Event): Promise<void> {
-  const role = (event.target as HTMLSelectElement).value as VaultRole;
-  if (role !== member.role) {
+  const select = event.target as HTMLSelectElement;
+  const role = select.value as VaultRole;
+  select.value = member.role;
+  if (role === member.role) return;
+  if (role === "owner" || member.role === "owner") {
+    roleChange.value = { member, role };
+  } else {
     await changeVaultMemberRole(member, role);
+  }
+}
+
+async function confirmRoleChange(): Promise<void> {
+  if (roleChange.value && await changeVaultMemberRole(roleChange.value.member, roleChange.value.role)) {
+    roleChange.value = null;
   }
 }
 
@@ -130,6 +150,7 @@ useModalFocus(panel, closeSharing);
       </header>
 
       <p v-if="store.sharingErrors.load" class="error" role="alert">{{ store.sharingErrors.load }} <button class="ghost" aria-label="Dismiss sharing error" @click="delete store.sharingErrors.load">Dismiss</button></p>
+      <p id="sharing-role-legend" class="muted hint">{{ vaultRoleDescription }}</p>
 
       <template v-if="organizationID">
         <p class="section-label">Teams</p>
@@ -147,7 +168,7 @@ useModalFocus(panel, closeSharing);
                   class="role-select"
                   :value="teamVault.role"
                   :aria-label="`Role for ${team.name}`"
-                  :title="vaultRoleDescription"
+                  aria-describedby="sharing-role-legend"
                   :disabled="store.isBusy"
                   :data-testid="`vault-team-role-${team.id}`"
                   @change="changeTeamRole(team, teamVault, $event)"
@@ -158,9 +179,9 @@ useModalFocus(panel, closeSharing);
                   class="ghost take-back-button"
                   :disabled="store.isBusy"
                   :data-testid="`take-back-from-${team.id}`"
-                  @click="organization && takeVaultFromTeam(organization, team, teamVault)"
+                  @click="organizationDialog = { kind: 'take-vault', team, teamVault }"
                 >
-                  Take back
+                  Take back…
                 </button>
               </template>
               <span v-else class="role-label">{{ formatRole(teamVault.role) }}</span>
@@ -174,7 +195,7 @@ useModalFocus(panel, closeSharing);
               <select v-model="givingTeamID" class="team-select" aria-label="Team" data-testid="give-to-team-team">
                 <option v-for="team in allTeamWithoutVault" :key="team.id" :value="team.id">{{ team.name }}</option>
               </select>
-              <select v-model="givingRole" class="role-select" aria-label="Role for the team" :title="vaultRoleDescription" data-testid="give-to-team-role">
+              <select v-model="givingRole" class="role-select" aria-label="Role for the team" aria-describedby="sharing-role-legend" data-testid="give-to-team-role">
                 <option v-for="role in allVaultRole" :key="role" :value="role">{{ formatRole(role) }}</option>
               </select>
               <button type="button" class="ghost" @click="isGivingToTeam = false">Cancel</button>
@@ -202,15 +223,18 @@ useModalFocus(panel, closeSharing);
                 <span class="member-name">
                   <span class="name-text">{{ getDisplayName(member) }}</span>
                   <span v-if="member.isCurrentUser" class="tag accent">you</span>
-                  <span v-if="member.isKeyChanged" class="warning-text" title="Key changed"><AppIcon name="warning" :size="13" /></span>
                 </span>
                 <span class="member-email">{{ member.email }}</span>
+                <span v-if="member.isKeyChanged" :id="`member-key-warning-${member.accountId}`" class="warning-text">
+                  <AppIcon name="warning" :size="13" /> Key changed. Hisar stopped sharing with them.
+                </span>
               </div>
               <button
                 class="ghost code-toggle"
                 :class="{ expanded: expandedAccountID === member.accountId }"
                 :aria-expanded="expandedAccountID === member.accountId"
                 :aria-label="`Security code for ${getDisplayName(member)}`"
+                :aria-describedby="member.isKeyChanged ? `member-key-warning-${member.accountId}` : undefined"
                 title="Security code"
                 :data-testid="`security-code-toggle-${member.accountId}`"
                 @click="toggleSecurityCode(member.accountId)"
@@ -222,7 +246,7 @@ useModalFocus(panel, closeSharing);
                   class="role-select"
                   :value="member.role"
                   :aria-label="`Role for ${getDisplayName(member)}`"
-                  :title="vaultRoleDescription"
+                  aria-describedby="sharing-role-legend"
                   :disabled="store.isBusy"
                   :data-testid="`role-select-${member.accountId}`"
                   @change="changeRole(member, $event)"
@@ -244,11 +268,20 @@ useModalFocus(panel, closeSharing);
             </div>
             <p v-if="store.sharingErrors[member.accountId]" class="error" role="alert">{{ store.sharingErrors[member.accountId] }} <button class="ghost" aria-label="Dismiss member error" @click="delete store.sharingErrors[member.accountId]">Dismiss</button></p>
 
+            <div v-if="roleChange?.member.accountId === member.accountId" class="member-detail confirm" data-testid="role-confirmation">
+              <div>
+                <strong>{{ vaultRoleChangeTitle(getDisplayName(member), vault?.name ?? "", roleChange.role) }}</strong>
+                <p>{{ roleChange.role === "owner" ? vaultRoleChangeMessage(roleChange.role) : "They lose the ability to share, rename and delete this vault, change roles and remove owners." }}</p>
+              </div>
+              <button class="ghost" :disabled="store.isBusy" @click="roleChange = null">Cancel</button>
+              <button class="danger-solid" :disabled="store.isBusy" data-testid="confirm-role-change" @click="confirmRoleChange">{{ roleChange.role === "owner" ? "Make owner" : "Change role" }}</button>
+            </div>
+
             <div v-if="removingAccountID === member.accountId" class="member-detail confirm" data-testid="remove-confirmation">
               <AppIcon name="refresh" class="detail-icon" />
               <p>
-                Removing {{ getFirstName(member) }} re-encrypts this vault with a new key.
-                <span class="muted">Copies they already downloaded stay readable to them.</span>
+                {{ getDisplayName(member) }} is removed from “{{ vault?.name }}”, and Hisar encrypts the vault again with a new key for the people who remain.
+                <span class="muted">{{ getDisplayName(member) }} can still read copies their devices already downloaded. Change any password or secret they should no longer know.</span>
               </p>
               <button class="ghost" :disabled="store.isBusy" @click="removingAccountID = ''">Cancel</button>
               <button class="danger-solid" :disabled="store.isBusy" data-testid="confirm-remove-member" @click="confirmRemove(member)">Remove</button>
@@ -258,10 +291,10 @@ useModalFocus(panel, closeSharing);
               <AppIcon name="shield" class="detail-icon" />
               <div>
                 <span class="security-code monospace" data-testid="security-code">{{ member.securityCode }}</span>
-                <p v-if="member.isCurrentUser" class="muted">This is your security code. People you share with can compare it with the code they see for you.</p>
-                <p v-else class="muted">Compare this code with {{ getFirstName(member) }} in person or over a channel you trust, to be sure the server isn't intercepting.</p>
+                <p v-if="member.isCurrentUser" class="muted">This is your security code. Read it to someone who is checking the code they see for you.</p>
+                <p v-else class="muted">Ask {{ getDisplayName(member) }} for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code.</p>
                 <p v-if="member.isKeyChanged" class="warning-text">
-                  {{ getFirstName(member) }}'s key changed since you last shared with them. Hisar refuses to share until you compare security codes again.
+                  {{ getFirstName(member) }}'s key changed since this Mac first shared with them, so Hisar stopped sharing with them. Contact them over a channel you trust. Comparing security codes does not restore sharing.
                 </p>
               </div>
             </div>
@@ -319,7 +352,7 @@ useModalFocus(panel, closeSharing);
                 autocomplete="off"
                 data-testid="new-member-email"
               />
-              <select v-model="newMemberRole" class="role-select" aria-label="Role for the new member" :title="vaultRoleDescription" data-testid="new-member-role">
+              <select v-model="newMemberRole" class="role-select" aria-label="Role for the new member" aria-describedby="sharing-role-legend" data-testid="new-member-role">
                 <option v-for="role in allVaultRole" :key="role" :value="role">{{ formatRole(role) }}</option>
               </select>
               <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Send invitation</button>
@@ -334,6 +367,7 @@ useModalFocus(panel, closeSharing);
         </p>
       </template>
     </div>
+    <OrganizationDialog v-if="organization && organizationDialog" :organization="organization" :request="organizationDialog" @close="organizationDialog = null" />
   </div>
 </template>
 

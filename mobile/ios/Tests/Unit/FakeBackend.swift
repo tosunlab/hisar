@@ -26,8 +26,14 @@ class FakeBackend: VaultBackend {
     /// Starred items as "vaultID/itemID"; the account keeps them apart from the items.
     var allFavoriteRecordID: Set<String> = []
     var favoriteErrorMessage: String?
+    var peopleErrorMessage: String?
+    var cancelShareInvitationErrorMessage: String?
+    var deletePasskeyErrorMessage: String?
+    var moveErrorMessage: String?
+    var listItemErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
+    var biometricUnlockError: BackendError?
     var verifyPasskey: (String) -> Bool = { _ in true }
     func cancelPasskeyCeremonies() {}
     var isOffline = false
@@ -38,6 +44,8 @@ class FakeBackend: VaultBackend {
     /// Runs when a refresh lists the passkeys, its last call, after the unlock check: a test can sign out or lock while a
     /// refresh that listed everything is still in flight.
     var onListAllPasskey: (() -> Void)?
+    var preparePasskeyRegistrationError: BackendError?
+    var onPreparePasskeyRegistration: (() -> Void)?
     /// Runs while a pending recovery's Emergency Kit is prepared: a test can lock or sign out meanwhile.
     var onExportPendingRecoveryEmergencyKit: (() -> Void)?
     var allMember: [Member] = []
@@ -48,12 +56,15 @@ class FakeBackend: VaultBackend {
     var isShareAwaitingUnlockFailing = false
     var allAnsweredInvitation: [String] = []
     var allPendingApproval: [PhoneApproval] = []
+    var listAllPendingApprovalErrorMessage: String?
     /// Runs when the open requests have been read and before they are returned: a test can hold an older listing while a
     /// newer one runs.
     var onListAllPendingApproval: (() -> Void)?
     var allApprovalAnswer: [String] = []
     var allDevice: [Device] = []
+    var deviceListError: String?
     var isMacApprovalAllowedValue = true
+    var isExactHostMatchValue = false
     var isWebsiteIconsEnabledValue = true
     var allPushToken: [String] = []
     var allPushPayloadKey: [String] = []
@@ -63,6 +74,8 @@ class FakeBackend: VaultBackend {
     var preparedIcon: Data?
     var theme = VaultTheme.standard
     var isThemeSaveFailing = false
+    var revokeDeviceErrorMessage: String?
+    var macApprovalErrorMessage: String?
     /// The backend signs out on the phone even when it could not confirm everything, then reports that.
     var signOutError: BackendError?
     /// What the backend reports when the account is deleted but this phone's copy could not be removed.
@@ -81,6 +94,14 @@ class FakeBackend: VaultBackend {
     var isPendingRecoveryFactorAvailable = true
     var pendingSignUpResult: SignUpResult?
     var isNewAccountSecretKeyRetained = false
+    var newAccountEmergencyKitError: BackendError?
+    var allNewAccountEmergencyKitDirectory: [URL] = []
+    var signUpPolicyMode = "invite"
+    var signUpPolicyError: Error?
+    var onGetSignUpPolicy: ((String) throws -> SignUpPolicy)?
+    var onExportEmergencyKit: ((URL) -> Void)?
+    private var currentKitExportID: String?
+    private var pendingKitOperationID: String?
     /// The server signUpWithoutInvite was last asked to create an account on; nil until it is called.
     var signUpWithoutInviteServer: String?
     /// While set, signUpWithoutInvite fails with this sentence: the server's admin has not opened registration.
@@ -105,6 +126,8 @@ class FakeBackend: VaultBackend {
     var continueImportErrorMessage: String?
     /// What prepareHisarExportImport returns; the default is an encrypted export that waits for its passphrase.
     var hisarExportPreview = FakeBackend.encryptedHisarExportPreview()
+    var importPreviewOverride: ImportPreview?
+    var importProgressOverride: ImportProgress?
     /// What openImportFile returns once hisarExportPassphrase opens the waiting export.
     var openedHisarExportPreview = FakeBackend.plainHisarExportPreview()
     /// The passphrase that opens the waiting encrypted export.
@@ -172,6 +195,7 @@ class FakeBackend: VaultBackend {
     func listAllPerson() throws -> [Member] {
         record("listAllPerson")
         try requireUnlocked()
+        if let peopleErrorMessage { throw BackendError(message: peopleErrorMessage) }
         let allSharedAccountID = Set(allVaultMemberByVaultID.values.filter { $0.contains { $0.isCurrentUser } }.flatMap { $0.map(\.accountID) })
         return allMember.filter { $0.isCurrentUser || allSharedAccountID.contains($0.accountID) }
     }
@@ -215,6 +239,7 @@ class FakeBackend: VaultBackend {
     func cancelShareInvitation(invitationID: String) throws {
         record("cancelShareInvitation")
         try requireUnlocked()
+        if let cancelShareInvitationErrorMessage { throw BackendError(message: cancelShareInvitationErrorMessage) }
         guard shareInvitations.allSent.contains(where: { $0.id == invitationID }) else { throw BackendError(message: "This invitation no longer exists") }
         shareInvitations.allSent.removeAll { $0.id == invitationID }
     }
@@ -334,6 +359,8 @@ class FakeBackend: VaultBackend {
         status.name = name
         isNewAccountSecretKeyRetained = true
         allPendingRecovery.append(PendingRecovery(operationId: "signup-1", kind: "signup", origin: status.server, accountId: "new-account", email: email, name: name, phase: "delivery-pending", kitSaved: false, problems: [], keychainProtected: true))
+        status.emergencyKit = EmergencyKitStatus(operationId: "signup-1", kind: "signup", isAuthorized: true)
+        status.biometricOfferAvailable = isBiometricAvailable
         return SignUpResult(status: status, secretKey: Self.secretKey, pendingOperationId: "signup-1", setupState: "delivery-pending")
     }
 
@@ -349,13 +376,79 @@ class FakeBackend: VaultBackend {
         status.name = name
         isNewAccountSecretKeyRetained = true
         allPendingRecovery.append(PendingRecovery(operationId: "signup-1", kind: "signup", origin: server, accountId: "new-account", email: email, name: name, phase: "delivery-pending", kitSaved: false, problems: [], keychainProtected: true))
+        status.emergencyKit = EmergencyKitStatus(operationId: "signup-1", kind: "signup", isAuthorized: true)
+        status.biometricOfferAvailable = isBiometricAvailable
         return SignUpResult(status: status, secretKey: Self.secretKey, pendingOperationId: "signup-1", setupState: "delivery-pending")
+    }
+
+    func getSignUpPolicy(server: String) throws -> SignUpPolicy {
+        record("getSignUpPolicy")
+        if let onGetSignUpPolicy { return try onGetSignUpPolicy(server) }
+        if let signUpPolicyError { throw signUpPolicyError }
+        return SignUpPolicy(server: server, host: SignInView.describeServer(server), mode: signUpPolicyMode)
+    }
+
+    func authorizeNewAccountEmergencyKit(password: String) throws {
+        record("authorizeNewAccountEmergencyKit")
+        try requireUnlocked()
+        guard password == Self.password else { throw BackendError(message: "The master password is incorrect.") }
+        status.emergencyKit?.isAuthorized = true
+        isNewAccountSecretKeyRetained = true
+        status.biometricOfferAvailable = status.biometricAvailable && !status.biometricEnabled
+    }
+
+    func authorizeNewAccountEmergencyKitWithBiometric() throws {
+        record("authorizeNewAccountEmergencyKitWithBiometric")
+        try requireUnlocked()
+        guard status.biometricEnabled, isBiometricSucceeding else { throw BackendError(message: "Face ID was cancelled.", code: BackendError.biometricCancelled) }
+        status.emergencyKit?.isAuthorized = true
+        isNewAccountSecretKeyRetained = true
+    }
+
+    func recordNewAccountEmergencyKitDelivery(exportID: String, method: String) throws {
+        record("recordNewAccountEmergencyKitDelivery")
+        try requireUnlocked()
+        guard status.emergencyKit?.isAuthorized == true, currentKitExportID == exportID,
+              let index = allPendingRecovery.firstIndex(where: { $0.operationId == status.emergencyKit?.operationId }) else {
+            throw BackendError(message: "Authorize the Emergency Kit again.")
+        }
+        status.emergencyKit?.savedBy = method
+        allPendingRecovery[index].kitSaved = true
+        allPendingRecovery[index].savedBy = method
+    }
+
+    func postponeNewAccountEmergencyKit() throws {
+        record("postponeNewAccountEmergencyKit")
+        try requireUnlocked()
+        if status.emergencyKit?.postponedAt.isEmpty == true {
+            status.emergencyKit?.postponedAt = "2026-10-28T12:00:00Z"
+        }
+    }
+
+    func hideEmergencyKitReminder() {
+        record("hideEmergencyKitReminder")
+        status.emergencyKit?.isReminderHidden = true
+    }
+
+    func recordPendingRecoveryEmergencyKitDelivery(exportID: String, method: String) throws {
+        record("recordPendingRecoveryEmergencyKitDelivery")
+        guard currentKitExportID == exportID,
+              let index = allPendingRecovery.firstIndex(where: { $0.operationId == pendingKitOperationID }) else {
+            throw BackendError(message: "The master password is incorrect.")
+        }
+        allPendingRecovery[index].kitSaved = true
+        allPendingRecovery[index].savedBy = method
     }
 
     func unlock(password: String) throws -> VaultStatus {
         record("unlock")
-        guard password == Self.password else { throw BackendError(message: "Incorrect email, master password or Secret Key") }
+        guard password == Self.password else { throw BackendError(message: "The master password is incorrect.") }
         status.state = VaultStatus.stateUnlocked
+        if status.emergencyKit != nil {
+            status.emergencyKit?.isAuthorized = true
+            isNewAccountSecretKeyRetained = true
+            status.biometricOfferAvailable = status.biometricAvailable && !status.biometricEnabled
+        }
         if status.biometricEnabled { status.biometricReady = true }
         return status
     }
@@ -363,7 +456,8 @@ class FakeBackend: VaultBackend {
     func unlockWithBiometric() throws -> VaultStatus {
         record("unlockWithBiometric")
         guard status.biometricReady else { throw BackendError(message: "Unlock with your master password first") }
-        guard isBiometricSucceeding else { throw BackendError(message: "Face ID was cancelled.") }
+        if let biometricUnlockError { throw biometricUnlockError }
+        guard isBiometricSucceeding else { throw BackendError(message: "Face ID was cancelled.", code: BackendError.biometricCancelled) }
         status.state = VaultStatus.stateUnlocked
         return status
     }
@@ -383,35 +477,50 @@ class FakeBackend: VaultBackend {
         guard isBiometricSucceeding else { throw BackendError(message: "Face ID was cancelled.") }
         status.biometricEnabled = true
         status.biometricReady = true
+        status.biometricOfferAvailable = false
         return status
+    }
+
+    func revealNewAccountSecretKey() throws -> RevealedSecretKey {
+        record("revealNewAccountSecretKey")
+        try requireUnlocked()
+        guard isNewAccountSecretKeyRetained, status.emergencyKit?.isAuthorized == true else {
+            throw BackendError(message: "This account's setup needs finishing from the account recovery screen")
+        }
+        return RevealedSecretKey(secretKey: Self.secretKey)
     }
 
     func exportNewAccountEmergencyKit(directory: URL) throws -> EmergencyKitExport {
         record("exportNewAccountEmergencyKit")
+        allNewAccountEmergencyKitDirectory.append(directory)
+        if let newAccountEmergencyKitError { throw newAccountEmergencyKitError }
         try requireUnlocked()
-        guard isNewAccountSecretKeyRetained, let index = allPendingRecovery.firstIndex(where: { $0.operationId == "signup-1" }) else {
+        guard isNewAccountSecretKeyRetained, status.emergencyKit?.isAuthorized == true else {
             throw BackendError(message: "This account's setup needs finishing from the account recovery screen")
         }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let path = directory.appendingPathComponent("Hisar Emergency Kit.pdf")
         try Data("%PDF-1.7".utf8).write(to: path)
-        allPendingRecovery[index].kitSaved = true
-        return EmergencyKitExport(secretKey: Self.secretKey, emergencyKitPath: path.path)
+        let exportID = UUID().uuidString
+        currentKitExportID = exportID
+        return EmergencyKitExport(secretKey: Self.secretKey, emergencyKitPath: path.path, exportId: exportID)
     }
 
     func acknowledgeNewAccountRecovery() throws {
         record("acknowledgeNewAccountRecovery")
         try requireUnlocked()
-        guard isNewAccountSecretKeyRetained, let recovery = allPendingRecovery.first(where: { $0.operationId == "signup-1" }) else {
+        guard isNewAccountSecretKeyRetained, let recovery = allPendingRecovery.first(where: { $0.operationId == status.emergencyKit?.operationId }) else {
             throw BackendError(message: "This account's setup needs finishing from the account recovery screen")
         }
-        guard recovery.kitSaved else { throw BackendError(message: "Save the Emergency Kit before acknowledging delivery") }
-        allPendingRecovery.removeAll { $0.operationId == "signup-1" }
+        guard recovery.kitSaved, status.emergencyKit?.savedBy.isEmpty == false else { throw BackendError(message: "Save the Emergency Kit before acknowledging delivery") }
+        allPendingRecovery.removeAll { $0.operationId == recovery.operationId }
+        status.emergencyKit = nil
     }
 
     func forgetNewAccountSecretKey() {
         record("forgetNewAccountSecretKey")
-        isNewAccountSecretKeyRetained = false
+        if status.emergencyKit == nil { isNewAccountSecretKeyRetained = false }
+        status.biometricOfferAvailable = false
     }
 
     func disableBiometricUnlock() throws -> VaultStatus {
@@ -424,11 +533,18 @@ class FakeBackend: VaultBackend {
     func lock() -> VaultStatus {
         record("lock")
         if status.isSignedIn { status.state = VaultStatus.stateLocked }
+        isNewAccountSecretKeyRetained = false
+        status.emergencyKit?.isAuthorized = false
+        status.emergencyKit?.isReminderHidden = false
+        status.biometricOfferAvailable = false
+        currentKitExportID = nil
         return status
     }
 
     func signOut() throws -> VaultStatus {
         record("signOut")
+        currentKitExportID = nil
+        isNewAccountSecretKeyRetained = false
         // As the backend does, signing out keeps only the server, so the sign-in form opens on it.
         let lastServer = status.server
         status = .signedOut
@@ -450,6 +566,7 @@ class FakeBackend: VaultBackend {
     func listAllItem(vaultID: String) throws -> [ItemDetail] {
         record("listAllItem")
         try requireUnlocked()
+        if let listItemErrorMessage { throw BackendError(message: listItemErrorMessage) }
         return (allItemByVaultID[vaultID] ?? []).map { item in
             var summary = item
             summary.isFavorite = allFavoriteRecordID.contains(LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: item.id))
@@ -558,6 +675,27 @@ class FakeBackend: VaultBackend {
         try requireUnlocked()
         allItemByVaultID[vaultID]?.removeAll { $0.id == itemID }
         allPasskey.removeAll { $0.vaultID == vaultID && $0.itemID == itemID }
+    }
+
+    func moveItem(vaultID: String, itemID: String, targetVaultID: String) throws -> ItemDetail {
+        record("moveItem")
+        try requireUnlocked()
+        if let moveErrorMessage { throw BackendError(message: moveErrorMessage) }
+        guard vaultID != targetVaultID, let source = allVault.first(where: { $0.id == vaultID }),
+              let target = allVault.first(where: { $0.id == targetVaultID }),
+              source.role != "reader", target.role != "reader" else { throw BackendError(message: "Choose another writable vault.") }
+        let item = try getItem(vaultID: vaultID, itemID: itemID)
+        allItemByVaultID[vaultID]?.removeAll { $0.id == itemID }
+        allItemByVaultID[targetVaultID, default: []].append(item)
+        let oldRecord = "\(vaultID)/\(itemID)"
+        if allFavoriteRecordID.remove(oldRecord) != nil { allFavoriteRecordID.insert("\(targetVaultID)/\(itemID)") }
+        for index in allPasskey.indices where allPasskey[index].vaultID == vaultID && allPasskey[index].itemID == itemID {
+            allPasskey[index].vaultID = targetVaultID
+        }
+        for index in allVault.indices where allVault[index].id == vaultID || allVault[index].id == targetVaultID {
+            allVault[index].itemCount = allItemByVaultID[allVault[index].id]?.count ?? 0
+        }
+        return item
     }
 
     func deleteUnreadableItem(vaultID: String, itemID: String, revision: String) throws {
@@ -674,6 +812,8 @@ extension FakeBackend {
 
     func preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: [Data]) throws -> PasskeyRegistrationOptions {
         record("preparePasskeyRegistration")
+        onPreparePasskeyRegistration?()
+        if let preparePasskeyRegistrationError { throw preparePasskeyRegistrationError }
         let allLogin = try listAllLoginForService(serviceIdentifier: "https://\(relyingPartyID)").filter { login in
             allVault.first { $0.id == login.vaultID }?.role != "reader"
         }
@@ -739,6 +879,7 @@ extension FakeBackend {
 
     func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail {
         record("deletePasskey")
+        if let deletePasskeyErrorMessage { throw BackendError(message: deletePasskeyErrorMessage) }
         var item = try getItem(vaultID: vaultID, itemID: itemID)
         guard item.allPasskey.contains(where: { $0.credentialID == credentialID }) else { throw BackendError(message: "passkey not found") }
         item.allPasskey.removeAll { $0.credentialID == credentialID }
@@ -752,6 +893,7 @@ extension FakeBackend {
 extension FakeBackend {
     func listAllPendingApproval() throws -> [PhoneApproval] {
         try requireUnlocked()
+        if let listAllPendingApprovalErrorMessage { throw BackendError(message: listAllPendingApprovalErrorMessage) }
         let allApproval = withApprovalLock { allPendingApproval }
         onListAllPendingApproval?()
         return allApproval
@@ -807,12 +949,14 @@ extension FakeBackend {
     func listAllDevice() throws -> [Device] {
         record("listAllDevice")
         try requireUnlocked()
+        if let deviceListError { throw BackendError(message: deviceListError) }
         return allDevice
     }
 
     func revokeDevice(deviceID: String) throws {
         record("revokeDevice")
         try requireUnlocked()
+        if let message = revokeDeviceErrorMessage { throw BackendError(message: message) }
         guard let device = allDevice.first(where: { $0.id == deviceID }) else { throw BackendError(message: "this device is already signed out") }
         guard !device.isCurrent else { throw BackendError(message: "sign out this device instead") }
         allDevice.removeAll { $0.id == deviceID }
@@ -934,7 +1078,7 @@ extension FakeBackend {
         var preview = ImportPreview(fileName: "Other Manager", vaultID: commonVault?.id ?? "", vaultName: commonVault?.name ?? "the mapped vaults", itemCount: itemCount,
                                     loginCount: itemCount, allDuplicate: allDuplicate)
         preview.groups = allSourceGroup
-        return preview
+        return importPreviewOverride ?? preview
     }
 
     /// prepareCredentialExchangeImport reads credentialData as the titles of the logins to import, or as one list of
@@ -1043,6 +1187,7 @@ extension FakeBackend {
 
     private func buildImportProgress() -> ImportProgress {
         let vaultName = allVault.first { $0.id == pendingImportVaultID }?.name ?? "the mapped vaults"
+        if allQueuedImport.isEmpty, let importProgressOverride { return importProgressOverride }
         return ImportProgress(fileName: "Other Manager", vaultID: pendingImportVaultID, vaultName: vaultName, savedCount: importSavedCount,
                               totalCount: importSavedCount + allQueuedImport.count, isDone: allQueuedImport.isEmpty)
     }
@@ -1060,6 +1205,7 @@ extension FakeBackend {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let path = directory.appendingPathComponent("Hisar Emergency Kit.pdf")
         try Data("%PDF-1.7".utf8).write(to: path)
+        onExportEmergencyKit?(path)
         return EmergencyKitExport(secretKey: Self.secretKey, emergencyKitPath: path.path)
     }
 
@@ -1156,8 +1302,10 @@ extension FakeBackend {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let path = directory.appendingPathComponent("Hisar Emergency Kit.pdf")
         try Data("%PDF-1.7".utf8).write(to: path)
-        allPendingRecovery[index].kitSaved = true
-        return PendingRecoveryExport(secretKey: pendingRecoverySecretKey, path: path.path)
+        let exportID = UUID().uuidString
+        currentKitExportID = exportID
+        pendingKitOperationID = operationID
+        return PendingRecoveryExport(secretKey: pendingRecoverySecretKey, path: path.path, exportId: exportID)
     }
 
     func acknowledgePendingRecovery(operationID: String, password: String) throws {
@@ -1196,7 +1344,15 @@ extension FakeBackend {
 
     func setMacApprovalAllowed(_ isAllowed: Bool) throws {
         record("setMacApprovalAllowed")
+        if let message = macApprovalErrorMessage { throw BackendError(message: message) }
         isMacApprovalAllowedValue = isAllowed
+    }
+
+    func isExactHostMatch() -> Bool { isExactHostMatchValue }
+
+    func setExactHostMatch(_ isExact: Bool) throws {
+        record("setExactHostMatch")
+        isExactHostMatchValue = isExact
     }
 
     func prepareItemIcon(_ image: Data) throws -> Data {

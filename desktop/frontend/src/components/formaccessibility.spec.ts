@@ -17,30 +17,25 @@ enableAutoUnmount(afterEach);
 beforeEach(() => { Object.assign(store, { status: createStatus("signed-out"), errorMessage: "", isBusy: false }); });
 
 describe("form correction accessibility", () => {
-  it("associates sign-up mismatch with the repeat field and announces only after blur", async () => {
+  it("names missing fields and focuses the first correction on keyboard submit", async () => {
     const wrapper = mount(SignInView, { attachTo: document.body });
     await wrapper.findAll("button").find((button) => button.text() === "Create account")!.trigger("click");
-    await wrapper.find('input[name="password"]').setValue("Long unique master password 92");
-    const repeat = wrapper.find('input[name="repeatedPassword"]');
-    await repeat.setValue("different");
-    expect(repeat.attributes("aria-invalid")).toBe("true");
-    expect(computeAccessibleName(repeat.element)).toBe("Repeat master password");
-    expect(computeAccessibleDescription(repeat.element)).toBe("The passwords do not match.");
-    expect(wrapper.find('[role="status"]').text()).toBe("");
-    await repeat.trigger("blur");
-    const status = wrapper.find('[role="status"]');
-    expect(status.text()).toBe("The passwords do not match.");
-    const changed = vi.fn();
-    const observer = new MutationObserver(changed);
-    observer.observe(status.element, { childList: true, characterData: true, subtree: true });
-    await repeat.setValue("still different");
-    await repeat.trigger("blur");
     await flushPromises();
-    expect(changed).not.toHaveBeenCalled();
-    observer.disconnect();
+    await wrapper.get("form").trigger("submit");
+    const name = wrapper.get('input[name="name"]');
+    expect(document.activeElement).toBe(name.element);
+    expect(computeAccessibleName(name.element)).toBe("Name, required");
+    expect(computeAccessibleDescription(name.element)).toBe("Enter your name.");
+    await name.setValue("Ada");
+    await wrapper.get('input[name="password"]').setValue("Long unique master password 92");
+    const repeat = wrapper.get('input[name="repeatedPassword"]');
+    await repeat.setValue("different");
+    await wrapper.get("form").trigger("submit");
+    expect(repeat.attributes("aria-invalid")).toBe("true");
+    expect(computeAccessibleName(repeat.element)).toBe("Repeat master password, required");
+    expect(computeAccessibleDescription(repeat.element)).toBe("The master passwords don't match.");
     await repeat.setValue("Long unique master password 92");
     expect(repeat.attributes("aria-invalid")).toBe("false");
-    expect(computeAccessibleDescription(repeat.element)).toBe("");
   });
 
   it("keeps password-change names stable and descriptions separate", async () => {

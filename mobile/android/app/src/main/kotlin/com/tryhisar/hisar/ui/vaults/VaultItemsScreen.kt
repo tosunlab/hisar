@@ -41,6 +41,7 @@ import com.tryhisar.hisar.model.VaultActions
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.model.ReadIssue
+import com.tryhisar.hisar.model.ReadIssueSummary
 import com.tryhisar.hisar.model.RecoveryDeletionReview
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormTextField
@@ -119,21 +120,29 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
     ) {
         if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
         if (vault.readIssues.isNotEmpty()) {
+            cardSection("read-summary", listOf(Unit), rowKey = { "summary" }) {
+                Column {
+                    Text(ReadIssueSummary(vault.readIssues).text, color = HisarTheme.colors.warning)
+                    PlainButton("Retry reads", { scope.launch { model.refreshAll() } }, testTag = "retry-unreadable-$vaultID")
+                }
+            }
             cardSection("read-issues", vault.readIssues, rowKey = { "${it.vaultId}/${it.itemId}/${it.kind}" }) { issue ->
                 Column {
-                    Text("${vault.readIssues.size} unreadable records. ${issue.kind}. ${issue.itemId.ifEmpty { issue.vaultId }}. Items that open remain available until deleted. Deleting a vault also deletes its readable items for everyone who has it.", color = HisarTheme.colors.warning)
-                    PlainButton("Retry reads", { scope.launch { model.refreshAll() } }, testTag = "retry-unreadable-$vaultID")
+                    Text(issue.explanation, color = HisarTheme.colors.warning)
+                    var showDetails by remember { mutableStateOf(false) }
+                    PlainButton("Details", { showDetails = !showDetails }, testTag = "read-issue-details-${issue.itemId.ifEmpty { issue.vaultId }}")
+                    if (showDetails) Text(issue.itemId.ifEmpty { issue.vaultId })
                     if (issue.canRename) PlainButton("Repair vault name", { dialog = VaultDialog.RepairName(issue) }, testTag = "repair-vault-name")
                     if (issue.canDelete) PlainButton(if (issue.itemId.isEmpty()) "Delete vault…" else "Delete unreadable data…", {
                         model.errorMessage.value = null
                         issueToDelete = RecoveryDeletionReview(vault.copy(readIssues = vault.readIssues.toList()), issue)
-                    }, testTag = "delete-unreadable-${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.destructive)
+                    }, testTag = "delete-unreadable-${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.destructiveText)
                 }
             }
         }
         cardSection("items", allMatch, rowKey = { it.id }, dividerStart = { ItemRowTextStart }) { reference ->
             FavoriteSwipeRow(model, vaultID, reference.item, isLeading = true) {
-                ItemRow(model, reference.item, "item-${reference.item.title}", onClick = { stack.push(VaultsDestination.Item(vaultID, reference.item.id)) })
+                ItemRow(model, reference.item, "item-${reference.item.title}", vaultID = vaultID, onClick = { stack.push(VaultsDestination.Item(vaultID, reference.item.id)) })
             }
         }
     }
@@ -161,6 +170,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
     when (val current = dialog) {
         is VaultDialog.Rename -> RenameVaultDialog(
             initialName = current.name,
+            isShared = isShared,
             onDismiss = { dialog = null },
             onRename = { name ->
                 dialog = null
@@ -169,6 +179,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         )
         is VaultDialog.RepairName -> RenameVaultDialog(
             initialName = "",
+            isShared = isShared,
             onDismiss = { dialog = null },
             onRename = { name ->
                 dialog = null
@@ -183,7 +194,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
                 PlainButton("Leave vault", {
                     dialog = null
                     scope.launch { model.vaults.leaveVault(vaultID) }
-                }, testTag = "leave-vault-confirm", color = HisarTheme.colors.destructive)
+                }, testTag = "leave-vault-confirm", color = HisarTheme.colors.destructiveText)
             },
             dismissButton = { PlainButton("Cancel", { dialog = null }, testTag = "leave-vault-cancel") },
         )
@@ -228,7 +239,7 @@ private fun RecoveryDeletionDialog(review: RecoveryDeletionReview, isBusy: Boole
             }
         },
         confirmButton = {
-            PlainButton("Permanently delete", onConfirm, testTag = "delete-unreadable-confirm", color = HisarTheme.colors.destructive, enabled = review.canDelete(typed) && !isBusy)
+            PlainButton("Permanently delete", onConfirm, testTag = "delete-unreadable-confirm", color = HisarTheme.colors.destructiveText, enabled = review.canDelete(typed) && !isBusy)
         },
         dismissButton = { PlainButton("Cancel", onDismiss, testTag = "delete-unreadable-cancel") },
     )
@@ -282,14 +293,15 @@ private fun VaultActionsMenu(
 }
 
 @Composable
-private fun RenameVaultDialog(initialName: String, onDismiss: () -> Unit, onRename: (String) -> Unit) {
+private fun RenameVaultDialog(initialName: String, isShared: Boolean, onDismiss: () -> Unit, onRename: (String) -> Unit) {
     var name by rememberSaveable { mutableStateOf(initialName) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Rename vault") },
         text = {
             Column {
-                Text("Everyone who shares the vault sees the new name.")
+                Text(if (initialName.isEmpty()) "Secret references that use the previous name may need updating." else "Secret references that use $initialName need the new name after you rename this vault.")
+                if (isShared) Text("Everyone who has this vault sees the new name.")
                 Spacer(Modifier.height(12.dp))
                 Box(Modifier.background(HisarTheme.colors.fill, RoundedCornerShape(10.dp))) {
                     FormTextField(name, { name = it }, placeholder = "Vault name", testTag = "rename-vault-name", label = "Vault name")

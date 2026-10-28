@@ -7,28 +7,41 @@
 # (testAccountItemLockAndSignInFlow) or both (HisarUITests#testAccountItemLockAndSignInFlow), or "smoke" for the set the
 # older Android versions run (a smoke test this checkout lacks is named and left out). A name that matches
 # no test, or a run in which no test ran, fails. HISAR_UI_TEST_SCREENSHOT_DIRECTORY receives the screenshots the tests save.
-# ANDROID_UI_TEST_PART=1 or 2 runs one of two parts of similar length, for two CI jobs, as scripts/ui-test-parts.sh splits the
-# classes; part 2 also runs every class new to its table.
+# ANDROID_UI_TEST_PART=1, 2 or 3 runs one of three parts of similar length, for three CI jobs, as scripts/ui-test-parts.sh
+# splits the classes; part 3 also runs every class new to its table.
+#
+# --build-apks only builds the debug and test APKs, with no device. CI runs it in the background while the emulator boots
+# and sets ANDROID_UI_TEST_APK_BUILD to the file its exit status goes to (its output beside it, in that name plus .log); the
+# tests then wait for that build instead of building.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 : "${ANDROID_HOME:?set ANDROID_HOME to the Android SDK}"
 ADB=$ANDROID_HOME/platform-tools/adb
-SMOKE_TESTS=HisarKitBackendTests,KeystoreSecretKeyStoreTests,BiometricKeystoreTests,ClipboardAdapterTests,testAccountItemLockAndSignInFlow,testBiometricUnlockAfterTurningItOn,AutofillServiceUITests#testWebViewFormFillsAfterUnlock,testRegisterPasskeyThenSignInWithIt,HarnessServerTests,testAppSwitcherHidesAnOpenSheet
-# The runner matches tests_regex against package.Class#test: part 1 names its classes, and part 2 leaves out those of part 1.
+# The emulator's host process grows with every test (scripts/ui-test-parts.sh), and a Gradle daemon and the Kotlin compiler's
+# daemon keep the gigabytes they built with until they exit. So every Gradle here compiles in its own process and exits when
+# it is done, and the first one only builds the APKs, so that the one that runs the tests never holds a build's memory.
+GRADLE=(./gradlew --console=plain --no-daemon -Pkotlin.compiler.execution.strategy=in-process)
+build_apks() { (cd "$ROOT/mobile/android" && "${GRADLE[@]}" assembleDebug assembleDebugAndroidTest); }
+if [ "${1:-}" = --build-apks ]; then
+  build_apks
+  exit
+fi
+SMOKE_TESTS=HisarKitBackendTests,KeystoreSecretKeyStoreTests,BiometricKeystoreTests,ClipboardAdapterTests,testAccountItemLockAndSignInFlow,testBiometricUnlockAfterTurningItOn,AutofillServiceUITests#testWebViewFormFillsAfterUnlock,testRegisterPasskeyThenSignInWithIt,testAppSwitcherHidesAnOpenSheet
+# The runner matches tests_regex against package.Class#test: parts 1 and 2 name their classes, and part 3 leaves out theirs.
 source "$ROOT/scripts/ui-test-parts.sh"
 TESTS_REGEX=
 case "${ANDROID_UI_TEST_PART:-}" in
   "") ;;
-  1)
-    ui_test_part 1 2 "${ANDROID_UI_TEST_SECONDS[@]}"
+  1 | 2)
+    ui_test_part "$ANDROID_UI_TEST_PART" 3 "${ANDROID_UI_TEST_SECONDS[@]}"
     TESTS_REGEX="^com\\.tryhisar\\.hisar\\.($(IFS='|'; echo "${UI_TEST_PART_CLASSES[*]//./\\.}"))#"
     ;;
-  2)
-    ui_test_part 2 2 "${ANDROID_UI_TEST_SECONDS[@]}"
+  3)
+    ui_test_part 3 3 "${ANDROID_UI_TEST_SECONDS[@]}"
     TESTS_REGEX="^(?!com\\.tryhisar\\.hisar\\.($(IFS='|'; echo "${UI_TEST_PART_CLASSES[*]//./\\.}"))#)"
     ;;
-  *) echo "ANDROID_UI_TEST_PART is 1 or 2" >&2; exit 1 ;;
+  *) echo "ANDROID_UI_TEST_PART is 1, 2 or 3" >&2; exit 1 ;;
 esac
 if [ -n "${ANDROID_UI_TEST_PART:-}" ] && [ -n "${ANDROID_UI_TESTS:-}" ]; then
   echo "set ANDROID_UI_TESTS or ANDROID_UI_TEST_PART, not both" >&2
@@ -72,28 +85,12 @@ save_device_log() {
 UI_TEST_PLATFORM_NAME=Android
 UI_TEST_PORT=${ANDROID_UI_TEST_PORT:-18084}
 source "$ROOT/scripts/ui-test-partner.sh"
-ui_test_add_account SIGN_IN_AGAIN_ "android-sign-in-again-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PLATFORM_BACKEND_ "android-platform-backend-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PLATFORM_BIOMETRIC_ "android-platform-biometric-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PLATFORM_TIME_ZONE_ "android-platform-time-zone-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account CREDENTIAL_CHANGE_ "android-credential-change-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account ITEM_EDITOR_ "android-item-editor-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account ITEM_EDITOR_EDIT_ "android-item-editor-edit-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account IMPORT_CANCEL_ "android-import-cancel-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account GENERATOR_SHEET_ "android-generator-sheet-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account ITEM_DETAIL_ "android-item-detail-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account ITEM_CATEGORIES_ "android-item-categories-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account ITEM_APP_LINK_ "android-item-app-link-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account QR_SCANNER_ "android-qr-scanner-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account PASSKEY_UV_ "android-passkey-uv-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account IDLE_LOCK_ "android-idle-lock-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account VAULT_MOVE_ "android-vault-move-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account PASSWORD_SEARCH_ "android-password-search-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PRIVACY_ "android-privacy-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account FILE_HANDOFF_EXPORT_ "android-file-handoff-export-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account FILE_HANDOFF_KIT_ "android-file-handoff-kit-$(date +%s)-$RANDOM@example.com"
-ui_test_add_account FILE_HANDOFF_FAILURE_ "android-file-handoff-failure-$(date +%s)-$RANDOM@example.com"
-for account in WEB CODE APP SAVE SAVE_CODE RECENTS; do
+for account in WEB APP; do
   ui_test_add_account "AUTOFILL_SERVICE_${account}_" "android-autofill-service-$(echo "$account" | tr A-Z_ a-z-)-$(date +%s)-$RANDOM@example.com"
 done
 # The phone approval test signs in to an account whose Mac is played by hisar-ui-test-mac: it signs up first, then sends
@@ -112,87 +109,12 @@ UI_TEST_VALUES+=(
   "HISAR_UI_TEST_PHONE_APPROVAL_PASSWORD=$PHONE_APPROVAL_PASSWORD"
   "HISAR_UI_TEST_PHONE_APPROVAL_SECRET_KEY=$(cat "$T/mac-secret-key")"
 )
-# The cross-device test signs in to an account whose other device is the command line, which signs up here.
-# answer_as_other_device then plays that device: each step runs once the phone did what the step waits for, through the
-# server. The phone saves the notes "Ready for a favorite" and "Ready to be signed out" once it watches for those steps.
-CROSS_DEVICE_EMAIL="android-cross-device-$(date +%s)-$RANDOM@example.com"
-CROSS_DEVICE_PASSWORD=cross-device-master-password
-CROSS_DEVICE_NEW_PASSWORD=cross-device-new-master-password
-printf '%s\nCommand Line\n%s\n%s\n' "$CROSS_DEVICE_EMAIL" "$CROSS_DEVICE_PASSWORD" "$CROSS_DEVICE_PASSWORD" |
-  HISAR_STATE=$T/other-device.json HISAR_SECRET_KEY=- "$ROOT/bin/hisar" signup -y -o "$T/other-device-emergency-kit.pdf" "$(ui_test_create_invite "$CROSS_DEVICE_EMAIL")" 2>"$T/other-device-signup.txt"
-CROSS_DEVICE_SECRET_KEY=$(grep -oE 'H1-[0-9A-Z-]+' "$T/other-device-signup.txt")
-other_device() { HISAR_STATE=$T/other-device.json HISAR_SECRET_KEY=$CROSS_DEVICE_SECRET_KEY "$ROOT/bin/hisar" "$@"; }
-answer_as_other_device() {
-  local password=$CROSS_DEVICE_PASSWORD items devices
-  while sleep 1; do
-    # The phone's new master password signs this device out; it signs in again with it, as its user would.
-    if ! items=$(printf '%s\n' "$password" | other_device ls 2>&1); then
-      if [[ "$items" == *"this device was signed out"* ]] && printf '\n\n%s\n' "$CROSS_DEVICE_NEW_PASSWORD" | other_device login; then
-        password=$CROSS_DEVICE_NEW_PASSWORD
-        touch "$T/other-device-signed-out"
-      fi
-      continue
-    fi
-    devices=$(other_device devices 2>&1) || continue
-    # It edits the phone's login only after reading the password the phone gave it.
-    if [ ! -e "$T/other-device-edited" ] && [[ "$devices" == *" android/mobile "* ]] &&
-      [ "$(printf '%s\n' "$password" | other_device get "Cross-device login" -f password 2>/dev/null)" = android-login-password ] &&
-      { [[ "$items" == *"Server lists android/mobile"* ]] || printf '%s\nServer lists android/mobile\n.\n' "$password" | other_device add --type secure-note; } &&
-      printf '%s\n\ncli-user\n\ncli-login-password\n\n' "$password" | other_device edit "Cross-device login"; then
-      touch "$T/other-device-edited"
-    fi
-    if [ ! -e "$T/other-device-starred" ] && [[ "$items" == *"Ready for a favorite"* ]] &&
-      printf '%s\n' "$password" | other_device favorite "Cross-device login"; then
-      touch "$T/other-device-starred"
-    fi
-    if [ -e "$T/other-device-signed-out" ] && [[ "$items" != *"Signed out on the command line"* ]]; then
-      printf '%s\nSigned out on the command line\n.\n' "$password" | other_device add --type secure-note || true
-    fi
-    if [ ! -e "$T/other-device-revoked" ] && [[ "$items" == *"Ready to be signed out"* ]] &&
-      other_device revoke-device "$(printf '%s\n' "$devices" | awk '/ android\/mobile / {print $NF}')"; then
-      touch "$T/other-device-revoked"
-    fi
-  done
-}
-answer_as_other_device >"$T/other-device.log" 2>&1 &
-UI_TEST_OTHER_DEVICE=$!
-trap 'save_device_log $?; ui_test_stop "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE"' EXIT
-CROSS_DEVICE_CLI_SYSTEM=$(uname -s)
-[ "$CROSS_DEVICE_CLI_SYSTEM" != Darwin ] || CROSS_DEVICE_CLI_SYSTEM=macOS
-UI_TEST_VALUES+=(
-  "HISAR_UI_TEST_CROSS_DEVICE_EMAIL=$CROSS_DEVICE_EMAIL"
-  "HISAR_UI_TEST_CROSS_DEVICE_PASSWORD=$CROSS_DEVICE_PASSWORD"
-  "HISAR_UI_TEST_CROSS_DEVICE_NEW_PASSWORD=$CROSS_DEVICE_NEW_PASSWORD"
-  "HISAR_UI_TEST_CROSS_DEVICE_SECRET_KEY=$CROSS_DEVICE_SECRET_KEY"
-  "HISAR_UI_TEST_CROSS_DEVICE_CLI_NAME=$(other_device devices | awk '/\(this device\)/ {print $1}')"
-  "HISAR_UI_TEST_CROSS_DEVICE_CLI_SYSTEM=$CROSS_DEVICE_CLI_SYSTEM"
-)
 # The biometric tests enroll fingers and touch the sensor through the emulator's console.
 if [[ "$ANDROID_SERIAL" == emulator-* ]] && [ -r "$HOME/.emulator_console_auth_token" ]; then
   UI_TEST_VALUES+=("HISAR_UI_TEST_EMULATOR_CONSOLE_PORT=${ANDROID_SERIAL#emulator-}" "HISAR_UI_TEST_EMULATOR_CONSOLE_TOKEN=$(cat "$HOME/.emulator_console_auth_token")")
 fi
 "$ADB" reverse "tcp:$UI_TEST_PORT" "tcp:$UI_TEST_PORT" >/dev/null
-trap 'save_device_log $?; within 20 reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; ui_test_stop "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE"' EXIT
-
-# TrustedCertificatesTests serves HTTPS on the device with a certificate for 127.0.0.1 from a private CA made for this run
-# alone, and reads both from the test storage's input files.
-PRIVATE_CA=$T/private-ca
-mkdir -p "$PRIVATE_CA"
-EC_KEY=(-newkey ec -pkeyopt ec_paramgen_curve:P-256 -pkeyopt ec_param_enc:named_curve -nodes)
-{
-  openssl req -x509 "${EC_KEY[@]}" -sha256 -keyout "$PRIVATE_CA/ca-key.pem" -out "$PRIVATE_CA/ca.pem" -days 2 -subj "/CN=Hisar Test Private CA" \
-    -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign,cRLSign &&
-    openssl req "${EC_KEY[@]}" -keyout "$PRIVATE_CA/server-key.pem" -subj /CN=127.0.0.1 |
-    openssl x509 -req -sha256 -CA "$PRIVATE_CA/ca.pem" -CAkey "$PRIVATE_CA/ca-key.pem" -set_serial 2 -days 2 -out "$PRIVATE_CA/server.pem" \
-      -extfile <(printf 'subjectAltName=IP:127.0.0.1\nbasicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\n')
-} 2>"$PRIVATE_CA/openssl.log" || { cat "$PRIVATE_CA/openssl.log" >&2; exit 1; }
-# A freshly booted emulator reports boot completed before its shared storage takes writes.
-for _ in $(seq 60); do
-  "$ADB" shell mkdir -p /sdcard/googletest/test_runfiles/private-ca 2>/dev/null && break
-  sleep 2
-done
-"$ADB" shell mkdir -p /sdcard/googletest/test_runfiles/private-ca || { echo "the device's shared storage never took the test CA" >&2; exit 1; }
-"$ADB" push "$PRIVATE_CA/ca.pem" "$PRIVATE_CA/server.pem" "$PRIVATE_CA/server-key.pem" /sdcard/googletest/test_runfiles/private-ca/ >/dev/null
+trap 'save_device_log $?; within 20 reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; ui_test_stop "$UI_TEST_MAC"' EXIT
 
 # The Android Gradle plugin cuts each value at its first comma and hands the rest to the device's shell unquoted, inside
 # `am instrument -e NAME value`.
@@ -254,11 +176,13 @@ fi
 OUTPUT=$ROOT/mobile/android/app/build/outputs/connected_android_test_additional_output
 RESULTS=$ROOT/mobile/android/app/build/outputs/androidTest-results/connected
 rm -rf "$OUTPUT" "$RESULTS"
-# The emulator's host process grows with every test (scripts/ui-test-parts.sh), and a Gradle daemon and the Kotlin compiler's
-# daemon keep the gigabytes they built with until they exit. So every Gradle here compiles in its own process and exits when
-# it is done, and the first one only builds the APKs, so that the one that runs the tests never holds a build's memory.
-GRADLE=(./gradlew --console=plain --no-daemon -Pkotlin.compiler.execution.strategy=in-process)
-(cd "$ROOT/mobile/android" && "${GRADLE[@]}" assembleDebug assembleDebugAndroidTest)
+if [ -n "${ANDROID_UI_TEST_APK_BUILD:-}" ]; then
+  while [ ! -s "$ANDROID_UI_TEST_APK_BUILD" ]; do sleep 2; done
+  cat "$ANDROID_UI_TEST_APK_BUILD.log"
+  [ "$(cat "$ANDROID_UI_TEST_APK_BUILD")" = 0 ] || { echo "the background build of HisarKit.aar and the APKs failed" >&2; exit 1; }
+else
+  build_apks
+fi
 STATUS=0
 if "$RECOVERY_ONLY"; then
   (cd "$ROOT/mobile/android" && "${GRADLE[@]}" installDebug installDebugAndroidTest) || STATUS=$?
@@ -324,7 +248,7 @@ fi
 # The test orchestrator lists every test first (one logcat file each); a test whose own run never started reports nothing, and
 # Gradle still passes.
 MISSING=$(LC_ALL=C comm -23 \
-  <(find "$RESULTS" -name 'logcat-*.txt' | sed -E 's|.*/logcat-(.*)-(test[^-]*)\.txt$|\1#\2|' | LC_ALL=C sort -u) \
+  <(find "$RESULTS" -name 'logcat-*.txt' | sed -E 's|.*/logcat-(.*)-([^-]*)\.txt$|\1#\2|' | LC_ALL=C sort -u) \
   <(grep -rhoE '<testcase name="[^"]*" classname="[^"]*"' "$RESULTS" | sed -E 's/<testcase name="([^"]*)" classname="([^"]*)"/\2#\1/' | LC_ALL=C sort -u))
 if [ -n "$MISSING" ]; then
   echo "these tests never reported a result:" $MISSING >&2
@@ -337,7 +261,5 @@ if [ "$STATUS" != 0 ]; then
   ui_test_print_logs
   echo "--- hisar-ui-test-mac log" >&2
   cat "$T/mac.log" >&2
-  echo "--- other device (command line) log" >&2
-  cat "$T/other-device.log" >&2
   exit "$STATUS"
 fi

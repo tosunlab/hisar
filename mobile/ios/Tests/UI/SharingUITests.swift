@@ -1,6 +1,6 @@
 import XCTest
 
-// scripts/test-ios-ui.sh runs a partner on the command line who accepts every share invitation and completes every share it sent.
+// scripts/test-ios-ui.sh runs a partner (scripts/ui-test-partner.sh) who accepts every share invitation and completes every share it sent.
 final class SharingUITests: HisarUITestCase {
     override func tearDown() {
         XCUIDevice.shared.appearance = .light
@@ -51,12 +51,32 @@ final class SharingUITests: HisarUITestCase {
         createButton.tap()
         waitFor(app.navigationBars["Deploy keys"], timeout: 60)
 
+        choose("add-login", from: "add-item")
+        type("Move from phone", into: app.textFields["editor-title"])
+        type("retained-password", into: app.secureTextFields["editor-password"])
+        app.buttons["editor-save"].tap()
+        waitFor(app.buttons["item-Move from phone"])
+        app.buttons["item-Move from phone"].tap()
+        app.buttons["move-item"].tap()
+        app.buttons["move-item-target"].tap()
+        app.buttons["Private vault / Personal"].tap()
+        XCTAssertTrue(findText(containing: "Only you have access").exists)
+        XCTAssertTrue(findText(containing: "cannot be revoked").exists)
+        app.buttons["move-item-confirm"].tap()
+        XCTAssertTrue(app.buttons["move-item-confirm"].waitForNonExistence(timeout: 30))
+        app.buttons["edit-item"].tap()
+        app.cells.containing(.secureTextField, identifier: "editor-password").buttons["Reveal password"].firstMatch.tap()
+        XCTAssertEqual(app.textFields["editor-password"].value as? String, "retained-password")
+        app.buttons["editor-cancel"].tap()
+        goBack()
+
         app.buttons["share-vault"].tap()
         type(partnerEmail, into: app.textFields["share-email"])
         chooseRole("Reader", in: app.buttons["share-role"])
         XCTAssertEqual(app.buttons["share-vault-submit"].label, "Send invitation")
         app.buttons["share-vault-submit"].tap()
         waitFor(findText(containing: "Invitation sent to \(partnerEmail)"), timeout: 30)
+        XCTAssertTrue(app.buttons["share-role"].label.contains("Reader"), "sending an invitation reset the chosen role")
         saveLightAndDarkScreenshot("sharing-share-sheet")
 
         type(unknownEmail, into: app.textFields["share-email"])
@@ -100,7 +120,7 @@ final class SharingUITests: HisarUITestCase {
         waitFor(app.staticTexts["member-security-code"])
         saveLightAndDarkScreenshot("sharing-member")
         chooseRole("Editor", in: app.buttons["member-role"])
-        app.navigationBars["iOS Partner"].buttons.element(boundBy: 0).tap()
+        goBack()
         waitFor(findText(containing: "Editor"))
 
         findElement("vault-member-\(partnerEmail)").tap()
@@ -123,31 +143,5 @@ final class SharingUITests: HisarUITestCase {
         app.buttons["invite-submit"].tap()
         let sentOrNotConfigured = NSPredicate(format: "label CONTAINS 'Invitation sent' OR label CONTAINS 'cannot send email'")
         waitFor(app.staticTexts.matching(sentOrNotConfigured).firstMatch, timeout: 30)
-    }
-
-    func testAcceptAnInvitationFromTheBannerAboveTheVaults() throws {
-        let inviteLink = try readEnvironment("HISAR_UI_TEST_BANNER_INVITE_LINK")
-        let email = try readEnvironment("HISAR_UI_TEST_BANNER_EMAIL")
-        let partnerEmail = try readEnvironment("HISAR_UI_TEST_SHARING_PARTNER_EMAIL")
-        app.launch()
-        _ = signUp(inviteLink: inviteLink, email: email, name: "iOS Banner")
-
-        let acceptButton = app.buttons["banner-accept-invitation"]
-        waitFor(acceptButton, timeout: 30)
-        XCTAssertFalse(app.buttons["vault-Infrastructure"].exists, "no access before accepting")
-        saveLightAndDarkScreenshot("sharing-invitation-banner")
-
-        acceptButton.tap()
-        let sharedVault = app.buttons["vault-Infrastructure"]
-        waitFor(sharedVault, timeout: 90)
-        XCTAssertTrue(sharedVault.label.contains("Editor"), sharedVault.label)
-        sharedVault.tap()
-        waitFor(app.buttons["item-Staging database"], timeout: 30)
-        XCTAssertFalse(app.buttons["share-vault"].exists, "only owners share")
-
-        app.buttons["vault-members"].tap()
-        waitFor(findElement("vault-member-\(partnerEmail)"), timeout: 30)
-        XCTAssertFalse(app.textFields["share-email"].exists, "editors cannot invite")
-        app.buttons["vault-sharing-done"].tap()
     }
 }

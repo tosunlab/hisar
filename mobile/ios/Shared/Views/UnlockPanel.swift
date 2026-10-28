@@ -4,6 +4,8 @@ struct UnlockPanel: View {
     var email: String
     var requestDescription: String = ""
     var isBiometricReady: Bool
+    var isBiometricEnabled: Bool
+    var isBiometricAvailable: Bool
     var lockCount: Int
     var biometryName: String
     var isBusy: Bool
@@ -13,11 +15,13 @@ struct UnlockPanel: View {
     var submitPassword: (String) async -> Bool
     var submitBiometric: () async -> Void
     var signOut: (() -> Void)?
+    var showLostKeyHelp: (() -> Void)?
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var promptedLockCount = -1
     @State private var password = ""
-    @FocusState private var isPasswordFocused: Bool
+    @State private var isPasswordFocused = false
 
     var body: some View {
         Form {
@@ -28,10 +32,14 @@ struct UnlockPanel: View {
                     Text("Hisar is locked")
                         .font(.title2.weight(.bold))
                         .multilineTextAlignment(.center)
-                    Text(email)
+                    Text(verbatim: email)
                         .font(.subheadline)
                         .foregroundStyle(.themeSecondary)
                         .multilineTextAlignment(.center)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 1 : nil)
+                        .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.6 : 1)
+                        .truncationMode(.middle)
+                        .accessibilityLabel(Text(verbatim: email))
                         .accessibilityIdentifier("lock-email")
                     if !requestDescription.isEmpty {
                         Text(requestDescription)
@@ -59,14 +67,21 @@ struct UnlockPanel: View {
                 }
             }
             Section {
-                SecureField("Master password", text: $password)
+                CredentialField("Master password", text: $password)
                     .textContentType(.password)
                     .submitLabel(.go)
                     .focused($isPasswordFocused)
                     .onSubmit(submit)
                     .accessibilityIdentifier("unlock-password")
+                    .concealWhen(isBusy)
                     .accessibilityHint(errorMessage ?? "")
             } footer: {
+                if isBiometricEnabled && !isBiometricReady {
+                    Text(isBiometricAvailable
+                         ? "Enter your master password to use \(biometryName) again. Hisar requires it at least every 14 days."
+                         : "\(biometryName) isn't available right now. Enter your master password.")
+                        .accessibilityIdentifier("biometric-password-reason")
+                }
                 if isOffline {
                     Label("Offline. You can still unlock with the copy on this iPhone.", systemImage: "wifi.slash")
                 }
@@ -97,12 +112,19 @@ struct UnlockPanel: View {
                     .applyGlassButtonStyle(isProminent: !isBiometricReady)
                     .disabled(isBusy || password.isEmpty)
                     .accessibilityIdentifier("unlock-submit")
+                    // Borderless, or a tap on one of these two buttons in the same Form row runs both actions.
                     if let signOut {
                         Button("Sign out", action: signOut)
+                            .buttonStyle(.borderless)
                             .font(.footnote)
                             .foregroundStyle(.themeSecondary)
                             .padding(.top, 8)
                             .accessibilityIdentifier("lock-sign-out")
+                    }
+                    if let showLostKeyHelp {
+                        Button("Can't find your Secret Key?", action: showLostKeyHelp)
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("secret-key-note")
                     }
                 }
                 .controlSize(.large)

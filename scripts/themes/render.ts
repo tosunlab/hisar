@@ -118,6 +118,7 @@ export function renderThemeKotlin(source: ThemeSource): string {
     const allArgument = allPhoneToken.map(
       (name) => `        ${convertToPaletteName(name)} = ThemeColor(light = 0xFF${convertToRGB(light[name])}, dark = 0xFF${convertToRGB(dark[name])}),`,
     );
+    allArgument.push(`        destructiveText = ThemeColor(light = 0xFF${convertToRGB(light.dangerText)}, dark = 0xFF${convertToRGB(dark.dangerText)}),`);
     kotlin += `    val ${color} = ThemePalette(\n${allArgument.join("\n")}\n    )\n\n`;
   }
   kotlin += `    fun find(color: ThemeColorName): ThemePalette = when (color) {\n`;

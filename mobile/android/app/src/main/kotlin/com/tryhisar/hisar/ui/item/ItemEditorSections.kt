@@ -1,6 +1,8 @@
 package com.tryhisar.hisar.ui.item
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -10,8 +12,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.Add
@@ -23,6 +23,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -31,6 +37,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.ItemEditorDraft
 import com.tryhisar.hisar.model.DatabaseEngine
 import com.tryhisar.hisar.model.ItemAddress
@@ -56,18 +63,23 @@ data class RevealedSecrets(
 /** A warning line under a section, in the theme's warning color. */
 @Composable
 private fun Warning(text: String, testTag: String) {
-    Text(text, color = HisarTheme.colors.orange, style = HisarType.footnote, modifier = Modifier.testTag(testTag))
+    Text(text, color = HisarTheme.colors.warning, style = HisarType.footnote, modifier = Modifier.testTag(testTag))
 }
 
 @Composable
 fun LoginSections(
+    model: AppModel,
     draft: ItemEditorDraft,
     onChange: (ItemEditorDraft) -> Unit,
     revealed: RevealedSecrets,
     onRevealedChange: (RevealedSecrets) -> Unit,
     onGeneratePassword: () -> Unit,
+    errorMessage: String? = null,
 ) {
     val item = draft.item
+    val oneTimeCodeError = errorMessage?.takeIf { it == "The one-time code is not a valid secret or otpauth:// link" }
+    val codeRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(oneTimeCodeError) { if (oneTimeCodeError != null) codeRequester.bringIntoView() }
     FormSection(header = "Login") {
         EditorField(item.username, { value -> onChange(draft.withItem { it.copy(username = value) }) }, "Username or email", "editor-username", kind = FieldKind.PLAIN, label = "Username")
         RowDivider()
@@ -85,6 +97,7 @@ fun LoginSections(
             RevealButton(revealed.isPassword, "password") { onRevealedChange(revealed.copy(isPassword = !revealed.isPassword)) }
             RowIconButton(Icons.Outlined.AutoFixHigh, "Generate password", onClick = onGeneratePassword, testTag = "editor-generate-password")
         }
+        ItemPasswordStrengthMeter(model, item.password, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
     }
     if (!item.isDatabase) {
         FormSection(header = "One-time code") {
@@ -93,6 +106,7 @@ fun LoginSections(
                 { value -> onChange(draft.withItem { it.copy(oneTimePassword = value) }) },
                 "Setup key or otpauth:// link",
                 "editor-one-time-password",
+                modifier = Modifier.bringIntoViewRequester(codeRequester).semantics { oneTimeCodeError?.let { error(it) } },
                 kind = FieldKind.SECRET,
                 isSecret = true,
                 isRevealed = revealed.isSetupKey,
@@ -101,6 +115,7 @@ fun LoginSections(
             ) {
                 RevealButton(revealed.isSetupKey, "setup key") { onRevealedChange(revealed.copy(isSetupKey = !revealed.isSetupKey)) }
             }
+            if (oneTimeCodeError != null) Warning(oneTimeCodeError, "editor-one-time-code-error")
         }
         FormSection(header = if (item.isServer) "Admin console" else "Websites") {
             draft.allURLText.forEachIndexed { index, text ->
@@ -379,6 +394,7 @@ class FieldNameFocus {
 @Composable
 fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit, nameFocus: (Int) -> FieldNameFocus) {
     val allField = draft.item.allField
+    var revealedRows by remember { mutableStateOf(emptySet<Int>()) }
     val keyboardBottom = WindowInsets.ime.getBottom(LocalDensity.current)
     LaunchedEffect(draft.isUnnamedFieldShown, draft.unnamedFieldIndex, keyboardBottom) {
         if (draft.isUnnamedFieldShown) {
@@ -389,7 +405,10 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
         onChange(draft.withItem { item -> item.copy(allField = item.allField.toMutableList().apply { set(index, transform(get(index))) }) })
     FormSection(header = "Other fields") {
         allField.forEachIndexed { index, field ->
-            val remove = { onChange(draft.withItem { item -> item.copy(allField = item.allField.filterIndexed { other, _ -> other != index }) }) }
+            val remove = {
+                revealedRows = revealedRows.filter { it != index }.map { if (it > index) it - 1 else it }.toSet()
+                onChange(draft.withItem { item -> item.copy(allField = item.allField.filterIndexed { other, _ -> other != index }) })
+            }
             SwipeToDeleteRow(onDelete = remove) {
                 Row(Modifier.padding(vertical = 4.dp).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -412,8 +431,15 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
                         EditorField(
                             field.value, { value -> update(index) { it.copy(value = value) } }, "Value", "editor-field-$index-value",
                             kind = if (field.concealed) FieldKind.SECRET else FieldKind.TEXT, isSecret = field.concealed,
+                            isRevealed = index in revealedRows,
                             label = "Value",
-                        )
+                        ) {
+                            if (field.concealed) {
+                                RevealButton(index in revealedRows, field.name.ifEmpty { "value" }) {
+                                    revealedRows = if (index in revealedRows) revealedRows - index else revealedRows + index
+                                }
+                            }
+                        }
                         ToggleRow("Secret", field.concealed, { isOn -> update(index) { it.copy(concealed = isOn) } }, testTag = "editor-field-$index-secret")
                     }
                     RemoveRowButton("Remove field ${field.name.ifEmpty { "${index + 1}" }}", "editor-field-$index-remove", remove)

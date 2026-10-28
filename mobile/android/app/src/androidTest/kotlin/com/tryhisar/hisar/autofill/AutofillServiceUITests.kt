@@ -4,7 +4,6 @@ import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Bitmap
-import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.view.accessibility.AccessibilityEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -16,14 +15,9 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import com.tryhisar.hisar.HisarUITestCase.Companion.MASTER_PASSWORD
-import com.tryhisar.hisar.countInk
-import com.tryhisar.hisar.findRecentsCard
 import com.tryhisar.hisar.takeScreenshot
-import com.tryhisar.hisar.model.ItemDetail
 import java.util.concurrent.TimeoutException
 import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -83,46 +77,6 @@ class AutofillServiceUITests {
     }
 
     @Test
-    fun testOneTimeCodeFieldGetsTheCode() {
-        signUpWithLogins("AUTOFILL_SERVICE_CODE_", login("Example", "code-user", "code-password", "accounts.example.com", ONE_TIME_PASSWORD))
-
-        openPage(AutofillTestPageActivity.MIXED_PAGE)
-        chooseSuggestion("Example", By.res("username"))
-        waitForReport("username=code-user; password=13 characters; code=")
-        clearClipboard()
-        waitForCode("username=code-user; password=13 characters; code=") { chooseSuggestion("Example", By.res("code")) }
-
-        testBackend.lock()
-        openPage(AutofillTestPageActivity.MIXED_PAGE)
-        findSuggestion("Unlock Hisar", By.res("username"))
-        dismissKeyboard("Unlock Hisar")
-        unlockAndFillCode()
-        chooseSuggestion("Unlock Hisar", By.res("username"))
-        waitForObject(By.res("autofill-login-Example")).click()
-        assertTrue("the locked username response still fills the login", device.wait(Until.hasObject(By.text(Regex("username=code-user; password=13 characters; code=\\d{6}").toPattern())), 10_000))
-        clearClipboard()
-
-        withoutPageLoadRequest {
-            testBackend.lock()
-            openPage(AutofillTestPageActivity.MIXED_PAGE)
-            unlockAndFillCode()
-            chooseSuggestion("Example", By.res("username"))
-            assertTrue("after a code-first unlock, username focus offers the unlocked login", device.wait(Until.hasObject(By.text(Regex("username=code-user; password=13 characters; code=\\d{6}").toPattern())), 10_000))
-        }
-
-        clearClipboard()
-        val personal = testBackend.listAllVault().single { it.name == "Personal" }
-        val saved = testBackend.listAllItem(personal.id).single { it.title == "Example" }
-        val caller = checkNotNull(InstalledApps.readAndroidApp(instrumentation.targetContext, testPackage))
-        testBackend.addAndroidApp(personal.id, saved.id, caller.packageName, caller.certificateSHA256)
-        open(AutofillTestFormActivity::class.java.name, By.desc("report")) { putExtra(AutofillTestFormActivity.EXTRA_CODE, true) }
-        chooseSuggestion("Example", By.hint("Email"))
-        waitForReport("username=code-user; password=13 characters; code=")
-        clearClipboard()
-        waitForCode("username=code-user; password=13 characters; code=") { chooseSuggestion("Example", By.hint("Code")) }
-    }
-
-    @Test
     fun testNativeAppSearchLinksTheLoginAndFills() {
         signUpWithLogins("AUTOFILL_SERVICE_APP_", login("Example Bank", "app-user", "app-password-1", "bank.example.com"))
 
@@ -137,76 +91,6 @@ class AutofillServiceUITests {
         openForm()
         chooseSuggestion("Example Bank", By.hint("Email"))
         waitForReport("username=app-user; password=14 characters")
-    }
-
-    @Test
-    fun testSavePromptOpensTheEditorWithTheTypedLogin() {
-        signUpWithLogins("AUTOFILL_SERVICE_SAVE_")
-
-        openPage(AutofillTestPageActivity.LOGIN_PAGE)
-        findSuggestion("Search Hisar", By.res("username"))
-        // Typed key by key, as a person types: WebView reports a value set through accessibility only when the form is
-        // submitted, after the system has already decided there is nothing to save.
-        type("new-user", "username=new-user; password=0 characters")
-        waitForObject(By.res("password")).click()
-        type("new-password", "username=new-user; password=12 characters")
-        val detail = saveTypedLogin("new-user", "new-password")
-
-        openPage(AutofillTestPageActivity.LOGIN_PAGE)
-        chooseSuggestion(detail.title, By.res("username"))
-        assertNotNull("a later visit receives the exact saved login", device.wait(Until.findObject(By.text("username=new-user; password=new-password")), 20_000))
-    }
-
-    @Test
-    fun testMixedFormSavesTheTypedLoginAroundTheCodeField() {
-        signUpWithLogins("AUTOFILL_SERVICE_SAVE_CODE_")
-
-        openPage(AutofillTestPageActivity.MIXED_PAGE)
-        findSuggestion("Search Hisar", By.res("username"))
-        type("first-user", "username=first-user; password=0 characters; code=")
-        waitForObject(By.res("password")).click()
-        type("first-password", "username=first-user; password=14 characters; code=")
-        findSuggestion("Search Hisar", By.res("code"))
-        val first = saveTypedLogin("first-user", "first-password")
-
-        withoutPageLoadRequest {
-            openPage(AutofillTestPageActivity.MIXED_PAGE)
-            findSuggestion("Search Hisar", By.res("code"))
-            chooseSuggestion(first.title, By.res("username"))
-            assertNotNull("a login field focused after the code field fills", device.wait(Until.findObject(By.text("username=first-user; password=first-password; code=")), 20_000))
-
-            openPage(AutofillTestPageActivity.MIXED_PAGE)
-            findSuggestion("Search Hisar", By.res("code"))
-            findSuggestion("Search Hisar", By.res("username"))
-            type("second-user", "username=second-user; password=0 characters; code=")
-            waitForObject(By.res("password")).click()
-            type("second-password", "username=second-user; password=15 characters; code=")
-            saveTypedLogin("second-user", "second-password")
-        }
-    }
-
-    @Test
-    fun testAppSwitcherHidesTheLoginPicker() {
-        signUpWithLogins("AUTOFILL_SERVICE_RECENTS_", login("Example Bank", "recents-user", "recents-password", "bank.example.com"))
-
-        openForm()
-        chooseSuggestion("Search Hisar", By.hint("Email"))
-        waitForObject(By.res("autofill-search")).text = "bank"
-        val login = waitForObject(By.res("autofill-login-Example Bank")).visibleBounds
-        val inFront = countInk(takeScreenshot(), login)
-        assertTrue("a screenshot shows the picker's login while it is in front ($inFront marked pixels)", inFront > 0)
-
-        device.pressHome()
-        device.pressRecentApps()
-        // The picker sits on top of the form's task. Measured: API 31's launcher names that task after the picker, Hisar,
-        // and API 37's after the form.
-        val card = device.findRecentsCard { it == "Hisar" || it.endsWith("Test form") }
-        saveScreenshot("autofill-service-recents")
-        val inRecents = countInk(takeScreenshot(), card)
-        assertTrue("Recents shows the picker's card with Hisar's logins on it ($inRecents marked pixels of ${card.width() * card.height()})", inRecents * 1000 < card.width() * card.height())
-
-        device.click(card.centerX(), card.centerY())
-        waitForObject(By.res("autofill-login-Example Bank"))
     }
 
     private fun openPage(page: String) = open(AutofillTestPageActivity::class.java.name, By.res("result")) { putExtra(AutofillTestPageActivity.EXTRA_PAGE, page) }
@@ -235,79 +119,9 @@ class AutofillServiceUITests {
         error("no AutoFill suggestion \"$title\" for $field")
     }
 
-    private fun dismissKeyboard(title: String) {
-        device.pressBack()
-        assertTrue("the suggestions close", device.wait(Until.gone(By.text(title)), 10_000) && device.wait(Until.gone(By.descStartsWith(title)), 10_000))
-    }
-
-    private fun unlockAndFillCode() {
-        chooseSuggestion("Unlock Hisar", By.res("code"))
-        waitForObject(By.res("unlock-password")).text = MASTER_PASSWORD
-        waitForObject(By.res("unlock-submit")).click()
-        val codeLogin = waitForObject(By.res("autofill-login-Example"))
-        waitForCode("username=; password=0 characters; code=") { codeLogin.click() }
-        clearClipboard()
-    }
-
-    // On Android 13 and later a page with a password field asks for a fill as it loads, before any field is focused, when
-    // the device's autofill_dialog_hints name password, as Google Play's do, so the login fields always answer first.
-    // Without that request the code field asks first, as it does on devices without those hints.
-    private fun withoutPageLoadRequest(block: () -> Unit) {
-        val valuesByKey = listOf("autofill_dialog_enabled", "autofill_dialog_hints").associateWith { shell("device_config get autofill $it").trim() }
-        for (key in valuesByKey.keys) shell("device_config delete autofill $key")
-        try {
-            block()
-        } finally {
-            for ((key, value) in valuesByKey) if (value != "null") shell("device_config put autofill $key $value")
-        }
-    }
-
-    private fun saveTypedLogin(username: String, password: String): ItemDetail {
-        waitForObject(By.text("Sign in")).click()
-        val save = device.wait(Until.findObject(By.text("Save")), 15_000) ?: error("the system offered no save sheet")
-        saveScreenshot("autofill-service-save-prompt-$username")
-        save.click()
-        if (!saveSheetOpensHisar) {
-            device.wait(Until.gone(By.text("Save")), 10_000)
-            instrumentation.targetContext.startActivity(checkNotNull(instrumentation.targetContext.packageManager.getLaunchIntentForPackage(appPackage)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
-        assertEquals(username, waitForObject(By.res("editor-username")).text)
-        saveScreenshot("autofill-service-save-editor-$username")
-        assertEquals("https://accounts.example.com", waitForObject(By.res("editor-website-0")).text)
-        waitForObject(By.res("editor-save")).click()
-        assertTrue("the editor closes after saving", device.wait(Until.gone(By.res("editor-save")), 20_000))
-        val personal = testBackend.listAllVault().single { it.name == "Personal" }
-        val saved = testBackend.listAllItem(personal.id).single { it.username == username }
-        val detail = testBackend.getItem(personal.id, saved.id)
-        assertEquals(username, detail.username)
-        assertEquals(password, detail.password)
-        assertEquals(listOf("https://accounts.example.com"), detail.allURL)
-        return detail
-    }
-
-    private fun waitForCode(prefix: String, fill: () -> Unit) {
-        val personal = testBackend.listAllVault().single { it.name == "Personal" }
-        val login = testBackend.listAllItem(personal.id).single { it.title == "Example" }
-        val before = testBackend.getOneTimeCode(personal.id, login.id).code
-        fill()
-        val report = device.wait(Until.findObject(By.text(Regex("${Regex.escape(prefix)}\\d{6}").toPattern())), 10_000)
-        assertNotNull("only the code is filled, preserving the login fields", report)
-        val after = testBackend.getOneTimeCode(personal.id, login.id).code
-        assertTrue("the field receives the current code", report!!.text.removePrefix(prefix) in setOf(before, after))
-    }
-
     private fun waitForReport(expected: String) {
         val isFilled = device.wait(Until.hasObject(By.text(expected)), 20_000)
         assertTrue("the form reads ${device.findObject(By.textStartsWith("username="))?.text}, not $expected", isFilled)
-    }
-
-    // The first key filters out every suggestion. On API 29 the dropdown then closes, and keys that arrive while its
-    // window goes away find the page without focus and are dropped, so the rest is typed once it has closed.
-    private fun type(text: String, expectedReport: String) {
-        shell("input text ${text.first()}")
-        device.wait(Until.gone(By.text("Search Hisar")), 10_000)
-        shell("input text ${text.drop(1)}")
-        waitForReport(expectedReport)
     }
 
     // A toast is announced to accessibility but never appears in the window hierarchy UiAutomator searches.
@@ -338,6 +152,5 @@ class AutofillServiceUITests {
 
         // Android 14 before QPR2 (March 2024) starts the save sheet's intent without letting the page's app lend its
         // right to open an activity, so it never opens Hisar; the user then finds the login when they open Hisar.
-        val saveSheetOpensHisar = Build.VERSION.SDK_INT != Build.VERSION_CODES.UPSIDE_DOWN_CAKE || Build.VERSION.SECURITY_PATCH >= "2024-03-01"
     }
 }

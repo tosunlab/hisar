@@ -10,6 +10,7 @@ import {
   type SettingsSection,
   type SettingsSectionID,
 } from "../settingsSections";
+import { isApplicationCommand } from "../util";
 import AccountDialog from "./AccountDialog.vue";
 import AccountSection from "./AccountSection.vue";
 import AppIcon from "./AppIcon.vue";
@@ -79,9 +80,20 @@ function selectSection(sectionID: SettingsSectionID): void {
   saveSelectedSectionID(sectionID);
 }
 
-function showEmergencyKit(): void {
+async function reviewAgentApprovals(destination: "agent-sessions" | "agent-grants"): Promise<void> {
+  searchQuery.value = "";
+  selectSection("developer");
+  await nextTick();
+  const section = sectionContent.value?.querySelector<HTMLElement>(`#${destination}`);
+  section?.scrollIntoView?.({ block: "start" });
+  section?.focus();
+}
+
+// The form opens once Security is active: activating a section clears the Security forms it left behind.
+async function showEmergencyKit(): Promise<void> {
   searchQuery.value = "";
   selectSection("security");
+  await nextTick();
   isSavingEmergencyKit.value = true;
 }
 
@@ -132,7 +144,7 @@ function handleKeydown(event: KeyboardEvent): void {
       return;
     }
     closeSettings();
-  } else if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
+  } else if (isApplicationCommand(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
     event.preventDefault();
     searchInput.value?.focus();
     searchInput.value?.select();
@@ -226,14 +238,14 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
             </section>
           </div>
           <div v-show="displayedSection?.id === 'security'" data-testid="settings-page-security">
-            <SecuritySection v-model:is-saving-emergency-kit="isSavingEmergencyKit" />
+            <SecuritySection v-model:is-saving-emergency-kit="isSavingEmergencyKit" :is-active="displayedSection?.id === 'security'" />
           </div>
           <div v-show="displayedSection?.id === 'ssh'" data-testid="settings-page-ssh">
             <SSHAgentSection />
           </div>
           <div v-show="displayedSection?.id === 'developer'" data-testid="settings-page-developer">
             <CommandLineSection />
-            <CodingAgentsSection />
+            <CodingAgentsSection @review-approvals="reviewAgentApprovals" />
           </div>
           <div v-show="displayedSection?.id === 'browser'" data-testid="settings-page-browser">
             <BrowserExtensionSection />

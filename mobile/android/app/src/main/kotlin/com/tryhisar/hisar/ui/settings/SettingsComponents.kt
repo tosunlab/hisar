@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -43,7 +45,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -102,7 +109,7 @@ fun SettingsScreen(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 112.dp),
+                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 112.dp).then(if (barTitle.isNotBlank()) Modifier.semantics { heading() } else Modifier),
                 )
             }
         }
@@ -160,9 +167,27 @@ fun NavigationRow(
     ) {
         val textColor = if (enabled) color else HisarTheme.colors.secondaryLabel
         if (icon != null) RowIcon(icon, if (enabled && color == HisarTheme.colors.label) HisarTheme.colors.tint else textColor)
-        Text(text, style = HisarType.body, color = textColor, modifier = Modifier.weight(1f))
-        if (value != null) {
-            Text(value, style = HisarType.body, color = HisarTheme.colors.secondaryLabel, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
+        BoxWithConstraints(Modifier.weight(1f)) {
+            val measurer = rememberTextMeasurer()
+            val density = LocalDensity.current
+            val spacing = with(density) { 8.dp.roundToPx() }
+            val fitsHorizontally = value == null ||
+                measurer.measure(AnnotatedString(text), HisarType.body, softWrap = false).size.width +
+                measurer.measure(AnnotatedString(value), HisarType.body, softWrap = false).size.width +
+                spacing <= constraints.maxWidth
+            if (value == null) {
+                Text(text, style = HisarType.body, color = textColor)
+            } else if (fitsHorizontally) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text, style = HisarType.body, color = textColor, modifier = Modifier.weight(1f))
+                    Text(value, style = HisarType.body, color = HisarTheme.colors.secondaryLabel)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(text, style = HisarType.body, color = textColor)
+                    Text(value, style = HisarType.body, color = HisarTheme.colors.secondaryLabel)
+                }
+            }
         }
         Icon(
             Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -216,7 +241,7 @@ fun CheckRow(text: String, isChosen: Boolean, onClick: () -> Unit, testTag: Stri
         Modifier
             .fillMaxWidth()
             .heightIn(min = RowMinHeight)
-            .clickable(role = Role.RadioButton, onClick = onClick)
+            .selectable(selected = isChosen, role = Role.RadioButton, onClick = onClick)
             .testTag(testTag)
             .padding(horizontal = RowInset, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -229,7 +254,7 @@ fun CheckRow(text: String, isChosen: Boolean, onClick: () -> Unit, testTag: Stri
             Text(text, style = HisarType.body, color = HisarTheme.colors.label)
             if (subtitle != null) Text(subtitle, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
         }
-        if (isChosen) Icon(Icons.Filled.Check, contentDescription = "Chosen", tint = HisarTheme.colors.tint, modifier = Modifier.size(22.dp))
+        if (isChosen) Icon(Icons.Filled.Check, contentDescription = null, tint = HisarTheme.colors.tint, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -244,7 +269,7 @@ fun DestructiveRow(text: String, onClick: () -> Unit, testTag: String, enabled: 
             .testTag(testTag),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = HisarType.body, color = if (enabled) HisarTheme.colors.destructive else HisarTheme.colors.secondaryLabel)
+        Text(text, style = HisarType.body, color = if (enabled) HisarTheme.colors.destructiveText else HisarTheme.colors.secondaryLabel)
     }
 }
 
@@ -275,7 +300,7 @@ fun ConfirmationDialog(
                     onConfirm()
                 },
                 testTag = confirmTestTag,
-                color = if (isDestructive) HisarTheme.colors.destructive else HisarTheme.colors.tint,
+                color = if (isDestructive) HisarTheme.colors.destructiveText else HisarTheme.colors.tint,
             )
         },
         dismissButton = { PlainButton(dismissLabel, onDismiss, testTag = "cancel-confirmation") },

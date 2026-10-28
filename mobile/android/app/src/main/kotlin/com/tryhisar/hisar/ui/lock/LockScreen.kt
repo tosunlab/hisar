@@ -24,12 +24,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -53,6 +55,8 @@ import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /** "Hisar is locked": the master password, biometrics when ready, and signing out, as the iPhone app's LockView. */
 @Composable
@@ -65,15 +69,10 @@ fun LockScreen(model: AppModel) {
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val isResumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     val scope = rememberCoroutineScope()
-    var promptedLockCount by rememberSaveable { mutableIntStateOf(-1) }
     var isSignOutConfirmationShown by remember { mutableStateOf(false) }
+    var isHelpShown by remember { mutableStateOf(false) }
+    val interruptedKit by model.signIn.interruptedKitOperationID.collectAsStateWithLifecycle()
 
-    // One automatic prompt per lock, and only while the app is in front.
-    LaunchedEffect(isResumed, status.biometricReady, isBusy, lockCount) {
-        if (!isResumed || !status.biometricReady || isBusy || promptedLockCount == lockCount) return@LaunchedEffect
-        promptedLockCount = lockCount
-        model.lock.unlockWithBiometric()
-    }
     LaunchedEffect(isResumed) {
         if (isResumed) model.lock.refreshShareAwaitingUnlock()
     }
@@ -81,12 +80,25 @@ fun LockScreen(model: AppModel) {
     UnlockPanel(
         email = status.email,
         isBiometricReady = status.biometricReady,
+        isBiometricEnabled = status.biometricEnabled,
+        isBiometricAvailable = status.biometricAvailable,
         isBusy = isBusy,
+        lockCount = lockCount,
+        isResumed = isResumed,
+        isCurrentLock = { model.screen.value == com.tryhisar.hisar.app.Screen.Locked && model.lockCount.value == lockCount },
         errorMessage = errorMessage,
         isOffline = status.isOffline,
         allNotice = allShareAwaitingUnlock.map { it.message },
+        kitReminder = status.emergencyKit?.let {
+            when {
+                interruptedKit == it.operationId -> "Hisar locked while you were saving your Emergency Kit. Unlock to continue."
+                it.savedBy.isNotEmpty() -> "Your Emergency Kit isn't confirmed yet. Unlock Hisar to confirm it."
+                else -> "Your Emergency Kit isn't saved yet. Unlock Hisar to save it."
+            }
+        }.orEmpty(),
+        showSecretKeyHelp = { isHelpShown = true },
         submitPassword = { model.lock.unlock(it) },
-        submitBiometric = { scope.launch { model.lock.unlockWithBiometric() } },
+        submitBiometric = { model.lock.unlockWithBiometric() },
         signOut = { isSignOutConfirmationShown = true },
     )
 
@@ -94,16 +106,17 @@ fun LockScreen(model: AppModel) {
         AlertDialog(
             onDismissRequest = { isSignOutConfirmationShown = false },
             title = { Text(AccountLifecycleLogic.SIGN_OUT_TITLE) },
-            text = { Text(AccountLifecycleLogic.LOCKED_SIGN_OUT_MESSAGE) },
+            text = { Text(AccountLifecycleLogic.signOutMessage(status.emergencyKit, isLocked = true)) },
             confirmButton = {
                 PlainButton("Sign out", {
                     isSignOutConfirmationShown = false
                     scope.launch { model.lock.signOut() }
-                }, testTag = "confirm-sign-out", color = HisarTheme.colors.destructive)
+                }, testTag = "confirm-sign-out", color = HisarTheme.colors.destructiveText)
             },
             dismissButton = { PlainButton("Cancel", { isSignOutConfirmationShown = false }, testTag = "cancel-sign-out") },
         )
     }
+    if (isHelpShown) com.tryhisar.hisar.ui.signin.SecretKeyHelpSheet { isHelpShown = false }
 }
 
 /** The lock screen's form, which the iPhone app also shows in AutoFill and approvals. */
@@ -111,30 +124,71 @@ fun LockScreen(model: AppModel) {
 fun UnlockPanel(
     email: String,
     isBiometricReady: Boolean,
+    isBiometricEnabled: Boolean,
+    isBiometricAvailable: Boolean,
     isBusy: Boolean,
     errorMessage: String?,
     submitPassword: suspend (String) -> Boolean,
-    submitBiometric: () -> Unit,
+    submitBiometric: suspend () -> Boolean,
+    lockCount: Int,
+    isResumed: Boolean,
+    isCurrentLock: () -> Boolean,
     requestDescription: String = "",
     isOffline: Boolean = false,
     allNotice: List<String> = emptyList(),
     signOut: (() -> Unit)? = null,
+    kitReminder: String = "",
+    showSecretKeyHelp: (() -> Unit)? = null,
 ) {
     var password by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val currentResumed by rememberUpdatedState(isResumed)
+    val currentLockCount by rememberUpdatedState(lockCount)
+    val currentLock by rememberUpdatedState(isCurrentLock)
+    var promptedLockCount by rememberSaveable { mutableIntStateOf(-1) }
+    var needsPasswordFocus by remember(lockCount) { mutableStateOf(false) }
 
-    LaunchedEffect(isBiometricReady) {
-        if (!isBiometricReady) focusRequester.requestFocus()
+    suspend fun focusPassword() {
+        currentCoroutineContext().ensureActive()
+        if (!currentLock()) return
+        needsPasswordFocus = true
+        if (!currentResumed) return
+        needsPasswordFocus = false
+        focusRequester.requestFocus()
+        keyboard?.show()
+    }
+
+    fun attemptBiometric() {
+        val attemptedLock = lockCount
+        scope.launch {
+            val succeeded = submitBiometric()
+            if (!succeeded && currentLockCount == attemptedLock) focusPassword()
+        }
+    }
+
+    LaunchedEffect(isResumed, isBiometricReady, isBusy, lockCount) {
+        if (!isResumed || !isBiometricReady || isBusy || promptedLockCount == lockCount) return@LaunchedEffect
+        promptedLockCount = lockCount
+        attemptBiometric()
+    }
+
+    LaunchedEffect(isBiometricReady, isResumed) {
+        if (!isBiometricReady) focusPassword()
+    }
+
+    LaunchedEffect(isResumed, lockCount) {
+        if (isResumed && needsPasswordFocus) focusPassword()
     }
 
     fun submit() {
         if (password.isEmpty() || isBusy) return
         val enteredPassword = password
         scope.launch {
-            submitPassword(enteredPassword)
+            val succeeded = submitPassword(enteredPassword)
             password = ""
-            focusRequester.requestFocus()
+            if (!succeeded) focusPassword()
         }
     }
 
@@ -150,6 +204,7 @@ fun UnlockPanel(
                 LogoMark(Modifier.padding(bottom = 6.dp), size = 72.dp)
                 Text("Hisar is locked", style = HisarType.title2, color = HisarTheme.colors.label)
                 Text(email, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, modifier = Modifier.testTag("lock-email"))
+                if (kitReminder.isNotEmpty()) Text(kitReminder, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, modifier = Modifier.testTag("lock-emergency-kit-reminder"))
                 if (requestDescription.isNotEmpty()) {
                     Text(requestDescription, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel)
                 }
@@ -171,16 +226,26 @@ fun UnlockPanel(
         }
         errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
         FormSection(
-            footer = if (!isOffline) null else ({
+            footer = {
+                if (isBiometricEnabled && !isBiometricReady) {
+                    Text(
+                        if (isBiometricAvailable) "Enter your master password to use biometric unlock again. Hisar asks for it at least every 14 days."
+                        else "Biometrics aren't available right now. Unlock with your master password.",
+                        modifier = Modifier.testTag("biometric-password-reason"),
+                    )
+                }
+                if (isOffline) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.WifiOff, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.size(6.dp))
                     Text("Offline. You can still unlock with the copy on this device.")
                 }
-            }),
+                }
+            },
         ) {
             FormTextField(
                 password, { password = it }, placeholder = "Master password", testTag = "unlock-password", isSecure = true,
+                revealName = "master password", concealWhen = isBusy,
                 modifier = Modifier.focusRequester(focusRequester),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { submit() }),
@@ -192,11 +257,12 @@ fun UnlockPanel(
         ClearSection {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (isBiometricReady) {
-                    ProminentButton("Unlock with biometrics", submitBiometric, testTag = "unlock-biometric", enabled = !isBusy, icon = Icons.Filled.Fingerprint)
-                    GlassButton("Unlock", ::submit, testTag = "unlock-submit", enabled = password.isNotEmpty(), isBusy = isBusy)
+                    ProminentButton("Unlock with biometrics", ::attemptBiometric, testTag = "unlock-biometric", enabled = !isBusy, icon = Icons.Filled.Fingerprint)
+                    GlassButton("Unlock", ::submit, testTag = "unlock-submit", enabled = password.isNotEmpty(), isBusy = isBusy, busyLabel = "Unlocking…")
                 } else {
-                    ProminentButton("Unlock", ::submit, testTag = "unlock-submit", enabled = password.isNotEmpty(), isBusy = isBusy)
+                    ProminentButton("Unlock", ::submit, testTag = "unlock-submit", enabled = password.isNotEmpty(), isBusy = isBusy, busyLabel = "Unlocking…")
                 }
+                showSecretKeyHelp?.let { PlainButton("Can't find your Secret Key?", it, testTag = "secret-key-help", textStyle = HisarType.footnote) }
                 if (signOut != null) {
                     PlainButton("Sign out", signOut, testTag = "lock-sign-out", color = HisarTheme.colors.secondaryLabel, textStyle = HisarType.footnote)
                 }

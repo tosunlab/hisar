@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { deleteItem, store } from "../store";
+import { deleteItem, openShareLinks, store } from "../store";
 import AccountDialog from "./AccountDialog.vue";
 
 const props = defineProps<{ vaultID: string; itemID: string; title: string }>();
@@ -23,6 +23,8 @@ async function confirmDeletion(): Promise<void> {
 <template>
   <AccountDialog :title="`Delete “${title}”?`" :subtitle="subtitle" icon="trash" is-danger :is-closable="!store.isBusy" data-testid="confirm-delete-dialog" @close="emit('close')">
     <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+    <p class="muted">Share links are separate copies. Deleting this item doesn't revoke them. Review them in Shared links.</p>
+    <button type="button" class="ghost" data-testid="item-review-shared-links" @click="emit('close'); openShareLinks()">Review shared links</button>
     <div class="row actions">
       <button type="button" class="ghost" :disabled="store.isBusy" data-testid="confirm-delete-cancel" data-dialog-initial-focus @click="emit('close')">Cancel</button>
       <button type="button" class="danger-solid" :disabled="store.isBusy" data-testid="confirm-delete-item" @click="confirmDeletion">Delete item</button>

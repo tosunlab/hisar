@@ -33,7 +33,7 @@ func (bridge *BrowserBridge) unlockWithPassword(request *browserprotocol.Request
 		return nil, err
 	}
 	status, err := bridge.service.Unlock(request.Password)
-	if errors.Is(err, errBadCredentials) {
+	if errors.Is(err, errUnlockPassword) {
 		// The attempt stays counted as a failure.
 		return nil, browserprotocol.NewError(browserprotocol.ErrorWrongPassword, "That master password is not right")
 	}

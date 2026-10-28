@@ -26,6 +26,8 @@ var (
 // errBadCredentials is a wrong master password, or email or Secret Key, as the user reads it.
 var errBadCredentials = errors.New("incorrect email, master password or Secret Key")
 
+var errUnlockPassword = errors.New("The master password is incorrect.")
+
 func convertError(err error) error {
 	switch {
 	case errors.Is(err, session.ErrBadCredentials):

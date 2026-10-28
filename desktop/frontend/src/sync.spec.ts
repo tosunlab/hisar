@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { allTestVault, createApiMock, createItem, createStatus } from "./testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
@@ -25,6 +25,7 @@ beforeEach(() => {
     status: createStatus("unlocked"),
     allVault: allTestVault,
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [createItem({ id: "a", title: "Alpha" })],
     selectedItem: createItem({ id: "a", title: "Alpha" }),
     editorMode: "view",
@@ -46,6 +47,21 @@ describe("syncInBackground", () => {
     await syncInBackground();
     expect(store.allItem.map((vaultItem) => vaultItem.title)).toEqual(["Alpha", "Bank"]);
     expect(store.selectedItem?.notes).toBe("changed elsewhere");
+  });
+
+  it("does not republish a filtered-out detail when a sync read finishes", async () => {
+    const item = createItem({ id: "a", title: "Alpha" });
+    api.listAllItem.mockResolvedValue([item]);
+    const { promise, resolve } = Promise.withResolvers<typeof item>();
+    api.getItem.mockReturnValueOnce(promise);
+    const syncing = syncInBackground();
+    await flushPromises();
+    expect(api.getItem).toHaveBeenCalled();
+    store.searchQuery = "Bank";
+    expect(store.selectedItem).toBeNull();
+    resolve(item);
+    await syncing;
+    expect(store.selectedItem).toBeNull();
   });
 
   it("closes the open item when it was deleted on another device", async () => {
@@ -82,6 +98,7 @@ describe("syncInBackground", () => {
 
   it("selects another vault when the open one was removed", async () => {
     store.selectedVaultID = "gone";
+    store.listVaultID = "gone";
     api.listAllItem.mockResolvedValue([]);
     await syncInBackground();
     expect(store.selectedVaultID).toBe("personal");

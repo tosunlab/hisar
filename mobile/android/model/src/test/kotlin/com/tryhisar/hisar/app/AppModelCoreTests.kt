@@ -37,9 +37,15 @@ class AppModelCoreTests {
 
     @Test
     fun testStartFailureShowsMessage() = runTest {
-        val model = AppModelHarness(this).createModel()
+        val harness = AppModelHarness(this)
+        val model = harness.createModel()
         model.start { throw BackendError("Disk full") }
         assertEquals(Screen.Failed("Disk full"), model.screen.value)
+        model.start { harness.backend }
+        assertEquals(Screen.SignedOut, model.screen.value)
+        var createdAgain = false
+        model.start { createdAgain = true; harness.backend }
+        assertFalse(createdAgain)
     }
 
     @Test

@@ -65,8 +65,6 @@ func TestCancelledMembershipSignupCapability(t *testing.T) {
 	}
 }
 
-// Open in Hisar on the page of a link an organization or a share invitation sent names that invitation and its address,
-// so an app already signed in to it shows the invitation; any other invite's link does not.
 func TestInvitePageNamesTheInvitationItWasSentFor(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
@@ -85,7 +83,7 @@ func TestInvitePageNamesTheInvitationItWasSentFor(t *testing.T) {
 	for token, want := range map[string]string{
 		findInviteToken(t, server, recorder, "member@example.com"): "?email=member%40example.com&amp;invitation=organization&amp;server=" + origin + `"`,
 		findInviteToken(t, server, recorder, "reader@example.com"): "?email=reader%40example.com&amp;invitation=share&amp;server=" + origin + `"`,
-		independent.Token: "?server=" + origin + `"`,
+		independent.Token: "?email=plain%40example.com&amp;server=" + origin + `"`,
 	} {
 		if _, body := fetchInvitePage(t, baseURL, token); !strings.Contains(body, `href="hisar://invite/`+token+want) {
 			t.Errorf("Open in Hisar for %s lacks %s", token, want)

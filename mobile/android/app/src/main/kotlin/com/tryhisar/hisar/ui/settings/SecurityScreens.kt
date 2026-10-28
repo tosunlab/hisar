@@ -1,14 +1,15 @@
 package com.tryhisar.hisar.ui.settings
 
+import com.tryhisar.hisar.ui.components.biometricConsent
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
-import androidx.compose.material.icons.outlined.FindReplace
-import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.LaptopMac
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Screenshot
@@ -28,7 +29,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.ScreenshotSetting
 import com.tryhisar.hisar.app.AppModel
-import com.tryhisar.hisar.app.SettingsDestination
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormButtonRow
@@ -39,9 +39,9 @@ import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import kotlinx.coroutines.launch
 
-/** Settings → Security: biometric unlock, auto-lock, screenshots, the two credential changes, and locking now. */
+/** Settings → Security: biometric unlock, auto-lock, screenshots, and locking now. */
 @Composable
-fun SecurityScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: () -> Unit) {
+fun SecurityScreen(model: AppModel, onBack: () -> Unit) {
     val status by model.status.collectAsStateWithLifecycle()
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
@@ -58,7 +58,7 @@ fun SecurityScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack:
             footer = {
                 Text(
                     if (status.biometricAvailable) {
-                        "Turning on biometrics needs your master password. Hisar still asks for the master password at least every 14 days."
+                        biometricConsent
                     } else {
                         "Biometric unlock is not set up on this device."
                     },
@@ -80,7 +80,7 @@ fun SecurityScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack:
         FormSection(
             header = "Auto-lock after",
             footer = { Text("Hisar locks after this long without activity. Copied values are cleared after about 2 minutes.") },
-            modifier = Modifier.testTag("auto-lock-picker"),
+            modifier = Modifier.testTag("auto-lock-picker").selectableGroup(),
         ) {
             VaultStatus.allAutoLockSeconds.forEachIndexed { index, seconds ->
                 if (index > 0) RowDivider()
@@ -100,11 +100,6 @@ fun SecurityScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack:
                 testTag = "allow-screenshots-switch",
                 icon = Icons.Outlined.Screenshot,
             )
-        }
-        FormSection(footer = { Text("Both sign out your other devices. They need a connection to the Hisar server.") }) {
-            NavigationRow("Change master password…", "open-change-master-password", { push(SettingsDestination.CHANGE_MASTER_PASSWORD) }, Icons.Outlined.Key)
-            RowDivider()
-            NavigationRow("Replace Secret Key…", "open-replace-secret-key", { push(SettingsDestination.REPLACE_SECRET_KEY) }, Icons.Outlined.FindReplace)
         }
         FormSection {
             FormButtonRow("Lock Hisar now", { scope.launch { model.lock() } }, testTag = "settings-lock-now", icon = Icons.Outlined.Lock, color = HisarTheme.colors.tint)
@@ -128,9 +123,9 @@ private fun BiometricPasswordAlert(onTurnOn: (String) -> Unit, onDismiss: () -> 
         title = { Text("Turn on biometrics") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Enter your master password to unlock with biometrics.")
+                Text(biometricConsent + "\n\nEnter your master password to continue.")
                 Box(Modifier.background(HisarTheme.colors.fill, RoundedCornerShape(10.dp))) {
-                    FormTextField(password, { password = it }, placeholder = "Master password", testTag = "biometric-password", isSecure = true, label = "Master password")
+                    FormTextField(password, { password = it }, placeholder = "Master password", testTag = "biometric-password", label = "Master password", isSecure = true, revealName = "master password")
                 }
             }
         },
@@ -150,21 +145,37 @@ private fun BiometricPasswordAlert(onTurnOn: (String) -> Unit, onDismiss: () -> 
 fun MacApprovalsScreen(model: AppModel, onBack: () -> Unit) {
     val isMacApprovalAllowed by model.isMacApprovalAllowed.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    var isSaving by remember { mutableStateOf(false) }
+    val operationError by model.settings.macApprovalErrorMessage.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { model.settings.macApprovalErrorMessage.value = null }
     SettingsScreen("Mac approvals", onBack) {
         FormSection(
             footer = {
                 Text(
                     "Requests to use SSH keys, the command-line tool, coding agents and apps on your Mac appear here while Hisar is open and unlocked on both devices.",
                 )
+                Text("On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device.")
             },
         ) {
             ToggleRow(
                 "Approve requests from my Mac",
                 isOn = isMacApprovalAllowed,
-                onChange = { scope.launch { model.settings.setMacApprovalAllowed(it) } },
+                onChange = {
+                    scope.launch {
+                        isSaving = true
+                        try {
+                            model.settings.setMacApprovalAllowed(it)
+                        } finally {
+                            isSaving = false
+                        }
+                    }
+                },
                 testTag = "mac-approval-toggle",
                 icon = Icons.Outlined.LaptopMac,
+                enabled = !isSaving,
+                subtitle = if (isSaving) "Saving…" else null,
             )
+            operationError?.let { ErrorBanner(it) }
         }
     }
 }

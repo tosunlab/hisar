@@ -3,6 +3,7 @@ import UIKit
 
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
+    var retryStartup: () -> Void
     @Environment(\.accessibilityReduceMotion) private var isMotionReduced
 
     var body: some View {
@@ -11,7 +12,7 @@ struct RootView: View {
             case .starting:
                 ProgressView()
             case .failed(let message):
-                StartupFailureView(message: message)
+                StartupFailureView(message: message, retry: retryStartup)
             case .signedOut:
                 SignInView()
             case .locked:
@@ -44,9 +45,19 @@ struct RootView: View {
             }
         }
         .safeAreaInset(edge: .top) {
-            if !model.allPendingRecovery.isEmpty {
-                Button("Finish account recovery") { model.isPendingRecoveryShown = true }
+            if !model.allPendingRecovery.isEmpty && !model.isPendingRecoveryShown && model.onboardingStep == nil {
+                Button { model.openPendingRecovery() } label: {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle")
+                        Text(model.allPendingRecovery.count == 1
+                             ? model.allPendingRecovery[0].reminderLabel
+                             : "\(model.allPendingRecovery.count) account setups need attention")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "chevron.right")
+                    }
+                }
                     .accessibilityIdentifier("pending-recovery-open")
+                    .accessibilityHint(model.allPendingRecovery.count == 1 ? model.allPendingRecovery[0].reminderHint : "Opens the account setup chooser")
                     .padding()
                     .frame(maxWidth: .infinity)
                     .background(.regularMaterial)
@@ -54,29 +65,30 @@ struct RootView: View {
         }
         .animation(isMotionReduced ? nil : .easeOut(duration: 0.2), value: model.noticeMessage)
         .sensoryFeedback(.success, trigger: model.copyCount)
-        .sheet(item: Binding(get: { model.screen == .unlocked && model.newSecretKey == nil && !model.isPendingRecoveryShown ? model.presentedApproval : nil }, set: { if $0 == nil { model.closeApprovalSheet() } })) { approval in
+        .sheet(item: Binding(get: { model.screen == .unlocked && model.onboardingStep == nil && !model.isPendingRecoveryShown ? model.presentedApproval : nil }, set: { if $0 == nil { model.closeApprovalSheet() } })) { approval in
             PhoneApprovalSheet(
                 approval: approval,
                 isBusy: model.isAnsweringApproval,
                 isPasswordRequired: model.isApprovalPasswordRequired,
                 errorMessage: model.approvalErrorMessage,
+                isRemembered: Binding(get: { model.rememberChoice(for: approval) }, set: { model.setRememberChoice($0, for: approval) }),
                 approve: { await model.approvePendingApproval(isRemembered: $0) },
                 approveWithPassword: { await model.approvePendingApproval(password: $0, isRemembered: $1) },
                 deny: { await model.denyPendingApproval() }
             )
         }
-        .fullScreenCover(isPresented: Binding(get: { model.isPendingRecoveryShown || model.newSecretKey != nil }, set: {
-            if !$0 {
+        .fullScreenCover(isPresented: Binding(get: { model.isPendingRecoveryShown || model.onboardingStep != nil }, set: {
+            if !$0 && model.status.isUnlocked {
                 model.closePendingRecovery()
-                model.dismissNewSecretKey()
+                model.closeEmergencyKit()
             }
         })) {
             if model.isPendingRecoveryShown {
                 PendingRecoveryView()
-            } else if model.isBiometricOfferShown {
+            } else if model.onboardingStep == .biometric {
                 BiometricOfferView()
             } else {
-                NewSecretKeyView(secretKey: model.newSecretKey ?? "")
+                NewSecretKeyView()
             }
         }
         .applyTheme(model.theme)
@@ -174,6 +186,7 @@ struct NoticeToast: View {
 
 struct StartupFailureView: View {
     var message: String
+    var retry: () -> Void
 
     var body: some View {
         ContentUnavailableView {
@@ -181,6 +194,14 @@ struct StartupFailureView: View {
         } description: {
             Text(message)
                 .accessibilityIdentifier("error-message")
+                .textSelection(.enabled)
+            Text("If this keeps happening, email support@tryhisar.com.")
+        } actions: {
+            Button("Try again", action: retry)
+                .applyProminentGlassStyle()
+                .accessibilityIdentifier("startup-retry")
+            Button("Copy details") { UIPasteboard.general.string = message }
+                .accessibilityIdentifier("startup-copy-details")
         }
     }
 }

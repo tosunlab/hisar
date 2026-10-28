@@ -5,6 +5,7 @@ import { useMasterPasswordFeedback } from "../passwordStrength";
 import { describeSignedOutDevices } from "../util";
 import AccountDialog from "./AccountDialog.vue";
 import StrengthMeter from "./StrengthMeter.vue";
+import CredentialField from "./CredentialField.vue";
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -74,19 +75,21 @@ function close(): void {
       </ul>
       <label>
         <span>Current master password</span>
-        <input v-model="currentPassword" name="currentPassword" type="password" autocomplete="current-password" autofocus />
+        <CredentialField secret-name="current master password"><input v-model="currentPassword" name="currentPassword" type="password" autocomplete="current-password" autofocus /></CredentialField>
       </label>
       <label>
         <span>New master password</span>
-        <input
-          v-model="newPassword"
-          name="newPassword"
-          type="password"
-          autocomplete="new-password"
-          :aria-describedby="isSameAsCurrent ? 'change-password-feedback change-password-same' : 'change-password-feedback'"
-          :aria-invalid="(passwordFeedback.isBlocking && !!newPassword) || isSameAsCurrent"
-          @blur="validationAnnouncement = isSameAsCurrent ? sameAsCurrentMessage : passwordFeedback.isBlocking && newPassword ? passwordFeedback.message : ''"
-        />
+        <CredentialField secret-name="new master password">
+          <input
+            v-model="newPassword"
+            name="newPassword"
+            type="password"
+            autocomplete="new-password"
+            :aria-describedby="isSameAsCurrent ? 'change-password-feedback change-password-same' : 'change-password-feedback'"
+            :aria-invalid="(passwordFeedback.isBlocking && !!newPassword) || isSameAsCurrent"
+            @blur="validationAnnouncement = isSameAsCurrent ? sameAsCurrentMessage : passwordFeedback.isBlocking && newPassword ? passwordFeedback.message : ''"
+          />
+        </CredentialField>
       </label>
       <StrengthMeter :password="newPassword" />
       <p id="change-password-feedback" class="hint" :class="passwordFeedback.isBlocking && newPassword ? 'warning-text' : 'muted'" data-testid="new-password-feedback">
@@ -95,7 +98,9 @@ function close(): void {
       <p v-if="isSameAsCurrent" id="change-password-same" class="hint warning-text" data-testid="new-password-same">{{ sameAsCurrentMessage }}</p>
       <label>
         <span>Repeat new master password</span>
-        <input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" :aria-invalid="isMismatched" :aria-describedby="isMismatched ? 'change-password-mismatch' : undefined" @blur="validationAnnouncement = isMismatched ? `The passwords don't match.` : ''" />
+        <CredentialField secret-name="repeated new master password"
+          ><input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" :aria-invalid="isMismatched" :aria-describedby="isMismatched ? 'change-password-mismatch' : undefined" @blur="validationAnnouncement = isMismatched ? `The passwords don't match.` : ''"
+        /></CredentialField>
       </label>
       <p v-if="isMismatched" id="change-password-mismatch" class="hint warning-text" data-testid="new-password-mismatch">The passwords don't match.</p>
       <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ validationAnnouncement }}</p>

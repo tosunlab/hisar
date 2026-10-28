@@ -49,6 +49,7 @@ struct PasswordGeneratorView: View {
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentTransition(.opacity)
                     .accessibilityIdentifier("generated-password")
+                ItemPasswordStrengthMeter(password: password)
                 Button {
                     Task { await generate() }
                 } label: {
@@ -63,7 +64,7 @@ struct PasswordGeneratorView: View {
                 .disabled(password.isEmpty)
                 .accessibilityIdentifier("generator-copy")
             }
-            Section("Options") {
+            Section {
                 HStack(spacing: 12) {
                     Text("Length")
                         .accessibilityHidden(true)
@@ -85,6 +86,9 @@ struct PasswordGeneratorView: View {
                 }
                 Toggle("Digits", isOn: $isDigitIncluded)
                 Toggle("Symbols", isOn: $isSymbolIncluded)
+            } header: {
+                Text("Options")
+                    .foregroundStyle(.themeSecondary)
             }
         }
         .navigationTitle("Password generator")

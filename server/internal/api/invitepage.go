@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/tryhisar/hisar/core/project"
 	"github.com/tryhisar/hisar/server/internal/service"
 )
 
@@ -32,6 +33,11 @@ type invitePageTemplate struct {
 	contentSecurityPolicy string
 }
 
+type invitePagePhoneInstallation struct {
+	Label string
+	URL   string
+}
+
 type invitePageData struct {
 	IsValid            bool
 	InviterName        string
@@ -43,6 +49,7 @@ type invitePageData struct {
 	DeepLink           template.URL
 	DownloadURL        string
 	LinuxDownloadURL   string
+	PhoneInstallation  invitePagePhoneInstallation
 }
 
 var builtInvitePage = buildInvitePage()
@@ -91,13 +98,13 @@ func (s *Server) limitInvitePageRate(c fiber.Ctx) error {
 // buildPublicOrigin uses https with the public host; plain http stays only for a loopback host in development.
 func (s *Server) buildPublicOrigin() string { return service.BuildPublicOrigin(s.config.PublicURL) }
 
-// buildInviteDeepLink is Open in Hisar: hisar://invite/<code>?server=<origin>, with the invitation an organization or a
-// vault share sent it for (source) and the address it is for, so an app signed in to that account shows the
-// invitation instead of offering to create an account. Older apps read only the server.
+// Older apps ignore email on plain invites and read only the server.
 func (s *Server) buildInviteDeepLink(token, source, email string) string {
 	query := url.Values{"server": {s.buildPublicOrigin()}}
 	if source != "" {
 		query.Set("invitation", source)
+	}
+	if email != "" {
 		query.Set("email", email)
 	}
 	return inviteDeepLinkURL + url.PathEscape(token) + "?" + query.Encode()
@@ -124,6 +131,18 @@ func (s *Server) sendInvitePage(c fiber.Ctx) error {
 				LinuxDownloadURL:   linuxDownloadURL,
 				InviterName:        invite.InviterName,
 				InviterDescription: invite.InviterDescription,
+			}
+			switch userAgent := c.Get(fiber.HeaderUserAgent); {
+			case strings.Contains(userAgent, "iPhone"):
+				data.PhoneInstallation = invitePagePhoneInstallation{
+					Label: "iPhone build instructions",
+					URL:   project.GitHubURL + "/blob/main/docs/docs/apps/ios.md",
+				}
+			case strings.Contains(userAgent, "Android"):
+				data.PhoneInstallation = invitePagePhoneInstallation{
+					Label: "Android build instructions",
+					URL:   project.GitHubURL + "/blob/main/docs/docs/apps/mobile.md",
+				}
 			}
 		case !errors.Is(err, service.ErrNotFound):
 			return err

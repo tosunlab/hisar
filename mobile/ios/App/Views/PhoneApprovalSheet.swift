@@ -5,6 +5,7 @@ struct PhoneApprovalSheet: View {
     var isBusy: Bool
     var isPasswordRequired: Bool
     var errorMessage: String?
+    @Binding var isRemembered: Bool
     var biometryName = SettingsView.biometryName
     var biometrySystemImage = SettingsView.biometrySystemImage
     var approve: (_ isRemembered: Bool) async -> Void
@@ -13,8 +14,7 @@ struct PhoneApprovalSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var password = ""
-    @State private var chosenRemember: Bool?
-    @FocusState private var isPasswordFocused: Bool
+    @State private var isPasswordFocused = false
 
     var body: some View {
         NavigationStack {
@@ -32,16 +32,19 @@ struct PhoneApprovalSheet: View {
                 }
                 if isPasswordRequired {
                     Section {
-                        SecureField("Master password", text: $password)
+                        CredentialField("Master password", text: $password)
                             .textContentType(.password)
                             .submitLabel(.go)
                             .focused($isPasswordFocused)
                             .onSubmit(submitPassword)
                             .accessibilityIdentifier("phone-approval-password")
+                            .concealWhen(isBusy)
                     } header: {
                         Text("Approve with your master password")
+                            .foregroundStyle(.themeSecondary)
                     } footer: {
                         Text("\(biometryName) is not available, so Hisar checks your master password instead.")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
                 if approval.isForwarded {
@@ -90,7 +93,7 @@ struct PhoneApprovalSheet: View {
                 }
                 if approval.isRememberable {
                     Section {
-                        Toggle(approval.rememberLabel, isOn: Binding(get: { approval.resolveRememberChoice(chosenRemember) }, set: { chosenRemember = $0 }))
+                        Toggle(approval.rememberLabel, isOn: $isRemembered)
                             .disabled(isBusy)
                             .accessibilityIdentifier("phone-approval-remember")
                     } footer: {
@@ -119,10 +122,7 @@ struct PhoneApprovalSheet: View {
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isBusy)
         .accessibilityIdentifier("phone-approval")
-        .onChange(of: approval.requestID) {
-            chosenRemember = nil
-        }
-        .onChange(of: isPasswordRequired) { _, isRequired in
+        .onChange(of: isPasswordRequired, initial: true) { _, isRequired in
             isPasswordFocused = isRequired
         }
     }
@@ -207,7 +207,7 @@ struct PhoneApprovalSheet: View {
                     .accessibilityIdentifier("phone-approval-approve-password")
                 } else {
                     Button {
-                        Task { await approve(approval.resolveRememberChoice(chosenRemember)) }
+                        Task { await approve(isRemembered) }
                     } label: {
                         Group {
                             if isBusy {
@@ -241,6 +241,6 @@ struct PhoneApprovalSheet: View {
         guard !password.isEmpty, !isBusy else { return }
         let enteredPassword = password
         password = ""
-        Task { await approveWithPassword(enteredPassword, approval.resolveRememberChoice(chosenRemember)) }
+        Task { await approveWithPassword(enteredPassword, isRemembered) }
     }
 }

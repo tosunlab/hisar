@@ -186,7 +186,7 @@ func TestSSHApprovalSaysHowLongItIsRemembered(t *testing.T) {
 	if event.RememberPeriod != "for 1 hour" || event.RememberLabel != "" {
 		t.Errorf("event = %+v", event)
 	}
-	if label := approver.buildSSHPhoneDescription(event, 0).RememberLabel; label != "Also allows Terminal for 1 hour" {
+	if label := approver.buildSSHPhoneDescription(event, 0).RememberLabel; label != "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks." {
 		t.Errorf("phone label = %q", label)
 	}
 	approver.Respond(event.RequestID, false, false)
@@ -198,7 +198,7 @@ func TestSSHApprovalSaysHowLongItIsRemembered(t *testing.T) {
 	if event.RememberPeriod != "until Hisar locks" || !event.IsRememberedByDefault {
 		t.Errorf("event = %+v", event)
 	}
-	if label := untilLock.buildSSHPhoneDescription(event, 0).RememberLabel; label != "Also allows Terminal until Hisar locks" {
+	if label := untilLock.buildSSHPhoneDescription(event, 0).RememberLabel; label != "Approve SSH requests from Terminal with this key until Hisar locks. Any host." {
 		t.Errorf("phone label = %q", label)
 	}
 	untilLock.Respond(event.RequestID, true, true)

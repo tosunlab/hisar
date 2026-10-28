@@ -3,10 +3,35 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.VaultSharing
 import com.tryhisar.hisar.model.trimmingWhitespacesAndNewlines
+import com.tryhisar.hisar.model.describeError
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /** Sharing vaults with people: who a vault is shared with, invitations to it, roles, and inviting people to Hisar. */
 class SharingModel(private val context: ModelContext, private val vaults: VaultsModel, private val invitations: InvitationsModel) {
+    val peopleErrorMessage = MutableStateFlow<String?>(null)
+
     suspend fun loadAllPerson(): List<Member>? = context.perform(isBusyShown = false) { it.listAllPerson() }
+
+    suspend fun loadPeople(previous: PeopleSnapshot?): PeopleSnapshot? {
+        val actionError = context.errorMessage.value
+        val result = context.attempt { backend ->
+            try {
+                Result.success(PeopleSnapshot(backend.listAllPerson(), backend.listAllShareInvitation()))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Result.failure<PeopleSnapshot>(error)
+            }
+        }
+        peopleErrorMessage.value = result?.exceptionOrNull()?.let(::describeError)
+        val loaded = result?.getOrNull()
+        if (loaded != null) context.updateUnlockedData {
+            it.copy(allReceivedInvitation = loaded.invitations.allReceived, allWaitingInvitation = loaded.invitations.allWaiting)
+        }
+        if (actionError != null) context.errorMessage.value = actionError
+        return loaded ?: previous
+    }
 
     // The sheet closes after sending, so the call runs in the model's scope.
     suspend fun invitePerson(email: String): Boolean = context.runInModel {
@@ -45,3 +70,5 @@ class SharingModel(private val context: ModelContext, private val vaults: Vaults
         true
     }
 }
+
+data class PeopleSnapshot(val allPerson: List<Member>, val invitations: com.tryhisar.hisar.model.ShareInvitations)

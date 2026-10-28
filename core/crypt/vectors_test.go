@@ -11,6 +11,7 @@ const (
 	vectorWebsiteIconLookup             = "d20bf08a644e1ac34614ad56f0c4646abc245c968f22b924fbcc4818ca2ffe5d"
 	vectorWebsiteIconRecord             = "0199571df84388395236778c5bfee158f40e9475a2957e6ae25f9d9cbfb9664121e57fa58cb207f876504e91499375016d919e7092794528bb"
 	vectorAgentGrants                   = "019737798cabe57ac66e2db279daa9f6ff25ff4605ba59bb49e5d3149f0a11a74715ccbd5d3473b6e4f5a7ed8b8958990d52d86a9ac3d84b95b1bcf1e452"
+	vectorOrganizationNames             = "017c9ab6a538ef3c44f1f6af003b730805ae603f3347db0f7e210fa46d8688c4ee01c41a9104f793dd52688232c294ee2267fda9d128507ead68f6784e47ef8716342c63aca6"
 )
 
 // Phone approvals: a request sealed to the keyset whose seeds are the bytes 0..95, and an answer signature from it.

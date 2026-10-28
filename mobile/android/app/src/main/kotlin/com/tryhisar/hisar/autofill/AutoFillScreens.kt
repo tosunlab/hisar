@@ -36,15 +36,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -72,7 +71,7 @@ import kotlinx.coroutines.launch
 
 /** The AutoFill screens, the iPhone extension's AutoFillRootView: a Cancel bar over the message, lock or list. */
 @Composable
-fun AutoFillRoot(model: AutoFillModel) {
+fun AutoFillRoot(model: AutoFillModel, openHisar: () -> Unit) {
     val theme by model.theme.collectAsStateWithLifecycle()
     val screen by model.screen.collectAsStateWithLifecycle()
     HisarTheme(theme) {
@@ -102,9 +101,9 @@ fun AutoFillRoot(model: AutoFillModel) {
                     }
                     is AutoFillModel.Screen.Failed -> MessageView(Icons.Outlined.Warning, "Hisar could not start", current.message)
                     AutoFillModel.Screen.SignedOut ->
-                        MessageView(Icons.Outlined.ManageAccounts, "Sign in first", "Open the Hisar app and sign in, then use AutoFill again.")
+                        MessageView(Icons.Outlined.ManageAccounts, "Sign in first", "Open Hisar and sign in, then return to the original app and use AutoFill again.", openHisar = { openHisar(); model.cancel() })
                     AutoFillModel.Screen.UpdateRequired ->
-                        MessageView(Icons.Outlined.ArrowCircleDown, "Update required", "Hisar needs an update. Open Hisar to update it.")
+                        MessageView(Icons.Outlined.ArrowCircleDown, "Update required", "Open Hisar to update it, then return to the original app and use AutoFill again.", openHisar = { openHisar(); model.cancel() })
                     AutoFillModel.Screen.Locked -> AutoFillLockView(model)
                     AutoFillModel.Screen.List -> AutoFillListView(model)
                     AutoFillModel.Screen.PasskeyRegistration -> PasskeyRegistrationView(model)
@@ -115,8 +114,12 @@ fun AutoFillRoot(model: AutoFillModel) {
 }
 
 @Composable
-private fun MessageView(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, message: String) {
-    ContentUnavailable(title, icon, description = { Text(message, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel) })
+private fun MessageView(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, message: String, openHisar: (() -> Unit)? = null) {
+    ContentUnavailable(
+        title, icon,
+        description = { Text(message, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel) },
+        actions = openHisar?.let { open -> { PlainButton("Open Hisar", open, testTag = "autofill-open-hisar") } },
+    )
 }
 
 @Composable
@@ -131,20 +134,17 @@ private fun AutoFillLockView(model: AutoFillModel) {
     val target by model.target.collectAsStateWithLifecycle()
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val isResumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
-    val scope = rememberCoroutineScope()
-    var promptedLockCount by rememberSaveable { mutableIntStateOf(-1) }
-
-    LaunchedEffect(isResumed, status.biometricReady, lockCount) {
-        if (!isResumed || !status.biometricReady || promptedLockCount == lockCount) return@LaunchedEffect
-        promptedLockCount = lockCount
-        model.unlockWithBiometric()
-    }
 
     val serviceName = model.serviceName
     UnlockPanel(
         email = status.email,
         isBiometricReady = status.biometricReady,
+        isBiometricEnabled = status.biometricEnabled,
+        isBiometricAvailable = status.biometricAvailable,
         isBusy = isBusy,
+        lockCount = lockCount,
+        isResumed = isResumed,
+        isCurrentLock = { model.screen.value == AutoFillModel.Screen.Locked && model.lockCount.value == lockCount },
         errorMessage = errorMessage,
         requestDescription = when {
             serviceName.isEmpty() -> ""
@@ -155,7 +155,7 @@ private fun AutoFillLockView(model: AutoFillModel) {
         },
         isOffline = status.isOffline,
         submitPassword = { model.unlock(it) },
-        submitBiometric = { scope.launch { model.unlockWithBiometric() } },
+        submitBiometric = { model.unlockWithBiometric() },
     )
 }
 
@@ -166,8 +166,9 @@ private fun AutoFillListView(model: AutoFillModel) {
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val requestKind by model.requestKind.collectAsStateWithLifecycle()
     val isOtherLoginLoaded by model.isOtherLoginLoaded.collectAsStateWithLifecycle()
+    val matchingLookup by model.matchingLookup.collectAsStateWithLifecycle()
     val loginToLink by model.loginToLink.collectAsStateWithLifecycle()
-    model.allMatchingLogin.collectAsStateWithLifecycle().value
+    val allMatchingLogin by model.allMatchingLogin.collectAsStateWithLifecycle()
     model.allOtherLogin.collectAsStateWithLifecycle().value
     model.allMatchingPasskey.collectAsStateWithLifecycle().value
     val passkeyAssertionRequest by model.passkeyAssertionRequest.collectAsStateWithLifecycle()
@@ -193,12 +194,40 @@ private fun AutoFillListView(model: AutoFillModel) {
                 PasskeySection(request.relyingPartyID, allPasskey) { passkey -> if (!isBusy) scope.launch { model.selectPasskey(passkey) } }
             }
             val noun = if (requestKind == RequestKind.ONE_TIME_CODE) "One-time codes" else "Logins"
+            val matchingCount = allMatchingLogin.count { requestKind != RequestKind.ONE_TIME_CODE || it.hasOneTimePassword }
             val allMatching = model.allVisibleMatchingLogin
             FormSection(header = if (serviceName.isEmpty()) "Matching ${noun.lowercase()}" else "$noun for $serviceName") {
+                FormRow {
+                    Row(
+                        Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (matchingLookup == AutoFillModel.MatchingLookup.Loading) {
+                            CircularProgressIndicator(Modifier.size(22.dp), color = HisarTheme.colors.secondaryLabel)
+                        }
+                        Text(
+                            when (val lookup = matchingLookup) {
+                                AutoFillModel.MatchingLookup.Loading -> if (requestKind == RequestKind.ONE_TIME_CODE) "Looking for one-time codes…" else "Looking for logins…"
+                                is AutoFillModel.MatchingLookup.Failed -> lookup.message
+                                AutoFillModel.MatchingLookup.Loaded -> {
+                                    val label = if (matchingCount == 1) noun.lowercase().removeSuffix("s") else noun.lowercase()
+                                    "$matchingCount $label found."
+                                }
+                            },
+                            style = HisarType.body, color = HisarTheme.colors.secondaryLabel,
+                        )
+                    }
+                }
+                if (matchingLookup is AutoFillModel.MatchingLookup.Failed) {
+                    PlainButton("Retry", { scope.launch { model.loadAllMatchingLogin() } }, testTag = "autofill-retry-matching")
+                }
+                if (matchingLookup == AutoFillModel.MatchingLookup.Loaded) {
                 if (allMatching.isEmpty()) {
                     FormRow { Text(emptyMessage(requestKind, searchText.isEmpty()), style = HisarType.body, color = HisarTheme.colors.secondaryLabel) }
                 }
                 LoginRows(allMatching, select)
+            }
             }
             if (searchText.isNotEmpty()) {
                 val allOther = model.allVisibleOtherLogin
@@ -219,7 +248,19 @@ private fun AutoFillListView(model: AutoFillModel) {
         AlertDialog(
             onDismissRequest = model::dismissLoginToLink,
             title = { Text("Use ${login.title} in $serviceName?") },
-            text = { Text("Hisar can fill this login in $serviceName from now on, or only this time.") },
+            text = {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(Modifier.semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(login.title, style = HisarType.headline)
+                        if (login.username.isNotEmpty()) Text(login.username, style = HisarType.body)
+                        Text(login.vaultName, style = HisarType.subheadline)
+                    }
+                    Text("Always use for this app makes this login a suggestion in this app. Only this time fills it without linking.")
+                }
+            },
             confirmButton = {
                 Column(Modifier.exposeTestTags(), horizontalAlignment = Alignment.End) {
                     PlainButton("Always use for this app", { scope.launch { model.fillLoginToLink(isLinked = true) } }, testTag = "autofill-link-always")
@@ -233,8 +274,8 @@ private fun AutoFillListView(model: AutoFillModel) {
 
 private fun emptyMessage(kind: RequestKind, isSearchEmpty: Boolean): String = when (kind) {
     RequestKind.ONE_TIME_CODE ->
-        if (isSearchEmpty) "No login for this site has a one-time password. Search all logins above." else "No matching one-time codes for this site."
-    RequestKind.PASSWORD -> if (isSearchEmpty) "No logins saved for this site. Search all logins above." else "No matching logins for this site."
+        if (isSearchEmpty) "No login for this site has a one-time code. Search all logins to choose one." else "No matching one-time codes for this site."
+    RequestKind.PASSWORD -> if (isSearchEmpty) "No logins saved for this site. Search all logins to choose one." else "No matching logins for this site."
 }
 
 /** The always visible search field of the iPhone list's navigation bar drawer. */

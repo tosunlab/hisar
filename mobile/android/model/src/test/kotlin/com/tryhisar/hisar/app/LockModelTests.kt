@@ -93,7 +93,14 @@ class LockModelTests {
         val isUnlocked = model.lock.unlockWithBiometric()
         assertFalse(isUnlocked)
         assertEquals(Screen.Locked, model.screen.value)
-        assertEquals("Face ID was cancelled.", model.errorMessage.value)
+        assertNull(model.errorMessage.value)
+        harness.backend.isBiometricSucceeding = true
+        harness.backend.biometricUnlockError = com.tryhisar.hisar.model.BackendError("Enter your master password.")
+        assertFalse(model.lock.unlockWithBiometric())
+        assertNull(model.errorMessage.value)
+        harness.backend.biometricUnlockError = com.tryhisar.hisar.model.BackendError("Biometrics are locked. Unlock with your master password.")
+        assertFalse(model.lock.unlockWithBiometric())
+        assertEquals(harness.backend.biometricUnlockError?.message, model.errorMessage.value)
     }
 
     @Test

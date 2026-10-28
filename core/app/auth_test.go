@@ -21,6 +21,35 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 )
 
+func TestAuthenticationNamesUnreachableServer(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	server.Close()
+	secretKey, err := crypt.GenerateSecretKey("ABC123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{"sign-in", "signup", "invite"} {
+		t.Run(method, func(t *testing.T) {
+			service, _, _ := createTestService(t, filepath.Join(t.TempDir(), "state.json"), createMemorySecretKeyStore())
+			switch method {
+			case "sign-in":
+				_, err = service.SignIn(server.URL, "a@example.com", secretKey.Encode(), "master password")
+			case "signup":
+				_, err = service.SignUpWithoutInvite(server.URL, "a@example.com", "Alice", "master password")
+			case "invite":
+				_, err = service.SignUp(server.URL+"/invite/token", "a@example.com", "Alice", "master password")
+			}
+			want := "Hisar can't reach " + describeServer(server.URL) + ". Check your internet connection and the server address."
+			if err == nil || err.Error() != want {
+				t.Fatalf("error = %v, want %s", err, want)
+			}
+			if pending, listErr := service.ListPendingRecovery(); listErr != nil || len(pending) != 0 {
+				t.Fatalf("early failure left a pending operation: %+v %v", pending, listErr)
+			}
+		})
+	}
+}
+
 // startRefusingServer accepts a correct OPAQUE login when refusal is empty, or returns that refusal with 403.
 func startRefusingServer(t *testing.T, accountID string, password []byte, secretKey crypt.SecretKey, refusal string) string {
 	t.Helper()

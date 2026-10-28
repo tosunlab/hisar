@@ -4,6 +4,8 @@ import { api, getErrorMessage, type CodingAgent } from "../api";
 import { store } from "../store";
 import AppIcon from "./AppIcon.vue";
 
+const emit = defineEmits<{ reviewApprovals: [destination: "agent-sessions" | "agent-grants"] }>();
+
 interface AgentCopy {
   notInstalled: string;
   // What connecting gives, around the command it goes through: [before, command, after].
@@ -43,6 +45,7 @@ function getCopy(agent: CodingAgent): AgentCopy {
 const allAgent = ref<CodingAgent[] | null>(null);
 const changingAgentID = ref("");
 const failure = ref<{ agentID: string; message: string } | null>(null);
+const disconnectedAgentName = ref("");
 
 const isVaultNeeded = computed(
   () => store.allAgentVaultID.length === 0 && (allAgent.value ?? []).some((agent) => agent.state === "available" || agent.state === "connected"),
@@ -57,12 +60,14 @@ async function loadAgents(): Promise<void> {
   }
 }
 
-async function applyChange(agent: CodingAgent, change: (id: string) => Promise<CodingAgent>): Promise<void> {
+async function applyChange(agent: CodingAgent, change: (id: string) => Promise<CodingAgent>, disconnect = false): Promise<void> {
   changingAgentID.value = agent.id;
   failure.value = null;
+  disconnectedAgentName.value = "";
   try {
     const changedAgent = await change(agent.id);
     allAgent.value = (allAgent.value ?? []).map((existing) => (existing.id === changedAgent.id ? changedAgent : existing));
+    if (disconnect) disconnectedAgentName.value = agent.name;
   } catch (error) {
     failure.value = { agentID: agent.id, message: getErrorMessage(error) };
   } finally {
@@ -102,6 +107,11 @@ onMounted(loadAgents);
           <p class="muted" :data-testid="`agent-restart-hint-${agent.id}`">
             {{ getCopy(agent).restartHint ?? `New ${agent.name} sessions load Hisar. Restart the ones already running.` }}
           </p>
+          <p class="muted" :data-testid="`agent-disconnect-explanation-${agent.id}`">
+            Disconnect removes Hisar's connection setup. It does not revoke running-agent approvals or saved approvals.
+            Review <a href="#agent-sessions" @click.prevent="emit('reviewApprovals', 'agent-sessions')">Running agents</a>
+            and <a href="#agent-grants" @click.prevent="emit('reviewApprovals', 'agent-grants')">Allowed without asking</a> to revoke them.
+          </p>
         </template>
         <p v-else class="warning-text" :data-testid="`agent-state-${agent.id}`"><span class="state-dot warning"></span>{{ agent.detail }}</p>
         <p v-if="failure && failure.agentID === agent.id" class="error" role="alert" :data-testid="`agent-error-${agent.id}`">{{ failure.message }}</p>
@@ -119,7 +129,7 @@ onMounted(loadAgents);
         v-else-if="agent.state === 'connected'"
         :data-testid="`disconnect-agent-${agent.id}`"
         :disabled="changingAgentID !== ''"
-        @click="applyChange(agent, api.disconnectCodingAgent)"
+        @click="applyChange(agent, api.disconnectCodingAgent, true)"
       >
         Disconnect
       </button>
@@ -141,6 +151,11 @@ onMounted(loadAgents);
       <pre class="code-block monospace" data-testid="coding-agents-snippet">{{ cursorSettings }}</pre>
     </div>
   </div>
+  <p v-if="disconnectedAgentName" class="settings-note" role="status" data-testid="agent-disconnected">
+    Disconnected {{ disconnectedAgentName }}. This removes the connection setup. To revoke existing approvals, review
+    <a href="#agent-sessions" @click.prevent="emit('reviewApprovals', 'agent-sessions')">Running agents</a>
+    and <a href="#agent-grants" @click.prevent="emit('reviewApprovals', 'agent-grants')">Allowed without asking</a>.
+  </p>
   <p v-if="failure && failure.agentID === ''" class="error settings-note" role="alert" data-testid="agent-connections-error">{{ failure.message }}</p>
 </template>
 

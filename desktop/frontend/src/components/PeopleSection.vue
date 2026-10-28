@@ -114,12 +114,12 @@ function describeInviter(name: string, email: string): string {
               <span v-if="person.isCurrentUser" class="tag accent">you</span>
             </strong>
             <p class="muted">{{ person.email }}</p>
-            <p v-if="person.isKeyChanged" class="warning-text">Their key changed since you last shared with them. Compare security codes before you share more.</p>
+            <p v-if="person.isKeyChanged" class="warning-text">Key changed. Hisar stopped sharing with them.</p>
           </div>
           <span
             class="security-code monospace"
             data-testid="person-security-code"
-            :title="person.isCurrentUser ? 'Your security code' : 'Compare this code with them over a channel you trust'"
+            :title="person.isCurrentUser ? 'This is your security code. Read it to someone who is checking the code they see for you.' : `Ask ${person.name || person.email} for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code.`"
             :aria-label="`Security code ${person.securityCode}`"
             >{{ person.securityCode }}</span
           >
@@ -129,7 +129,7 @@ function describeInviter(name: string, email: string): string {
           <button data-testid="people-share-vault" :disabled="store.isBusy" @click="openFromSettings('sharing')">Share vault…</button>
         </div>
       </div>
-      <p v-if="!isAlone" class="muted settings-note">Compare a security code with that person over a channel you trust.</p>
+      <p v-if="!isAlone" class="muted settings-note">To compare codes, ask each person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match the code you see for them.</p>
       <p v-if="store.shareInvitations.completionError" class="warning-text settings-note" data-testid="share-completion-error">
         Could not finish sharing: {{ store.shareInvitations.completionError }}
       </p>

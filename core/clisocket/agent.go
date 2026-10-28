@@ -83,7 +83,8 @@ type AgentApprovalRequest struct {
 	// IsCommandLine: an ordinary hisar command inside Session sent the request, not hisar mcp.
 	IsCommandLine bool
 	// GrantDurations are what the dialog may offer for keeping the approval, AgentGrantOnce first; none for a connection.
-	GrantDurations []AgentGrantDuration
+	GrantDurations   []AgentGrantDuration
+	GrantHolderScope AgentGrantScope
 	// SignIn is where an agent sign-in goes; nil for every other kind.
 	SignIn *AgentSignInApproval
 }
@@ -379,6 +380,14 @@ func (s *Server) buildAgentApprovalRequest(client *connectionPeer, kind string) 
 	if kind != AgentRequestConnect {
 		_, isSaved := s.config.Approvals.getSavedGrantProgram(client)
 		approvalRequest.GrantDurations = listAgentGrantDurations(isSaved)
+		switch {
+		case isSaved:
+			approvalRequest.GrantHolderScope = AgentGrantForHarness
+		case client.isInAgentSession():
+			approvalRequest.GrantHolderScope = AgentGrantForSession
+		default:
+			approvalRequest.GrantHolderScope = AgentGrantForConnection
+		}
 	}
 	if client.isInAgentSession() {
 		session := client.agentSession.Session

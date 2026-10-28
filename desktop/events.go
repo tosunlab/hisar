@@ -18,7 +18,8 @@ const (
 	eventBrowserPairing    = "browser-pairing"
 	eventShowItem          = "show-item"
 	// eventAgentSessionsChanged: Settings → Coding agents lists the agent sessions again.
-	eventAgentSessionsChanged = "agent-sessions-changed"
+	eventAgentSessionsChanged    = "agent-sessions-changed"
+	eventMissingAgentKeysChanged = "missing-agent-keys-changed"
 	// eventShowSettings opens Settings at the section its data names, such as "developer" for Coding agents.
 	eventShowSettings = "show-settings"
 	// eventOpenSettingsWindow wakes the macOS Settings window to take the section it was asked to open at.
@@ -41,6 +42,7 @@ func init() {
 	application.RegisterEvent[app.InviteLink](eventInviteLink)
 	application.RegisterEvent[app.ItemLocation](eventShowItem)
 	application.RegisterEvent[string](eventAgentSessionsChanged)
+	application.RegisterEvent[string](eventMissingAgentKeysChanged)
 	application.RegisterEvent[string](eventShowSettings)
 	application.RegisterEvent[application.Void](eventOpenSettingsWindow)
 	application.RegisterEvent[string](eventOpenFromSettings)

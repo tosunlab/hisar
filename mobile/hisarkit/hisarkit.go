@@ -200,13 +200,25 @@ func (hisar *Hisar) SignUpWithoutInvite(server, email, name, password string) (s
 	return encodeJSON(hisar.service.SignUpWithoutInvite(server, email, name, password))
 }
 
+// GetSignUpPolicy returns app.SignUpPolicy ({"server", "host", "mode"}) as JSON: mode is "open", "invite", "setup" or
+// "unknown".
+func (hisar *Hisar) GetSignUpPolicy(server string) (string, error) {
+	return encodeJSON(hisar.service.GetSignUpPolicy(server))
+}
+
 func (hisar *Hisar) Unlock(password string) (string, error) {
 	defer releaseMemory()
+	if err := app.ReloadExactHostMatch(hisar.service); err != nil {
+		return "", err
+	}
 	return encodeJSON(hisar.service.Unlock(password))
 }
 
 func (hisar *Hisar) UnlockWithBiometric() (string, error) {
 	defer releaseMemory()
+	if err := app.ReloadExactHostMatch(hisar.service); err != nil {
+		return "", err
+	}
 	return encodeJSON(hisar.service.UnlockWithBiometric())
 }
 
@@ -326,6 +338,11 @@ func (hisar *Hisar) DeleteItem(vaultID, itemID string) error {
 	return hisar.service.DeleteItem(vaultID, itemID)
 }
 
+// MoveItem moves the existing item without changing its ID and returns its details as JSON.
+func (hisar *Hisar) MoveItem(vaultID, itemID, targetVaultID string) (string, error) {
+	return encodeJSON(hisar.service.MoveItem(vaultID, itemID, targetVaultID))
+}
+
 // ListAllFavoriteItem returns []app.FavoriteItem ({"vaultId", "vaultName", "vaultType", "item"}, the item without secrets)
 // as JSON: the user's starred items in every vault they can open.
 func (hisar *Hisar) ListAllFavoriteItem() (string, error) {
@@ -369,16 +386,25 @@ func (hisar *Hisar) RatePassword(password string) (string, error) {
 
 // ListAllLoginForService returns the logins matching an AutoFill service identifier (a URL or a bare domain), as JSON.
 func (hisar *Hisar) ListAllLoginForService(serviceIdentifier string) (string, error) {
+	if err := app.ReloadExactHostMatch(hisar.service); err != nil {
+		return "", err
+	}
 	return encodeJSON(app.ListLoginsForURL(hisar.service, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 
 // GetLoginForService returns {"username", "password", "hasOneTimePassword"} as JSON after checking the login matches the service again.
 func (hisar *Hisar) GetLoginForService(vaultID, itemID, serviceIdentifier string) (string, error) {
+	if err := app.ReloadExactHostMatch(hisar.service); err != nil {
+		return "", err
+	}
 	return encodeJSON(app.GetLoginForURL(hisar.service, vaultID, itemID, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 
 // GetOneTimeCodeForService returns app.OneTimeCode as JSON after checking the login matches the service, as GetLoginForService does.
 func (hisar *Hisar) GetOneTimeCodeForService(vaultID, itemID, serviceIdentifier string) (string, error) {
+	if err := app.ReloadExactHostMatch(hisar.service); err != nil {
+		return "", err
+	}
 	return encodeJSON(app.GetOneTimeCodeForURL(hisar.service, vaultID, itemID, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 

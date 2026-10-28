@@ -24,6 +24,7 @@ func TestSignUpWithoutInviteNeedsOpenRegistration(t *testing.T) {
 	baseURL, server, databaseURL := setupServer(t)
 	ctx := context.Background()
 	admin := signUpAccountWithRole(t, server, baseURL, "admin@example.com", apitypes.RoleAdmin)
+	expectRegistrationPolicy(t, baseURL, "invite")
 
 	if _, err := signUpWithoutInvite(ctx, baseURL, "bob@example.com"); !errors.Is(err, apiclient.ErrSignUpClosed) {
 		t.Fatalf("sign-up without an invite on a server with the default settings: %v", err)
@@ -34,6 +35,7 @@ func TestSignUpWithoutInviteNeedsOpenRegistration(t *testing.T) {
 	if setting := readSettings(t, baseURL, admin.session.Client.Token).Settings["openRegistration"]; string(setting.Value) != "true" || setting.Source != "database" {
 		t.Errorf("openRegistration after the save: %+v", setting)
 	}
+	expectRegistrationPolicy(t, baseURL, "open")
 
 	if _, err := signUpWithoutInvite(ctx, baseURL, "not an email"); !apiclient.IsStatus(err, http.StatusBadRequest) {
 		t.Errorf("sign-up without an invite and without an email: %v", err)
@@ -61,6 +63,7 @@ func TestSignUpWithoutInviteNeedsOpenRegistration(t *testing.T) {
 	if status, body := saveSettings(t, baseURL, admin.session.Client.Token, map[string]any{"openRegistration": false}); status != http.StatusOK {
 		t.Fatalf("close registration: %d %s", status, body)
 	}
+	expectRegistrationPolicy(t, baseURL, "invite")
 	if _, err := signUpWithoutInvite(ctx, baseURL, "carol@example.com"); !errors.Is(err, apiclient.ErrSignUpClosed) {
 		t.Errorf("sign-up without an invite once registration is closed again: %v", err)
 	}
@@ -76,8 +79,10 @@ func TestSignUpWithoutInviteFollowsTheEnvironment(t *testing.T) {
 	if status, body := saveSettings(t, firstURL, admin.session.Client.Token, map[string]any{"openRegistration": true}); status != http.StatusOK {
 		t.Fatalf("open registration: %d %s", status, body)
 	}
+	expectRegistrationPolicy(t, firstURL, "open")
 
 	baseURL, _ := startServerOnDatabase(t, databaseURL, map[string]string{"HISAR_OPEN_REGISTRATION": "false"})
+	expectRegistrationPolicy(t, baseURL, "invite")
 	if _, err := signUpWithoutInvite(ctx, baseURL, "bob@example.com"); !errors.Is(err, apiclient.ErrSignUpClosed) {
 		t.Errorf("sign-up without an invite while HISAR_OPEN_REGISTRATION=false: %v", err)
 	}
@@ -90,6 +95,7 @@ func TestSignUpWithoutInviteFollowsTheEnvironment(t *testing.T) {
 	}
 
 	openURL, _ := startServerOnDatabase(t, databaseURL, map[string]string{"HISAR_OPEN_REGISTRATION": "true"})
+	expectRegistrationPolicy(t, openURL, "open")
 	if _, err := signUpWithoutInvite(ctx, openURL, "bob@example.com"); err != nil {
 		t.Errorf("sign-up without an invite while HISAR_OPEN_REGISTRATION=true: %v", err)
 	}
@@ -131,12 +137,14 @@ func TestSignUpWithoutInviteWaitsForTheFirstAdmin(t *testing.T) {
 	baseURL, server := startServerOnDatabase(t, databaseURL, map[string]string{"HISAR_OPEN_REGISTRATION": "true"})
 	token := startSetup(t, server)
 	expectSetupAnswer(t, baseURL, "needsAdmin")
+	expectRegistrationPolicy(t, baseURL, "setup")
 	if _, err := signUpWithoutInvite(ctx, baseURL, "bob@example.com"); !errors.Is(err, apiclient.ErrSignUpClosed) {
 		t.Fatalf("sign-up without an invite before the first admin exists: %v", err)
 	}
 	if _, _, err := session.SignUp(ctx, apiclient.New(baseURL), token, "ada@example.com", "Ada", []byte("first admin master password"), testDevice); err != nil {
 		t.Fatal(err)
 	}
+	expectRegistrationPolicy(t, baseURL, "open")
 	if _, err := signUpWithoutInvite(ctx, baseURL, "bob@example.com"); err != nil {
 		t.Errorf("sign-up without an invite once the first admin exists: %v", err)
 	}

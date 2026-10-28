@@ -42,14 +42,17 @@ export interface ApprovalEvent {
 
     /**
      * Coverage is what approving a command-line or launcher request covers: clisocket's terminal-session, app or
-     * connection. Lifetime is how long a command-line approval of it lasts, "until 10 minutes after …", which the dialog
-     * and the phones show after "Lasts".
+     * connection. Allowance is what approving it lets the requester do, which the dialog and the phones show after
+     * "Allows". Lifetime is how long a command-line approval of it lasts, "until 10 minutes after …", which they show
+     * after "Lasts".
      */
     "coverage": string;
+    "allowance"?: string;
     "lifetime": string;
     "isUnlockRequired": boolean;
     "isPasswordUnlock": boolean;
     "isPhoneApproval": boolean;
+    "phoneApprovalState": string;
 
     /**
      * IsTooLongForPhone is set instead of IsPhoneApproval when a phone could answer but the request is too long to send.
@@ -75,6 +78,8 @@ export interface ApprovalEvent {
      */
     "harnessName": string;
     "agentNameSource": string;
+    "harnessProgramPath": string;
+    "harnessProgramEntrypoint": string;
     "projectName": string;
     "projectPath": string;
     "workingDirectory": string;
@@ -102,6 +107,7 @@ export interface ApprovalEvent {
     "allGrantDuration": string[] | null;
     "grantDuration": string;
     "grantScope": string;
+    "grantHolderScope": string;
 
     /**
      * Website and BrowserName are where an agent sign-in goes, as Hisar observed it; Logins are the logins saved for

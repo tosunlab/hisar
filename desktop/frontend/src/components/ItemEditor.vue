@@ -24,6 +24,7 @@ import {
   customFieldNameWarning,
   describeAPICredentialExpiry,
   describeServerPort,
+  getDefaultIconPreset,
   identityCategory,
   formatCardNumberInput,
   formatExpiryInput,
@@ -32,6 +33,7 @@ import {
   getWebsiteIconURL,
   isCalendarDate,
   isMacPlatform,
+  isApplicationCommand,
   isKnownDatabaseEngine,
   secureNoteCategory,
   serverCategory,
@@ -140,6 +142,14 @@ onBeforeUnmount(() => {
   store.editorDraft = null;
 });
 const isPasswordVisible = ref(false);
+const revealedCustomFields = ref(new Set<number>());
+const saveError = ref("");
+const oneTimeCodeError = computed(() => saveError.value === "The one-time code is not a valid secret or otpauth:// link" ? saveError.value : "");
+
+function toggleCustomField(index: number): void {
+  if (revealedCustomFields.value.has(index)) revealedCustomFields.value.delete(index);
+  else revealedCustomFields.value.add(index);
+}
 const isSetupKeyVisible = ref(false);
 const isGeneratorOpen = ref(store.editorMode === "create");
 const isIconPickerOpen = ref(false);
@@ -256,6 +266,7 @@ function addField(): void {
 
 function removeField(index: number): void {
   draft.fields.splice(index, 1);
+  revealedCustomFields.value = new Set([...revealedCustomFields.value].filter((row) => row !== index).map((row) => row > index ? row - 1 : row));
 }
 
 const tagText = ref("");
@@ -303,7 +314,15 @@ async function submitItem(): Promise<void> {
     form.value?.querySelector<HTMLInputElement>(`input[name="fieldName${unnamedIndex}"]`)?.focus();
     return;
   }
-  await saveItem({ ...draft });
+  saveError.value = "";
+  if (!(await saveItem({ ...draft }))) {
+    saveError.value = store.errorMessage;
+    if (oneTimeCodeError.value) {
+      const input = form.value?.querySelector<HTMLInputElement>('input[name="oneTimePassword"]');
+      input?.focus();
+      input?.scrollIntoView?.({ block: "center" });
+    }
+  }
 }
 
 const form = ref<HTMLFormElement | null>(null);
@@ -315,13 +334,13 @@ function handleShortcut(event: KeyboardEvent): void {
   if (store.discardDraftPrompt || !(target instanceof Node) || !(target === document.body || form.value?.contains(target))) {
     return;
   }
-  const isCommand = event.metaKey || event.ctrlKey;
+  const isCommand = isApplicationCommand(event);
   if (isCommand && !event.altKey && !event.shiftKey && (event.key.toLowerCase() === "s" || event.key === "Enter")) {
     event.preventDefault();
     if (!store.isBusy) {
       form.value?.requestSubmit();
     }
-  } else if (event.key === "Escape" && !isCommand && !event.defaultPrevented) {
+  } else if (event.key === "Escape" && !event.metaKey && !event.ctrlKey && !event.defaultPrevented) {
     event.preventDefault();
     void cancelEditing();
   }
@@ -353,6 +372,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           v-model="draft.icon"
           :title="draft.title"
           :websiteURL="websiteIconURL"
+          :default-preset="getDefaultIconPreset(draft.category)"
           @close="isIconPickerOpen = false"
         />
       </div>
@@ -678,11 +698,14 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
             autocomplete="off"
             spellcheck="false"
             placeholder="Setup key or otpauth:// link"
+            :aria-invalid="!!oneTimeCodeError"
+            :aria-describedby="oneTimeCodeError ? 'editor-one-time-code-error' : undefined"
           />
           <button type="button" class="icon-button" :aria-label="isSetupKeyVisible ? 'Hide setup key' : 'Show setup key'" @click="isSetupKeyVisible = !isSetupKeyVisible">
             <AppIcon :name="isSetupKeyVisible ? 'eyeOff' : 'eye'" />
           </button>
         </span>
+        <small v-if="oneTimeCodeError" id="editor-one-time-code-error" class="error">{{ oneTimeCodeError }}</small>
       </label>
       <label v-if="!isDatabase" class="last">
         <span>{{ isServer ? "Admin console URL" : "Websites" }}</span>
@@ -697,26 +720,32 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
 
     <section v-if="!isSSHKey" class="card editor-card">
       <p class="section-label">Other fields</p>
-      <div v-for="(field, index) in draft.fields" :key="index" class="custom-field">
+      <div v-for="(field, index) in draft.fields" :key="index" class="custom-field" role="group" :aria-label="field.name.trim() ? field.name : `Field ${index + 1}`">
         <input
           v-model="field.name"
           :name="`fieldName${index}`"
           placeholder="Name"
-          aria-label="Field name"
+          :aria-label="`Name for ${field.name.trim() ? field.name : `Field ${index + 1}`}`"
           :aria-invalid="hasTriedSaving && isMissingName(field)"
           :aria-describedby="hasTriedSaving && isMissingName(field) ? `fieldNameError${index}` : undefined"
         />
         <input
           v-model="field.value"
           :name="`fieldValue${index}`"
-          :type="field.concealed ? 'password' : 'text'"
+          :type="field.concealed && !revealedCustomFields.has(index) ? 'password' : 'text'"
           placeholder="Value"
-          aria-label="Field value"
+          :aria-label="`Value for ${field.name.trim() ? field.name : `Field ${index + 1}`}`"
         />
+        <button v-if="field.concealed" type="button" class="ghost icon-button"
+          :aria-label="`${revealedCustomFields.has(index) ? 'Hide' : 'Show'} ${field.name.trim() ? field.name : `Field ${index + 1}`}`"
+          :title="revealedCustomFields.has(index) ? 'Hide value' : 'Show value'"
+          :data-testid="`editor-field-${index}-reveal`" @click="toggleCustomField(index)">
+          <AppIcon :name="revealedCustomFields.has(index) ? 'eyeOff' : 'eye'" />
+        </button>
         <label class="concealed" :title="'Hide this value until revealed'">
-          <input v-model="field.concealed" type="checkbox" /> <span>Secret</span>
+          <input v-model="field.concealed" type="checkbox" :aria-label="`Keep ${field.name.trim() ? field.name : `Field ${index + 1}`} secret`" /> <span>Secret</span>
         </label>
-        <button type="button" class="ghost icon-button" aria-label="Remove field" @click="removeField(index)"><AppIcon name="close" /></button>
+        <button type="button" class="ghost icon-button" :aria-label="`Remove ${field.name.trim() ? field.name : `Field ${index + 1}`}`" @click="removeField(index)"><AppIcon name="close" /></button>
         <small v-if="hasTriedSaving && isMissingName(field)" :id="`fieldNameError${index}`" class="hint field-error" data-testid="field-name-error">
           Enter a name for this field.
         </small>
@@ -770,6 +799,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
     </section>
 
     <div class="row footer">
+      <p v-if="saveError" class="error save-error" role="alert" data-testid="editor-save-error">{{ saveError }}</p>
       <span class="muted"><AppIcon name="shield" :size="12" /> Encrypted on this device before saving</span>
       <div class="spacer"></div>
       <button type="button" class="ghost" data-testid="editor-cancel" @click="cancelEditing">Cancel <kbd>Esc</kbd></button>
@@ -972,12 +1002,18 @@ button.active {
 /* Sticky at the bottom of the detail column, whose 32px bottom padding the margin and padding take back. */
 .footer {
   position: sticky;
+  flex-wrap: wrap;
   bottom: -32px;
   z-index: 1;
   margin: 4px 0 -32px;
   padding: 12px 0 32px;
   border-top: 1px solid var(--color-border);
   background: var(--color-background);
+}
+
+.save-error {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 .footer kbd {

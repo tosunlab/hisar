@@ -32,9 +32,8 @@ func TestLockClearsOwnedKeyBytes(t *testing.T) {
 		service.mutex.Unlock()
 		t.Fatal(err)
 	}
-	service.newAccountSecretKey = &secretKey
-	service.newAccountUnlockKey = crypt.GenerateKey()
-	keys["account unlock key"] = service.newAccountUnlockKey
+	service.kitGrant = &kitGrant{secretKey: &secretKey, unlockKey: crypt.GenerateKey()}
+	keys["account unlock key"] = service.kitGrant.unlockKey
 	service.mutex.Unlock()
 
 	service.Lock()

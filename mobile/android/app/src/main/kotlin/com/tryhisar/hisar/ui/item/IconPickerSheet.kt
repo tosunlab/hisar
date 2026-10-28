@@ -6,7 +6,6 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +17,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -44,7 +45,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -122,12 +122,13 @@ fun IconPickerSheet(model: AppModel, item: ItemDetail, onIconChange: (ChosenIcon
                 .padding(bottom = 32.dp),
         ) {
             errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
+            Column(Modifier.selectableGroup().testTag("icon-source-group")) {
             FormSection {
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 52.dp)
-                        .clickable(role = Role.Button) {
+                        .selectable(selected = icon == null, role = Role.RadioButton) {
                             model.itemEditor.clearError()
                             onIconChange(null)
                         }
@@ -165,13 +166,12 @@ fun IconPickerSheet(model: AppModel, item: ItemDetail, onIconChange: (ChosenIcon
                                 Box(
                                     Modifier
                                         .border(2.dp, if (isChosen) HisarTheme.colors.tint else Color.Transparent, RoundedCornerShape(13.dp))
-                                        .clickable(role = Role.Button) {
+                                        .selectable(selected = isChosen, role = Role.RadioButton) {
                                             model.itemEditor.clearError()
                                             onIconChange(ChosenIcon(preset = preset, color = color))
                                         }
                                         .semantics {
                                             contentDescription = preset.replaceFirstChar { it.uppercase() }
-                                            selected = isChosen
                                         }
                                         .testTag("icon-preset-$preset")
                                         .padding(3.dp),
@@ -183,10 +183,13 @@ fun IconPickerSheet(model: AppModel, item: ItemDetail, onIconChange: (ChosenIcon
                     }
                 }
             }
+            }
             val isPhoto = icon?.image != null
             FormSection(header = "Color", footer = if (isPhoto) ({ Text("Choose an icon to color it.") }) else null) {
                 Row(
                     Modifier
+                        .selectableGroup()
+                        .testTag("icon-color-group")
                         .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                         .alpha(if (isPhoto) 0.4f else 1f),
@@ -197,13 +200,12 @@ fun IconPickerSheet(model: AppModel, item: ItemDetail, onIconChange: (ChosenIcon
                         Box(
                             Modifier
                                 .size(48.dp)
-                                .clickable(enabled = !isPhoto, role = Role.Button) {
+                                .selectable(selected = isChosen, enabled = !isPhoto, role = Role.RadioButton) {
                                     val colored = ChosenIcon.applyColor(icon, hue, item.category)
                                     if (colored != icon) onIconChange(colored)
                                 }
                                 .semantics {
                                     contentDescription = if (hue.isEmpty()) "No color" else hue.replaceFirstChar { it.uppercase() }
-                                    selected = isChosen
                                 }
                                 .testTag("icon-color-${hue.ifEmpty { "none" }}")
                                 .padding(10.dp)

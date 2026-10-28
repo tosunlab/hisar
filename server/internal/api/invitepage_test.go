@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/project"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/service"
@@ -85,7 +88,7 @@ func TestInvitePage(t *testing.T) {
 		`data-testid="invitee-email">ada@example.com</strong>`,
 		`data-testid="invite-code">` + operatorInvite.Token + `</code>`,
 		`data-testid="signup-command">hisar signup ` + baseURL + `/invite/` + operatorInvite.Token + `</code>`,
-		`href="hisar://invite/` + operatorInvite.Token + `?server=` + url.QueryEscape(baseURL) + `"`,
+		`href="hisar://invite/` + operatorInvite.Token + `?email=ada%40example.com&amp;server=` + url.QueryEscape(baseURL) + `"`,
 		`href="https://tryhisar.com/download" rel="noopener noreferrer" data-testid="download">Download for Mac</a>`,
 		`href="https://tryhisar.com/download#linux" rel="noopener noreferrer" data-testid="download-linux">Download for Linux</a>`,
 		"On Linux, the Hisar package installs it.",
@@ -167,9 +170,9 @@ func TestInvitePageRateLimit(t *testing.T) {
 
 func TestInviteDeepLink(t *testing.T) {
 	for publicURL, expected := range map[string]string{
-		"https://eu.tryhisar.com/":   "hisar://invite/abc_DEF-1?server=https%3A%2F%2Feu.tryhisar.com",
-		"http://eu.tryhisar.com":     "hisar://invite/abc_DEF-1?server=https%3A%2F%2Feu.tryhisar.com",
-		"http://127.0.0.1:19400/sub": "hisar://invite/abc_DEF-1?server=http%3A%2F%2F127.0.0.1%3A19400",
+		"https://eu.tryhisar.com/":   "hisar://invite/abc_DEF-1?email=bob%40example.com&server=https%3A%2F%2Feu.tryhisar.com",
+		"http://eu.tryhisar.com":     "hisar://invite/abc_DEF-1?email=bob%40example.com&server=https%3A%2F%2Feu.tryhisar.com",
+		"http://127.0.0.1:19400/sub": "hisar://invite/abc_DEF-1?email=bob%40example.com&server=http%3A%2F%2F127.0.0.1%3A19400",
 	} {
 		server := &Server{config: Config{Config: service.Config{PublicURL: publicURL}}}
 		if deepLink := server.buildInviteDeepLink("abc_DEF-1", "", "bob@example.com"); deepLink != expected {
@@ -181,5 +184,136 @@ func TestInviteDeepLink(t *testing.T) {
 	expected := "hisar://invite/abc_DEF-1?email=bob%40example.com&invitation=organization&server=https%3A%2F%2Feu.tryhisar.com"
 	if deepLink := server.buildInviteDeepLink("abc_DEF-1", "organization", "bob@example.com"); deepLink != expected {
 		t.Errorf("organization invite: %s, want %s", deepLink, expected)
+	}
+}
+
+func TestInviteDeepLinkCarriesEmail(t *testing.T) {
+	server := &Server{config: Config{Config: service.Config{PublicURL: "https://eu.tryhisar.com"}}}
+	for _, test := range []struct {
+		name   string
+		source string
+		email  string
+	}{
+		{name: "plain", email: "ada@example.com"},
+		{name: "percent encoded", email: "ada+invite&team@example.com"},
+		{name: "organization", source: "organization", email: "ada@example.com"},
+		{name: "share", source: "share", email: "ada@example.com"},
+		{name: "setup"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			link, err := url.Parse(server.buildInviteDeepLink("abc_DEF-1", test.source, test.email))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if link.Scheme != "hisar" || link.Host != "invite" || link.Path != "/abc_DEF-1" {
+				t.Errorf("invite destination = %s", link)
+			}
+			query := link.Query()
+			if got := query.Get("server"); got != "https://eu.tryhisar.com" {
+				t.Errorf("server = %q", got)
+			}
+			if got := query.Get("email"); got != test.email {
+				t.Errorf("email = %q, want %q", got, test.email)
+			}
+			if query.Has("email") != (test.email != "") {
+				t.Errorf("email parameter present = %v, email = %q", query.Has("email"), test.email)
+			}
+			if got := query.Get("invitation"); got != test.source {
+				t.Errorf("invitation = %q, want %q", got, test.source)
+			}
+			if query.Has("invitation") != (test.source != "") {
+				t.Errorf("invitation parameter present = %v, source = %q", query.Has("invitation"), test.source)
+			}
+		})
+	}
+}
+
+func TestInvitePageLeadsWithOpenInHisarOnPhones(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(context.Background(), "ada+phone@example.com", apitypes.RoleAdmin, nil))
+	deepLink := "hisar://invite/" + invite.Token + "?email=ada%2Bphone%40example.com&server=" + url.QueryEscape(baseURL)
+	type buttonLink struct {
+		label string
+		url   string
+		style string
+	}
+	buttonPattern := regexp.MustCompile(`<a class="button (primary|secondary)" href="([^"]+)"[^>]*>([^<]+)</a>`)
+	for _, test := range []struct {
+		name         string
+		userAgent    string
+		phoneLabel   string
+		instructions string
+	}{
+		{
+			name:         "iPhone",
+			userAgent:    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
+			phoneLabel:   "iPhone build instructions",
+			instructions: project.GitHubURL + "/blob/main/docs/docs/apps/ios.md",
+		},
+		{
+			name:         "Android",
+			userAgent:    "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36",
+			phoneLabel:   "Android build instructions",
+			instructions: project.GitHubURL + "/blob/main/docs/docs/apps/mobile.md",
+		},
+		{name: "desktop", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36"},
+		{name: "missing"},
+		{name: "unknown", userAgent: "UnknownBrowser/1.0"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request, err := http.NewRequest(http.MethodGet, baseURL+"/invite/"+invite.Token, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Header.Set("User-Agent", test.userAgent)
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			bodyBytes, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := string(bodyBytes)
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("invite page: %d %s", response.StatusCode, body)
+			}
+			checkInvitePageHeader(t, response, body)
+			var links []buttonLink
+			for _, match := range buttonPattern.FindAllStringSubmatch(body, -1) {
+				links = append(links, buttonLink{label: html.UnescapeString(match[3]), url: html.UnescapeString(match[2]), style: match[1]})
+			}
+			want := []buttonLink{
+				{label: "Download for Mac", url: "https://tryhisar.com/download", style: "primary"},
+				{label: "Download for Linux", url: "https://tryhisar.com/download#linux", style: "secondary"},
+				{label: "Open in Hisar", url: deepLink, style: "secondary"},
+			}
+			if test.phoneLabel != "" {
+				want = []buttonLink{
+					{label: "Open in Hisar", url: deepLink, style: "primary"},
+					{label: test.phoneLabel, url: test.instructions, style: "secondary"},
+					{label: "Other downloads", url: "https://tryhisar.com/download", style: "secondary"},
+					{label: "Download for Mac", url: "https://tryhisar.com/download", style: "secondary"},
+					{label: "Download for Linux", url: "https://tryhisar.com/download#linux", style: "secondary"},
+				}
+			}
+			if !slices.Equal(links, want) {
+				t.Errorf("invite actions = %#v, want %#v", links, want)
+			}
+			guidance := "Need Hisar? See how to build and install it on your phone."
+			if strings.Contains(body, guidance) != (test.phoneLabel != "") {
+				t.Errorf("phone installation guidance present = %v", strings.Contains(body, guidance))
+			}
+			for _, expected := range []string{
+				`data-testid="invitee-email">ada&#43;phone@example.com</strong>`,
+				`data-testid="invite-code">` + invite.Token + `</code>`,
+				`data-testid="signup-command">hisar signup ` + baseURL + `/invite/` + invite.Token + `</code>`,
+			} {
+				if !strings.Contains(body, expected) {
+					t.Errorf("invite page lacks %q", expected)
+				}
+			}
+		})
 	}
 }

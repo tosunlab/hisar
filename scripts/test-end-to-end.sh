@@ -126,7 +126,7 @@ expect "invite email carries the link and the code" "$BOB_MAIL" "$HISAR_PUBLIC_U
 BOB_INVITE_PAGE=$(curl -s "$HISAR_PUBLIC_URL/invite/$BOB_CODE")
 expect "the emailed invite link opens a page naming the inviter" "$BOB_INVITE_PAGE" "Alice (alice@example.com)</span> invited you to Hisar"
 expect "the invite page shows the code to paste" "$BOB_INVITE_PAGE" "data-testid=\"invite-code\">$BOB_CODE</code>"
-expect "the invite page opens the app with the invite" "$BOB_INVITE_PAGE" "href=\"hisar://invite/$BOB_CODE?server=http%3A%2F%2F127.0.0.1%3A$PORT\""
+expect "the invite page opens the app with the invite and its bound email" "$BOB_INVITE_PAGE" "href=\"hisar://invite/$BOB_CODE?email=bob%40example.com&amp;server=http%3A%2F%2F127.0.0.1%3A$PORT\""
 printf 'bob@example.com\nBob\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/bob-emergency-kit.pdf" "$HISAR_PUBLIC_URL/invite/$BOB_CODE" 2>"$T/bob-signup.txt"
 BOB_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/bob-signup.txt")
 expect "bob signs up from the emailed code" "$BOB_SK" "H1-"
@@ -144,8 +144,9 @@ UNKNOWN_SHARE_OUTPUT=$(printf '%s\n' "$PW" | A share Family nobody@example.com 2
 echo "ok   a share to an email without an account gives the same response"
 expect "share email to bob" "$(wait_for_mail bob@example.com "$BOB_MAIL_COUNT")" "Alice (alice@example.com) shared a vault with you in Hisar as an editor."
 expect "share email to an unknown address carries a sign-up invite" "$(wait_for_mail nobody@example.com 0)" "$HISAR_PUBLIC_URL/invite/"
-expect "bob does not see Family before accepting" "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" "Personal"
-[[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *Family* ]] || fail "bob sees Family before accepting"
+BOB_VAULTS=$(printf '%s\n' "$PW" | B vaults 2>/dev/null)
+expect "bob does not see Family before accepting" "$BOB_VAULTS" "Personal"
+[[ "$BOB_VAULTS" != *Family* ]] || fail "bob sees Family before accepting"
 expect "bob's invitations" "$(B invitations 2>&1)" "Alice <alice@example.com>  editor"
 expect "bob accepts" "$(printf '\n' | B invitations accept 2>&1)" "Accepted."
 [[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *Family* ]] || fail "bob sees Family before alice completed the share"
@@ -453,8 +454,9 @@ printf 'dora@example.com\nDora\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/dora.json
 DORA_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/dora-signup.txt")
 D() { HISAR_STATE=$T/dora.json HISAR_SECRET_KEY=$DORA_SK hisar "$@"; }
 printf '%s\n' "$PW" | D vault-create Garden 2>/dev/null
-expect "account deletion shows what is deleted" "$(printf '%s\nwrong@example.com\n' "$PW" | D account delete 2>&1 || true)" 'Deleted with its items: "Garden"'
-expect "a wrong email deletes nothing" "$(printf '%s\nwrong@example.com\n' "$PW" | D account delete 2>&1 || true)" "nothing was deleted"
+WRONG_EMAIL_DELETION=$(printf '%s\nwrong@example.com\n' "$PW" | D account delete 2>&1 || true)
+expect "account deletion shows what is deleted" "$WRONG_EMAIL_DELETION" 'Deleted with its items: "Garden"'
+expect "a wrong email deletes nothing" "$WRONG_EMAIL_DELETION" "nothing was deleted"
 expect "a wrong master password deletes nothing" "$(printf 'wrong password\n' | D account delete --email dora@example.com 2>&1 || true)" "the master password is not correct"
 expect "delete account" "$(printf '%s\ndora@example.com\n' "$PW" | D account delete 2>&1)" "Deleted your Hisar account."
 expect "account deletion email" "$(wait_for_mail dora@example.com 0)" "Your Hisar account dora@example.com was deleted"
