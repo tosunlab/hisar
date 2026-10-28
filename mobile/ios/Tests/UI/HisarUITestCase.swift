@@ -186,8 +186,11 @@ class HisarUITestCase: XCTestCase {
 
     func replaceText(_ text: String, in element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         guard focus(element, file: file, line: line) else { return }
-        let deletion = String(repeating: XCUIKeyboardKey.delete.rawValue, count: (element.value as? String ?? "").count)
-        typeText(deletion, into: element, showing: "", file: file, line: line)
+        var remaining = element.value as? String ?? ""
+        while !remaining.isEmpty {
+            remaining.removeLast()
+            typeText(XCUIKeyboardKey.delete.rawValue, into: element, showing: remaining, file: file, line: line)
+        }
         typeText(text, into: element, normalizedBy: { $0 }, file: file, line: line)
     }
 
@@ -264,6 +267,11 @@ class HisarUITestCase: XCTestCase {
     func selectSignInMode(_ title: String) {
         let welcome = app.buttons[title == "Create account" ? "welcome-create-account" : "welcome-sign-in"]
         if welcome.waitForExistence(timeout: 2) { welcome.tap(); return }
+        for _ in 0..<8 {
+            if signInModeControl.exists && signInModeControl.isHittable { break }
+            guard app.collectionViews.firstMatch.exists else { break }
+            app.collectionViews.firstMatch.swipeDown()
+        }
         let button = signInModeControl.buttons[title]
         waitFor(button)
         scrollTo(button)

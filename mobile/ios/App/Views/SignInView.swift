@@ -21,6 +21,7 @@ struct SignInView: View {
     @State private var scannedLink: SignInLink?
     @State private var signInErrors: [Field: String] = [:]
     @FocusState private var focusedField: Field?
+    @State private var focusedCredential: Field?
     @State private var isScannerShown = false
     @State private var isLostKeyHelpShown = false
     @State private var ratedPassword = ""
@@ -39,10 +40,24 @@ struct SignInView: View {
     }
 
     private func focus(_ field: Field) -> Binding<Bool> {
-        Binding(get: { focusedField == field }, set: { isFocused in
-            if isFocused { focusedField = field }
-            else if focusedField == field { focusedField = nil }
+        Binding(get: { focusedCredential == field }, set: { isFocused in
+            if isFocused {
+                focusedField = nil
+                focusedCredential = field
+            } else if focusedCredential == field {
+                focusedCredential = nil
+            }
         })
+    }
+
+    private func focusField(_ field: Field?) {
+        if field == .password || field == .repeatedPassword {
+            focusedField = nil
+            focusedCredential = field
+        } else {
+            focusedCredential = nil
+            focusedField = field
+        }
     }
 
     var body: some View {
@@ -129,6 +144,9 @@ struct SignInView: View {
             if old == .server && new != .server && mode == .createAccount && form.isChecking {
                 Task { await form.checkPolicy(using: model) }
             }
+            if new != nil { focusedCredential = nil }
+        }
+        .onChange(of: focusedCredential) { old, new in
             if old == .repeatedPassword && new != .repeatedPassword { form.validateRepeatedPassword() }
         }
         .onChange(of: form.repeatedPassword) { _, _ in
@@ -372,7 +390,7 @@ struct SignInView: View {
             if secretKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { signInErrors[.secretKey] = "Enter your Secret Key." }
             if password.isEmpty { signInErrors[.password] = "Enter your master password." }
             if let field = [Field.email, .secretKey, .password].first(where: { signInErrors[$0] != nil }) {
-                focusedField = field
+                focusField(field)
                 UIAccessibility.post(notification: .announcement, argument: signInErrors[field])
                 return
             }
@@ -386,7 +404,7 @@ struct SignInView: View {
         } else {
             guard form.canSubmit else { return }
             if let field = form.validate(feedback: ratedPassword == form.password ? passwordFeedback : nil) {
-                focusedField = [.invite: .invite, .name: .name, .email: .email, .password: .password, .repeatedPassword: .repeatedPassword][field]
+                focusField([.invite: .invite, .name: .name, .email: .email, .password: .password, .repeatedPassword: .repeatedPassword][field])
                 UIAccessibility.post(notification: .announcement, argument: form.errors[field])
                 return
             }
@@ -394,7 +412,7 @@ struct SignInView: View {
             Task {
                 defer { isSubmitting = false }
                 if ratedPassword != form.password { passwordFeedback = await model.checkMasterPassword(form.password); ratedPassword = form.password }
-                guard form.validate(feedback: passwordFeedback) == nil else { focusedField = .password; return }
+                guard form.validate(feedback: passwordFeedback) == nil else { focusField(.password); return }
                 _ = await form.submit(using: model)
             }
         }
