@@ -18,6 +18,7 @@ import com.tryhisar.hisar.model.ImportProgress
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.LoginCredential
 import com.tryhisar.hisar.model.LoginMatch
+import com.tryhisar.hisar.model.MasterPasswordFeedback
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.OneTimeCode
 import com.tryhisar.hisar.model.Organization
@@ -28,6 +29,7 @@ import com.tryhisar.hisar.model.PasskeyClientData
 import com.tryhisar.hisar.model.PasskeyRegistrationOptions
 import com.tryhisar.hisar.model.PasskeyRegistrationRequest
 import com.tryhisar.hisar.model.PasskeyRegistrationResult
+import com.tryhisar.hisar.model.PasswordStrength
 import com.tryhisar.hisar.model.PendingRecovery
 import com.tryhisar.hisar.model.PendingRecoveryExport
 import com.tryhisar.hisar.model.PhoneApproval
@@ -157,6 +159,11 @@ class HisarKitBackend(
         decode(VaultStatus.serializer(), call { enableNewAccountBiometricUnlock() })
 
     override fun forgetNewAccountSecretKey() = call { forgetNewAccountSecretKey() }
+
+    override fun exportNewAccountEmergencyKit(directory: File): EmergencyKitExport =
+        decode(EmergencyKitExport.serializer(), call { exportNewAccountEmergencyKit(directory.path) })
+
+    override fun acknowledgeNewAccountRecovery() = call { acknowledgeNewAccountRecovery() }
 
     override fun disableBiometricUnlock(): VaultStatus = decode(VaultStatus.serializer(), call { disableBiometricUnlock() })
 
@@ -339,6 +346,11 @@ class HisarKitBackend(
 
     override fun generatePassword(length: Int, isDigitIncluded: Boolean, isSymbolIncluded: Boolean): String =
         call { generatePassword(length.toLong(), isDigitIncluded, isSymbolIncluded) }
+
+    override fun ratePassword(password: String): PasswordStrength = decode(PasswordStrength.serializer(), call { ratePassword(password) })
+
+    override fun checkMasterPassword(password: String): MasterPasswordFeedback =
+        decode(MasterPasswordFeedback.serializer(), call { checkMasterPassword(password) })
 
     override fun listAllLoginForService(serviceIdentifier: String): List<LoginMatch> =
         decodeList(LoginMatch.serializer(), call { listAllLoginForService(serviceIdentifier) })

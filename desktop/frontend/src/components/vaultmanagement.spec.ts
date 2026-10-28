@@ -237,11 +237,14 @@ describe("unreadable recovery", () => {
     store.allVault = [{ ...personalVault, readIssues: [{ vaultId: "personal", itemId: "bad", revision: "bad-r1", kind: "item", canRename: false, canDelete: true }] }];
     store.allItem = [createItem({ id: "healthy", title: "Still available" })];
     api.deleteUnreadableItem.mockResolvedValue(undefined);
-    const wrapper = mount(ReadIssuesPanel);
+    const wrapper = mount(ReadIssuesPanel, { attachTo: document.body });
     expect(wrapper.text()).toContain("1 unreadable vault or item records");
     expect(store.allItem[0].id).toBe("healthy");
     await wrapper.findAll("button").find((button) => button.text() === "Delete unreadable data…")!.trigger("click");
     expect(api.deleteUnreadableItem).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="alertdialog"]').text()).toContain("bad");
+    expect(wrapper.get('[role="alertdialog"]').text()).toContain("Personal");
+    expect(wrapper.get('[role="alertdialog"]').text()).toContain("Vault ID: personal");
     await wrapper.findAll("button").find((button) => button.text() === "Permanently delete")!.trigger("click");
     await flushPromises();
     expect(api.deleteUnreadableItem).toHaveBeenCalledWith("personal", "bad", "bad-r1");
@@ -270,18 +273,58 @@ describe("unreadable recovery", () => {
     store.allVault = [personalVault, { ...createWorkVault(), name: "Unreadable vault work", readIssues: [nameIssue] }];
     api.repairVaultName.mockRejectedValue(new Error("that unreadable record changed; retry and review it again"));
     api.deleteUnreadableVault.mockResolvedValue(undefined);
-    const wrapper = mount(ReadIssuesPanel);
+    const wrapper = mount(ReadIssuesPanel, { attachTo: document.body });
     await wrapper.find('input[aria-label="Repaired vault name"]').setValue("Work");
-    await wrapper.findAll("button").find((button) => button.text() === "Repair name")!.trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "Repair vault name")!.trigger("click");
     await flushPromises();
     expect(api.repairVaultName).toHaveBeenCalledWith("work", "work-review-1", "Work");
     expect(api.renameVault).not.toHaveBeenCalled();
     expect(api.listAllVault).toHaveBeenCalled();
     store.allVault = [personalVault, { ...createWorkVault(), name: "Unreadable vault work", readIssues: [nameIssue] }];
     await flushPromises();
-    await wrapper.findAll("button").find((button) => button.text() === "Delete unreadable data…")!.trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "Delete vault…")!.trigger("click");
+    expect(wrapper.get('[role="alertdialog"]').text()).toContain('Delete “Unreadable vault work”?');
+    expect(wrapper.get('[data-testid="delete-unreadable-confirm"]').attributes("disabled")).toBeDefined();
+    await wrapper.get('[data-testid="delete-unreadable-input"]').setValue("work");
     await wrapper.findAll("button").find((button) => button.text() === "Permanently delete")!.trigger("click");
     await flushPromises();
     expect(api.deleteUnreadableVault).toHaveBeenCalledWith("work", "work-review-1");
+  });
+
+  it("reviews one of multiple issues, counts readable items, and cancels without deleting", async () => {
+    const issue = { vaultId: "work", revision: "review-1", kind: "vault-name", canRename: true, canDelete: true };
+    store.allVault = [
+      { ...createWorkVault(), name: "Unreadable vault work", itemCount: 3, readIssues: [issue] },
+      { ...personalVault, readIssues: [{ vaultId: "personal", itemId: "bad", revision: "r1", kind: "item", canRename: false, canDelete: true }] },
+    ];
+    const wrapper = mount(ReadIssuesPanel, { attachTo: document.body });
+    await wrapper.findAll("button").find((button) => button.text() === "Delete vault…")!.trigger("click");
+    const dialog = wrapper.get('[role="alertdialog"]');
+    expect(dialog.text()).toContain("its 3 items, including the readable ones");
+    expect(dialog.text()).toContain("Everyone who has the vault loses them.");
+    expect(dialog.text()).not.toContain("bad");
+    await wrapper.get('[data-testid="delete-unreadable-input"]').setValue("Unreadable vault work");
+    expect(wrapper.get('[data-testid="delete-unreadable-confirm"]').attributes("disabled")).toBeDefined();
+    await wrapper.get('[data-testid="delete-unreadable-cancel"]').trigger("click");
+    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
+    expect(api.deleteUnreadableVault).not.toHaveBeenCalled();
+  });
+
+  it("omits unknown counts, requires the short ID, and submits the reviewed rather than refreshed revision", async () => {
+    const id = "12345678-1234-5678-1234-567812345678";
+    const issue = { vaultId: id, revision: "review-1", kind: "vault-key", canRename: false, canDelete: true };
+    const vault = { ...createWorkVault(), id, name: `Unreadable vault ${id}`, itemCount: 0, readIssues: [issue] };
+    store.allVault = [vault];
+    api.deleteUnreadableVault.mockRejectedValue(new Error("that unreadable record changed; retry and review it again"));
+    const wrapper = mount(ReadIssuesPanel, { attachTo: document.body });
+    await wrapper.findAll("button").find((button) => button.text() === "Delete vault…")!.trigger("click");
+    expect(wrapper.get('[role="alertdialog"]').text()).toContain("all its items");
+    expect(wrapper.get('[role="alertdialog"]').text()).not.toContain("0 items");
+    await wrapper.get('[data-testid="delete-unreadable-input"]').setValue("12345678");
+    store.allVault = [{ ...vault, readIssues: [{ ...issue, revision: "review-2" }] }];
+    await wrapper.get('[data-testid="delete-unreadable-confirm"]').trigger("click");
+    await flushPromises();
+    expect(api.deleteUnreadableVault).toHaveBeenCalledWith(id, "review-1");
+    expect(wrapper.text()).toContain("that unreadable record changed");
   });
 });

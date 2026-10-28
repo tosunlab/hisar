@@ -5,6 +5,8 @@ package com.tryhisar.hisar.model.theme
 import com.tryhisar.hisar.model.ThemeColorName
 
 object ThemePalettes {
+    val placeholder = ThemeColor(light = 0xFF606065, dark = 0xFFA0A0A7)
+
     val neutral = ThemePalette(
         tint = ThemeColor(light = 0xFF1D2025, dark = 0xFFECEEF1),
         onTint = ThemeColor(light = 0xFFFFFFFF, dark = 0xFF0B0C0E),

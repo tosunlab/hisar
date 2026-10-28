@@ -52,6 +52,16 @@ data class ItemEditorDraft(
 
     val unnamedFieldIndex: Int? get() = item.allField.indexOfFirst { it.isNameMissing }.takeIf { it >= 0 }
 
+    fun fieldNameWarning(index: Int): String {
+        val name = item.allField[index].name.trim().lowercase()
+        if (name in builtInReferenceNames) {
+            return "A secret reference with this name reaches the built-in field."
+        }
+        return if (name.isNotEmpty() && item.allField.withIndex().any { (other, field) -> other != index && field.name.trim().lowercase() == name }) {
+            "Secret references need a unique name."
+        } else ""
+    }
+
     /** Something was typed since the editor opened, so leaving without saving loses it. */
     val hasChanges: Boolean get() = buildItem() != openedItem
 
@@ -180,6 +190,7 @@ data class ItemEditorDraft(
 
     companion object {
         const val OTHER_ENGINE = "other"
+        private val builtInReferenceNames = setOf("username", "password", "url", "notes", "one-time code", "public key", "fingerprint", "connection string")
 
         /** The editor for [item]: a saved one to edit, or a new item's draft, such as a category or a login AutoFill saw. */
         fun open(item: ItemDetail, isNew: Boolean): ItemEditorDraft {

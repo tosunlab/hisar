@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
+import { useModalFocus } from "../modalFocus";
 import type { SentShareInvitation, Team, TeamVault, VaultMember, VaultRole } from "../api";
 import {
   cancelShareInvitation,
@@ -108,25 +109,19 @@ async function confirmRemove(member: VaultMember): Promise<void> {
   }
 }
 
-function closeOnEscape(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
-    closeSharing();
-  }
-}
-
-onMounted(() => window.addEventListener("keydown", closeOnEscape));
-onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
+const panel = ref<HTMLElement | null>(null);
+useModalFocus(panel, closeSharing);
 </script>
 
 <template>
   <div class="overlay" @click.self="closeSharing">
-    <div class="card sharing" role="dialog" aria-modal="true" aria-labelledby="sharing-title" data-testid="vault-sharing-panel">
+    <div ref="panel" class="card sharing" role="dialog" aria-modal="true" aria-labelledby="sharing-title" aria-describedby="sharing-description" tabindex="-1" data-testid="vault-sharing-panel">
       <header class="sharing-header">
         <span class="sharing-icon"><AppIcon name="users" :size="18" /></span>
         <div class="sharing-heading">
           <h2 id="sharing-title">Share “{{ vault?.name }}”</h2>
-          <p v-if="organizationID" class="muted" data-testid="sharing-organization">Shared through teams in {{ organizationName }}</p>
-          <p v-else class="muted" data-testid="sharing-member-count">{{ memberCountText }}</p>
+          <p v-if="organizationID" id="sharing-description" class="muted" data-testid="sharing-organization">Shared through teams in {{ organizationName }}</p>
+          <p v-else id="sharing-description" class="muted" data-testid="sharing-member-count">{{ memberCountText }}</p>
         </div>
         <button class="ghost icon-button" aria-label="Close sharing" @click="closeSharing"><AppIcon name="close" /></button>
       </header>

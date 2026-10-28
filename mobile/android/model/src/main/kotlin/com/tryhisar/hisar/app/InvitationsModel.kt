@@ -53,8 +53,14 @@ class InvitationsModel(private val context: ModelContext) {
         if (context.status.value.isUnlocked) applyOrganizations(organizations)
     }
 
+    suspend fun refreshAfterSentChange(invitationID: String) {
+        context.updateUnlockedData { data -> data.copy(allReviewInvitation = data.allReviewInvitation.filter { it.id != invitationID }) }
+        loadShareInvitations()
+    }
+
     private fun applyShareInvitations(shareInvitations: ShareInvitations) {
-        context.updateUnlockedData { it.copy(allReceivedInvitation = shareInvitations.allReceived, allWaitingInvitation = shareInvitations.allWaiting) }
+        if (!context.status.value.isUnlocked) return
+        context.updateUnlockedData { it.copy(allReceivedInvitation = shareInvitations.allReceived, allWaitingInvitation = shareInvitations.allWaiting, allReviewInvitation = shareInvitations.allRequiringReview) }
     }
 
     private fun applyOrganizations(organizations: Organizations) {

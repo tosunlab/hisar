@@ -26,15 +26,15 @@ data class SavedLogin(val username: String, val password: String, val place: Pla
         }
 
     /**
-     * Asks the app to open the editor with [draft] in the Personal vault, once Hisar is unlocked and has listed the vaults.
-     * A login saved from an app is linked to that app once the user saves it.
+     * Asks the app to open the editor with [draft] in the Personal vault, once Hisar is unlocked and has listed the vaults,
+     * after the editors asked for before it. A login saved from an app is linked to that app once the user saves it.
      */
     suspend fun openEditor(model: AppModel) {
         val vault = model.unlockedData.first { it.allVault.isNotEmpty() }.allVault.let(::chooseVault) ?: return
-        val onSaved: (suspend (ItemDetail) -> Unit)? = (place as? Place.App)?.let { app ->
-            { item -> model.perform { it.addAndroidApp(vault.id, item.id, app.app.packageName, app.app.certificateSHA256) } }
+        val onSaved: (suspend (String, ItemDetail) -> Unit)? = (place as? Place.App)?.let { app ->
+            { vaultID, item -> model.perform { it.addAndroidApp(vaultID, item.id, app.app.packageName, app.app.certificateSHA256) } }
         }
-        model.requestedEditor.value = EditorRequest.New(vault.id, draft, onSaved)
+        model.navigation.requestEditor(EditorRequest.New(vault.id, draft, onSaved))
     }
 
     private fun chooseVault(allVault: List<VaultSummary>): VaultSummary? =

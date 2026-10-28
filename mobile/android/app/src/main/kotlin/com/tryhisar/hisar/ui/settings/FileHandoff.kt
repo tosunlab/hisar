@@ -74,10 +74,10 @@ const val SHARED_FOLDER_NAME = "shared"
 /**
  * Sends a file Hisar wrote to another app through the system's share sheet, as the iPhone's ShareLink. Only a copy in
  * the folder Hisar's FileProvider serves goes out, made for the share; it is deleted when the screen leaves, as the
- * iPhone deletes its file. [onFailure] runs when the copy cannot be made.
+ * iPhone deletes its file. [onFailure] runs when the copy cannot be made, [onShared] once the share sheet opened.
  */
 @Composable
-fun rememberFileSharer(mimeType: String, onFailure: () -> Unit): (File) -> Unit {
+fun rememberFileSharer(mimeType: String, onShared: () -> Unit = {}, onFailure: () -> Unit): (File) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val allPublishedFolder = remember { mutableListOf<File>() }
@@ -112,6 +112,7 @@ fun rememberFileSharer(mimeType: String, onFailure: () -> Unit): (File) -> Unit 
                 context.startActivity(Intent.createChooser(intent, null))
                 allPublishedFolder += folder
                 isPublished = true
+                onShared()
             } finally {
                 if (!isPublished) folder.deleteRecursively()
             }

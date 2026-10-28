@@ -30,7 +30,8 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         }
     }
 
-    suspend fun refresh() {
+    /** Shows the records when they appear where there were none, unless [isOpening] is false, as for a clean sign-up. */
+    suspend fun refresh(isOpening: Boolean = true) {
         val listing = context.attempt {
             try {
                 Result.success(it.listPendingRecovery())
@@ -46,7 +47,7 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         }
         val hadNone = mutableAllRecovery.value.isEmpty()
         mutableAllRecovery.value = records
-        if (records.isEmpty()) close() else if (hadNone) mutableIsShown.value = true
+        if (records.isEmpty()) close() else if (hadNone && isOpening) mutableIsShown.value = true
     }
 
     fun open() { mutableIsShown.value = true }

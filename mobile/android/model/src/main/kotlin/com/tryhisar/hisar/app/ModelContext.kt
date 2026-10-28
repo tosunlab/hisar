@@ -5,6 +5,7 @@ import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.OrganizationInvitation
 import com.tryhisar.hisar.model.OrganizationSummary
 import com.tryhisar.hisar.model.ReceivedShareInvitation
+import com.tryhisar.hisar.model.SentShareInvitation
 import com.tryhisar.hisar.model.RemovedVaultNotice
 import com.tryhisar.hisar.model.StoredPasskey
 import com.tryhisar.hisar.model.VaultBackend
@@ -28,11 +29,14 @@ data class UnlockedData(
     val allPasskey: List<StoredPasskey> = emptyList(),
     val allReceivedInvitation: List<ReceivedShareInvitation> = emptyList(),
     val allWaitingInvitation: List<WaitingShareInvitation> = emptyList(),
+    val allReviewInvitation: List<SentShareInvitation> = emptyList(),
     val allRemovedVaultNotice: List<RemovedVaultNotice> = emptyList(),
     val allOrganization: List<OrganizationSummary> = emptyList(),
     val allOrganizationInvitation: List<OrganizationInvitation> = emptyList(),
     val waitingVaultKeys: WaitingVaultKeys = WaitingVaultKeys(),
 ) {
+    val peopleInvitationCount: Int get() = allReceivedInvitation.size + allReviewInvitation.size
+
     fun findVault(vaultID: String): VaultSummary? = allVault.firstOrNull { it.id == vaultID }
 
     /** The items of one vault, or of every vault, sorted by title then username. */
@@ -98,7 +102,8 @@ interface ModelContext {
 
     suspend fun refreshAll()
 
-    suspend fun refreshPendingRecovery()
+    /** Reloads the pending recovery records and, unless [isOpening] is false, shows them when there are any. */
+    suspend fun refreshPendingRecovery(isOpening: Boolean = true)
 
     /** Shows a snackbar, with an optional action until it is dismissed. */
     fun showNotice(message: String, action: Notice.Action? = null)

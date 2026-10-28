@@ -19,7 +19,7 @@ class PasswordCharacterTests {
     @Test
     fun testMasterPasswordMinimumCountsGraphemeClusters() {
         for ((password, isValid) in passwords) {
-            assertEquals(isValid, AccountLifecycleLogic.canChangePassword("old password", password, password), password)
+            assertEquals(isValid, AccountLifecycleLogic.canChangePassword("old password", password, password, MasterPasswordFeedback("good", "Good", 60)), password)
         }
     }
 

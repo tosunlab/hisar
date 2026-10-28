@@ -13,6 +13,7 @@ const isRowVisible = useSettingsRowVisibility();
 const inviteEmail = ref("");
 const cancellingInvitationID = ref("");
 const isAlone = computed(() => store.allPerson.every((person) => person.isCurrentUser));
+const currentPerson = computed(() => store.allPerson.find((person) => person.isCurrentUser));
 
 async function submitInvite(): Promise<void> {
   if (await invitePerson(inviteEmail.value.trim())) {
@@ -81,6 +82,10 @@ function describeInviter(name: string, email: string): string {
               <span class="tag">{{ formatRole(waiting.role) }}</span>
             </strong>
             <p class="muted">Accepted {{ formatTimeAgo(waiting.acceptedAt) }}</p>
+            <template v-if="currentPerson">
+              <p class="security-code monospace" data-testid="waiting-security-code">{{ currentPerson.securityCode }}</p>
+              <p class="muted">This is your security code. People you share with can compare it with the code they see for you.</p>
+            </template>
           </div>
         </div>
       </div>
@@ -89,12 +94,6 @@ function describeInviter(name: string, email: string): string {
     <div v-show="isRowVisible('people')" class="settings-block">
       <p class="section-label">People you share with</p>
       <p v-if="store.isBusy && store.allPerson.length === 0" class="muted empty-note">Loading people…</p>
-      <div v-else-if="isAlone" class="settings-group">
-        <div class="setting">
-          <p class="muted setting-text" data-testid="people-empty-hint">Nobody yet. Share a vault to see the people you share with here.</p>
-          <button data-testid="people-share-vault" :disabled="store.isBusy" @click="openFromSettings('sharing')">Share vault…</button>
-        </div>
-      </div>
       <div v-else class="settings-group">
         <div v-for="person in store.allPerson" :key="person.accountId" class="setting" :data-testid="`person-${person.accountId}`">
           <MemberAvatar :name="person.name || person.email" />
@@ -113,6 +112,10 @@ function describeInviter(name: string, email: string): string {
             :aria-label="`Security code ${person.securityCode}`"
             >{{ person.securityCode }}</span
           >
+        </div>
+        <div v-if="isAlone && !store.isBusy" class="setting">
+          <p class="muted setting-text" data-testid="people-empty-hint">Nobody else yet. Share a vault to see the people you share with here.</p>
+          <button data-testid="people-share-vault" :disabled="store.isBusy" @click="openFromSettings('sharing')">Share vault…</button>
         </div>
       </div>
       <p v-if="!isAlone" class="muted settings-note">Compare a security code with that person over a channel you trust.</p>

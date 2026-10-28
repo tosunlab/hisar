@@ -21,6 +21,10 @@ interface VaultBackend {
     fun enableBiometricUnlock(password: String): VaultStatus
     fun enableNewAccountBiometricUnlock(): VaultStatus
     fun forgetNewAccountSecretKey()
+    /** The Emergency Kit of the account just created, written into [directory] and recorded as saved, without the password. */
+    fun exportNewAccountEmergencyKit(directory: File): EmergencyKitExport
+    /** Ends the sign-up's pending record once its kit was saved, for "I saved my Emergency Kit". */
+    fun acknowledgeNewAccountRecovery()
     fun disableBiometricUnlock(): VaultStatus
     fun lock(): VaultStatus
     fun signOut(): VaultStatus
@@ -116,6 +120,8 @@ interface VaultBackend {
     fun getOneTimeCodeForService(vaultID: String, itemID: String, serviceIdentifier: String): OneTimeCode
     fun copyField(vaultID: String, itemID: String, fieldName: String)
     fun generatePassword(length: Int, isDigitIncluded: Boolean, isSymbolIncluded: Boolean): String
+    fun ratePassword(password: String): PasswordStrength
+    fun checkMasterPassword(password: String): MasterPasswordFeedback
     fun listAllLoginForService(serviceIdentifier: String): List<LoginMatch>
     fun getLoginForService(vaultID: String, itemID: String, serviceIdentifier: String): LoginCredential
 

@@ -23,6 +23,32 @@ final class AppModelTests: XCTestCase {
         return await createModel()
     }
 
+    func testCustomFieldNameWarningsPreserveDuplicateValues() {
+        let fields = [
+            ItemField(name: "Recovery code", value: "first", concealed: true),
+            ItemField(name: "recovery CODE", value: "second", concealed: true),
+            ItemField(name: "Password", value: "custom", concealed: true)
+        ]
+        XCTAssertEqual(ItemField.nameWarning(fields, index: 0), "Secret references need a unique name.")
+        XCTAssertEqual(ItemField.nameWarning(fields, index: 1), "Secret references need a unique name.")
+        XCTAssertEqual(ItemField.nameWarning(fields, index: 2), "A secret reference with this name reaches the built-in field.")
+        XCTAssertEqual(fields.map(\.value), ["first", "second", "custom"])
+    }
+
+    func testErrorPresentationAnnouncesChangedMessagesOnce() {
+        var state = ErrorAnnouncementState()
+        let background = UUID()
+        let active = UUID()
+        XCTAssertEqual(state.present(background, "Wrong password."), "Wrong password.")
+        XCTAssertNil(state.present(active, "Wrong password."))
+        XCTAssertNil(state.present(background, "Network unavailable."))
+        XCTAssertEqual(state.present(active, "Network unavailable."), "Network unavailable.")
+        XCTAssertNil(state.present(active, "Network unavailable."))
+        state.remove(active)
+        XCTAssertNil(state.present(background, "Network unavailable."))
+        state.remove(background)
+        XCTAssertEqual(state.present(active, "Network unavailable."), "Network unavailable.")
+    }
     func testStartsSignedOut() async {
         let model = await createModel()
         XCTAssertEqual(model.screen, .signedOut)
@@ -138,6 +164,21 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.isBiometricOfferShown)
     }
 
+    func testLockOnTheSecretKeyScreenLeavesTheKitReminderAfterUnlock() async {
+        let model = await createModel()
+        await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
+        XCTAssertEqual(model.allPendingRecovery.map(\.operationId), ["signup-1"], "the sign-up's record is loaded for the reminder")
+        XCTAssertFalse(model.isPendingRecoveryShown, "the record does not cover Save your Secret Key")
+        _ = backend.lock()
+        model.handleLockedEvent()
+        XCTAssertNil(model.newSecretKey)
+        XCTAssertEqual(model.screen, .locked)
+        let isUnlocked = await model.unlock(password: FakeBackend.password)
+        XCTAssertTrue(isUnlocked)
+        XCTAssertEqual(model.allPendingRecovery.map(\.operationId), ["signup-1"], "the Finish account recovery bar has its record")
+        XCTAssertFalse(model.isPendingRecoveryShown)
+    }
+
     private func waitForCall(_ name: String) async {
         for _ in 0..<100 where !backend.allCallName.contains(name) {
             try? await Task.sleep(nanoseconds: 10_000_000)
@@ -216,6 +257,90 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.screen, .unlocked)
         XCTAssertNil(model.errorMessage)
         XCTAssertEqual(model.allVault.count, 2)
+    }
+
+    func testItemEditorDraftSurvivesLockAndUnlock() async {
+        let model = await createUnlockedModel()
+        let item = ItemDetail(title: "Draft", password: "generated-password")
+        model.retainEditor(ItemEditorSession(account: ItemEditorAccount(model.status), sourceVaultID: "personal", originalItem: nil, item: item, allURLText: ["https://example.com", ""], chosenVaultID: "family", newTagText: "pending", loadedItem: ItemDetail()))
+        model.handleDidEnterBackground()
+        currentDate += model.autoLockInterval + 1
+        model.handleWillEnterForeground()
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertFalse(model.isRestoredEditorShown)
+        var finalDraft = model.retainedEditor!
+        finalDraft.item.password = "last-keystroke"
+        model.retainEditor(finalDraft)
+        _ = await model.unlock(password: FakeBackend.password)
+        XCTAssertTrue(model.isRestoredEditorShown)
+        XCTAssertEqual(model.retainedEditor?.item.password, "last-keystroke")
+        XCTAssertEqual(model.retainedEditor?.allURLText, ["https://example.com", ""])
+        XCTAssertEqual(model.retainedEditor?.chosenVaultID, "family")
+        XCTAssertEqual(model.retainedEditor?.newTagText, "pending")
+    }
+
+    func testItemEditorPermissionChangeKeepsDraftForRecovery() async {
+        let model = await createUnlockedModel()
+        let item = ItemDetail(title: "Draft", password: "keep-this")
+        model.retainEditor(ItemEditorSession(account: ItemEditorAccount(model.status), sourceVaultID: "family", originalItem: nil, item: item, allURLText: [""], chosenVaultID: "family", loadedItem: ItemDetail()))
+        model.lock()
+        backend.allVault = backend.allVault.map { vault in
+            var changed = vault
+            if vault.id == "family" { changed.role = "reader" }
+            return changed
+        }
+        _ = await model.unlock(password: FakeBackend.password)
+        XCTAssertFalse(model.isRestoredEditorShown)
+        XCTAssertNotNil(model.editorRecoveryMessage)
+        XCTAssertEqual(model.retainedEditor?.item.password, "keep-this")
+        model.recoverEditorCopy()
+        XCTAssertTrue(model.isRestoredEditorShown)
+        XCTAssertEqual(model.retainedEditor?.chosenVaultID, "personal")
+        XCTAssertEqual(model.retainedEditor?.item.password, "keep-this")
+        model.lock()
+        _ = await model.unlock(password: FakeBackend.password)
+        XCTAssertTrue(model.isRestoredEditorShown)
+        XCTAssertNil(model.editorRecoveryMessage)
+    }
+
+    func testItemEditorChangedSourceRequiresRecovery() async throws {
+        let model = await createUnlockedModel()
+        let original = try backend.getItem(vaultID: "personal", itemID: "github")
+        var draft = original
+        draft.password = "unsaved"
+        model.retainEditor(ItemEditorSession(account: ItemEditorAccount(model.status), sourceVaultID: "personal", originalItem: original, item: draft, allURLText: original.allURL, chosenVaultID: "personal", loadedItem: original))
+        model.lock()
+        backend.allItemByVaultID["personal"]?.removeAll { $0.id == original.id }
+        _ = await model.unlock(password: FakeBackend.password)
+        XCTAssertNotNil(model.editorRecoveryMessage)
+        XCTAssertEqual(model.retainedEditor?.item.password, "unsaved")
+        model.recoverEditorCopy()
+        XCTAssertNil(model.retainedEditor?.originalItem)
+        XCTAssertEqual(model.retainedEditor?.item.id, "")
+    }
+
+    func testItemEditorClearsOnSaveDiscardSignOutAndAccountSwitch() async {
+        let model = await createUnlockedModel()
+        let item = ItemDetail(title: "Draft", password: "secret")
+        let draft = ItemEditorSession(account: ItemEditorAccount(model.status), sourceVaultID: "personal", originalItem: nil, item: item, allURLText: [""], chosenVaultID: "personal", loadedItem: ItemDetail())
+        model.retainEditor(draft)
+        _ = await model.saveItem(vaultID: "personal", item: item)
+        XCTAssertNil(model.retainedEditor)
+        model.retainEditor(draft)
+        model.discardEditor()
+        XCTAssertNil(model.retainedEditor)
+        model.retainEditor(draft)
+        backend.status.email = "other@example.com"
+        model.refreshStatus()
+        XCTAssertNil(model.retainedEditor)
+        model.retainEditor(draft)
+        XCTAssertNil(model.retainedEditor, "an old editor cannot attach its draft to the next account")
+        backend.status.email = draft.account.email
+        model.refreshStatus()
+        model.retainEditor(draft)
+        model.lock()
+        _ = await model.signOut()
+        XCTAssertNil(model.retainedEditor)
     }
 
     func testLockedEventFromBackendShowsLockScreen() async {
@@ -836,14 +961,61 @@ final class AppModelTests: XCTestCase {
         guard let vault = await model.createVault(name: "Team") else { return XCTFail("vault missing") }
         let invitation = SentShareInvitation(id: "accepted", vaultID: vault.id, vaultName: "Team", email: "new@example.com", role: "reader", state: "accepted", expiresAt: "2027-01-22T08:00:00Z", requiresConfirmation: true, recipientID: "new-account", securityCode: "3333 4444", reviewToken: "reviewed-identity")
         backend.shareInvitations = ShareInvitations(allSent: [invitation])
+        _ = await model.loadShareInvitations()
+        XCTAssertEqual(model.allReviewInvitation, [invitation])
         var changed = invitation
         changed.reviewToken = "other-identity"
         let changedResult = await model.confirmShareRecipient(changed)
         XCTAssertFalse(changedResult)
         XCTAssertEqual(backend.shareInvitations.allSent.count, 1)
+        XCTAssertEqual(model.allReviewInvitation, [invitation])
         let confirmed = await model.confirmShareRecipient(invitation)
         XCTAssertTrue(confirmed)
         XCTAssertTrue(backend.shareInvitations.allSent.isEmpty)
+        XCTAssertTrue(model.allReviewInvitation.isEmpty)
+    }
+
+    func testUnlockKeepsAcceptedRecipientsVisibleUntilReviewed() async {
+        backend.seedSignedIn(state: VaultStatus.stateLocked)
+        let review = SentShareInvitation(id: "review", vaultID: "family", vaultName: "Family", email: "ada@example.com", role: "reader", state: "accepted", expiresAt: "", requiresConfirmation: true, reviewToken: "reviewed")
+        var pending = review
+        pending.id = "pending"
+        pending.state = "pending"
+        var bound = review
+        bound.id = "bound"
+        bound.requiresConfirmation = false
+        backend.shareInvitations = ShareInvitations(allReceived: [
+            ReceivedShareInvitation(id: "received", vaultID: "another", role: "editor", invitedByName: "Bob", invitedByEmail: "bob@example.com", expiresAt: ""),
+        ], allSent: [review, pending, bound])
+        let model = await createModel()
+        XCTAssertTrue(model.allReviewInvitation.isEmpty)
+        let unlocked = await model.unlock(password: FakeBackend.password)
+        XCTAssertTrue(unlocked)
+        XCTAssertEqual(model.allReviewInvitation, [review])
+        XCTAssertEqual(model.receivedInvitationCount, 1)
+        XCTAssertEqual(model.peopleInvitationCount, 2)
+    }
+
+    func testReviewRemindersRefreshAfterCancellationAndClearOnLock() async {
+        let model = await createUnlockedModel()
+        let review = SentShareInvitation(id: "review", vaultID: "family", vaultName: "Family", email: "ada@example.com", role: "reader", state: "accepted", expiresAt: "", requiresConfirmation: true, reviewToken: "reviewed")
+        var other = review
+        other.id = "other"
+        backend.shareInvitations = ShareInvitations(allSent: [review, other])
+        _ = await model.loadShareInvitations()
+        let cancelled = await model.cancelShareInvitation(invitationID: review.id)
+        XCTAssertTrue(cancelled)
+        XCTAssertEqual(model.allReviewInvitation, [other])
+        XCTAssertEqual(model.peopleInvitationCount, 1)
+        model.lock()
+        XCTAssertTrue(model.allReviewInvitation.isEmpty)
+        XCTAssertEqual(model.peopleInvitationCount, 0)
+        let unlocked = await model.unlock(password: FakeBackend.password)
+        XCTAssertTrue(unlocked)
+        XCTAssertEqual(model.allReviewInvitation, [other])
+        let signedOut = await model.signOut()
+        XCTAssertTrue(signedOut)
+        XCTAssertTrue(model.allReviewInvitation.isEmpty)
     }
 
     func testReceivedShareInvitationsAreAcceptedOrDeclined() async {
@@ -898,8 +1070,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.screen, .locked)
         await model.refreshShareAwaitingUnlock()
         XCTAssertEqual(model.allShareAwaitingUnlock.map(\.message), [
-            "Ada accepted your invitation to a vault — unlock to finish sharing",
-            "bo@example.com accepted your invitation to a vault — unlock to finish sharing",
+            "Ada accepted your invitation to a vault. Unlock to continue sharing.",
+            "bo@example.com accepted your invitation to a vault. Unlock to continue sharing.",
         ])
         XCTAssertNil(model.errorMessage)
 
@@ -910,7 +1082,7 @@ final class AppModelTests: XCTestCase {
 
         let isUnlocked = await model.unlock(password: FakeBackend.password)
         XCTAssertTrue(isUnlocked)
-        XCTAssertTrue(model.allShareAwaitingUnlock.isEmpty, "unlocking finishes the shares, so the banner goes")
+        XCTAssertTrue(model.allShareAwaitingUnlock.isEmpty, "the unlocked reminder replaces the locked notice")
         let callCount = backend.allCallName.filter { $0 == "listAllShareAwaitingUnlock" }.count
         await model.refreshShareAwaitingUnlock()
         XCTAssertEqual(backend.allCallName.filter { $0 == "listAllShareAwaitingUnlock" }.count, callCount, "an unlocked app does not ask")
@@ -954,6 +1126,8 @@ final class AppModelTests: XCTestCase {
         backend.shareInvitations.allReceived = [
             ReceivedShareInvitation(id: "from-carol", vaultID: "carol-vault", role: Member.vaultRoleEditor, invitedByName: "Carol", invitedByEmail: "carol@example.com", expiresAt: "2027-01-22T08:00:00Z"),
         ]
+        let review = SentShareInvitation(id: "review", vaultID: "family", vaultName: "Family", email: "ada@example.com", role: "reader", state: "accepted", expiresAt: "", requiresConfirmation: true, reviewToken: "reviewed")
+        backend.shareInvitations.allSent = [review]
         let remoteChangeCount = model.remoteChangeCount
         model.handleRemoteChange()
         XCTAssertEqual(model.remoteChangeCount, remoteChangeCount + 1, "an open sharing sheet reloads on this count")
@@ -963,6 +1137,7 @@ final class AppModelTests: XCTestCase {
         }
         XCTAssertNotNil(model.findVault(vaultID: "shared-with-me"))
         XCTAssertEqual(model.allReceivedInvitation.map(\.id), ["from-carol"])
+        XCTAssertEqual(model.allReviewInvitation, [review])
 
         model.lock()
         model.handleRemoteChange()

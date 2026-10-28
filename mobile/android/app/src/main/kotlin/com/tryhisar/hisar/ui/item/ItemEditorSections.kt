@@ -40,6 +40,7 @@ import com.tryhisar.hisar.ui.theme.HisarType
 /** Which secrets the editor shows in the clear; each section has its own eye, as on the iPhone. */
 data class RevealedSecrets(
     val isPassword: Boolean = false,
+    val isSetupKey: Boolean = false,
     val isCard: Boolean = false,
     val isDocument: Boolean = false,
     val isCredentialSecret: Boolean = false,
@@ -62,7 +63,7 @@ fun LoginSections(
 ) {
     val item = draft.item
     FormSection(header = "Login") {
-        EditorField(item.username, { value -> onChange(draft.withItem { it.copy(username = value) }) }, "Username or email", "editor-username", kind = FieldKind.PLAIN)
+        EditorField(item.username, { value -> onChange(draft.withItem { it.copy(username = value) }) }, "Username or email", "editor-username", kind = FieldKind.PLAIN, label = "Username")
         RowDivider()
         EditorField(
             item.password,
@@ -73,21 +74,27 @@ fun LoginSections(
             isSecret = true,
             isRevealed = revealed.isPassword,
             isMonospaced = revealed.isPassword,
+            label = "Password",
         ) {
             RevealButton(revealed.isPassword, "password") { onRevealedChange(revealed.copy(isPassword = !revealed.isPassword)) }
             RowIconButton(Icons.Outlined.AutoFixHigh, "Generate password", onClick = onGeneratePassword, testTag = "editor-generate-password")
         }
     }
     if (!item.isDatabase) {
-        FormSection(header = "One-time password") {
+        FormSection(header = "One-time code") {
             EditorField(
                 item.oneTimePassword,
                 { value -> onChange(draft.withItem { it.copy(oneTimePassword = value) }) },
                 "Setup key or otpauth:// link",
                 "editor-one-time-password",
                 kind = FieldKind.SECRET,
+                isSecret = true,
+                isRevealed = revealed.isSetupKey,
                 isMonospaced = true,
-            )
+                label = "Setup key",
+            ) {
+                RevealButton(revealed.isSetupKey, "setup key") { onRevealedChange(revealed.copy(isSetupKey = !revealed.isSetupKey)) }
+            }
         }
         FormSection(header = if (item.isServer) "Admin console" else "Websites") {
             draft.allURLText.forEachIndexed { index, text ->
@@ -99,6 +106,7 @@ fun LoginSections(
                         if (item.isServer) "https://console.example.com" else "https://example.com",
                         "editor-website-$index",
                         kind = FieldKind.URL,
+                        label = if (item.isServer) "Admin console" else "Website",
                     ) {
                         RemoveRowButton("Remove website ${text.ifEmpty { "${index + 1}" }}", "editor-website-$index-remove", remove)
                     }
@@ -115,9 +123,9 @@ fun ServerSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit, a
     val server = draft.item.server ?: ItemServer()
     val portWarning = ItemServer.describePort(server.port)
     FormSection(header = "Server", footer = if (portWarning.isEmpty()) null else ({ Warning(portWarning, "editor-server-port-warning") })) {
-        EditorField(server.host, { value -> onChange(draft.withServer { it.copy(host = value) }) }, "server.example.com", "editor-server-host", kind = FieldKind.URL)
+        EditorField(server.host, { value -> onChange(draft.withServer { it.copy(host = value) }) }, "server.example.com", "editor-server-host", kind = FieldKind.URL, label = "Host")
         RowDivider()
-        EditorField(server.port, { value -> onChange(draft.withServer { it.copy(port = value) }) }, "22", "editor-server-port", kind = FieldKind.NUMBER)
+        EditorField(server.port, { value -> onChange(draft.withServer { it.copy(port = value) }) }, "22", "editor-server-port", kind = FieldKind.NUMBER, label = "Port")
         RowDivider()
         val sshKeyID = server.sshKeyID
         val allChoice = buildList {
@@ -164,16 +172,16 @@ fun DatabaseSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit)
         )
         if (isOtherEngine) {
             RowDivider()
-            EditorField(database?.engine.orEmpty(), { value -> onChange(draft.withDatabase { it.copy(engine = value) }) }, "DB2", "editor-database-other-engine", kind = FieldKind.PLAIN)
+            EditorField(database?.engine.orEmpty(), { value -> onChange(draft.withDatabase { it.copy(engine = value) }) }, "DB2", "editor-database-other-engine", kind = FieldKind.PLAIN, label = "Engine")
         }
         RowDivider()
-        EditorField(database?.host.orEmpty(), { value -> onChange(draft.withDatabase { it.copy(host = value) }) }, "db.example.com", "editor-database-host", kind = FieldKind.URL)
+        EditorField(database?.host.orEmpty(), { value -> onChange(draft.withDatabase { it.copy(host = value) }) }, "db.example.com", "editor-database-host", kind = FieldKind.URL, label = "Host")
         RowDivider()
-        EditorField(database?.port.orEmpty(), { value -> onChange(draft.withDatabase { it.copy(port = value) }) }, "5432", "editor-database-port", kind = FieldKind.NUMBER)
+        EditorField(database?.port.orEmpty(), { value -> onChange(draft.withDatabase { it.copy(port = value) }) }, "5432", "editor-database-port", kind = FieldKind.NUMBER, label = "Port")
         RowDivider()
-        EditorField(database?.name.orEmpty(), { value -> onChange(draft.withDatabase { it.copy(name = value) }) }, "app", "editor-database-name", kind = FieldKind.PLAIN)
+        EditorField(database?.name.orEmpty(), { value -> onChange(draft.withDatabase { it.copy(name = value) }) }, "app", "editor-database-name", kind = FieldKind.PLAIN, label = "Database name")
         RowDivider()
-        EditorField(database?.options.orEmpty(), { value -> onChange(draft.withDatabase { it.copy(options = value) }) }, "sslmode=require", "editor-database-options", kind = FieldKind.PLAIN)
+        EditorField(database?.options.orEmpty(), { value -> onChange(draft.withDatabase { it.copy(options = value) }) }, "sslmode=require", "editor-database-options", kind = FieldKind.PLAIN, label = "Options")
     }
 }
 
@@ -185,11 +193,12 @@ fun CardSections(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit, re
         header = "Card",
         footer = if (allWarning.isEmpty()) null else ({ Warning(allWarning.joinToString("\n"), "editor-card-warning") }),
     ) {
-        EditorField(card?.cardholder.orEmpty(), { value -> onChange(draft.withCard { it.copy(cardholder = value) }) }, "Name on the card", "editor-cardholder", kind = FieldKind.NAME)
+        EditorField(card?.cardholder.orEmpty(), { value -> onChange(draft.withCard { it.copy(cardholder = value) }) }, "Name on the card", "editor-cardholder", kind = FieldKind.NAME, label = "Cardholder")
         RowDivider()
         EditorField(
             card?.number.orEmpty(), { value -> onChange(draft.withCard { it.copy(number = value) }) }, "Card number", "editor-card-number",
             kind = FieldKind.SECRET_NUMBER, isSecret = true, isRevealed = revealed.isCard, isMonospaced = true,
+            label = "Card number",
         )
         RowDivider()
         val cardType = card?.type.orEmpty()
@@ -202,16 +211,18 @@ fun CardSections(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit, re
             testTag = "editor-card-type",
         )
         RowDivider()
-        EditorField(card?.expiry.orEmpty(), { value -> onChange(draft.withCard { it.copy(expiry = value) }) }, "Expiry (MM/YY)", "editor-card-expiry", kind = FieldKind.NUMBER)
+        EditorField(card?.expiry.orEmpty(), { value -> onChange(draft.withCard { it.copy(expiry = value) }) }, "Expiry (MM/YY)", "editor-card-expiry", kind = FieldKind.NUMBER, label = "Expiry")
         RowDivider()
         EditorField(
             card?.securityCode.orEmpty(), { value -> onChange(draft.withCard { it.copy(securityCode = value) }) }, "Security code", "editor-card-security-code",
             kind = FieldKind.SECRET_NUMBER, isSecret = true, isRevealed = revealed.isCard, isMonospaced = true,
+            label = "Security code",
         )
         RowDivider()
         EditorField(
             card?.pin.orEmpty(), { value -> onChange(draft.withCard { it.copy(pin = value) }) }, "PIN", "editor-card-pin",
             kind = FieldKind.SECRET_NUMBER, isSecret = true, isRevealed = revealed.isCard, isMonospaced = true,
+            label = "PIN",
         )
         RowDivider()
         EditorButtonRow(
@@ -228,18 +239,18 @@ fun CardSections(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit, re
 fun IdentitySections(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit, revealed: RevealedSecrets, onRevealedChange: (RevealedSecrets) -> Unit) {
     val identity = draft.item.identity
     FormSection(header = "Name") {
-        EditorField(identity?.firstName.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(firstName = value) }) }, "First name", "editor-identity-first-name", kind = FieldKind.NAME)
+        EditorField(identity?.firstName.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(firstName = value) }) }, "First name", "editor-identity-first-name", kind = FieldKind.NAME, label = "First name")
         RowDivider()
-        EditorField(identity?.middleName.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(middleName = value) }) }, "Middle name", "editor-identity-middle-name", kind = FieldKind.NAME)
+        EditorField(identity?.middleName.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(middleName = value) }) }, "Middle name", "editor-identity-middle-name", kind = FieldKind.NAME, label = "Middle name")
         RowDivider()
-        EditorField(identity?.lastName.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(lastName = value) }) }, "Last name", "editor-identity-last-name", kind = FieldKind.NAME)
+        EditorField(identity?.lastName.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(lastName = value) }) }, "Last name", "editor-identity-last-name", kind = FieldKind.NAME, label = "Last name")
     }
     FormSection(header = "Details") {
         DateRow("Birth date", identity?.birthDate.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(birthDate = value) }) }, "editor-identity-birth-date", isFutureAllowed = false)
         RowDivider()
-        EditorField(identity?.email.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(email = value) }) }, "Email", "editor-identity-email", kind = FieldKind.EMAIL)
+        EditorField(identity?.email.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(email = value) }) }, "Email", "editor-identity-email", kind = FieldKind.EMAIL, label = "Email")
         RowDivider()
-        EditorField(identity?.phone.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(phone = value) }) }, "Phone", "editor-identity-phone", kind = FieldKind.PHONE)
+        EditorField(identity?.phone.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(phone = value) }) }, "Phone", "editor-identity-phone", kind = FieldKind.PHONE, label = "Phone")
     }
     AddressSection("Address", draft, onChange)
     FormSection(header = "Documents") {
@@ -247,16 +258,19 @@ fun IdentitySections(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit
         EditorField(
             identity?.passportNumber.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(passportNumber = value) }) }, "Passport number",
             "editor-identity-passport-number", kind = FieldKind.SECRET_UPPERCASE, isSecret = true, isRevealed = isRevealed, isMonospaced = true,
+            label = "Passport number",
         )
         RowDivider()
         EditorField(
             identity?.driversLicenseNumber.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(driversLicenseNumber = value) }) }, "Driver's license number",
             "editor-identity-drivers-license-number", kind = FieldKind.SECRET_UPPERCASE, isSecret = true, isRevealed = isRevealed, isMonospaced = true,
+            label = "Driver's license number",
         )
         RowDivider()
         EditorField(
             identity?.nationalIDNumber.orEmpty(), { value -> onChange(draft.withIdentity { it.copy(nationalIDNumber = value) }) }, "National ID number",
             "editor-identity-national-id-number", kind = FieldKind.SECRET_UPPERCASE, isSecret = true, isRevealed = isRevealed, isMonospaced = true,
+            label = "National ID number",
         )
         RowDivider()
         EditorButtonRow(
@@ -277,20 +291,20 @@ fun AddressSection(title: String, draft: ItemEditorDraft, onChange: (ItemEditorD
     val address = draft.postalAddress
     fun update(transform: (ItemAddress) -> ItemAddress) = onChange(draft.withPostalAddress(transform(address)))
     FormSection(header = title) {
-        EditorField(address.street, { value -> update { it.copy(street = value) } }, "Street", "editor-address-street", maxLines = 4)
+        EditorField(address.street, { value -> update { it.copy(street = value) } }, "Street", "editor-address-street", maxLines = 4, label = "Street")
         RowDivider()
-        EditorField(address.city, { value -> update { it.copy(city = value) } }, "City", "editor-address-city", kind = FieldKind.NAME)
+        EditorField(address.city, { value -> update { it.copy(city = value) } }, "City", "editor-address-city", kind = FieldKind.NAME, label = "City")
         RowDivider()
-        EditorField(address.region, { value -> update { it.copy(region = value) } }, "State or province", "editor-address-region", kind = FieldKind.NAME)
+        EditorField(address.region, { value -> update { it.copy(region = value) } }, "State or province", "editor-address-region", kind = FieldKind.NAME, label = "State or province")
         RowDivider()
-        EditorField(address.postalCode, { value -> update { it.copy(postalCode = value) } }, "Postal code", "editor-address-postal-code", kind = FieldKind.POSTAL_CODE)
+        EditorField(address.postalCode, { value -> update { it.copy(postalCode = value) } }, "Postal code", "editor-address-postal-code", kind = FieldKind.POSTAL_CODE, label = "Postal code")
         RowDivider()
-        EditorField(address.country, { value -> update { it.copy(country = value) } }, "Country", "editor-address-country", kind = FieldKind.NAME)
+        EditorField(address.country, { value -> update { it.copy(country = value) } }, "Country", "editor-address-country", kind = FieldKind.NAME, label = "Country")
         if (!draft.item.isAddress && draft.isOldAddressShown) {
             RowDivider()
             Column(Modifier.padding(top = 10.dp)) {
                 Text("$title (old format)", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel, modifier = Modifier.padding(horizontal = 16.dp))
-                EditorField(draft.oldAddress, { value -> onChange(draft.withOldAddress(value)) }, "$title (old format)", "editor-old-address", minLines = 2, maxLines = 5)
+                EditorField(draft.oldAddress, { value -> onChange(draft.withOldAddress(value)) }, "$title (old format)", "editor-old-address", minLines = 2, maxLines = 5, label = "$title (old format)")
                 EditorButtonRow("Use as street", Icons.Outlined.MoveUp, onClick = { onChange(draft.useOldAddressAsStreet()) }, testTag = "editor-use-as-street")
             }
         }
@@ -302,18 +316,19 @@ fun APICredentialSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> 
     val credential = draft.item.apiCredential
     val warning = draft.credentialExpiryWarning
     FormSection(header = "Credential", footer = if (warning.isEmpty()) null else ({ Warning(warning, "editor-api-credential-warning") })) {
-        EditorField(credential?.service.orEmpty(), { value -> onChange(draft.withAPICredential { it.copy(service = value) }) }, "Service", "editor-api-credential-service", kind = FieldKind.NAME)
+        EditorField(credential?.service.orEmpty(), { value -> onChange(draft.withAPICredential { it.copy(service = value) }) }, "Service", "editor-api-credential-service", kind = FieldKind.NAME, label = "Service")
         RowDivider()
-        EditorField(credential?.keyID.orEmpty(), { value -> onChange(draft.withAPICredential { it.copy(keyID = value) }) }, "Key ID", "editor-api-credential-key-id", kind = FieldKind.PLAIN, isMonospaced = true)
+        EditorField(credential?.keyID.orEmpty(), { value -> onChange(draft.withAPICredential { it.copy(keyID = value) }) }, "Key ID", "editor-api-credential-key-id", kind = FieldKind.PLAIN, isMonospaced = true, label = "Key ID")
         RowDivider()
         EditorField(
             credential?.secret.orEmpty(), { value -> onChange(draft.withAPICredential { it.copy(secret = value) }) }, "Secret", "editor-api-credential-secret",
             kind = FieldKind.SECRET, isSecret = true, isRevealed = revealed.isCredentialSecret, isMonospaced = true,
+            label = "Secret",
         ) {
             RevealButton(revealed.isCredentialSecret, "secret") { onRevealedChange(revealed.copy(isCredentialSecret = !revealed.isCredentialSecret)) }
         }
         RowDivider()
-        EditorField(credential?.host.orEmpty(), { value -> onChange(draft.withAPICredential { it.copy(host = value) }) }, "api.example.com", "editor-api-credential-host", kind = FieldKind.URL)
+        EditorField(credential?.host.orEmpty(), { value -> onChange(draft.withAPICredential { it.copy(host = value) }) }, "api.example.com", "editor-api-credential-host", kind = FieldKind.URL, label = "Host")
         RowDivider()
         DateRow("Expiry", credential?.expiry.orEmpty(), { value -> onChange(draft.withAPICredential { it.copy(expiry = value) }) }, "editor-api-credential-expiry", isFutureAllowed = true)
     }
@@ -323,26 +338,28 @@ fun APICredentialSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> 
 fun SoftwareLicenseSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit, revealed: RevealedSecrets, onRevealedChange: (RevealedSecrets) -> Unit) {
     val license = draft.item.softwareLicense
     FormSection(header = "License") {
-        EditorField(license?.product.orEmpty(), { value -> onChange(draft.withSoftwareLicense { it.copy(product = value) }) }, "Product", "editor-license-product", kind = FieldKind.NAME)
+        EditorField(license?.product.orEmpty(), { value -> onChange(draft.withSoftwareLicense { it.copy(product = value) }) }, "Product", "editor-license-product", kind = FieldKind.NAME, label = "Product")
         RowDivider()
-        EditorField(license?.version.orEmpty(), { value -> onChange(draft.withSoftwareLicense { it.copy(version = value) }) }, "Version", "editor-license-version", kind = FieldKind.PLAIN)
+        EditorField(license?.version.orEmpty(), { value -> onChange(draft.withSoftwareLicense { it.copy(version = value) }) }, "Version", "editor-license-version", kind = FieldKind.PLAIN, label = "Version")
         RowDivider()
         EditorField(
             license?.licenseKey.orEmpty(), { value -> onChange(draft.withSoftwareLicense { it.copy(licenseKey = value) }) }, "License key", "editor-license-key",
             kind = FieldKind.SECRET, isSecret = true, isRevealed = revealed.isLicenseKey, isMonospaced = true,
+            label = "License key",
         ) {
             RevealButton(revealed.isLicenseKey, "license key") { onRevealedChange(revealed.copy(isLicenseKey = !revealed.isLicenseKey)) }
         }
         RowDivider()
-        EditorField(license?.licensedTo.orEmpty(), { value -> onChange(draft.withSoftwareLicense { it.copy(licensedTo = value) }) }, "Licensed to", "editor-license-licensed-to", kind = FieldKind.NAME)
+        EditorField(license?.licensedTo.orEmpty(), { value -> onChange(draft.withSoftwareLicense { it.copy(licensedTo = value) }) }, "Licensed to", "editor-license-licensed-to", kind = FieldKind.NAME, label = "Licensed to")
         RowDivider()
-        EditorField(license?.email.orEmpty(), { value -> onChange(draft.withSoftwareLicense { it.copy(email = value) }) }, "Email", "editor-license-email", kind = FieldKind.EMAIL)
+        EditorField(license?.email.orEmpty(), { value -> onChange(draft.withSoftwareLicense { it.copy(email = value) }) }, "Email", "editor-license-email", kind = FieldKind.EMAIL, label = "Email")
         RowDivider()
         DateRow("Purchase date", license?.purchaseDate.orEmpty(), { value -> onChange(draft.withSoftwareLicense { it.copy(purchaseDate = value) }) }, "editor-license-purchase-date", isFutureAllowed = false)
         RowDivider()
         EditorField(
             license?.downloadURL.orEmpty(), { value -> onChange(draft.withSoftwareLicense { it.copy(downloadURL = value) }) }, "https://example.com/download",
             "editor-license-download-url", kind = FieldKind.URL,
+            label = "Download URL",
         )
     }
 }
@@ -361,7 +378,7 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
                     Column(Modifier.weight(1f)) {
                         EditorField(
                             field.name, { value -> update(index) { it.copy(name = value) } }, "Name", "editor-field-$index-name",
-                            modifier = Modifier.focusRequester(nameFocus(index)), textStyle = HisarType.footnote,
+                            modifier = Modifier.focusRequester(nameFocus(index)), textStyle = HisarType.footnote, label = "Name",
                         )
                         if (draft.isUnnamedFieldShown && field.isNameMissing) {
                             Text(
@@ -371,9 +388,12 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
                                 modifier = Modifier.padding(start = 16.dp, bottom = 4.dp).testTag("editor-field-$index-name-error"),
                             )
                         }
+                        val nameWarning = draft.fieldNameWarning(index)
+                        if (nameWarning.isNotEmpty()) Warning(nameWarning, "editor-field-$index-name-warning")
                         EditorField(
                             field.value, { value -> update(index) { it.copy(value = value) } }, "Value", "editor-field-$index-value",
                             kind = if (field.concealed) FieldKind.SECRET else FieldKind.TEXT, isSecret = field.concealed,
+                            label = "Value",
                         )
                         ToggleRow("Secret", field.concealed, { isOn -> update(index) { it.copy(concealed = isOn) } }, testTag = "editor-field-$index-secret")
                     }
@@ -427,6 +447,7 @@ fun TagSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit) {
             kind = FieldKind.PLAIN,
             imeAction = ImeAction.Done,
             onImeAction = { onChange(draft.withTagsAdded()) },
+            label = "Add a tag",
         )
     }
 }

@@ -72,8 +72,10 @@ exit before tests start. Keeping those JVMs alive alongside the emulator can exh
 test under its Swift name and delete its line from
 `android/model/src/test/resources/ios-test-parity-expected-missing.txt`, which lists the tests not ported yet.
 
-CI's `android` job (`.github/workflows/ci.yml`) runs `make build-android-aar`, the `ThemePalettes.kt` freshness check,
-`make build-android`, `make test-android` and `make test-android-ui` on an x86_64 API 37 emulator with Postgres.
+CI's `android-build` job (`.github/workflows/ci.yml`) builds and lints the app and runs its JVM tests.
+The `android` job runs the instrumented tests in two parts on x86_64 API 36 emulators with Postgres.
+These headless emulators use SwiftShader OpenGL ES with Vulkan disabled: the Vulkan context can be lost during
+the tests, hanging QEMU and leaving the device offline.
 
 ### Push notifications
 

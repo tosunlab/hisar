@@ -24,8 +24,8 @@ async function confirmDeletion(): Promise<void> {
   <AccountDialog :title="`Delete “${title}”?`" :subtitle="subtitle" icon="trash" is-danger :is-closable="!store.isBusy" data-testid="confirm-delete-dialog" @close="emit('close')">
     <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
     <div class="row actions">
-      <button type="button" class="ghost" :disabled="store.isBusy" data-testid="confirm-delete-cancel" @click="emit('close')">Cancel</button>
-      <button type="button" class="danger-solid" :disabled="store.isBusy" data-testid="confirm-delete-item" autofocus @click="confirmDeletion">Delete item</button>
+      <button type="button" class="ghost" :disabled="store.isBusy" data-testid="confirm-delete-cancel" data-dialog-initial-focus @click="emit('close')">Cancel</button>
+      <button type="button" class="danger-solid" :disabled="store.isBusy" data-testid="confirm-delete-item" @click="confirmDeletion">Delete item</button>
     </div>
   </AccountDialog>
 </template>

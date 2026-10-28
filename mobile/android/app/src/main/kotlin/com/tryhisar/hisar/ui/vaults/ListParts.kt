@@ -157,7 +157,7 @@ fun NavigationRow(
             .testTag(testTag)
             .padding(horizontal = RowInset, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (LocalDensity.current.fontScale >= 1.5f) 8.dp else 12.dp),
     ) {
         if (leading != null) leading()
         Box(Modifier.weight(1f)) { content() }
@@ -175,10 +175,11 @@ fun RowSymbol(icon: ImageVector, tint: Color = HisarTheme.colors.label) {
 /** A title with an optional footnote under it. */
 @Composable
 fun TitleAndSubtitle(title: String, subtitle: String) {
+    val maxLines = if (LocalDensity.current.fontScale >= 1.5f) Int.MAX_VALUE else 1
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(title, style = HisarType.body, color = HisarTheme.colors.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, style = HisarType.body, color = HisarTheme.colors.label, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
         if (subtitle.isNotEmpty()) {
-            Text(subtitle, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -241,7 +242,7 @@ fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: Str
                 Icon(Icons.Outlined.Search, contentDescription = null, tint = colors.secondaryLabel, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(6.dp))
                 Box(Modifier.weight(1f)) {
-                    if (value.isEmpty()) Text(placeholder, style = HisarType.body, color = colors.secondaryLabel, maxLines = 1)
+                    if (value.isEmpty()) Text(placeholder, style = HisarType.body, color = colors.placeholder, maxLines = 1)
                     innerTextField()
                 }
                 if (value.isNotEmpty()) {
@@ -339,10 +340,16 @@ fun HisarMenuItem(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     isDestructive: Boolean = false,
+    detail: String? = null,
 ) {
     val color = if (isDestructive) HisarTheme.colors.destructive else HisarTheme.colors.label
     DropdownMenuItem(
-        text = { Text(text, style = HisarType.body) },
+        text = {
+            Column {
+                Text(text, style = HisarType.body)
+                if (detail != null) Text(detail, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+            }
+        },
         onClick = onClick,
         enabled = enabled,
         leadingIcon = icon?.let { { Icon(it, contentDescription = null) } },
@@ -390,12 +397,12 @@ fun BarCapsuleButton(text: String, onClick: () -> Unit, testTag: String, enabled
     val colors = HisarTheme.colors
     Box(
         Modifier
-            .height(44.dp)
+            .heightIn(min = 44.dp)
             .shadow(6.dp, CircleShape)
             .background(colors.cellBackground, CircleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .testTag(testTag)
-            .padding(horizontal = 18.dp),
+            .padding(horizontal = 18.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(

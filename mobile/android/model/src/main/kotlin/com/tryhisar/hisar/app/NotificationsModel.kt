@@ -38,9 +38,13 @@ interface NotificationPlatform {
  * Settings → Notifications and what a notification does, the iPhone app's PushNotificationsModel ported: whether a
  * UnifiedPush distributor can deliver pushes, the kinds turned on, the screen a tapped notification opens, and the
  * reminder of an approval left waiting. The distributor's endpoint reaches HisarKit from HisarPushService, not from
- * here. A notification says only what kind of thing happened; Hisar shows the rest once unlocked.
+ * here.
  */
 class NotificationsModel(private val context: ModelContext, private val platform: NotificationPlatform) {
+    companion object {
+        const val privacyExplanation = "Approval requests and security alerts don't name items or people. Sharing invitations show who invited you and, for an organization, its name, even while Hisar is locked. To keep them off the lock screen, hide sensitive notification content in Android's notification settings. Your UnifiedPush app sees only the kind of notification; its details are encrypted for this phone."
+    }
+
     private val mutableSettings = MutableStateFlow(PushSettings.unavailable)
     private val mutableIsPermissionGranted = MutableStateFlow(platform.isPermissionGranted())
     private val mutableIsDistributorInstalled = MutableStateFlow(platform.isDistributorInstalled())
@@ -67,7 +71,7 @@ class NotificationsModel(private val context: ModelContext, private val platform
         refresh()
     }
 
-    /** Records the notification the user tapped; its kind is all a Hisar push carries. */
+    /** Records the kind of notification the user tapped. */
     fun open(kindText: String?) {
         PushKind.parse(kindText)?.let { openedKind.value = it }
     }
