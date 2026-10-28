@@ -52,6 +52,36 @@ func TestMoveItemKeepsItsIDAndFavorite(t *testing.T) {
 	}
 }
 
+func TestMoveItemMakesAnUnreadDestinationImmediatelyUsable(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	saved, err := service.SaveItem(test.personalID, ItemDetail{Title: "GitHub", Password: "github-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := service.SaveItem(test.familyID, ItemDetail{Title: "Existing item"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mutex.Lock()
+	delete(service.itemsByVaultID, test.familyID)
+	delete(service.itemProvenanceByVaultID, test.familyID)
+	service.mutex.Unlock()
+	if _, err := service.MoveItem(test.personalID, saved.ID, test.familyID); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := service.GetItem(test.familyID, saved.ID)
+	if err != nil || moved.ID != saved.ID || moved.Password != saved.Password {
+		t.Fatalf("reading the moved item immediately = %+v, %v", moved, err)
+	}
+	if _, err := service.MoveItem(test.familyID, saved.ID, test.personalID); err != nil {
+		t.Fatalf("moving back without a destination listing: %v", err)
+	}
+	if remaining := listItemsByTitle(t, service, test.familyID)["Existing item"]; remaining.ID != other.ID {
+		t.Fatalf("reading the rest of the destination = %+v", remaining)
+	}
+}
+
 func TestMoveItemNeedsAVaultTheUserMayWrite(t *testing.T) {
 	test := createUnlockedTestService(t)
 	service := test.service
