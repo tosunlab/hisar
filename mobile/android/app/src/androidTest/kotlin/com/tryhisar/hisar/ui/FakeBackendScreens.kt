@@ -47,9 +47,9 @@ fun ComposeTestRule.waitForTagToGo(tag: String, timeoutMillis: Long = 30_000) {
 
 fun ComposeTestRule.isTagShown(tag: String): Boolean = onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
-/** The text typed into the field with [tag]. */
+/** The text typed into the field with [tag], whether or not the field masks it. */
 fun ComposeTestRule.assertFieldText(tag: String, text: String) {
-    onNodeWithTag(tag).assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(text)))
+    onNodeWithTag(tag).assert(SemanticsMatcher.expectValue(SemanticsProperties.InputText, AnnotatedString(text)))
 }
 
 /** Scrolls the control with [tag] into view and taps it, as a finger would. */
