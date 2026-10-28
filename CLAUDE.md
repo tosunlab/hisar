@@ -135,6 +135,9 @@ only Android calls:
 
 `cmd/hisar-ui-test-mac` plays the user's Mac in the Android phone approval UI test, which `scripts/test-android-ui.sh`
 starts it for: it signs up, sends the phone real approval requests, and saves each answer it verified in the Personal vault.
+`cmd/hisar-ui-test-partner` plays the sharing and organization partner of both phones' UI tests, which
+`scripts/ui-test-partner.sh` starts it for: it signs up, writes a ready file and answers every 2 seconds, so the run
+derives the partner's keys once and the UI tests never run the `hisar` CLI.
 
 ### mobile/android
 
@@ -332,6 +335,12 @@ check cache repair, concurrent reuse and Python failures.
   in the last part. iPhone part 1 runs in the build job on its warm simulator; parts 2 and 3 start alongside the build and
   wait for its artifact. The Android jobs build `HisarKit.aar` and the APKs in the background while the emulator boots
   (`test-android-ui.sh --build-apks`, `ANDROID_UI_TEST_APK_BUILD`).
+- A failed iPhone UI test runs once more. `scripts/test-ios-ui.sh` reads the failed tests from the result bundle
+  (`mobile/ios/scripts/failed-ui-tests.py`), empties the database with `psql` and starts a new server and partner
+  (`ui_test_restart`), then runs only those tests. A test fails the job only when it fails both times. Every test that
+  needed the second run is in the log, the job summary and a GitHub warning (passed) or error (failed again), and the job
+  uploads both result bundles. xcodebuild's `-retry-tests-on-failure` cannot do this: its second attempt finds the test's
+  single-use invite used. The Android instrumented tests have no second run.
 - Tests create accounts with the minimum Argon2 parameters: `make test` passes the build tag `hisar_fast_test_kdf`, and CI's
   phone UI test jobs build HisarKit with `HISAR_FAST_TEST_KDF=1` (`mobile/fast-test-kdf.sh`, which refuses outside GitHub
   Actions) into caches of their own. `scripts/check-fast-test-kdf.sh` fails when the tag appears outside its allowlist, so no

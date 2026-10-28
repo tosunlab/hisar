@@ -18,7 +18,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-// scripts/test-android-ui.sh runs a partner on the command line who accepts every share invitation and completes every share it sent.
+// scripts/test-android-ui.sh runs a partner (scripts/ui-test-partner.sh) who accepts every share invitation and completes every share it sent.
 @RunWith(AndroidJUnit4::class)
 class SharingUITests : HisarUITestCase() {
     @After

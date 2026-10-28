@@ -8,8 +8,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-// scripts/test-android-ui.sh runs a partner on the command line who accepts every organization invitation, gives team members
-// the keys of its vaults and writes "Seen by partner" into Runbooks once it reads it.
+// scripts/test-android-ui.sh runs a partner (scripts/ui-test-partner.sh) who accepts every organization invitation, gives
+// team members the keys of its vaults and writes "Seen by partner" into Runbooks once it reads it.
 @RunWith(AndroidJUnit4::class)
 class OrganizationUITests : HisarUITestCase() {
     /** What a row reads as one element, as an XCUIElement's label. */
