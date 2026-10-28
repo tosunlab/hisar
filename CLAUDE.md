@@ -251,7 +251,7 @@ exported method is callable from the UI. After changing a bound type, run
 ```sh
 docker run -d --name hisar-pg -e POSTGRES_PASSWORD=hisar -e POSTGRES_DB=hisar -p 127.0.0.1:55432:5432 postgres:18
 export HISAR_TEST_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar?sslmode=disable"
-make vet test            # every module; -p 1 because database tests share one schema
+make vet test            # every module; only the four shared-schema database packages use -p 1
 make build build-cli-all # hisar-server with the admin dashboard (needs Node 24), and hisar; the CLI for every OS
 make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
 make test-desktop-frontend

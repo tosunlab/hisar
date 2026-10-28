@@ -159,7 +159,7 @@ func TestOrganizationInvitationAndKeyDelivery(t *testing.T) {
 	caller := apiCaller{t: t, baseURL: baseURL}
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
 	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
-	bobEvents := openEventStream(t, bob.Client)
+	bobEvents := openEventStream(t, server, bob.Client, bob.AccountID)
 	waitForSubscriber(t, server, bob.AccountID, 1)
 
 	acme := caller.createOrganization(alice, "  Acme  ")
@@ -299,7 +299,7 @@ func TestOrganizationTeamRemovalNeedsRotation(t *testing.T) {
 		t.Fatalf("Bob's role: %+v", listed)
 	}
 
-	aliceEvents := openEventStream(t, alice.Client)
+	aliceEvents := openEventStream(t, server, alice.Client, alice.AccountID)
 	waitForSubscriber(t, server, alice.AccountID, 1)
 	caller.call(alice, "DELETE", organizationPath(acme.ID, "teams", developers.ID, "members", bob.AccountID), nil, http.StatusNoContent, nil)
 	if _, isListed := findListedVault(t, bob, production.ID); isListed {
@@ -897,9 +897,9 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 	}
 
 	server.WaitForBackgroundWork()
-	carolEvents := openEventStream(t, carol.Client)
+	carolEvents := openEventStream(t, server, carol.Client, carol.AccountID)
 	waitForSubscriber(t, server, carol.AccountID, 1)
-	daveEvents := openEventStream(t, dave.Client)
+	daveEvents := openEventStream(t, server, dave.Client, dave.AccountID)
 	waitForSubscriber(t, server, dave.AccountID, 1)
 	if err := alice.session.DeleteAccount(ctx, alice.password, alice.secretKey, "alice@example.com", reviewSessionDeletion(t, alice.session, ctx)); err != nil {
 		t.Fatal(err)

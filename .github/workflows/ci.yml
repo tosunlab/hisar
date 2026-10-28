@@ -99,8 +99,6 @@ jobs:
       - name: Fail on skipped tests outside the allowlist
         run: |
           if grep -- "--- SKIP" test.log | grep -v -E "TestIntegration[A-Za-z]+|TestRecordOpenSSHFixture"; then exit 1; fi
-      - name: Build server and CLI
-        run: make build
       - name: Build CLI for every release platform
         run: make build-cli-all
       - name: End-to-end test of the built server and CLI
