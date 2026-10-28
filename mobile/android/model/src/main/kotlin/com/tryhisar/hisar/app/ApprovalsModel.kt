@@ -100,6 +100,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
         if (!context.status.value.isUnlocked || approvalList <= shownApprovalList) return
         shownApprovalList = approvalList
         val date = now()
+        removeAllExpiredApproval()
         mutableAllPendingApproval.value = allApproval.filter { it.requestID !in allFinishedApprovalID && !it.isExpired(date) }
         mutableRememberChoices.update { choices -> choices.filterKeys { id -> mutableAllPendingApproval.value.any { it.requestID == id } } }
         openAnnouncedApproval(approvalList)
@@ -139,7 +140,12 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
 
     fun removeAllExpiredApproval() {
         val date = now()
-        mutableAllPendingApproval.value.filter { it.isExpired(date) }.forEach { removeApproval(it.requestID) }
+        mutableAllPendingApproval.value.filter { it.isExpired(date) }.forEach { approval ->
+            if (mutablePresentedApproval.value?.requestID == approval.requestID) {
+                context.showNotice("This request expired. Start it again on your Mac if you still need it.")
+            }
+            removeApproval(approval.requestID)
+        }
     }
 
     fun rememberChoice(approval: PhoneApproval): Boolean = approval.resolveRememberChoice(mutableRememberChoices.value[approval.requestID])

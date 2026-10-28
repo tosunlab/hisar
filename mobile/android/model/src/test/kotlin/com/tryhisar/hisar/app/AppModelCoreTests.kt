@@ -237,7 +237,7 @@ class AppModelCoreTests {
         model.copySecretReference("personal", "github", "password")
         assertEquals(2, model.copyCount.value)
         assertEquals(listOf("hisar://Personal/GitHub/password"), harness.backend.allCopiedReference)
-        assertEquals("Secret reference copied.", model.notice.value?.message)
+        assertEquals("Copied hisar://Personal/GitHub/password.", model.notice.value?.message)
     }
 
     @Test

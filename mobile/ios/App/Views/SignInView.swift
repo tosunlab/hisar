@@ -20,13 +20,15 @@ struct SignInView: View {
     @State private var inviteLink = ""
     @State private var name = ""
     @State private var repeatedPassword = ""
+    @FocusState private var isRepeatPasswordFocused: Bool
+    @State private var hasValidatedRepeatedPassword = false
     @State private var isScannerShown = false
     @State private var scannerMessage: String?
     @State private var ratedPassword = ""
     @State private var passwordFeedback: MasterPasswordFeedback?
 
     private var isPasswordMismatch: Bool {
-        mode == .createAccount && !repeatedPassword.isEmpty && password != repeatedPassword
+        mode == .createAccount && hasValidatedRepeatedPassword && password != repeatedPassword
     }
 
     private var canSubmit: Bool {
@@ -131,10 +133,12 @@ struct SignInView: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
                 } footer: {
-                    Text(mode == .signIn ? "Lost your Secret Key? It's on your Emergency Kit." : "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar.")
-                        .foregroundStyle(.themeSecondary)
-                        .padding(.top, 8)
-                        .accessibilityIdentifier(mode == .signIn ? "secret-key-note" : "create-account-note")
+                    if mode == .signIn {
+                        Text("Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.")
+                            .foregroundStyle(.themeSecondary)
+                            .padding(.top, 8)
+                            .accessibilityIdentifier("secret-key-note")
+                    }
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -145,7 +149,13 @@ struct SignInView: View {
         .onChange(of: mode) { _, _ in
             password = ""
             repeatedPassword = ""
+            hasValidatedRepeatedPassword = false
             model.clearError()
+        }
+        .onChange(of: isRepeatPasswordFocused) { _, isFocused in
+            if !isFocused && !repeatedPassword.isEmpty {
+                hasValidatedRepeatedPassword = true
+            }
         }
         .onAppear {
             if !model.status.server.isEmpty { applyServer(model.status.server) }
@@ -155,19 +165,10 @@ struct SignInView: View {
         .onChange(of: model.pendingSignInLink) { _, _ in applyPendingSignInLink() }
         .onChange(of: model.pendingInviteLink) { _, _ in applyPendingInviteLink() }
         .sheet(isPresented: $isScannerShown) {
-            EmergencyKitScannerSheet { scannedText in
+            EmergencyKitScannerSheet { link in
+                model.pendingSignInLink = link
                 isScannerShown = false
-                if let link = SignInLink.parse(scannedText) {
-                    model.pendingSignInLink = link
-                } else {
-                    scannerMessage = "This QR code is not from a Hisar Emergency Kit."
-                }
             }
-        }
-        .alert("Scan Emergency Kit", isPresented: Binding(get: { scannerMessage != nil }, set: { if !$0 { scannerMessage = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(scannerMessage ?? "")
         }
     }
 
@@ -191,12 +192,23 @@ struct SignInView: View {
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("sign-in-email")
             if isServerShown {
-                TextField("Server", text: $server, prompt: Text(verbatim: SignInView.defaultServer))
-                    .textContentType(.URL)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("sign-in-server")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Server")
+                        .font(.subheadline)
+                    TextField("Server", text: $server, prompt: Text(verbatim: SignInView.defaultServer))
+                        .textContentType(.URL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("sign-in-server")
+                }
+                if !SignInView.isDefaultServer(server) {
+                    Button("Use eu.tryhisar.com") {
+                        server = Self.defaultServer
+                        isServerShown = false
+                    }
+                    .accessibilityIdentifier("sign-in-use-default-server")
+                }
             } else {
                 Button("Use a different server…") {
                     isServerShown = true
@@ -207,10 +219,8 @@ struct SignInView: View {
             Text("Account")
                 .foregroundStyle(.themeSecondary)
         } footer: {
-            if !isServerShown {
-                Text(verbatim: "Signs in to \(SignInView.describeServer(server)).")
-                    .foregroundStyle(.themeSecondary)
-            }
+            Text(verbatim: "Signs in to \(SignInView.describeServer(server)).")
+                .foregroundStyle(.themeSecondary)
         }
         Section {
             TextField("Secret Key", text: $secretKey, prompt: Text(verbatim: "H1-XXXXXX-XXXXX-…"))
@@ -290,6 +300,7 @@ struct SignInView: View {
                 .concealWhen(model.isBusy)
             CredentialField("Repeat master password", text: $repeatedPassword, secretName: "repeated master password")
                 .textContentType(.newPassword)
+                .focused($isRepeatPasswordFocused)
                 .accessibilityIdentifier("sign-up-repeated-password")
                 .concealWhen(model.isBusy)
                 .validationError(isPasswordMismatch ? "The passwords do not match." : nil)
@@ -313,12 +324,12 @@ struct SignInView: View {
                 } else if let hint = AccountLifecycleLogic.describeMasterPasswordHint(feedback: passwordFeedback) {
                     Text(hint)
                         .foregroundStyle(.themeSecondary)
-                } else {
-                Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
+                }
+                Text("Choose a master password you can remember. A forgotten master password can't be recovered by anyone, including Hisar.")
                     .foregroundStyle(.themeSecondary)
+                    .accessibilityIdentifier("create-account-note")
             }
         }
-    }
         .task(id: password) {
             let typedPassword = password
             let feedback = await model.checkMasterPassword(typedPassword)
@@ -359,6 +370,7 @@ struct SignInView: View {
     }
 
     private func submit() {
+        if mode == .createAccount { hasValidatedRepeatedPassword = true }
         guard canSubmit, !model.isBusy else { return }
         Task {
             switch mode {

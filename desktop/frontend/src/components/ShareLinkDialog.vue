@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
         <span class="panel-icon"><AppIcon name="link" :size="18" /></span>
         <div class="panel-heading">
           <h2 id="share-link-title">{{ heading }}</h2>
-          <p id="share-link-description" class="muted">Anyone with the link can open it, even without a Hisar account. The payload is encrypted before upload. Opening the web link also means trusting the page served by that server.</p>
+          <p id="share-link-description" class="muted">Anyone with the link can open it, even without a Hisar account.</p>
         </div>
         <button class="ghost icon-button" aria-label="Close" @click="closeShareLinkDialog"><AppIcon name="close" /></button>
       </header>
@@ -119,6 +119,7 @@ onBeforeUnmount(() => {
           <li v-if="createdShareLink.hasPassphrase"><AppIcon name="lock" :size="14" /> Needs the passphrase: send it another way than the link</li>
         </ul>
         <p class="muted hint">Each view counts when the recipient clicks Reveal. You can copy or revoke the link later under Shared links.</p>
+        <p class="muted hint">Hisar encrypts it before sending it. Opening the web link requires trusting the page supplied by the Hisar server.</p>
         <div class="row actions">
           <button class="primary" @click="closeShareLinkDialog">Done</button>
         </div>
@@ -191,6 +192,7 @@ onBeforeUnmount(() => {
         </template>
 
         <p v-if="validationMessage" class="error" role="alert" data-testid="share-link-validation">{{ validationMessage }}</p>
+        <p class="muted hint">Hisar encrypts it before sending it. Opening the web link requires trusting the page supplied by the Hisar server.</p>
 
         <div class="row actions">
           <button type="button" class="ghost" @click="closeShareLinkDialog">Cancel</button>

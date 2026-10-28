@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -270,7 +271,8 @@ func TestNewAccountEmergencyKitAndAcknowledgementNeedNoPassword(t *testing.T) {
 	}
 	directory := t.TempDir()
 	kit, err := ExportNewAccountEmergencyKitToDirectory(service, directory)
-	if err != nil || kit.SecretKey != result.SecretKey || kit.Path != filepath.Join(directory, "Hisar Emergency Kit.pdf") {
+	if err != nil || kit.SecretKey != result.SecretKey || filepath.Dir(kit.Path) != directory ||
+		!strings.HasPrefix(filepath.Base(kit.Path), "Hisar Emergency Kit - kit@example.com - ") {
 		t.Fatalf("new account kit: %+v %v", kit, err)
 	}
 	if document, err := os.ReadFile(kit.Path); err != nil || !bytes.HasPrefix(document, []byte("%PDF-")) {

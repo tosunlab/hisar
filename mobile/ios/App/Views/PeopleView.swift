@@ -136,6 +136,9 @@ struct PeopleView: View {
                     }
                 }
             }
+            Button("Keep invitation", role: .cancel) {}
+        } message: {
+            Text("Their invitation link stops working. You can invite them again later.")
         }
         .sheet(isPresented: $isInviteShown) {
             InvitePersonView()
@@ -191,6 +194,11 @@ struct PersonView: View {
                         .frame(maxWidth: .infinity)
                         .textSelection(.enabled)
                         .accessibilityIdentifier("person-security-code")
+                    if person.isCurrentUser {
+                        ShareLink(item: "My Hisar security code: \(person.securityCode)") {
+                            Label("Share my security code", systemImage: "square.and.arrow.up")
+                        }
+                    }
                 } header: {
                     Text("Security code")
                         .foregroundStyle(.themeSecondary)
@@ -206,6 +214,20 @@ struct PersonView: View {
     }
 }
 
+struct InvitationExpiryText: View {
+    var timestamp: String
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let lifetime = InvitationLifetime(timestamp)
+            Text(lifetime.describe(at: context.date))
+                .font(.footnote)
+                .foregroundStyle(.themeSecondary)
+                .accessibilityValue(lifetime.exactDate)
+        }
+    }
+}
+
 struct ReceivedInvitationRow: View {
     var invitation: ReceivedShareInvitation
     var identifierPrefix = ""
@@ -214,6 +236,12 @@ struct ReceivedInvitationRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            row(at: context.date)
+        }
+    }
+
+    private func row(at now: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Label {
@@ -224,30 +252,32 @@ struct ReceivedInvitationRow: View {
                         .accessibilityHidden(true)
                 }
                 InvitationEmailText(email: invitation.invitedByEmail)
+                InvitationExpiryText(timestamp: invitation.expiresAt)
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("\(identifierPrefix)invitation-text")
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(spacing: 10) {
-                    acceptButton
+                    acceptButton(at: now)
                     declineButton
                 }
             } else {
                 HStack(spacing: 10) {
                     declineButton
-                    acceptButton
+                    acceptButton(at: now)
                 }
             }
         }
         .padding(.vertical, 4)
     }
 
-    private var acceptButton: some View {
+    private func acceptButton(at now: Date) -> some View {
         Button(action: accept) {
             Text("Accept").frame(maxWidth: .infinity)
         }
         .applyGlassButtonStyle(isProminent: true)
         .accessibilityIdentifier("\(identifierPrefix)accept-invitation")
+        .disabled(InvitationLifetime(invitation.expiresAt).isExpired(at: now))
     }
 
     private var declineButton: some View {
@@ -303,6 +333,7 @@ struct SentInvitationRow: View {
     var onConfirmed: () async -> Void = {}
     @EnvironmentObject private var model: AppModel
     @State private var reviewed: SentShareInvitation?
+    @State private var resendError: String?
 
     private var stateText: String {
         if invitation.requiresConfirmation == true { return "Accepted, review recipient identity" }
@@ -317,6 +348,9 @@ struct SentInvitationRow: View {
                     Text(isVaultNameShown ? "\(invitation.vaultName.isEmpty ? "A vault you own" : invitation.vaultName) · \(stateText)" : stateText)
                         .font(.footnote)
                         .foregroundStyle(.themeSecondary)
+                    if invitation.state != SentShareInvitation.stateAccepted {
+                        InvitationExpiryText(timestamp: invitation.expiresAt)
+                    }
                 }
             } icon: {
                 Image(systemName: invitation.state == SentShareInvitation.stateAccepted ? "envelope.open" : "envelope")
@@ -328,6 +362,26 @@ struct SentInvitationRow: View {
                 Button("Review recipient") { reviewed = invitation }
                     .accessibilityIdentifier("review-share-\(invitation.email)")
             }
+            if invitation.state != SentShareInvitation.stateAccepted && invitation.requiresConfirmation != true {
+                Button("Send again") {
+                    Task {
+                        resendError = nil
+                        if await model.shareVault(vaultID: invitation.vaultID, email: invitation.email, role: invitation.role) {
+                            model.showNotice("Invitation sent to \(invitation.email).")
+                            await onConfirmed()
+                        } else {
+                            resendError = model.errorMessage
+                            model.clearError()
+                        }
+                    }
+                }
+                .disabled(model.isBusy)
+                .accessibilityIdentifier("resend-invitation-\(invitation.email)")
+                Text("Sending again replaces the previous invitation.")
+                    .font(.footnote)
+                    .foregroundStyle(.themeSecondary)
+            }
+            if let resendError { ErrorBanner(message: resendError) }
         }
         .sheet(item: $reviewed) { snapshot in
             ReviewRecipientSheet(invitation: snapshot, onChanged: onConfirmed)

@@ -191,7 +191,7 @@ internal fun ItemDetailContent(
         }
     }
     item.referenceFieldName?.let { referenceField ->
-        FormSection(footer = { Text("A hisar:// reference to the $referenceField, for hisar run and hisar read. Touch and hold a field for its own reference.") }) {
+        FormSection(footer = { Text("For hisar run and hisar read on your Mac.") }) {
             FormButtonRow("Copy secret reference", onClick = { actions.copyReference(referenceField) }, testTag = "copy-secret-reference", icon = Icons.Outlined.Terminal)
         }
     }

@@ -76,7 +76,7 @@ class QrScannerTests {
     }
 
     @Test
-    fun testNonHisarCodeShowsTheAlert() {
+    fun testNonHisarCodeWaitsForTryAgainInTheScanner() {
         val code = renderQrCode("https://example.com/not-an-emergency-kit")
         val allScannedText = mutableListOf<String>()
         val analyzer = QrCodeAnalyzer { allScannedText += it }
@@ -89,12 +89,15 @@ class QrScannerTests {
 
         openScanner()
         composeRule.runOnUiThread { model.signIn.openScannedEmergencyKit(allScannedText.single()) }
-        composeRule.waitUntil(10_000) { !exists("scanner") }
+        composeRule.waitUntil(10_000) { exists("scanner-try-again") }
         composeRule.waitUntil(10_000) { composeRule.onAllNodesWithText("This QR code is not from a Hisar Emergency Kit.").fetchSemanticsNodes().isNotEmpty() }
         saveScreenshot("scanner-not-an-emergency-kit")
-        composeRule.onNodeWithTag("scanner-message-ok").performClick()
-        composeRule.waitUntil(10_000) { !exists("scanner-message-ok") }
-        composeRule.assertFieldText("sign-in-email", "")
+        assertTrue(exists("scanner"))
+        composeRule.onNodeWithTag("scanner-try-again").performClick()
+        composeRule.waitUntil(10_000) { !exists("scanner-try-again") }
+        composeRule.runOnUiThread { model.signIn.openScannedEmergencyKit("hisar://sign-in?email=retry%40example.com&secretKey=H1-ABC123") }
+        composeRule.waitUntil(10_000) { !exists("scanner") }
+        composeRule.assertFieldText("sign-in-email", "retry@example.com")
     }
 
     @Test

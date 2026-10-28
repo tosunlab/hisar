@@ -4,7 +4,8 @@ import { api, getErrorMessage } from "../api";
 import AppIcon from "./AppIcon.vue";
 import StrengthMeter from "./StrengthMeter.vue";
 
-const emit = defineEmits<{ use: [password: string]; close: [] }>();
+withDefaults(defineProps<{ presentation?: "editor" | "standalone" }>(), { presentation: "editor" });
+const emit = defineEmits<{ use: [password: string]; copy: [password: string]; close: [] }>();
 
 const length = ref(24);
 const includeDigits = ref(true);
@@ -30,11 +31,12 @@ watch([length, includeDigits, includeSymbols], generatePassword);
 </script>
 
 <template>
-  <div class="generator">
+  <div class="generator" :class="{ standalone: presentation === 'standalone' }">
     <div class="generated-row">
       <p class="generated monospace" data-testid="generated-password">{{ generatedPassword }}</p>
-      <button type="button" class="ghost icon-button" aria-label="Regenerate" title="Regenerate" @click="generatePassword">
+      <button type="button" class="ghost" :class="{ 'icon-button': presentation === 'editor' }" aria-label="Regenerate" title="Regenerate" @click="generatePassword">
         <AppIcon name="refresh" />
+        <span v-if="presentation === 'standalone'">Regenerate</span>
       </button>
     </div>
     <StrengthMeter :password="generatedPassword" />
@@ -50,8 +52,11 @@ watch([length, includeDigits, includeSymbols], generatePassword);
     </div>
     <div class="row actions">
       <div class="spacer"></div>
-      <button type="button" class="ghost" @click="emit('close')">Cancel</button>
-      <button type="button" class="primary" :disabled="!generatedPassword" @click="emit('use', generatedPassword)">
+      <button type="button" class="ghost" @click="emit('close')">{{ presentation === "standalone" ? "Close" : "Cancel" }}</button>
+      <button v-if="presentation === 'standalone'" type="button" class="primary" :disabled="!generatedPassword" @click="emit('copy', generatedPassword)">
+        <AppIcon name="copy" /> Copy
+      </button>
+      <button v-else type="button" class="primary" :disabled="!generatedPassword" @click="emit('use', generatedPassword)">
         <AppIcon name="check" /> Use password
       </button>
     </div>
@@ -65,6 +70,10 @@ watch([length, includeDigits, includeSymbols], generatePassword);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius);
   background: var(--color-surface);
+}
+
+.generator.standalone {
+  margin: 0;
 }
 
 .generated-row {

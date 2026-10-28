@@ -37,6 +37,8 @@ struct ItemEditorView: View {
     @State private var isOldAddressShown = false
     /// The brand of the number last checked: the type follows it until the user picks a different one.
     @State private var numberBrand = ""
+    @State private var isUnnamedFieldShown = false
+    @FocusState private var focusedFieldNameIndex: Int?
     @State private var saveError: String?
     @State private var saveFailureCount = 0
     private enum SaveErrorFocus: Hashable { case summary, oneTimeCode }
@@ -284,7 +286,7 @@ struct ItemEditorView: View {
                     if model.isBusy {
                         ProgressView()
                     } else {
-                        Button("Save", action: save)
+                        Button("Save") { save(scrollingWith: proxy) }
                             .disabled(draft.title.trimmingCharacters(in: .whitespaces).isEmpty)
                             .accessibilityIdentifier("editor-save")
                     }
@@ -996,8 +998,15 @@ struct ItemEditorView: View {
             ForEach(draft.allField.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Name", text: $draft.allField[index].name)
+                        .focused($focusedFieldNameIndex, equals: index)
                         .accessibilityIdentifier("editor-field-\(index)-name")
                         .editorFieldLabel("Name")
+                    if isUnnamedFieldShown && draft.allField[index].isNameMissing {
+                        Text("Enter a name for this field.")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("editor-field-name-error")
+                    }
                     let nameWarning = ItemField.nameWarning(draft.allField, index: index)
                     if !nameWarning.isEmpty {
                         Text(nameWarning)
@@ -1035,6 +1044,7 @@ struct ItemEditorView: View {
                         .accessibilityLabel("Secret \(draft.allField[index].name)")
                         .accessibilityIdentifier("editor-field-\(index)-secret")
                 }
+                .id(fieldRowID(index))
             }
             .onDelete { offsets in
                 draft.allField.remove(atOffsets: offsets)
@@ -1091,8 +1101,19 @@ struct ItemEditorView: View {
         return item
     }
 
-    private func save() {
+    private func fieldRowID(_ index: Int) -> String {
+        "field-\(index)"
+    }
+
+    /// List creates offscreen rows lazily, so focus follows the scroll on the next main-loop turn.
+    private func save(scrollingWith proxy: ScrollViewProxy) {
         addTags()
+        if let unnamedIndex = draft.allField.firstIndex(where: \.isNameMissing) {
+            isUnnamedFieldShown = true
+            proxy.scrollTo(fieldRowID(unnamedIndex), anchor: .center)
+            DispatchQueue.main.async { focusedFieldNameIndex = unnamedIndex }
+            return
+        }
         var item = draft
         item.allURL = allURLText.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         let vaultID = chosenVaultID

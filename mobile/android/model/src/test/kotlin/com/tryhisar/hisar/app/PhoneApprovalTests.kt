@@ -471,6 +471,52 @@ class PhoneApprovalTests {
         assertTrue(approvals.allPendingApproval.value.isEmpty())
         approvals.refreshPendingApproval()
         assertTrue(approvals.allPendingApproval.value.isEmpty(), "finished requests are not shown again")
+        assertNull(model.notice.value, "background expiry and remote resolution are not reviewed expiry")
+    }
+
+    @Test
+    fun testReviewedApprovalExpiryAnnouncesAndClearsPassword() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.isBiometricAvailable = false
+        val model = createReviewingModel(harness, listOf(createApproval()))
+        val approvals = model.approvals
+        approvals.approvePendingApproval(isRemembered = false)
+        assertTrue(approvals.isApprovalPasswordRequired.value)
+        harness.currentDate = currentDate.plusSeconds(45)
+        approvals.removeAllExpiredApproval()
+        assertNull(approvals.presentedApproval.value)
+        assertFalse(approvals.isApprovalPasswordRequired.value)
+        assertEquals("This request expired. Start it again on your Mac if you still need it.", model.notice.value?.message)
+        model.showNotice("A later notice")
+        approvals.refreshPendingApproval()
+        assertEquals("A later notice", model.notice.value?.message, "refresh must not announce the same expiry again")
+    }
+
+    @Test
+    fun testRefreshAnnouncesReviewedApprovalExpiryBeforeTheTimer() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createReviewingModel(harness, listOf(createApproval()))
+        harness.currentDate = currentDate.plusSeconds(45)
+        harness.backend.allPendingApproval.clear()
+        model.approvals.refreshPendingApproval()
+        assertNull(model.approvals.presentedApproval.value)
+        assertTrue(model.approvals.allPendingApproval.value.isEmpty())
+        assertEquals("This request expired. Start it again on your Mac if you still need it.", model.notice.value?.message)
+        model.showNotice("A later notice")
+        model.approvals.removeAllExpiredApproval()
+        assertEquals("A later notice", model.notice.value?.message, "the timer must not announce the same expiry again")
+    }
+
+    @Test
+    fun testEarlyRemoteRemovalIsNotAnnouncedAsExpiry() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createReviewingModel(harness, listOf(createApproval()))
+        harness.backend.allPendingApproval.clear()
+        model.approvals.refreshPendingApproval()
+        assertNull(model.approvals.presentedApproval.value)
+        harness.currentDate = currentDate.plusSeconds(45)
+        model.approvals.removeAllExpiredApproval()
+        assertNull(model.notice.value)
     }
 
     @Test

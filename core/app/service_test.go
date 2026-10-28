@@ -235,6 +235,39 @@ func TestConvertItemDetail(t *testing.T) {
 	}
 }
 
+func TestSaveItemRefusesAFieldValueWithoutAName(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service, vaultID := test.service, test.personalID
+	const refusal = "enter a name for each field that has a value"
+	for name, fields := range map[string][]ItemField{
+		"empty name":      {{Name: "", Value: "recovery-code-1"}},
+		"whitespace name": {{Name: " \t", Value: "recovery-code-1", Concealed: true}},
+	} {
+		if _, err := service.SaveItem(vaultID, ItemDetail{Title: "GitHub", Fields: fields}); err == nil || err.Error() != refusal {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if items, err := service.ListItems(vaultID); err != nil || len(items) != 0 {
+		t.Fatalf("refused saves stored %+v, %v", items, err)
+	}
+
+	saved, err := service.SaveItem(vaultID, ItemDetail{Title: "GitHub", Fields: []ItemField{{Name: "Recovery code", Value: "recovery-code-1"}, {Name: " ", Value: ""}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Fields) != 1 || saved.Fields[0].Name != "Recovery code" {
+		t.Fatalf("an empty row was kept or the named one dropped: %+v", saved.Fields)
+	}
+	cleared := saved
+	cleared.Fields = []ItemField{{Name: "", Value: "recovery-code-1"}}
+	if _, err := service.SaveItem(vaultID, cleared); err == nil || err.Error() != refusal {
+		t.Errorf("clearing the name of a stored field: %v", err)
+	}
+	if stored := getCachedItem(t, service, vaultID, saved.ID); len(stored.Details.Fields) != 1 || stored.Details.Fields[0].Value != "recovery-code-1" {
+		t.Errorf("stored fields after the refused edit = %+v", stored.Details.Fields)
+	}
+}
+
 func TestGeneratePassword(t *testing.T) {
 	service, _, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
 	password, err := service.GeneratePassword(PasswordConfig{})

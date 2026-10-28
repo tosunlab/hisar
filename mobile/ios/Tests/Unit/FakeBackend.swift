@@ -496,6 +496,7 @@ class FakeBackend: VaultBackend {
         record("saveItem")
         try requireUnlocked()
         guard !item.title.trimmingCharacters(in: .whitespaces).isEmpty else { throw BackendError(message: "Enter a title") }
+        guard !item.allField.contains(where: \.isNameMissing) else { throw BackendError(message: "Enter a name for each field that has a value") }
         var savedItem = item
         let oneTimePassword = item.oneTimePassword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard oneTimePassword.isEmpty || oneTimePassword.hasPrefix("otpauth://totp/") || oneTimePassword.replacingOccurrences(of: " ", with: "").allSatisfy({ "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".contains($0.uppercased()) }) else {

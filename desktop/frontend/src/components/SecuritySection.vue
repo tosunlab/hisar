@@ -198,7 +198,7 @@ onBeforeUnmount(clearSecretKey);
         <div class="setting">
           <div class="setting-text">
             <strong>Emergency Kit</strong>
-            <p class="muted">A printable PDF with your sign-in address, email and Secret Key, for signing in on a new device. It is the only way back in if you lose your devices.</p>
+            <p class="muted">A PDF with your server, email and Secret Key, and a space to write your master password. Print it or save it somewhere safe, away from your devices.</p>
           </div>
           <button v-if="secretKeyDisplay.kind === 'closed'" data-testid="show-secret-key" @click="secretKeyDisplay = { kind: 'password', isPending: false }">Show Secret Key…</button>
           <button v-if="!isSavingEmergencyKit && secretKeyDisplay.kind !== 'revealed'" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save Emergency Kit…</button>

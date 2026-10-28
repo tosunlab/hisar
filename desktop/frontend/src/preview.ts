@@ -1556,6 +1556,7 @@ function checkPreviewMasterPassword(password: string): MasterPasswordFeedback {
 }
 
 export const previewApi = {
+  openEmergencyKit: () => Promise.reject(new Error("Opening an Emergency Kit requires the Mac app.")),
   listAllImportFormat: () =>
     resolveAfterDelay([
       { id: "1pux", name: "1Password export (.1pux)" },

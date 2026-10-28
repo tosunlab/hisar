@@ -167,17 +167,15 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
         InviteLink.parse(text)?.let(::openInviteLink)
     }
 
-    /**
-     * Takes the text of the first QR code the scanner read, and closes the scanner; only an Emergency Kit's sign-in
-     * link fills the form in.
-     */
+    /** Keeps an invalid code in the scanner until the user explicitly tries again. */
     fun openScannedEmergencyKit(text: String) {
-        isScannerShown.value = false
+        if (scannerMessage.value != null) return
         val link = SignInLink.parse(text)
         if (link == null) {
             scannerMessage.value = "This QR code is not from a Hisar Emergency Kit."
             return
         }
+        isScannerShown.value = false
         pendingSignInLink.value = link
     }
 

@@ -143,6 +143,12 @@ struct OrganizationInvitationRow: View {
     }
 
     var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            row(at: context.date)
+        }
+    }
+
+    private func row(at now: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Label {
@@ -153,30 +159,32 @@ struct OrganizationInvitationRow: View {
                         .accessibilityHidden(true)
                 }
                 InvitationEmailText(email: invitation.invitedByEmail)
+                InvitationExpiryText(timestamp: invitation.expiresAt)
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("\(identifierPrefix)organization-invitation-text")
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(spacing: 10) {
-                    acceptButton
+                    acceptButton(at: now)
                     declineButton
                 }
             } else {
                 HStack(spacing: 10) {
                     declineButton
-                    acceptButton
+                    acceptButton(at: now)
                 }
             }
         }
         .padding(.vertical, 4)
     }
 
-    private var acceptButton: some View {
+    private func acceptButton(at now: Date) -> some View {
         Button(action: accept) {
             Text("Accept").frame(maxWidth: .infinity)
         }
         .applyGlassButtonStyle(isProminent: true)
         .accessibilityIdentifier("\(identifierPrefix)accept-organization-invitation")
+        .disabled(InvitationLifetime(invitation.expiresAt).isExpired(at: now))
     }
 
     private var declineButton: some View {
@@ -634,6 +642,7 @@ struct OrganizationView: View {
                         Text("Waiting for them to accept")
                             .font(.footnote)
                             .foregroundStyle(.themeSecondary)
+                        InvitationExpiryText(timestamp: invitation.expiresAt)
                     }
                 } icon: {
                     Image(systemName: "envelope")
@@ -1160,28 +1169,36 @@ struct OrganizationVaultSharingView: View {
                 if let sharing {
                     Section {
                         ForEach(sharing.allTeamAccess) { access in
-                            HStack {
-                                Label {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(access.team.name)
-                                        Text(access.team.allMember.isEmpty ? "No members yet" : access.team.allMember.map(\.displayName).joined(separator: ", "))
+                            NavigationLink {
+                                if let organization {
+                                    teamMemberList(access, organization: organization, canChangeRole: sharing.canChangeTeams)
+                                }
+                            } label: {
+                                HStack {
+                                    Label {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(access.team.name)
+                                            Group {
+                                                if access.team.allMember.count == 1 {
+                                                    Text("1 member")
+                                                } else {
+                                                    Text("\(access.team.allMember.count) members")
+                                                }
+                                            }
                                             .font(.footnote)
                                             .foregroundStyle(.themeSecondary)
+                                        }
+                                    } icon: {
+                                        Image(systemName: "person.3")
+                                            .foregroundStyle(.themeSecondary)
                                     }
-                                } icon: {
-                                    Image(systemName: "person.3")
+                                    Spacer()
+                                    Text("Vault role: \(describeVaultRole(access.role))")
+                                        .font(.subheadline)
                                         .foregroundStyle(.themeSecondary)
                                 }
-                                Spacer()
-                                if sharing.canChangeTeams, let organization {
-                                    TeamVaultRolePicker(organization: organization, organizationID: organizationID, teamID: access.team.id, teamName: access.team.name, vaultID: vaultID, vaultName: vaultName, role: access.role, reload: load)
-                                } else {
-                                Text(describeVaultRole(access.role))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.themeSecondary)
                             }
-                            }
-                            .accessibilityElement(children: .contain)
+                            .accessibilityElement(children: .combine)
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 if sharing.canChangeTeams {
                                     Button("Take back…", role: .destructive) { teamToTakeBack = access.team }
@@ -1272,6 +1289,41 @@ struct OrganizationVaultSharingView: View {
         .interactiveDismissDisabled(model.isBusy)
     }
 
+    private func teamMemberList(_ access: TeamAccess, organization: Organization, canChangeRole: Bool) -> some View {
+        List {
+            Section {
+                if canChangeRole {
+                    TeamVaultRolePicker(organization: organization, organizationID: organizationID, teamID: access.team.id, teamName: access.team.name, vaultID: vaultID, vaultName: vaultName, role: access.role, reload: load)
+                } else {
+                    LabeledContent("Role for this vault", value: describeVaultRole(access.role))
+                }
+            }
+            Section {
+                ForEach(OrganizationLogic.listAllTeamMember(organization: organization, team: access.team)) { member in
+                    NavigationLink {
+                        OrganizationMemberView(
+                            organizationID: organization.id,
+                            organizationName: organization.name,
+                            member: member,
+                            isAdmin: organization.isAdmin
+                        ) {
+                            await load()
+                        }
+                    } label: {
+                        MemberRow(member: member, roleText: OrganizationRole.describe(member.role))
+                    }
+                    .accessibilityIdentifier("organization-member-\(member.email)")
+                }
+            } footer: {
+                Text("Compare security codes with people once, in person or over a channel you trust. Tap a person to see theirs.")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle(access.team.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await load() }
+    }
+
     private func load() async {
         if let loaded = await model.loadOrganization(organizationID: organizationID) {
             organization = loaded
@@ -1324,7 +1376,7 @@ struct TeamVaultRolePicker: View {
     }
 
     var body: some View {
-        Picker("Role", selection: Binding(get: { role }, set: choose)) {
+        Picker("Role for this vault", selection: Binding(get: { role }, set: choose)) {
             ForEach(Member.allVaultRole, id: \.self) { choice in
                 Text(describeVaultRole(choice)).tag(choice)
             }

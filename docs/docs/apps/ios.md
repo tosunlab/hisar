@@ -29,6 +29,8 @@ Dismiss buttons name their vault so VoiceOver distinguishes notices. Each notice
 the message. The empty Approvals screen likewise keeps its setup link separate from its explanation.
 The Mac approvals page shows both the iPhone's approval explanation and the Mac settings needed to turn requests on.
 
+An empty writable vault says "Tap + to add your first item." Its **+** menu offers every item type.
+An empty Reader vault instead says "Items appear here once an editor adds them." It has no **+** menu.
 At accessibility text sizes, browsing rows wrap the full title and username, put the vault name on its own line,
 and cap the decorative tile at 44 points. Ordinary text sizes keep the compact row. Android browsing rows also wrap
 titles and subtitles at large font scales without reducing the selected text size.
@@ -63,6 +65,19 @@ A failed refresh keeps the last readable list and offers **Retry**. A failed ren
 **Rename** is opened again. Background successes do not dismiss these failures.
 At accessibility text sizes, tag counts move below their names and the tag symbol stays at most 32 points wide.
 Ordinary text sizes keep the native count badge.
+
+Sign in keeps the server behind **Use a different server…**. The expanded editor labels the URL **Server** and
+keeps **Signs in to \<server>.** visible as the value changes. **Use eu.tryhisar.com** explicitly restores the
+default server and closes the editor. Remembered and scanned servers remain unchanged until the user edits or resets them.
+
+The logo-only privacy cover uses the selected appearance and palette, including its grouped background.
+Each new cover window receives the theme before becoming visible above sheets and alerts.
+
+An organization vault's **Members** sheet lists its teams with member counts and each team's role for that vault.
+Open a team to see its members' names and emails, then open a person to compare their security code.
+The person's Admin or Member role belongs to the organization, not the vault.
+In Settings → People, open your own row to use **Share my security code**.
+Other people's rows show their selectable code without this action.
 
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
@@ -160,6 +175,7 @@ Background item loads cannot consume that failure. The test checks the retained 
 Notification removal runs off the main thread because the system call can wait for the notification service during a scene transition.
 Returning from another app keeps the interface responsive while Hisar clears its approval reminder and refreshes setup status.
 
+`SharingUITests` scrolls the invitation's Send again action into view before revealing its swipe actions. After a confirmation closes, a partially visible invitation label can still count as hittable while its midpoint is over the home indicator.
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,
 or denied) is driven through a debug-only preview with a made-up request: launch with `-HisarApprovalPreview ssh` (or

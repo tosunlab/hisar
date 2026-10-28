@@ -2,8 +2,6 @@ package com.tryhisar.hisar.ui.item
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -13,25 +11,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,11 +37,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.tryhisar.hisar.app.AppModel
@@ -150,17 +141,7 @@ private fun ColumnScope.PasswordGeneratorForm(model: AppModel, password: String,
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Length", style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.weight(1f))
-            Text("$length", style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.padding(end = 12.dp))
-            Stepper(
-                onDecrement = { length = (length - 1).coerceAtLeast(MIN_LENGTH) },
-                onIncrement = { length = (length + 1).coerceAtMost(MAX_LENGTH) },
-                canDecrement = length > MIN_LENGTH,
-                canIncrement = length < MAX_LENGTH,
-            )
-        }
-        RowDivider()
-        Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Text("Length", style = HisarType.body, color = HisarTheme.colors.label)
             val sliderColors = SliderDefaults.colors(
                 activeTrackColor = HisarTheme.colors.tint,
                 inactiveTrackColor = HisarTheme.colors.fill,
@@ -186,9 +167,11 @@ private fun ColumnScope.PasswordGeneratorForm(model: AppModel, password: String,
                     )
                 },
                 modifier = Modifier
+                    .weight(1f)
                     .testTag("generator-length")
                     .semantics { contentDescription = "Length" },
             )
+            Text("$length", style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.testTag("generator-length-value"))
         }
         RowDivider()
         ToggleRow("Digits", isDigitIncluded, { isDigitIncluded = it }, testTag = "generator-digits")
@@ -197,32 +180,3 @@ private fun ColumnScope.PasswordGeneratorForm(model: AppModel, password: String,
     }
 }
 
-/** iOS's Stepper: minus and plus in one grey capsule. */
-@Composable
-private fun Stepper(onDecrement: () -> Unit, onIncrement: () -> Unit, canDecrement: Boolean, canIncrement: Boolean) {
-    Row(
-        Modifier
-            .height(32.dp)
-            .background(HisarTheme.colors.fill, CircleShape),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        StepperHalf(Icons.Filled.Remove, "Decrement", onDecrement, canDecrement)
-        Box(Modifier.width(1.dp).size(width = 1.dp, height = 18.dp).background(HisarTheme.colors.separator))
-        StepperHalf(Icons.Filled.Add, "Increment", onIncrement, canIncrement)
-    }
-}
-
-@Composable
-private fun StepperHalf(icon: ImageVector, description: String, onClick: () -> Unit, enabled: Boolean) {
-    Box(
-        Modifier
-            .minimumInteractiveComponentSize()
-            .size(width = 46.dp, height = 32.dp)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = null, tint = if (enabled) HisarTheme.colors.label else HisarTheme.colors.secondaryLabel, modifier = Modifier.size(18.dp))
-    }
-}

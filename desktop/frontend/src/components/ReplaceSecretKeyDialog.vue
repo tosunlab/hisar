@@ -49,7 +49,7 @@ async function close(): Promise<void> {
 <template>
   <AccountDialog
     title="Replace Secret Key"
-    :subtitle="result ? 'Save the new Emergency Kit now. It is the only copy outside your signed-in devices.' : 'Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit.'"
+    :subtitle="result ? 'The Emergency Kit holds your Secret Key and has a space to write your master password. Save the new one now, and destroy the old one.' : 'Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit.'"
     icon="key"
     :is-closable="!store.isBusy && (!result || isDoneEnabled)"
     data-testid="replace-secret-key-dialog"

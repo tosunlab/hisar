@@ -408,9 +408,9 @@ class AppModel(
     }
 
     suspend fun copySecretReference(vaultID: String, itemID: String, fieldName: String) {
-        perform(isBusyShown = false) { it.copySecretReference(vaultID, itemID, fieldName) } ?: return
+        val reference = perform(isBusyShown = false) { it.copySecretReference(vaultID, itemID, fieldName) } ?: return
         mutableCopyCount.update { it + 1 }
-        showNotice("Secret reference copied.")
+        showNotice("Copied $reference.")
     }
 
     /** core/item's rating of a password for the strength meter, or the empty rating without a backend. */

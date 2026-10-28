@@ -715,7 +715,7 @@ struct MacApprovalsView: View {
                 }
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")
+                    Text("Requests to use SSH keys, the command-line tool, coding agents and apps on your Mac appear here while Hisar is open and unlocked on both devices.")
                     Text("On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device.")
                 }
                 .foregroundStyle(.themeSecondary)
@@ -733,7 +733,7 @@ struct NotificationSettingsView: View {
 
     static func describe(_ kind: PushKind) -> (title: String, detail: String, systemImage: String) {
         switch kind {
-        case .approval: ("Approval requests", "Your Mac asks this iPhone to approve an SSH key, the command-line tool or an app.", "laptopcomputer.and.iphone")
+        case .approval: ("Approval requests", "Your Mac asks this iPhone to approve an SSH key, the command-line tool, a coding agent or an app.", "laptopcomputer.and.iphone")
         case .security: ("Security alerts", "A new device signed in, or your master password or Secret Key changed.", "lock.shield")
         case .sharing: ("Sharing", "Someone invited you to a vault or an organization.", "person.2")
         }

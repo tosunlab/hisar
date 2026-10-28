@@ -77,6 +77,9 @@ import com.tryhisar.hisar.ui.sharing.SentInvitationRow
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import java.time.Instant
+import com.tryhisar.hisar.model.InvitationLifetime
+import com.tryhisar.hisar.ui.sharing.InvitationExpiryText
+import com.tryhisar.hisar.ui.sharing.rememberInvitationNow
 import kotlinx.coroutines.launch
 
 @Composable
@@ -166,7 +169,7 @@ fun VaultsHomeScreen(model: AppModel) {
                     NoteRow(warning, Icons.Filled.Warning, Modifier.testTag("vault-key-warning"), iconTint = HisarTheme.colors.warning)
                 }
                 cardSection("review-recipients", data.allReviewInvitation, rowKey = { it.id }, header = "Review recipients") { invitation ->
-                    SentInvitationRow(model, invitation, isVaultNameShown = true, testTag = "review-invitation-${invitation.id}")
+                    SentInvitationRow(model, invitation, isVaultNameShown = true, testTag = "review-invitation-${invitation.id}", onChanged = { model.invitations.loadShareInvitations() })
                 }
                 cardSection<Any>(
                     "invitations-for-you",
@@ -186,6 +189,7 @@ fun VaultsHomeScreen(model: AppModel) {
                         is ReceivedShareInvitation -> InvitationRow(
                             text = "${invitation.inviterName} shared a vault with you as ${VaultLogic.describeVaultRole(invitation.role).lowercase()}",
                             email = invitation.invitedByEmail,
+                            expiresAt = invitation.expiresAt,
                             icon = Icons.Filled.Group,
                             testTagPrefix = "banner-",
                             testTagName = "invitation",
@@ -203,6 +207,7 @@ fun VaultsHomeScreen(model: AppModel) {
                         is OrganizationInvitation -> InvitationRow(
                             text = invitation.message,
                             email = invitation.invitedByEmail,
+                            expiresAt = invitation.expiresAt,
                             icon = Icons.Filled.Business,
                             testTagPrefix = "banner-",
                             testTagName = "organization-invitation",
@@ -343,23 +348,28 @@ private fun RemovedVaultNoticeRow(id: String, message: String, onDismiss: () -> 
 fun InvitationRow(
     text: String,
     email: String,
+    expiresAt: String,
     icon: ImageVector,
     testTagPrefix: String,
     testTagName: String,
     onDecline: () -> Unit,
     onAccept: () -> Unit,
 ) {
+    val now by rememberInvitationNow()
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             Modifier.testTag("$testTagPrefix$testTagName-text"),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(icon, contentDescription = null, tint = HisarTheme.colors.tint, modifier = Modifier.size(22.dp))
-            TitleAndSubtitleWrapping(text, email)
+            Column(Modifier.weight(1f)) {
+                TitleAndSubtitleWrapping(text, email)
+                InvitationExpiryText(expiresAt)
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.weight(1f)) { GlassButton("Decline", onDecline, testTag = "${testTagPrefix}decline-$testTagName") }
-            Box(Modifier.weight(1f)) { ProminentButton("Accept", onAccept, testTag = "${testTagPrefix}accept-$testTagName") }
+            Box(Modifier.weight(1f)) { ProminentButton("Accept", onAccept, enabled = !InvitationLifetime(expiresAt).isExpired(now), testTag = "${testTagPrefix}accept-$testTagName") }
         }
     }
 }

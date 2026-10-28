@@ -80,6 +80,22 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertTrue(app.staticTexts["credential-import-finished"].waitForNonExistence(timeout: 5))
     }
 
+    func testPasswordMismatchWaitsUntilConfirmationLosesFocus() {
+        app.launch()
+        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
+        let password = app.secureTextFields["sign-up-password"]
+        let repeated = app.secureTextFields["sign-up-repeated-password"]
+        type("a long master password", into: password)
+        type("a long", into: repeated)
+        XCTAssertFalse(app.staticTexts["The passwords do not match."].exists)
+        XCTAssertFalse(app.buttons["sign-in-submit"].isEnabled)
+        password.tap()
+        waitFor(app.staticTexts["The passwords do not match."])
+        repeated.tap()
+        typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6) + "a long master password", into: repeated, showing: "a long master password")
+        XCTAssertTrue(app.staticTexts["The passwords do not match."].waitForNonExistence(timeout: 30))
+    }
+
     func testAccountItemLockAndSignInFlow() throws {
         let inviteLink = try readEnvironment("HISAR_UI_TEST_INVITE_LINK")
         let email = "ios-ui@example.com"
@@ -267,7 +283,7 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.staticTexts["Notes copied. It clears in 90 seconds."])
         notesRow.press(forDuration: 1)
         copyNotesReference.tap()
-        waitFor(app.staticTexts["Secret reference copied."])
+        waitFor(app.staticTexts["Copied hisar://Personal/Recovery%20codes/notes."])
         app.buttons["edit-item"].tap()
         scrollTo(app.secureTextFields["editor-field-0-value"])
         XCTAssertTrue(app.secureTextFields["editor-field-0-value"].exists)
@@ -554,6 +570,16 @@ final class HisarUITests: HisarUITestCase {
         let serverField = app.textFields["sign-in-server"]
         waitFor(serverField)
         XCTAssertEqual(serverField.value as? String, "https://eu.tryhisar.com")
+        XCTAssertTrue(app.staticTexts["Server"].exists)
+        XCTAssertTrue(app.staticTexts["Signs in to eu.tryhisar.com."].exists)
+        serverField.tap()
+        typeText("/hisar", into: serverField, showing: "https://eu.tryhisar.com/hisar")
+        XCTAssertTrue(app.staticTexts["Signs in to eu.tryhisar.com/hisar."].exists)
+        app.buttons["sign-in-use-default-server"].tap()
+        XCTAssertFalse(serverField.exists)
+        XCTAssertTrue(app.staticTexts["Signs in to eu.tryhisar.com."].exists)
+        useDifferentServerButton.tap()
+        XCTAssertEqual(serverField.value as? String, "https://eu.tryhisar.com")
         app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
         XCTAssertFalse(app.staticTexts["Enter the invite code you received, or sign up on a server that lets anyone join."].exists)
         XCTAssertTrue(app.textFields["sign-up-invite-link"].exists)
@@ -564,10 +590,12 @@ final class HisarUITests: HisarUITestCase {
     func testPrivacyCoverHidesContentInTheBackground() throws {
         app.launch()
         waitFor(app.segmentedControls["sign-in-mode"])
-        XCUIDevice.shared.press(.home)
-        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended, timeout: 10))
-        app.activate()
-        waitFor(app.segmentedControls["sign-in-mode"])
-        XCTAssertTrue(app.otherElements["privacy-cover"].waitForNonExistence(timeout: 5), "the cover goes away once the app is active")
+        for _ in 0..<2 {
+            XCUIDevice.shared.press(.home)
+            XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended, timeout: 10))
+            app.activate()
+            waitFor(app.segmentedControls["sign-in-mode"])
+            XCTAssertTrue(app.otherElements["privacy-cover"].waitForNonExistence(timeout: 5), "the cover goes away once the app is active")
+        }
     }
 }

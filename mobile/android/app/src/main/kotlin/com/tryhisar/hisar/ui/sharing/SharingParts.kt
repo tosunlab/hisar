@@ -40,6 +40,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.semantics.stateDescription
+import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.model.InvitationLifetime
+import com.tryhisar.hisar.ui.components.ErrorBanner
+import java.time.Instant
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -195,6 +206,22 @@ fun MemberRow(
     }
 }
 
+@Composable
+fun rememberInvitationNow(): State<Instant> = produceState(Instant.now()) {
+    while (true) {
+        delay(1000)
+        value = Instant.now()
+    }
+}
+
+@Composable
+fun InvitationExpiryText(timestamp: String) {
+    val now by rememberInvitationNow()
+    val lifetime = remember(timestamp) { InvitationLifetime(timestamp) }
+    Text(lifetime.describe(now), style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel,
+        modifier = Modifier.semantics { stateDescription = lifetime.exactDate })
+}
+
 /**
  * An invitation someone has not accepted yet: the email, where it stands, and its role on the right. With [onCancel],
  * touch and hold offers "Cancel invitation".
@@ -202,6 +229,9 @@ fun MemberRow(
 @Composable
 fun SentInvitationRow(model: AppModel, invitation: SentShareInvitation, isVaultNameShown: Boolean, testTag: String, onCancel: (() -> Unit)? = null, onChanged: suspend () -> Unit = {}) {
     var reviewed by remember { mutableStateOf<SentShareInvitation?>(null) }
+    val isBusy by model.isBusy.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var resendError by remember(invitation.id) { mutableStateOf<String?>(null) }
     val isAccepted = invitation.state == SentShareInvitation.STATE_ACCEPTED
     val stateText = if (invitation.requiresConfirmation) "Accepted, review recipient identity" else if (isAccepted) "Accepted, Hisar is finishing sharing" else "Waiting for them to accept"
     val detail = if (isVaultNameShown) "${invitation.vaultName.ifEmpty { "A vault you own" }} · $stateText" else stateText
@@ -209,10 +239,27 @@ fun SentInvitationRow(model: AppModel, invitation: SentShareInvitation, isVaultN
         InvitedRow(
             invitation.email, detail, VaultLogic.describeVaultRole(invitation.role), if (isAccepted) Icons.Outlined.Drafts else Icons.Outlined.Email, testTag,
             onCancel = onCancel,
+            expiresAt = invitation.expiresAt.takeUnless { isAccepted },
         )
         if (invitation.requiresConfirmation) {
             TextButton(onClick = { reviewed = invitation }, modifier = Modifier.testTag("review-share-${invitation.email}")) { Text("Review recipient") }
         }
+        if (!isAccepted && !invitation.requiresConfirmation) {
+            TextButton(enabled = !isBusy, modifier = Modifier.testTag("resend-invitation-${invitation.email}"), onClick = {
+                scope.launch {
+                    resendError = null
+                    if (model.sharing.shareVault(invitation.vaultID, invitation.email, invitation.role)) {
+                        model.showNotice("Invitation sent to ${invitation.email}.")
+                        onChanged()
+                    } else {
+                        resendError = model.errorMessage.value
+                        model.errorMessage.value = null
+                    }
+                }
+            }) { Text("Send again") }
+            Text("Sending again replaces the previous invitation.", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+        }
+        resendError?.let { ErrorBanner(it) }
     }
     reviewed?.let { snapshot ->
         RecipientReviewDialog(model, snapshot, onChanged = onChanged, onDismiss = { reviewed = null })
@@ -289,6 +336,7 @@ fun InvitedRow(
     testTag: String,
     onCancel: (() -> Unit)? = null,
     cancelLabel: String = "Cancel invitation",
+    expiresAt: String? = null,
 ) {
     val colors = HisarTheme.colors
     var isMenuShown by remember { mutableStateOf(false) }
@@ -312,6 +360,7 @@ fun InvitedRow(
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(email, style = HisarType.body, color = colors.label)
             Text(detail, style = HisarType.footnote, color = colors.secondaryLabel)
+            expiresAt?.let { InvitationExpiryText(it) }
         }
     }
 }

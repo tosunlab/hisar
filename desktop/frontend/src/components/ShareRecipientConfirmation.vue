@@ -20,8 +20,9 @@ async function confirm(): Promise<void> {
   if (!reviewed.value || isWorking.value) return;
   isWorking.value = true;
   try {
-    if (await confirmShareRecipient(reviewed.value)) reviewed.value = null;
-    else errorMessage.value = store.errorMessage;
+    const snapshot = reviewed.value;
+    if (await confirmShareRecipient(snapshot)) reviewed.value = null;
+    else errorMessage.value = store.sharingErrors[snapshot.id] || store.errorMessage;
   } finally {
     isWorking.value = false;
   }
@@ -36,7 +37,7 @@ async function refuse(): Promise<void> {
       showNotice(`Cancelled the invitation to ${snapshot.email}.`);
       reviewed.value = null;
     } else {
-      errorMessage.value = store.errorMessage;
+      errorMessage.value = store.sharingErrors[snapshot.id] || store.errorMessage;
     }
   } finally {
     isWorking.value = false;

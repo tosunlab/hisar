@@ -1520,9 +1520,9 @@ final class AppModel: ObservableObject {
     }
 
     func copySecretReference(vaultID: String, itemID: String, fieldName: String, onFailure: ((String) -> Void)? = nil) async {
-        guard await perform(isBusyShown: false, onFailure: onFailure, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
+        guard let reference = await perform(isBusyShown: false, onFailure: onFailure, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) else { return }
         copyCount += 1
-        showNotice("Secret reference copied.")
+        showNotice("Copied \(reference).")
     }
 
     // Not secret, so it stays on the pasteboard and may reach other devices: support details and diagnostics.
@@ -1950,6 +1950,7 @@ final class AppModel: ObservableObject {
         shownApprovalList = approvalList
         if approvalListState != .loaded { approvalListState = .loaded }
         let now = getCurrentDate()
+        removeAllExpiredApproval()
         let allOpenApproval = allApproval.filter { !allFinishedApprovalID.contains($0.requestID) && !$0.isExpired(at: now) }
         // Assigning publishes even an equal list, and the poll would then redraw every screen every 15 seconds. A switch
         // whose tap ends during that redraw ignores the tap.
@@ -2018,6 +2019,9 @@ final class AppModel: ObservableObject {
     func removeAllExpiredApproval() {
         let now = getCurrentDate()
         for approval in allPendingApproval where approval.isExpired(at: now) {
+            if presentedApproval?.requestID == approval.requestID {
+                showNotice("This request expired. Start it again on your Mac if you still need it.")
+            }
             removeApproval(requestID: approval.requestID)
         }
     }

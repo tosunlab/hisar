@@ -29,7 +29,7 @@ enum EmergencyKitCameraState: Equatable {
 }
 
 struct EmergencyKitScannerSheet: View {
-    var handleScannedText: (String) -> Void
+    var handleScannedKit: (SignInLink) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
@@ -37,22 +37,43 @@ struct EmergencyKitScannerSheet: View {
         hasCamera: AVCaptureDevice.default(for: .video) != nil,
         authorization: AVCaptureDevice.authorizationStatus(for: .video)
     )
+    @State private var scannerMessage: String?
+    @State private var scanAttempt = 0
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Color(.systemGroupedBackground).ignoresSafeArea()
                 if cameraState == .authorized && scenePhase == .active {
-                    QRCodeCameraView(handleScannedText: handleScannedText)
+                    QRCodeCameraView { text in
+                        if let link = SignInLink.parse(text) {
+                            handleScannedKit(link)
+                        } else {
+                            let message = "This QR code is not from a Hisar Emergency Kit."
+                            scannerMessage = message
+                            UIAccessibility.post(notification: .announcement, argument: message)
+                        }
+                    }
+                        .id(scanAttempt)
                         .ignoresSafeArea(edges: .bottom)
                     VStack {
                         Spacer()
-                        Text("Point the camera at the QR code on your Emergency Kit.")
-                            .font(.subheadline)
-                            .foregroundStyle(.primary)
-                            .padding(14)
-                            .glassEffect(.regular, in: .rect(cornerRadius: 16))
-                            .padding(24)
+                        VStack(spacing: 12) {
+                            Text(scannerMessage ?? "Point the camera at the QR code on your Emergency Kit.")
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                                .accessibilityIdentifier("scanner-note")
+                            if scannerMessage != nil {
+                                Button("Try again") {
+                                    scannerMessage = nil
+                                    scanAttempt += 1
+                                }
+                                .accessibilityIdentifier("scanner-try-again")
+                            }
+                        }
+                        .padding(14)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                        .padding(24)
                     }
                 } else if cameraState == .requesting {
                     ProgressView("Requesting camera access…")

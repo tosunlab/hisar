@@ -112,6 +112,63 @@ describe("SignInView", () => {
     resetStore();
   });
 
+  it("keeps manual entry without an unsupported kit action on Linux", () => {
+    Object.defineProperty(navigator, "platform", { value: "Linux x86_64", configurable: true });
+    try {
+      const wrapper = mount(SignInView);
+      expect(wrapper.find('[data-testid="open-emergency-kit"]').exists()).toBe(false);
+      expect(wrapper.find('input[name="secretKey"]').exists()).toBe(true);
+      wrapper.unmount();
+    } finally {
+      Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
+    }
+  });
+
+  it("fills only account fields from a local kit and requires an explicit sign in", async () => {
+    api.openEmergencyKit.mockResolvedValue({ server: "https://kit.example", email: "kit@example.com", secretKey: "H1-IMPORTED" });
+    const wrapper = mount(SignInView, { attachTo: document.body });
+    await wrapper.get('input[name="password"]').setValue("do not keep this password");
+    await wrapper.get('[data-testid="open-emergency-kit"]').trigger("click");
+    await flushPromises();
+    expect((wrapper.get('input[name="email"]').element as HTMLInputElement).value).toBe("kit@example.com");
+    expect((wrapper.get('input[name="secretKey"]').element as HTMLInputElement).value).toBe("H1-IMPORTED");
+    expect((wrapper.get('input[name="password"]').element as HTMLInputElement).value).toBe("");
+    expect(wrapper.get('[data-testid="sign-in-server"]').text()).toBe("Signs in to kit.example.");
+    expect(document.activeElement).toBe(wrapper.get('input[name="password"]').element);
+    expect(api.signIn).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps manual details after cancelling the kit panel and displays a failed import", async () => {
+    api.openEmergencyKit.mockResolvedValue(null);
+    const wrapper = mount(SignInView);
+    await wrapper.get('input[name="email"]').setValue("manual@example.com");
+    await wrapper.get('[data-testid="open-emergency-kit"]').trigger("click");
+    await flushPromises();
+    expect((wrapper.get('input[name="email"]').element as HTMLInputElement).value).toBe("manual@example.com");
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    api.openEmergencyKit.mockRejectedValue(new Error("This PDF does not contain a valid Hisar Emergency Kit QR code."));
+    await wrapper.get('[data-testid="open-emergency-kit"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toContain("This PDF does not contain a valid Hisar Emergency Kit QR code.");
+    expect(api.signIn).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "alice@example.com"])("focuses the first empty sign-in field for remembered email %s", (email) => {
+    store.status.email = email;
+    const wrapper = mount(SignInView, { attachTo: document.body });
+    expect(document.activeElement).toBe(wrapper.get(`input[name="${email ? "secretKey" : "email"}"]`).element);
+    wrapper.unmount();
+  });
+
+  it("focuses the server when its disclosure opens", async () => {
+    const wrapper = mount(SignInView, { attachTo: document.body });
+    await wrapper.get('[data-testid="use-different-server"]').trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(wrapper.get('input[name="server"]').element);
+    wrapper.unmount();
+  });
+
   it("submits the sign in form", async () => {
     api.signIn.mockResolvedValue(createStatus("unlocked"));
     api.listAllVault.mockResolvedValue([]);
@@ -159,7 +216,7 @@ describe("SignInView", () => {
 
   it("points to the Emergency Kit for a lost Secret Key and offers no account recovery", () => {
     const wrapper = mount(SignInView);
-    expect(wrapper.find('[data-testid="secret-key-note"]').text()).toBe("Lost your Secret Key? It's on your Emergency Kit.");
+    expect(wrapper.find('[data-testid="secret-key-note"]').text()).toBe("Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.");
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(["Sign in", "Create account"]);
     expect(wrapper.text()).not.toMatch(/recover|admin/i);
   });
@@ -588,6 +645,25 @@ describe("PasswordGenerator", () => {
     await slider.setValue(length);
     await flushPromises();
     expect(api.generatePassword).toHaveBeenLastCalledWith({ length, digits: true, symbols: true });
+    wrapper.unmount();
+  });
+
+  it("keeps the same options in standalone mode and copies instead of selecting", async () => {
+    api.generatePassword.mockResolvedValue("standalone-password");
+    const wrapper = mount(PasswordGenerator, { props: { presentation: "standalone" } });
+    await flushPromises();
+    await wrapper.get('input[name="length"]').setValue(32);
+    await wrapper.get('input[name="digits"]').setValue(false);
+    await wrapper.get('input[name="symbols"]').setValue(false);
+    await flushPromises();
+    expect(api.generatePassword).toHaveBeenLastCalledWith({ length: 32, digits: false, symbols: false });
+    expect(wrapper.text()).not.toContain("Use password");
+    expect(wrapper.text()).not.toContain("Cancel");
+    await wrapper.findAll("button").find((button) => button.text() === "Copy")!.trigger("click");
+    expect(wrapper.emitted("copy")?.[0]).toEqual(["standalone-password"]);
+    expect(wrapper.emitted("use")).toBeUndefined();
+    await wrapper.findAll("button").find((button) => button.text() === "Close")!.trigger("click");
+    expect(wrapper.emitted("close")).toHaveLength(1);
     wrapper.unmount();
   });
 });

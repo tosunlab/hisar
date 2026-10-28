@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from "vue";
 import { acceptOrganizationInvitation, createOrganization, declineOrganizationInvitation, loadOrganizations, openOrganization, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 import { describePerson, formatCount, formatRole, formatRoleWithArticle } from "../util";
+import { formatDateTime, formatExpiresIn } from "../util";
+import { useInvitationClock } from "../invitationClock";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 import OrganizationDetail from "./OrganizationDetail.vue";
@@ -11,6 +13,7 @@ const isRowVisible = useSettingsRowVisibility();
 const isLoading = ref(false);
 const isCreating = ref(false);
 const newOrganizationName = ref("");
+const now = useInvitationClock();
 
 const selectedOrganization = computed(() => (store.selectedOrganizationID ? store.organizationByID[store.selectedOrganizationID] : undefined));
 const selectedOrganizationName = computed(
@@ -88,12 +91,12 @@ onMounted(async () => {
                 {{ describePerson(invitation.invitedByName, invitation.invitedByEmail) }} invited you to {{ invitation.organizationName }} as
                 {{ formatRoleWithArticle(invitation.role) }}
               </strong>
-              <p class="muted">{{ invitation.invitedByEmail }}</p>
+              <p class="muted" :title="formatDateTime(invitation.expiresAt)">{{ invitation.invitedByEmail }} · {{ formatExpiresIn(invitation.expiresAt, now) }}</p>
             </div>
             <button class="ghost" :disabled="store.isBusy" :data-testid="`decline-organization-invitation-${invitation.id}`" @click="declineOrganizationInvitation(invitation)">
               Decline
             </button>
-            <button class="primary" :disabled="store.isBusy" :data-testid="`accept-organization-invitation-${invitation.id}`" @click="acceptOrganizationInvitation(invitation)">
+            <button class="primary" :disabled="store.isBusy || new Date(invitation.expiresAt) <= now" :data-testid="`accept-organization-invitation-${invitation.id}`" @click="acceptOrganizationInvitation(invitation)">
               Accept
             </button>
           </div>

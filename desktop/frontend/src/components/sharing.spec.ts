@@ -60,6 +60,7 @@ function resetStore(familyRole = "owner"): void {
     allPerson: [],
     shareInvitations: { received: [], sent: [], completionError: "" },
     allDevice: [],
+    sharingErrors: {},
   });
 }
 
@@ -86,6 +87,59 @@ beforeEach(() => {
 });
 
 describe("Vault sharing panel", () => {
+  it("resends the pending row's vault, email and role and keeps failures at that row", async () => {
+    api.shareVault.mockRejectedValueOnce(new Error("Send failed"));
+    const wrapper = await openSharingPanel();
+    const row = wrapper.find('[data-testid="vault-invitation-invitation-to-dave"]');
+    expect(row.text()).toContain("Expires in");
+    expect(row.find('.member-email').attributes("title")).toBeTruthy();
+    await row.find('[data-testid="resend-invitation-invitation-to-dave"]').trigger("click");
+    await flushPromises();
+    expect(api.shareVault).toHaveBeenCalledWith("family", "dave@example.com", "reader");
+    expect(row.find('[role="alert"]').text()).toContain("Send failed");
+    expect(store.errorMessage).toBe("");
+    wrapper.unmount();
+  });
+
+  it("keeps invitation failures beside the form without an alert behind the panel", async () => {
+    api.shareVault.mockRejectedValueOnce(new Error("The invitation could not be sent."));
+    const wrapper = await openSharingPanel();
+    await wrapper.find('[data-testid="new-member-email"]').setValue("carol@example.com");
+    await wrapper.find('[data-testid="add-member"]').trigger("submit");
+    await flushPromises();
+    expect(wrapper.findAll('[role="alert"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="add-member"] [role="alert"]').text()).toContain("The invitation could not be sent.");
+    expect(store.errorMessage).toBe("");
+    await wrapper.find('[aria-label="Dismiss invitation error"]').trigger("click");
+    expect(wrapper.findAll('[role="alert"]')).toHaveLength(0);
+    store.sharingErrors.invite = "Another failure";
+    await wrapper.find('[aria-label="Close sharing"]').trigger("click");
+    expect(store.sharingErrors).toEqual({});
+    expect(store.errorMessage).toBe("");
+    wrapper.unmount();
+  });
+
+  it("keeps role failures at the affected member", async () => {
+    api.changeVaultMemberRole.mockRejectedValueOnce(new Error("Cannot change this role."));
+    const wrapper = await openSharingPanel();
+    await wrapper.find('[data-testid="role-select-BOB222"]').setValue("reader");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="vault-member-BOB222"] [role="alert"]').text()).toContain("Cannot change this role.");
+    expect(store.errorMessage).toBe("");
+    wrapper.unmount();
+  });
+
+  it("does not report zero members while loading sharing", async () => {
+    api.listAllVaultMember.mockReturnValue(new Promise(() => undefined));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.find('[data-testid="share-vault"]').trigger("click");
+    const panel = wrapper.find('[data-testid="vault-sharing-panel"]');
+    expect(panel.text()).toContain("Loading members…");
+    expect(panel.find('[data-testid="sharing-member-count"]').exists()).toBe(false);
+    wrapper.unmount();
+    store.isBusy = false;
+  });
+
   it("contains a nested recipient review and returns to the still-open sharing panel", async () => {
     api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [createSentShareInvitation({ id: "reviewed", requiresConfirmation: true, state: "accepted" })], completionError: "" });
     const wrapper = await openSharingPanel();
@@ -108,7 +162,6 @@ describe("Vault sharing panel", () => {
     expect(document.activeElement).toBe(review.element);
     wrapper.unmount();
   });
-
   it("lists the members with initials, role and a you tag", async () => {
     const wrapper = await openSharingPanel();
     expect(api.listAllVaultMember).toHaveBeenCalledWith("family");
@@ -162,7 +215,7 @@ describe("Vault sharing panel", () => {
     expect(api.listAllPerson).not.toHaveBeenCalled();
     const sendButton = wrapper.find('[data-testid="send-share-invitation"]');
     expect(sendButton.attributes("disabled")).toBeDefined();
-    expect(sendButton.text()).toBe("Share");
+    expect(sendButton.text()).toBe("Send invitation");
     expect(wrapper.find('[data-testid="add-member"]').text()).toContain("Invite by email");
     expect(wrapper.find('[data-testid="add-member"] .hint').text()).toBe("They get an email and accept in Hisar; without an account they create one first.");
 
@@ -495,8 +548,8 @@ describe("Lock screen", () => {
     await flushPromises();
     const banner = wrapper.find('[data-testid="share-awaiting-unlock"]');
     expect(banner.findAll("li").map((row) => row.text())).toEqual([
-      "Ada accepted your invitation to a vault — unlock to finish sharing",
-      "bo@example.com accepted your invitation to a vault — unlock to finish sharing",
+      "Ada accepted your invitation to a vault. Unlock to finish sharing.",
+      "bo@example.com accepted your invitation to a vault. Unlock to finish sharing.",
     ]);
 
     api.listAllShareAwaitingUnlock.mockResolvedValue([]);
@@ -535,6 +588,32 @@ describe("Lock screen", () => {
 });
 
 describe("Settings people and devices", () => {
+  it("resends from People using the row's vault rather than the selected vault", async () => {
+    api.shareVault.mockResolvedValue(undefined);
+    store.selectedVaultID = "personal";
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    await wrapper.find('[data-testid="resend-invitation-invitation-to-dave"]').trigger("click");
+    await flushPromises();
+    expect(api.shareVault).toHaveBeenCalledWith("family", "dave@example.com", "reader");
+    expect(api.listAllVaultMember).not.toHaveBeenCalledWith("personal");
+    wrapper.unmount();
+  });
+
+  it("labels expired received invitations and prevents acceptance; accepted sent rows cannot resend", async () => {
+    api.listAllShareInvitation.mockResolvedValue({
+      received: [createReceivedShareInvitation({ expiresAt: new Date(Date.now() - 1000).toISOString() })],
+      sent: [createSentShareInvitation({ state: "accepted", requiresConfirmation: true })], completionError: "",
+    });
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    const received = wrapper.find('[data-testid="received-invitation-invitation-from-carol"]');
+    expect(received.text()).toContain("Expired");
+    expect(received.find('[data-testid="accept-invitation-invitation-from-carol"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.find('[data-testid="resend-invitation-invitation-to-dave"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   beforeEach(() => {
     api.listAllDevice.mockResolvedValue([
       createDevice(),

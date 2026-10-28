@@ -20,6 +20,19 @@ import kotlinx.coroutines.test.runTest
 /** The iPhone app's AppModelTests for sharing vaults with people and inviting them to Hisar. */
 class SharingTests {
     @Test
+    fun testInvitationLifetimeShowsExpiryAndClosesAcceptanceAtItsDeadline() {
+        val now = java.time.Instant.ofEpochSecond(1_800_000_000)
+        val lifetime = com.tryhisar.hisar.model.InvitationLifetime(now.plusSeconds(5 * 86400).toString())
+        assertEquals("Expires in 5 days", lifetime.describe(now))
+        assertFalse(lifetime.isExpired(now))
+        assertTrue(lifetime.exactDate.isNotEmpty())
+        assertEquals("Expires tomorrow", lifetime.describe(now.plusSeconds(4 * 86400)))
+        assertEquals("Expired", lifetime.describe(now.plusSeconds(5 * 86400)))
+        assertTrue(lifetime.isExpired(now.plusSeconds(5 * 86400)))
+        assertNotNull(com.tryhisar.hisar.model.InvitationLifetime("2027-01-15T12:00:00.123Z").date)
+    }
+
+    @Test
     fun testAnyoneInvitesByEmailWithTrimmedAddress() = runTest {
         val harness = AppModelHarness(this)
         harness.backend.seedSignedIn()

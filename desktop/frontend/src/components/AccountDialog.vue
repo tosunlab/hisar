@@ -3,7 +3,7 @@ import { ref, useId } from "vue";
 import { useModalFocus } from "../modalFocus";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 
-const props = withDefaults(defineProps<{ title: string; subtitle: string; icon: IconName; isDanger?: boolean; isClosable?: boolean }>(), {
+const props = withDefaults(defineProps<{ title: string; subtitle?: string; icon: IconName; isDanger?: boolean; isClosable?: boolean }>(), {
   isDanger: false,
   isClosable: true,
 });
@@ -22,7 +22,7 @@ useModalFocus(panel, () => { if (props.isClosable) emit("close"); });
         <span class="panel-icon" :class="{ danger: isDanger }"><AppIcon :name="icon" /></span>
         <div class="panel-heading">
           <h2 :id="headingID">{{ title }}</h2>
-          <p :id="subtitleID" class="muted">{{ subtitle }}</p>
+          <p v-if="subtitle" :id="subtitleID" class="muted">{{ subtitle }}</p>
         </div>
       </div>
       <slot />

@@ -41,7 +41,7 @@ async function confirmRevoke(device: Device): Promise<void> {
           </p>
         </div>
         <template v-if="!device.isCurrent">
-          <button v-if="revokingDeviceID !== device.id" class="danger" :data-testid="`revoke-device-${device.id}`" @click="revokingDeviceID = device.id">Revoke</button>
+          <button v-if="revokingDeviceID !== device.id" class="danger" :data-testid="`revoke-device-${device.id}`" @click="revokingDeviceID = device.id">Sign out…</button>
           <template v-else>
             <button class="ghost" @click="revokingDeviceID = ''">Cancel</button>
             <button class="danger-solid" data-testid="confirm-revoke-device" :disabled="store.isBusy" @click="confirmRevoke(device)">Sign out device</button>

@@ -593,7 +593,7 @@ export function createReceivedShareInvitation(overrides: Partial<ReceivedShareIn
     role: "editor",
     invitedByName: "Carol",
     invitedByEmail: "carol@example.com",
-    expiresAt: "2026-10-18T09:00:00Z",
+    expiresAt: new Date(Date.now() + 7 * 86400_000).toISOString(),
     ...overrides,
   };
 }
@@ -607,7 +607,7 @@ export function createSentShareInvitation(overrides: Partial<SentShareInvitation
     recipientName: "",
     role: "reader",
     state: "pending",
-    expiresAt: "2026-10-18T09:00:00Z",
+    expiresAt: new Date(Date.now() + 7 * 86400_000).toISOString(),
     acceptedAt: "",
     requiresConfirmation: false,
     recipientId: "",
@@ -672,7 +672,7 @@ export function createOrganizationInvitation(overrides: Partial<OrganizationInvi
     role: "member",
     invitedByName: "Ada",
     invitedByEmail: "ada@example.com",
-    expiresAt: "2026-10-18T09:00:00Z",
+    expiresAt: new Date(Date.now() + 7 * 86400_000).toISOString(),
     ...overrides,
   };
 }
@@ -899,6 +899,7 @@ export function createApiMock() {
     setOpenAtLogin: vi.fn(),
     openLoginItemSettings: vi.fn().mockResolvedValue(undefined),
     listAllImportFormat: vi.fn().mockResolvedValue([]),
+    openEmergencyKit: vi.fn().mockResolvedValue(null),
     chooseImportFile: vi.fn(),
     openImportFile: vi.fn(),
     previewImport: vi.fn(),

@@ -11,7 +11,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.QrCodeScanner
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -81,6 +81,7 @@ fun SignInScreen(model: AppModel) {
     var secretKey by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var repeatedPassword by remember { mutableStateOf("") }
+    var hasValidatedRepeatedPassword by remember { mutableStateOf(false) }
     var ratedPassword by remember { mutableStateOf("") }
     var passwordFeedback by remember { mutableStateOf<MasterPasswordFeedback?>(null) }
 
@@ -89,6 +90,7 @@ fun SignInScreen(model: AppModel) {
         mode = newMode
         password = ""
         repeatedPassword = ""
+        hasValidatedRepeatedPassword = false
         model.errorMessage.value = null
     }
 
@@ -115,10 +117,10 @@ fun SignInScreen(model: AppModel) {
         passwordFeedback = feedback
     }
 
-    val isPasswordMismatch = mode == SignInMode.CREATE_ACCOUNT && repeatedPassword.isNotEmpty() && password != repeatedPassword
+    val isPasswordMismatch = mode == SignInMode.CREATE_ACCOUNT && hasValidatedRepeatedPassword && password != repeatedPassword
     // An invite link names its server, so the create-account form asks for one only without an invite.
     val isSignUpServerAsked = inviteLink.isBlank()
-    val canSubmit = when (mode) {
+    fun canSubmit(): Boolean = when (mode) {
         SignInMode.SIGN_IN -> server.isNotEmpty() && email.isNotEmpty() && secretKey.isNotEmpty() && password.isNotEmpty()
         SignInMode.CREATE_ACCOUNT ->
             (!isSignUpServerAsked || server.isNotBlank()) && email.isNotEmpty() && name.isNotEmpty() && password == repeatedPassword &&
@@ -126,7 +128,8 @@ fun SignInScreen(model: AppModel) {
     }
 
     fun submit() {
-        if (!canSubmit || isBusy) return
+        if (mode == SignInMode.CREATE_ACCOUNT) hasValidatedRepeatedPassword = true
+        if (!canSubmit() || model.isBusy.value) return
         scope.launch {
             when (mode) {
                 SignInMode.SIGN_IN -> if (signIn.signIn(server, email, secretKey, password)) {
@@ -134,7 +137,7 @@ fun SignInScreen(model: AppModel) {
                     secretKey = ""
                 }
                 SignInMode.CREATE_ACCOUNT -> {
-                    val isSignedUp = if (isSignUpServerAsked) {
+                    val isSignedUp = if (inviteLink.isBlank()) {
                         signIn.signUpWithoutInvite(server, email, name, password)
                     } else {
                         signIn.signUp(inviteLink, email, name, password)
@@ -152,11 +155,6 @@ fun SignInScreen(model: AppModel) {
         ClearSection {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 LogoMark(size = 56.dp)
-                Text(
-                    if (mode == SignInMode.SIGN_IN) "Sign in to use Hisar on this device." else "Enter the invite code you received, or sign up on a server that lets anyone join.",
-                    style = HisarType.subheadline,
-                    color = HisarTheme.colors.secondaryLabel,
-                )
                 SegmentedControl(SignInMode.entries, mode, { it.title }, ::changeMode, testTag = "sign-in-mode")
             }
         }
@@ -176,7 +174,7 @@ fun SignInScreen(model: AppModel) {
         errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
         when (mode) {
             SignInMode.SIGN_IN -> SignInSections(
-                scanEmergencyKit = { signIn.isScannerShown.value = true },
+                scanEmergencyKit = { signIn.scannerMessage.value = null; signIn.isScannerShown.value = true },
                 email = email, onEmailChange = { email = it },
                 server = server, onServerChange = { server = it },
                 isServerShown = isServerShown, showServer = { isServerShown = true },
@@ -194,7 +192,9 @@ fun SignInScreen(model: AppModel) {
                 name = name, onNameChange = { name = it },
                 password = password, onPasswordChange = { password = it },
                 repeatedPassword = repeatedPassword, onRepeatedPasswordChange = { repeatedPassword = it },
+                onRepeatedPasswordBlur = { if (repeatedPassword.isNotEmpty()) hasValidatedRepeatedPassword = true },
                 isPasswordMismatch = isPasswordMismatch,
+                submit = ::submit,
                 passwordFeedback = passwordFeedback,
                 concealWhen = isBusy,
             )
@@ -203,25 +203,22 @@ fun SignInScreen(model: AppModel) {
             footer = if (mode == SignInMode.SIGN_IN) {
                 {
                     Text(
-                        "Lost your Secret Key? It's on your Emergency Kit.",
+                        "Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.",
                         modifier = Modifier.padding(top = 8.dp).testTag("secret-key-note"),
                     )
                 }
             } else null,
         ) {
-            ProminentButton(mode.title, ::submit, testTag = "sign-in-submit", enabled = canSubmit, isBusy = isBusy, busyLabel = if (mode == SignInMode.SIGN_IN) "Signing in…" else "Creating account…")
+            ProminentButton(mode.title, ::submit, testTag = "sign-in-submit", enabled = canSubmit(), isBusy = isBusy, busyLabel = if (mode == SignInMode.SIGN_IN) "Signing in…" else "Creating account…")
         }
     }
 
     if (isScannerShown) {
-        EmergencyKitScannerSheet(onScanned = signIn::openScannedEmergencyKit, onCancel = { signIn.isScannerShown.value = false })
-    }
-    scannerMessage?.let { message ->
-        AlertDialog(
-            onDismissRequest = { signIn.scannerMessage.value = null },
-            title = { Text("Scan Emergency Kit") },
-            text = { Text(message) },
-            confirmButton = { PlainButton("OK", { signIn.scannerMessage.value = null }, testTag = "scanner-message-ok") },
+        EmergencyKitScannerSheet(
+            onScanned = signIn::openScannedEmergencyKit,
+            onCancel = { signIn.isScannerShown.value = false; signIn.scannerMessage.value = null },
+            errorMessage = scannerMessage,
+            onRetry = { signIn.scannerMessage.value = null },
         )
     }
 }
@@ -302,7 +299,9 @@ private fun CreateAccountSections(
     onPasswordChange: (String) -> Unit,
     repeatedPassword: String,
     onRepeatedPasswordChange: (String) -> Unit,
+    onRepeatedPasswordBlur: () -> Unit,
     isPasswordMismatch: Boolean,
+    submit: () -> Unit,
     passwordFeedback: MasterPasswordFeedback?,
     concealWhen: Boolean,
 ) {
@@ -366,7 +365,9 @@ private fun CreateAccountSections(
         FormTextField(
             repeatedPassword, onRepeatedPasswordChange, placeholder = "Repeat master password", testTag = "sign-up-repeated-password", isSecure = true,
             revealName = "repeated master password", concealWhen = concealWhen,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            modifier = Modifier.onFocusChanged { if (!it.isFocused) onRepeatedPasswordBlur() },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
+            keyboardActions = KeyboardActions(onGo = { submit() }),
             label = "Repeat master password",
             errorMessage = if (isPasswordMismatch) "The passwords do not match." else null,
         )

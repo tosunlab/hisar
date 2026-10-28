@@ -102,7 +102,7 @@ onBeforeUnmount(() => {
         <ul v-if="store.allShareAwaitingUnlock.length > 0" class="awaiting-list" data-testid="share-awaiting-unlock">
           <li v-for="awaiting in store.allShareAwaitingUnlock" :key="awaiting.invitationId" class="awaiting" role="status">
             <AppIcon name="users" :size="15" />
-            <span><strong>{{ describePerson(awaiting.recipientName, awaiting.recipientEmail) }}</strong> accepted your invitation to a vault — unlock to finish sharing</span>
+            <span><strong>{{ describePerson(awaiting.recipientName, awaiting.recipientEmail) }}</strong> accepted your invitation to a vault. Unlock to finish sharing.</span>
           </li>
         </ul>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
@@ -128,7 +128,8 @@ onBeforeUnmount(() => {
               type="button"
               class="touch-id-button"
               :class="{ waiting: isWaitingForTouchID }"
-              aria-label="Use Touch ID"
+              aria-label="Unlock with Touch ID"
+              title="Unlock with Touch ID"
               data-testid="use-touch-id"
               @click="startTouchID"
             >

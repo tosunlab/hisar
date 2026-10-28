@@ -86,6 +86,7 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
                     InvitationRow(
                         text = "${invitation.inviterName} shared a vault with you as ${VaultLogic.describeVaultRole(invitation.role).lowercase()}",
                         email = invitation.invitedByEmail,
+                        expiresAt = invitation.expiresAt,
                         icon = Icons.Filled.Group,
                         testTagPrefix = "",
                         testTagName = "invitation",
@@ -172,8 +173,9 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
     invitationToCancel?.let { invitation ->
         ConfirmationDialog(
             title = "Cancel the invitation to ${invitation.email}?",
-            message = null,
+            message = "Their invitation link stops working. You can invite them again later.",
             confirmLabel = "Cancel invitation",
+            dismissLabel = "Keep invitation",
             confirmTestTag = "confirm-cancel-invitation",
             onConfirm = {
                 scope.launch {

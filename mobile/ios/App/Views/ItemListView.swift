@@ -86,7 +86,7 @@ struct ItemListView: View {
                     ContentUnavailableView {
                         Label("No items yet", systemImage: "tray")
                     } description: {
-                        Text(isWritable ? "Tap + to add a login." : "Items appear here once an editor adds them.")
+                        Text(isWritable ? "Tap + to add your first item." : "Items appear here once an editor adds them.")
                     }
                 } else {
                     ContentUnavailableView.search(text: searchText)

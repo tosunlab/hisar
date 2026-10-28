@@ -256,6 +256,19 @@ final class OrganizationTests: XCTestCase {
         let elsewhere = VaultSummary(id: "other", name: "Other", type: VaultSummary.typeOrganization, role: Member.vaultRoleOwner, itemCount: 0, organizationID: "globex")
         let allGivable = OrganizationLogic.listAllGivableVault(organization: asAdmin, team: asAdmin.allTeam[1], allVault: [onlyOnThisDevice, elsewhere])
         XCTAssertEqual(allGivable.map(\.displayName), ["Runbooks", "A vault you can't open (Audit)"], "Deploy is already Platform's; another organization's vault is not offered")
+
+        var sameNamedMembers = asAdmin
+        sameNamedMembers.allMember[1].name = "Alex Morgan"
+        sameNamedMembers.allMember[2].name = "Alex Morgan"
+        var team = platform
+        team.allMember.append(TeamMember(accountID: "unknown", name: "Alex Morgan", email: "unknown@example.com"))
+        let allTeamMember = OrganizationLogic.listAllTeamMember(organization: sameNamedMembers, team: team)
+        XCTAssertEqual(allTeamMember, Array(sameNamedMembers.allMember[1...2]))
+        XCTAssertEqual(allTeamMember.map(\.email), ["alice@example.com", "bob@example.com"])
+        XCTAssertEqual(allTeamMember.map(\.securityCode), ["1111 2222", "3333 4444"])
+        XCTAssertEqual(allTeamMember.map(\.role), [OrganizationRole.admin, OrganizationRole.member])
+        XCTAssertTrue(allTeamMember[0].isCurrentUser)
+        XCTAssertFalse(allTeamMember[1].isCurrentUser)
     }
 
     func testUnopenedVaultChoicesShowTeamsAndDistinctIDs() {

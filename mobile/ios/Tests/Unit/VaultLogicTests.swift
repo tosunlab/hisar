@@ -337,6 +337,14 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertNil(LoginMatch.parseRecordIdentifier("nothing"))
         XCTAssertNil(LoginMatch.parseRecordIdentifier("/item"))
     }
+
+    func testAFieldValueNeedsAName() {
+        XCTAssertTrue(ItemField(name: "", value: "recovery-code-1", concealed: true).isNameMissing)
+        XCTAssertTrue(ItemField(name: " \t\n", value: "recovery-code-1", concealed: false).isNameMissing)
+        XCTAssertFalse(ItemField(name: "", value: "", concealed: false).isNameMissing, "an empty row is left out, not refused")
+        XCTAssertFalse(ItemField(name: "Recovery code", value: "recovery-code-1", concealed: true).isNameMissing)
+        XCTAssertFalse(ItemField(name: "PIN", value: "", concealed: false).isNameMissing)
+    }
 }
 
 final class ModelDecodingTests: XCTestCase {
@@ -393,6 +401,19 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(CardInput.formatNumber("36227206271667"), "3622 720627 1667")
         XCTAssertEqual(CardInput.formatNumber("3056930009020004"), "3056 9300 0902 0004")
         XCTAssertEqual(CardInput.formatNumber("Store card #12"), "Store card #12")
+    }
+
+    func testInvitationLifetimeShowsExpiryAndClosesAcceptanceAtItsDeadline() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let formatter = ISO8601DateFormatter()
+        let lifetime = InvitationLifetime(formatter.string(from: now.addingTimeInterval(5 * 86400)))
+        XCTAssertEqual(lifetime.describe(at: now), "Expires in 5 days")
+        XCTAssertFalse(lifetime.isExpired(at: now))
+        XCTAssertFalse(lifetime.exactDate.isEmpty)
+        XCTAssertEqual(lifetime.describe(at: now.addingTimeInterval(4 * 86400)), "Expires tomorrow")
+        XCTAssertEqual(lifetime.describe(at: now.addingTimeInterval(5 * 86400)), "Expired")
+        XCTAssertTrue(lifetime.isExpired(at: now.addingTimeInterval(5 * 86400)))
+        XCTAssertNotNil(InvitationLifetime("2027-01-15T12:00:00.123Z").date)
     }
 
     func testExpiryIsWrittenAsMonthAndYearAsTyped() {
