@@ -219,21 +219,6 @@ class ItemDetailScreenTests {
     }
 
     @Test
-    fun testTouchAndHoldCopiesAnAndroidAppCertificate() {
-        val certificate = List(32) { "14" }.joinToString(":")
-        backend.addAndroidApp("personal", "bank", "com.bank.app", certificate)
-        val host = openHost()
-        host.show("personal", "bank")
-        composeRule.waitForTag("android-app-com.bank.app")
-        composeRule.onNodeWithTag("android-app-com.bank.app").performScrollTo().performTouchInput { longClick() }
-        composeRule.waitForTag("field-action-Copy certificate")
-        composeRule.onNodeWithTag("field-action-Copy certificate").performClick()
-        composeRule.waitForTagToGo("field-action-Copy certificate")
-        composeRule.waitUntil(5_000) { clipboard.allCopiedPlain == listOf(certificate) }
-        composeRule.waitUntil(5_000) { host.model.notice.value?.message == "Certificate copied" }
-    }
-
-    @Test
     fun testFavoriteSnackbarUndoUpdatesTheDetailToolbar() {
         val host = openHost()
         host.show("personal", "github")

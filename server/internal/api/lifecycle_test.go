@@ -77,7 +77,7 @@ func TestChangeMasterPassword(t *testing.T) {
 	requireValue[*item.Item](t)(alice.session.SaveItem(ctx, team, &item.Item{Overview: item.Overview{Title: "AWS"}, Details: item.Details{Password: "aws-pass"}}))
 	shareThroughInvitation(t, alice.session, bob.session, team, apitypes.VaultEditor)
 	laptop := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alice.password, alice.secretKey, apitypes.DeviceInfo{Name: "laptop", Platform: "go"}))
-	laptopEvents := openEventStream(t, laptop.Client)
+	laptopEvents := openEventStream(t, server, laptop.Client, laptop.AccountID)
 	waitForSubscriber(t, server, alice.session.AccountID, 1)
 	newPassword := []byte("a brand new master password")
 
@@ -321,9 +321,9 @@ func TestDeleteAccount(t *testing.T) {
 		t.Errorf("wrong password: %v", err)
 	}
 
-	bobEvents := openEventStream(t, bob.session.Client)
-	carolEvents := openEventStream(t, carol.session.Client)
-	aliceEvents := openEventStream(t, alice.session.Client)
+	bobEvents := openEventStream(t, server, bob.session.Client, bob.session.AccountID)
+	carolEvents := openEventStream(t, server, carol.session.Client, carol.session.AccountID)
+	aliceEvents := openEventStream(t, server, alice.session.Client, alice.session.AccountID)
 	waitForSubscriber(t, server, bob.session.AccountID, 1)
 	waitForSubscriber(t, server, carol.session.AccountID, 1)
 	waitForSubscriber(t, server, alice.session.AccountID, 1)

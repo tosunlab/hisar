@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.ui.item
 
+import android.content.ClipboardManager
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
+import com.tryhisar.hisar.HisarTestApplication
 import com.tryhisar.hisar.app.FakeTextClipboard
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.ItemAPICredential
@@ -18,6 +20,7 @@ import com.tryhisar.hisar.model.ItemDatabase
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.ItemField
 import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.platform.targetContext
 import com.tryhisar.hisar.ui.waitForTag
 import com.tryhisar.hisar.ui.waitForTagToGo
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +41,29 @@ class ItemDetailOverflowTests {
     @Test fun longAPISecretsCanBeInspectedWithoutEditing() = inspect(ItemDetail(category = ItemDetail.CATEGORY_API_CREDENTIAL, apiCredential = ItemAPICredential(secret = secret)), "Secret", "Secret")
     @Test fun longConnectionStringsCanBeInspectedWithoutEditing() = inspect(ItemDetail(category = ItemDetail.CATEGORY_DATABASE, database = ItemDatabase(engine = "postgresql", connectionString = secret)), "Connection string", "connection string")
     @Test fun longCustomSecretsCanBeInspectedWithoutEditing() = inspect(ItemDetail(allField = listOf(ItemField("Recovery", secret, true))), "Recovery", null)
+
+    @Test fun testFullValueCopyUsesTheProtectedAndroidClipboard() {
+        val application = targetContext.applicationContext as HisarTestApplication
+        val clipboardManager = targetContext.getSystemService(ClipboardManager::class.java)
+        val backend = object : FakeBackend() {
+            override fun copyField(vaultID: String, itemID: String, fieldName: String) {
+                super.copyField(vaultID, itemID, fieldName)
+                assertTrue(application.copySecret(getItem(vaultID, itemID).password))
+            }
+        }.apply { seedSignedIn() }
+        backend.saveItem("personal", backend.getItem("personal", "github").copy(password = secret))
+        val shown = ItemDetailHost(backend, application).also { host = it }
+        shown.show("personal", "github")
+        rule.waitForTag("reveal-password")
+        rule.onNodeWithTag("reveal-password").performClick()
+        rule.onNodeWithTag("view-full-password").performScrollTo().performClick()
+        rule.waitForTag("full-value-text")
+        rule.onNodeWithTag("full-value-copy").performClick()
+        rule.waitUntil(10_000) {
+            clipboardManager.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString() == secret
+        }
+        assertTrue("the full-value view uses Hisar's sensitive clipboard path", clipboardManager.primaryClipDescription?.extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true)
+    }
 
     private fun inspect(draft: ItemDetail, label: String, fieldName: String?) {
         val backend = FakeBackend().apply { seedSignedIn() }

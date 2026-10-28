@@ -166,9 +166,8 @@ ui_test_add_account() {
   link=$(ui_test_create_invite "$2")
   UI_TEST_VALUES+=("HISAR_UI_TEST_${1}INVITE_LINK=$link" "HISAR_UI_TEST_${1}EMAIL=$2")
 }
-# The iPhone's tests sign up with the first six addresses, written in the tests.
+# The iPhone's tests sign up with the first five addresses, written in the tests.
 ui_test_add_account "" "$EMAIL_PREFIX-ui@example.com"
-ui_test_add_account AUTOFILL_ "$EMAIL_PREFIX-autofill@example.com"
 ui_test_add_account BIOMETRIC_ "$EMAIL_PREFIX-face-id@example.com"
 ui_test_add_account ONE_TIME_CODE_ "$EMAIL_PREFIX-one-time-code@example.com"
 ui_test_add_account PASSKEY_ "$EMAIL_PREFIX-passkey@example.com"

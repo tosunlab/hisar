@@ -31,7 +31,7 @@ Five Go modules joined by `go.work`, plus seven non-Go apps.
 
 | Package | What it holds |
 |---|---|
-| `crypt` | Every cryptographic operation and AAD label: sealing, Argon2id/HKDF, keyset, vault keys, items, approvals, share links, exports, Secret Key, Web Push message encryption (RFC 8291). `vectors_test.go` freezes the formats |
+| `crypt` | Every cryptographic operation and AAD label: sealing, Argon2id/HKDF, keyset, vault keys, items, approvals, share links, exports, Secret Key, Web Push message encryption (RFC 8291). `vectors_test.go` freezes the formats. `NewAccountArgon2Params` is what sign-ups and credential changes use: the defaults, or the minimum under the test-only build tag `hisar_fast_test_kdf` (`newaccount_fast_test_kdf.go`) |
 | `pake` | The OPAQUE configuration shared by apps and server |
 | `apitypes` | JSON wire types of `/api/v1`, event names, roles, platform headers, share-link limits, `IsValidVaultRole`, `NormalizeEmail` |
 | `apiclient` | Typed HTTP client of `/api/v1` and its event stream; `GetRegistrationPolicy` discovers sign-up policy without redirects |
@@ -257,7 +257,7 @@ exported method is callable from the UI. After changing a bound type, run
 ```sh
 docker run -d --name hisar-pg -e POSTGRES_PASSWORD=hisar -e POSTGRES_DB=hisar -p 127.0.0.1:55432:5432 postgres:18
 export HISAR_TEST_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar?sslmode=disable"
-make vet test            # every module; -p 1 because database tests share one schema
+make vet test            # every module; server with -p 1 because its database tests share one schema, the rest beside it
 make build build-cli-all # hisar-server with the admin dashboard (needs Node 24), and hisar; the CLI for every OS
 make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
 make test-desktop-frontend # includes the reminder-banner layout test; needs Playwright's Chromium
@@ -280,7 +280,7 @@ Make selects the exact `go.work` toolchain even if `GOTOOLCHAIN` is set in your 
 The first use needs network access unless that release is already cached.
 
 For the desktop frontend's browser tests, install its locked dependencies with `npm ci` in `desktop/frontend`,
-then run `npx playwright install chromium` there. CI uses the pinned Playwright container with Chromium already installed.
+then run `npx playwright install chromium` there. CI's combined web job installs Chromium and its Linux dependencies.
 
 The Android targets need `ANDROID_HOME` (the SDK, with the command-line tools in `cmdline-tools/latest`),
 `ANDROID_NDK_HOME` (`$ANDROID_HOME/ndk/30.0.16248370`) and JDK 21 for the Gradle daemon
@@ -334,7 +334,16 @@ check cache repair, concurrent reuse and Python failures.
   account as `HISAR_UI_TEST_<NAME>_INVITE_LINK` and `_EMAIL`, the iPhone's names; invites are single-use, so a new
   server test adds a `ui_test_add_account` line. The test orchestrator runs each test in a new process with the app's
   data cleared. `ANDROID_UI_TESTS=<class or test names>` or `ANDROID_UI_TESTS=smoke` runs a subset.
-- CI runs the iPhone UI tests and the Android instrumented tests in three jobs each, split by the test classes' measured
+- CI runs the iPhone UI tests in three parts and the Android instrumented tests in three, split by the test classes' measured
   run times in `scripts/ui-test-parts.sh` (`IOS_UI_TEST_PART`, `ANDROID_UI_TEST_PART`); a class missing from its table runs
-  in the last part. An Android part also stays under about 80 tests: the emulator's host memory grows with each test, so
-  `scripts/test-android-ui.sh` runs Gradle without a daemon and compiles Kotlin in that process, leaving no build JVM alive.
+  in the last part. iPhone part 1 runs in the build job on its warm simulator; parts 2 and 3 start alongside the build and
+  wait for its artifact. The Android jobs build `HisarKit.aar` and the APKs in the background while the emulator boots
+  (`test-android-ui.sh --build-apks`, `ANDROID_UI_TEST_APK_BUILD`).
+- Tests create accounts with the minimum Argon2 parameters: `make test` passes the build tag `hisar_fast_test_kdf`, and CI's
+  phone UI test jobs build HisarKit with `HISAR_FAST_TEST_KDF=1` (`mobile/fast-test-kdf.sh`, which refuses outside GitHub
+  Actions) into caches of their own. `scripts/check-fast-test-kdf.sh` fails when the tag appears outside its allowlist, so no
+  release build can carry it.
+- Which CI jobs run is decided per pull request by `scripts/detect-app-changes.sh` from `scripts/app-paths.sh`; a new job
+  gets an `is<Area>Changed` output there and a row in `scripts/test-app-paths.sh`. `caches.yml` fills main's caches on every
+  push to `main` (its cache keys must match the steps they stand in for in `ci.yml` and `macos.yml`) and deletes a closed
+  pull request's caches.

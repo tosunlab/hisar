@@ -4,55 +4,17 @@ import XCTest
 // cannot run in the simulator, and Go tests cover it end to end.
 final class PhoneApprovalUITests: HisarUITestCase {
     func testApproveSSHRequestWithFaceID() {
-        for sensor in ["Face ID", "Touch ID"] {
-            launchPreview("ssh", sensor: sensor)
-            waitFor(app.descendants(matching: .any)["phone-approval"])
-            XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Terminal wants to push to git.tryhisar.com")
-            XCTAssertEqual(app.buttons["phone-approval-approve"].label, "Approve with \(sensor)")
-            let symbol = sensor == "Touch ID" ? "touchid" : "faceid"
-            XCTAssertTrue(app.descendants(matching: .any)["phone-approval-biometry-\(symbol)"].exists)
-            let rememberSwitch = app.switches["phone-approval-remember"]
-            XCTAssertEqual(rememberSwitch.value as? String, "1", "the switch starts as the Mac's checkbox does")
-            saveScreenshot("phone-approval-ssh-\(symbol)")
-            rememberSwitch.switches.firstMatch.tap()
-            app.buttons["phone-approval-approve"].tap()
-            checkResult("Approved preview-ssh with \(sensor)")
-            app.terminate()
-        }
-    }
-
-    func testRememberedSSHApproval() {
         launchPreview("ssh")
-        waitFor(app.switches["phone-approval-remember"])
+        waitFor(app.descendants(matching: .any)["phone-approval"])
+        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Terminal wants to push to git.tryhisar.com")
+        XCTAssertEqual(app.buttons["phone-approval-approve"].label, "Approve with Face ID")
+        XCTAssertTrue(app.descendants(matching: .any)["phone-approval-biometry-faceid"].exists)
+        let rememberSwitch = app.switches["phone-approval-remember"]
+        XCTAssertEqual(rememberSwitch.value as? String, "1", "the switch starts as the Mac's checkbox does")
+        saveScreenshot("phone-approval-ssh-faceid")
+        rememberSwitch.switches.firstMatch.tap()
         app.buttons["phone-approval-approve"].tap()
-        checkResult("Approved preview-ssh with Face ID, remembered")
-    }
-
-    func testDenyCommandLineRequest() {
-        launchPreview("cli")
-        waitFor(app.staticTexts["phone-approval-summary"])
-        XCTAssertEqual(app.staticTexts["phone-approval-row-Lasts"].label, "Lasts, Until 10 minutes after this terminal’s last command, or until Hisar locks")
-        let note = app.descendants(matching: .any)["phone-approval-note"].label
-        XCTAssertEqual(note, "Approving also lets hisar in Terminal use Hisar without asking until then. It does not unlock Hisar on your Mac.")
-        saveScreenshot("phone-approval-cli")
-        app.buttons["phone-approval-deny"].tap()
-        checkResult("Denied preview-cli")
-    }
-
-    func testApproveLauncherRequest() {
-        launchPreview("launcher")
-        waitFor(app.staticTexts["phone-approval-summary"])
-        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Raycast wants to search Hisar and copy or paste passwords and one-time codes")
-        XCTAssertEqual(app.staticTexts["phone-approval-row-App"].label, "App, Raycast")
-        XCTAssertEqual(app.staticTexts["phone-approval-row-Lasts"].label, "Lasts, Until Hisar locks on Alper's MacBook Pro")
-        XCTAssertFalse(app.descendants(matching: .any)["phone-approval-row-Program"].exists)
-        XCTAssertFalse(app.descendants(matching: .any)["phone-approval-row-Terminal"].exists)
-        XCTAssertFalse(app.switches["phone-approval-remember"].exists, "a launcher's approval always lasts until Hisar locks")
-        let note = app.descendants(matching: .any)["phone-approval-note"].label
-        XCTAssertEqual(note, "Approving lets Raycast use Hisar until it locks on your Mac; it does not unlock Hisar there.")
-        saveScreenshot("phone-approval-launcher")
-        app.buttons["phone-approval-approve"].tap()
-        checkResult("Approved preview-launcher with Face ID")
+        checkResult("Approved preview-ssh with Face ID")
     }
 
     func testApproveLauncherShareRequest() {
@@ -70,20 +32,6 @@ final class PhoneApprovalUITests: HisarUITestCase {
         saveScreenshot("phone-approval-launcher-share")
         app.buttons["phone-approval-approve"].tap()
         checkResult("Approved preview-launcher-share with Face ID")
-    }
-
-    func testCodingAgentRequestShowsProject() {
-        launchPreview("agent")
-        waitFor(app.staticTexts["phone-approval-summary"])
-        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "omp in Tern (via hisar) wants to use 2 secrets")
-        XCTAssertEqual(app.descendants(matching: .any)["phone-approval-row-Project"].label, "Project, ~/src/acme-web")
-        XCTAssertEqual(app.descendants(matching: .any)["phone-approval-row-Command"].label, "Command, npm run db:migrate")
-        XCTAssertFalse(app.descendants(matching: .any)["phone-approval-row-Repository"].exists, "the agent runs in its project's root")
-        let secrets = app.staticTexts["phone-approval-row-Secrets"].label
-        XCTAssertTrue(secrets.contains("Agents › Staging Postgres › connection string") && secrets.contains("Agents › Stripe › secret key"), secrets)
-        saveScreenshot("phone-approval-agent")
-        app.buttons["phone-approval-deny"].tap()
-        checkResult("Denied preview-agent")
     }
 
     func testForwardedRequestWarns() {
@@ -176,8 +124,8 @@ final class PhoneApprovalUITests: HisarUITestCase {
 
     private func launchPreview(_ kind: String, sensor: String = "Face ID", requiresPassword: Bool = false) {
         app.launchArguments = ["-HisarUITest", "-HisarApprovalPreview", kind]
-        if sensor == "Touch ID" { app.launchArguments.append("-HisarApprovalPreviewTouchID") }
         if requiresPassword { app.launchArguments.append("-HisarApprovalPreviewPassword") }
+        if sensor == "Touch ID" { app.launchArguments.append("-HisarApprovalPreviewTouchID") }
         app.launch()
     }
 

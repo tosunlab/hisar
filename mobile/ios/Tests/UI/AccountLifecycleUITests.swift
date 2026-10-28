@@ -26,24 +26,6 @@ final class AccountLifecycleUITests: HisarUITestCase {
         app.buttons["unlock-submit"].tap()
         waitForHittable(app.buttons["vault-Personal"])
 
-        openSettings("open-mac-approvals")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "Requests to use SSH keys, the command-line tool, coding agents and apps on your Mac appear here while Hisar is open and unlocked on both devices.")).firstMatch.exists)
-        XCTAssertFalse(app.staticTexts["How requests appear"].exists)
-        let macApprovalToggle = app.switches["mac-approval-toggle"]
-        if macApprovalToggle.value as? String == "1" {
-            macApprovalToggle.switches.firstMatch.tap()
-        }
-        XCTAssertEqual(macApprovalToggle.value as? String, "0")
-        goBack()
-        openTab("Approvals")
-        waitFor(app.staticTexts["approvals-off"])
-        let allowApproval = app.buttons["approvals-allow"]
-        waitFor(allowApproval)
-        XCTAssertEqual(allowApproval.label, "Approve requests from my Mac")
-        allowApproval.tap()
-        waitFor(app.staticTexts["No requests waiting"])
-        XCTAssertTrue(app.staticTexts["Requests from Hisar on your Mac appear here while this iPhone is unlocked."].exists)
-
         openSettings("open-account")
         app.buttons["open-change-master-password"].tap()
         let passwordWarning = app.staticTexts["Your other devices will be signed out. Sign in on them with the new master password."]

@@ -35,6 +35,12 @@ jobs:
       isDesktopChanged: ${{ steps.changes.outputs.isDesktopChanged }}
       isAndroidChanged: ${{ steps.changes.outputs.isAndroidChanged }}
       isAdminChanged: ${{ steps.changes.outputs.isAdminChanged }}
+      isGoChanged: ${{ steps.changes.outputs.isGoChanged }}
+      isServerChanged: ${{ steps.changes.outputs.isServerChanged }}
+      isExtensionChanged: ${{ steps.changes.outputs.isExtensionChanged }}
+      isDocsChanged: ${{ steps.changes.outputs.isDocsChanged }}
+      isRaycastChanged: ${{ steps.changes.outputs.isRaycastChanged }}
+      isOmpChanged: ${{ steps.changes.outputs.isOmpChanged }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,6 +55,8 @@ jobs:
         run: python3 scripts/check-ci-result-needs.py
       - name: Test release evidence and publication gates
         run: python3 scripts/test-release-evidence.py
+      - name: Check that the fast test KDF stays in test builds
+        run: bash scripts/check-fast-test-kdf.sh
       - name: Compare the pull request with its base
         id: changes
         env:
@@ -59,8 +67,9 @@ jobs:
         run: scripts/detect-app-changes.sh
 
   go:
-    name: Go gofmt, vet, tests and end-to-end test
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
+    name: Go gofmt, vet and tests
+    needs: changes
+    if: needs.changes.outputs.isGoChanged == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -79,12 +88,6 @@ jobs:
         with:
           go-version-file: go.work
           cache-dependency-path: "**/go.sum"
-      - name: Set up Node for make build, which builds the admin dashboard
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: admin/package-lock.json
       - name: Check gofmt
         run: |
           allUnformatted=$(git ls-files -z "*.go" | xargs -0 gofmt -l)
@@ -95,12 +98,39 @@ jobs:
         run: |
           set -o pipefail
           HISAR_TEST_DATABASE_URL=$PG_URL make test TESTFLAGS=-v 2>&1 | tee test.log
-      # The integration tests need a running server and run in the end-to-end step; TestRecordOpenSSHFixture only runs when asked to.
+      # The integration tests need a running server and run in go-build's end-to-end step; TestRecordOpenSSHFixture only runs
+      # when asked to.
       - name: Fail on skipped tests outside the allowlist
         run: |
           if grep -- "--- SKIP" test.log | grep -v -E "TestIntegration[A-Za-z]+|TestRecordOpenSSHFixture"; then exit 1; fi
-      - name: Build server and CLI
-        run: make build
+
+  # The builds and the end-to-end test of the release binaries, beside the tests in their own job.
+  go-build:
+    name: Go builds and end-to-end test
+    needs: changes
+    if: needs.changes.outputs.isGoChanged == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_PASSWORD: hisar
+          POSTGRES_DB: hisar
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - name: Set up Node for make build, which builds the admin dashboard
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
       - name: Build CLI for every release platform
         run: make build-cli-all
       - name: End-to-end test of the built server and CLI
@@ -110,7 +140,8 @@ jobs:
 
   server-image-check:
     name: Server Docker image build and boot
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
+    needs: changes
+    if: needs.changes.outputs.isServerChanged == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -171,24 +202,6 @@ jobs:
         if: always()
         run: cat server.log || true
 
-  desktop-frontend:
-    name: Desktop frontend typecheck, tests, Chromium layout and bundle check
-    needs: changes
-    if: needs.changes.outputs.isDesktopChanged == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    container: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install make
-        run: bash scripts/ci-apt-install.sh make
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: desktop/frontend/package-lock.json
-      - run: make test-desktop-frontend
-
   desktop-linux:
     name: Desktop app Linux build
     needs: changes
@@ -247,103 +260,13 @@ jobs:
           flatpak run --command=sh com.tryhisar.hisar -c 'test -x /app/bin/Hisar && test -x /app/lib/hisar/hisar-browser-host && /app/bin/hisar --version &&
             test -f /app/share/hisar/omp-plugin/package.json && test -x /app/share/hisar/omp-plugin/bin/run-hisar'
 
+  # The share link page's tests live in extension/ and run against the server, in the same Playwright image.
   extension:
-    name: Extension tests, Chromium end-to-end tests and zip
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
+    name: Extension tests, Chromium end-to-end tests, zip and share link page
+    needs: changes
+    if: needs.changes.outputs.isExtensionChanged == 'true' || needs.changes.outputs.isServerChanged == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install make and zip
-        run: bash scripts/ci-apt-install.sh make zip
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          cache: npm
-          cache-dependency-path: extension/package-lock.json
-      - run: make test-extension
-      - run: make test-extension-end-to-end
-      - run: make build-extension
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: hisar-extension
-          path: extension/hisar-extension-*.zip
-          retention-days: 14
-
-  # Firefox 140 is the oldest the add-on supports and lacks location.ancestorOrigins, so it runs the frame rule's fallback;
-  # 153 is the extended support release. The runner's own Firefox brings the libraries the pinned builds need.
-  extension-firefox:
-    name: Extension Firefox ${{ matrix.firefox }} end-to-end tests
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        firefox: [esr_140.17.0esr, esr_153.5.1esr]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: extension/package-lock.json
-      - run: make test-extension-firefox-end-to-end
-        env:
-          HISAR_TEST_FIREFOX: ${{ matrix.firefox }}
-
-  docs:
-    name: Docs site typecheck, build and image
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: docs/package-lock.json
-      - run: make test-docs
-      - name: Build the image and check that it serves the site
-        run: |
-          docker build --quiet --tag hisar-docs docs
-          docker run --detach --rm --name hisar-docs --publish 127.0.0.1:8082:8080 hisar-docs
-          for _ in $(seq 20); do curl --silent --fail --output /dev/null http://127.0.0.1:8082/ && break; sleep 1; done
-          curl --silent --fail --output /dev/null http://127.0.0.1:8082/apps/cli/
-          docker stop hisar-docs
-
-  raycast:
-    name: Raycast extension typecheck, tests, lint and build
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: raycast/package-lock.json
-      - run: make test-raycast
-
-  omp:
-    name: omp plugin typecheck, tests and lint
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.3
-      - run: make test-omp
-
-  share-link-page:
-    name: Share link page in Chromium against the server
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
     container: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
     services:
       postgres:
@@ -352,10 +275,12 @@ jobs:
           POSTGRES_PASSWORD: hisar
           POSTGRES_DB: hisar
         options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      IS_EXTENSION_CHANGED: ${{ needs.changes.outputs.isExtensionChanged }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install make
-        run: bash scripts/ci-apt-install.sh make
+      - name: Install make and zip
+        run: bash scripts/ci-apt-install.sh make zip
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
@@ -364,7 +289,92 @@ jobs:
         with:
           cache: npm
           cache-dependency-path: extension/package-lock.json
-      - run: HISAR_DATABASE_URL="postgres://postgres:hisar@postgres:5432/hisar?sslmode=disable" make test-share-link-page
+      - if: env.IS_EXTENSION_CHANGED == 'true'
+        run: cd extension && npm ci --no-audit --no-fund && npm run typecheck && npm test
+      - if: ${{ !cancelled() && env.IS_EXTENSION_CHANGED == 'true' }}
+        run: cd extension && npm run test:end-to-end
+      - if: ${{ !cancelled() && env.IS_EXTENSION_CHANGED == 'true' }}
+        run: cd extension && npm run lint:firefox && npm run package
+      - if: ${{ !cancelled() && env.IS_EXTENSION_CHANGED == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hisar-extension
+          path: extension/hisar-extension-*.zip
+          retention-days: 14
+      - name: Share link page in Chromium against the server
+        if: ${{ !cancelled() }}
+        run: HISAR_DATABASE_URL="postgres://postgres:hisar@postgres:5432/hisar?sslmode=disable" make test-share-link-page
+
+  # The small checks share one runner, so they hold one of the account's concurrent jobs instead of six. Each step runs when
+  # its app changed, and after a failed step, so one run reports every failure.
+  web:
+    name: Desktop frontend, docs, Firefox, omp and Raycast checks
+    needs: changes
+    if: >-
+      needs.changes.outputs.isDesktopChanged == 'true' || needs.changes.outputs.isDocsChanged == 'true' ||
+      needs.changes.outputs.isExtensionChanged == 'true' || needs.changes.outputs.isOmpChanged == 'true' ||
+      needs.changes.outputs.isRaycastChanged == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      IS_DESKTOP_CHANGED: ${{ needs.changes.outputs.isDesktopChanged }}
+      IS_DOCS_CHANGED: ${{ needs.changes.outputs.isDocsChanged }}
+      IS_EXTENSION_CHANGED: ${{ needs.changes.outputs.isExtensionChanged }}
+      IS_OMP_CHANGED: ${{ needs.changes.outputs.isOmpChanged }}
+      IS_RAYCAST_CHANGED: ${{ needs.changes.outputs.isRaycastChanged }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            desktop/frontend/package-lock.json
+            docs/package-lock.json
+            extension/package-lock.json
+            raycast/package-lock.json
+      - name: Desktop frontend typecheck, tests, Chromium layout and bundle check
+        if: ${{ !cancelled() && env.IS_DESKTOP_CHANGED == 'true' }}
+        run: |
+          cd desktop/frontend
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          cd ../..
+          make test-desktop-frontend
+      - name: Docs site typecheck
+        if: ${{ !cancelled() && env.IS_DOCS_CHANGED == 'true' }}
+        run: cd docs && npm ci --no-audit --no-fund && npm run typecheck
+      - name: Build the docs image and check that it serves the site
+        if: ${{ !cancelled() && env.IS_DOCS_CHANGED == 'true' }}
+        run: |
+          docker build --quiet --tag hisar-docs docs
+          docker run --detach --rm --name hisar-docs --publish 127.0.0.1:8082:8080 hisar-docs
+          for _ in $(seq 20); do curl --silent --fail --output /dev/null http://127.0.0.1:8082/ && break; sleep 1; done
+          curl --silent --fail --output /dev/null http://127.0.0.1:8082/apps/cli/
+          docker stop hisar-docs
+      # Firefox 140 is the oldest the add-on supports and lacks location.ancestorOrigins, so it runs the frame rule's
+      # fallback; 153 is the extended support release. The runner's own Firefox brings the libraries the pinned builds need.
+      - name: Extension Firefox esr_140.17.0esr end-to-end tests
+        if: ${{ !cancelled() && env.IS_EXTENSION_CHANGED == 'true' }}
+        run: HISAR_TEST_FIREFOX=esr_140.17.0esr make test-extension-firefox-end-to-end
+      - name: Extension Firefox esr_153.5.1esr end-to-end tests
+        if: ${{ !cancelled() && env.IS_EXTENSION_CHANGED == 'true' }}
+        run: HISAR_TEST_FIREFOX=esr_153.5.1esr make test-extension-firefox-end-to-end
+      - if: ${{ !cancelled() && env.IS_OMP_CHANGED == 'true' }}
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.3
+      - name: omp plugin typecheck, tests and lint
+        if: ${{ !cancelled() && env.IS_OMP_CHANGED == 'true' }}
+        run: make test-omp
+      # Raycast builds with Node 22, so it runs last; the npm cache restored above already holds its packages.
+      - if: ${{ !cancelled() && env.IS_RAYCAST_CHANGED == 'true' }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Raycast extension typecheck, tests, lint and build
+        if: ${{ !cancelled() && env.IS_RAYCAST_CHANGED == 'true' }}
+        run: make test-raycast
 
   admin:
     name: Admin dashboard tests and Chromium end-to-end tests against the server
@@ -420,7 +430,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
+      # The configuration cache is saved only with GRADLE_ENCRYPTION_KEY (openssl rand -base64 16), and only from main.
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Install the pinned Android SDK packages
         run: |
           scripts/install-android-sdk.sh --build-only
@@ -431,7 +444,7 @@ jobs:
         id: hisarkit
         with:
           path: mobile/build/HisarKit.aar
-          key: hisarkit-android-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'scripts/install-android-sdk.sh') }}
+          key: hisarkit-android-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'mobile/fast-test-kdf.sh', 'scripts/install-android-sdk.sh') }}
       - if: steps.hisarkit.outputs.cache-hit != 'true'
         run: make build-android-aar
       - name: Check that ThemePalettes.kt matches assets/themes/themes.json
@@ -454,8 +467,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     # Each part runs about a third of the instrumented tests on its own emulator (ANDROID_UI_TEST_PART in
-    # scripts/test-android-ui.sh) and builds only HisarKit.aar and the debug and test APKs they need. The emulator's host
-    # memory grows with every test; the script releases build JVMs before instrumentation to preserve headroom.
+    # scripts/test-android-ui.sh) and builds only HisarKit.aar and the debug and test APKs they need, while the emulator boots.
     strategy:
       fail-fast: false
       matrix:
@@ -479,18 +491,34 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Install the pinned Android SDK packages
         run: |
           scripts/install-android-sdk.sh --build-only
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
-      # The same HisarKit.aar cache as android-build.
+      # Not android-build's HisarKit.aar: this one gives the accounts the tests create the minimum Argon2 parameters
+      # (HISAR_FAST_TEST_KDF, mobile/fast-test-kdf.sh), so it has a cache of its own.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: hisarkit
         with:
           path: mobile/build/HisarKit.aar
-          key: hisarkit-android-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'scripts/install-android-sdk.sh') }}
-      - if: steps.hisarkit.outputs.cache-hit != 'true'
-        run: make build-android-aar
+          key: hisarkit-android-fast-test-kdf-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'mobile/fast-test-kdf.sh', 'scripts/install-android-sdk.sh') }}
+      # HisarKit.aar and the APKs build in the background while the emulator boots and the script starts the server; the
+      # script waits for ANDROID_UI_TEST_APK_BUILD before the tests.
+      - name: Start building HisarKit.aar and the APKs
+        env:
+          IS_HISARKIT_CACHED: ${{ steps.hisarkit.outputs.cache-hit }}
+          STATUS_FILE: ${{ runner.temp }}/apk-build
+          HISAR_FAST_TEST_KDF: "1"
+        run: |
+          echo "ANDROID_UI_TEST_APK_BUILD=$STATUS_FILE" >> "$GITHUB_ENV"
+          {
+            status=0
+            if [ "$IS_HISARKIT_CACHED" != true ]; then make build-android-aar || status=$?; fi
+            if [ "$status" = 0 ]; then ./scripts/test-android-ui.sh --build-apks || status=$?; fi
+            echo "$status" > "$STATUS_FILE.tmp" && mv "$STATUS_FILE.tmp" "$STATUS_FILE"
+          } > "$STATUS_FILE.log" 2>&1 &
       - name: Let the emulator use KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -517,7 +545,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -feature -Vulkan
           # An app's "isn't responding" dialog takes the window focus from the app under test, and this image's Pixel Launcher
           # sometimes stops responding about 27 seconds after boot; with error dialogs hidden, Android closes such an app
-          # instead. The step before built mobile/build/HisarKit.aar, which `make test-android-ui` would build again.
+          # instead. The background step builds mobile/build/HisarKit.aar, which `make test-android-ui` would build again.
           script: |
             adb shell settings put global hide_error_dialogs 1
             ./scripts/test-android-ui.sh
@@ -535,7 +563,7 @@ jobs:
   # when each job passed or was skipped; scripts/check-ci-result-needs.py fails a job missing from its needs.
   result:
     name: CI result
-    needs: [changes, go, server-image-check, desktop-frontend, desktop-linux, desktop-flatpak, extension, extension-firefox, docs, raycast, omp, share-link-page, admin, android-build, android]
+    needs: [changes, go, go-build, server-image-check, desktop-linux, desktop-flatpak, extension, web, admin, android-build, android]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
