@@ -29,6 +29,12 @@ const (
 	vectorApprovalPreviewSignature = "a0e0f2aaa514dc42d0806710b4037c8e2e077ca23fb0b53b4bb8db37a00c609d54fc02d9dcce7ed34a6147b6e68f035196e1f42e3117f3ee86d1c5c8ce345808"
 )
 
+// Linux desktop packages: the update signing key from the seed 0..31 over a file name and the SHA-256 of "package".
+const (
+	vectorDesktopPackageMessage   = "68697361722f76312f6465736b746f702d7061636b6167650000002048697361722d312e322e332d6c696e75782d616d6436342e417070496d61676500000020bc4a71180870f7945155fbb02f4b0a2e3faa2a62d6d31b7039013055ed19869a"
+	vectorDesktopPackageSignature = "5befd029733b2a84f3655159f7789a03ae1051aef6852cb784feac6f95b431eaaf30d4c70db6854b457a47486c734110960dafecf6a37fbbfea3251e7919870a"
+)
+
 // Web Push: RFC 8291 Appendix A, base64url without padding. A Hisar server must produce exactly this message, or
 // UnifiedPush distributors and phones could not read it.
 const (

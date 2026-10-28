@@ -912,6 +912,13 @@ export interface UpdateStatus {
     "hasChecked": boolean;
     "availableVersion": string;
     "downloadURL": string;
+
+    /**
+     * InstallKind is how InstallUpdate installs AvailableVersion: "appimage" replaces Hisar and starts it again;
+     * "deb", "rpm" and "flatpak" open the verified package in the system's software installer. Empty: the user
+     * downloads it from DownloadURL.
+     */
+    "installKind": string;
 }
 
 /**

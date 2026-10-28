@@ -870,6 +870,7 @@ export function createApiMock() {
     takePendingInvite: vi.fn().mockResolvedValue(null),
     getUpdateStatus: vi.fn().mockResolvedValue(createUpdateStatus()),
     checkForUpdates: vi.fn(),
+    installUpdate: vi.fn(),
     setAutomaticUpdateCheck: vi.fn(),
     listAllAgentVaultID: vi.fn().mockResolvedValue([]),
     setVaultAvailableToAgents: vi.fn(),
@@ -903,7 +904,20 @@ export function createApiMock() {
 export type ApiMock = ReturnType<typeof createApiMock>;
 
 export function createUpdateStatus(overrides: Partial<UpdateStatus> = {}): UpdateStatus {
-  return { version: "0.2.1", buildNumber: "2001", operatingSystem: "macOS 26.0.1", isAvailable: true, isSignedIn: true, isAutomaticCheckEnabled: true, isNotifyOnly: false, hasChecked: false, availableVersion: "", downloadURL: "", ...overrides };
+  return {
+    version: "0.2.1",
+    buildNumber: "2001",
+    operatingSystem: "macOS 26.0.1",
+    isAvailable: true,
+    isSignedIn: true,
+    isAutomaticCheckEnabled: true,
+    isNotifyOnly: false,
+    hasChecked: false,
+    availableVersion: "",
+    downloadURL: "",
+    installKind: "",
+    ...overrides,
+  };
 }
 
 export function createLoginItemStatus(overrides: Partial<LoginItemStatus> = {}): LoginItemStatus {

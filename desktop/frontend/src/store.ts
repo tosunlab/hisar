@@ -2389,6 +2389,21 @@ export async function checkForUpdates(): Promise<void> {
   }
 }
 
+// installUpdate downloads, verifies and installs the version a check found. An AppImage update quits Hisar and starts
+// the new version; a package or a Flatpak bundle opens in the system's software installer.
+export async function installUpdate(): Promise<void> {
+  const availableVersion = store.updateStatus?.availableVersion;
+  const installKind = store.updateStatus?.installKind;
+  showNotice(`Downloading Hisar ${availableVersion}…`);
+  const updateStatus = await runAction(() => api.installUpdate());
+  if (updateStatus) {
+    store.updateStatus = updateStatus;
+    if (installKind !== "appimage") {
+      showNotice(`Hisar ${availableVersion} is verified. Install it in your software installer, then open Hisar again.`);
+    }
+  }
+}
+
 export async function setAutomaticUpdateCheck(isEnabled: boolean): Promise<void> {
   const updateStatus = await runAction(() => api.setAutomaticUpdateCheck(isEnabled));
   if (updateStatus) {

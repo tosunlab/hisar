@@ -114,14 +114,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	updateService := app.NewUpdateService(vaultService, newAppUpdater())
+	var wailsApp *application.App
+	updateService := app.NewUpdateService(vaultService, newAppUpdater(func() { wailsApp.Quit() }))
 	executablePath, err := os.Executable()
 	if err != nil {
 		log.Fatal(err)
 	}
 	helpers := getHelperPaths(filepath.Dir(executablePath))
 
-	var wailsApp *application.App
 	var window *application.WebviewWindow
 	settingsWindowService := &SettingsWindowService{isUnlocked: func() bool { return vaultService.GetStatus().State == app.StateUnlocked }}
 	// The browser bridge calls this from its own goroutines; AppKit aborts unless window calls run on the main thread.

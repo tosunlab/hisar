@@ -512,6 +512,7 @@ const wailsApi = {
   takePendingInvite: (): Promise<InviteLink | null> => InviteLinkService.TakePendingInvite(),
   getUpdateStatus: (): Promise<UpdateStatus> => UpdateService.GetUpdateStatus(),
   checkForUpdates: (): Promise<UpdateStatus> => UpdateService.CheckForUpdates(),
+  installUpdate: (): Promise<UpdateStatus> => UpdateService.InstallUpdate(),
   setAutomaticUpdateCheck: (isEnabled: boolean): Promise<UpdateStatus> => UpdateService.SetAutomaticUpdateCheck(isEnabled),
   getLoginItemStatus: (): Promise<LoginItemStatus> => LoginItemService.GetLoginItemStatus(),
   setOpenAtLogin: (isEnabled: boolean): Promise<LoginItemStatus> => LoginItemService.SetOpenAtLogin(isEnabled),

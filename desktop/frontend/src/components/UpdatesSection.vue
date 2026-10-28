@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
 import { api } from "../api";
-import { checkForUpdates, loadUpdateStatus, setAutomaticUpdateCheck, store } from "../store";
+import { checkForUpdates, installUpdate, loadUpdateStatus, setAutomaticUpdateCheck, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 
 const isRowVisible = useSettingsRowVisibility();
@@ -32,11 +32,20 @@ const explanation = computed(() => {
     return "Sign in to check for updates; they come from the Hisar server.";
   }
   if (status.isNotifyOnly) {
+    if (status.availableVersion && status.installKind === "appimage") {
+      return `Hisar ${status.availableVersion} is available. Hisar downloads it, checks that the release signed it, replaces this AppImage and opens again.`;
+    }
+    if (status.availableVersion && status.installKind) {
+      return `Hisar ${status.availableVersion} is available. Hisar downloads it, checks that the release signed it, and opens it in your software installer.`;
+    }
     if (status.availableVersion) {
       return `Hisar ${status.availableVersion} is available. Download it from its release page and install it over this version.`;
     }
     if (status.hasChecked) {
       return "Hisar is up to date.";
+    }
+    if (status.installKind) {
+      return `Hisar checks ${store.status.server || "the Hisar server"} for new versions and installs them when you say so.`;
     }
     return `Hisar checks ${store.status.server || "the Hisar server"} for new versions; you download and install them.`;
   }
@@ -62,7 +71,16 @@ onMounted(loadUpdateStatus);
           <strong data-testid="installed-version">{{ versionLabel }}</strong>
           <p class="muted" data-testid="update-explanation">{{ explanation }}</p>
         </div>
-        <button v-if="updateStatus?.availableVersion" class="primary" data-testid="download-update" @click="openDownload">Download</button>
+        <button
+          v-if="updateStatus?.availableVersion && updateStatus.installKind"
+          class="primary"
+          data-testid="install-update"
+          :disabled="store.isBusy"
+          @click="installUpdate"
+        >
+          {{ updateStatus.installKind === "appimage" ? "Install and Relaunch" : "Install" }}
+        </button>
+        <button v-else-if="updateStatus?.availableVersion" class="primary" data-testid="download-update" @click="openDownload">Download</button>
         <button v-else data-testid="check-for-updates" :disabled="!canCheck" @click="checkForUpdates">Check for updates</button>
       </div>
       <label v-show="isRowVisible('automatic-updates')" class="setting">
