@@ -87,7 +87,7 @@ class AccountLifecycleTests {
             AccountLifecycleLogic.SIGN_OUT_MESSAGE,
         )
         assertEquals(
-            "${AccountLifecycleLogic.SIGN_OUT_MESSAGE} If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account.",
+            "${AccountLifecycleLogic.SIGN_OUT_MESSAGE} If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit.",
             AccountLifecycleLogic.LOCKED_SIGN_OUT_MESSAGE,
         )
     }
@@ -274,6 +274,8 @@ class AccountLifecycleTests {
         assertEquals(FakeBackend.SECRET_KEY, export.secretKey)
         assertTrue(File(export.path).exists())
         assertEquals(Screen.SignedOut, restarted.screen.value)
+        assertFalse(restarted.pendingRecovery.acknowledge("pending-1", FakeBackend.PASSWORD))
+        assertTrue(restarted.pendingRecovery.recordDelivery(export.exportId, "file"))
         assertTrue(restarted.pendingRecovery.acknowledge("pending-1", FakeBackend.PASSWORD))
         assertTrue(restarted.pendingRecovery.allRecovery.value.isEmpty())
         assertFalse(File(export.path).exists())
@@ -295,7 +297,7 @@ class AccountLifecycleTests {
         assertNull(model.pendingRecovery.export.value)
         assertFalse(File(exported.path).exists())
         assertEquals(1, harness.backend.allPendingRecovery.size)
-        assertTrue(harness.backend.allPendingRecovery.first().kitSaved)
+        assertFalse(harness.backend.allPendingRecovery.first().kitSaved)
     }
 
     @Test
@@ -414,6 +416,7 @@ class AccountLifecycleTests {
         val first = harness.startModel()
         assertTrue(first.pendingRecovery.exportKit("pending-1", FakeBackend.PASSWORD))
         val kit = assertNotNull(first.pendingRecovery.export.value)
+        assertTrue(first.pendingRecovery.recordDelivery(kit.exportId, "file"))
         assertTrue(first.pendingRecovery.acknowledge("pending-1", FakeBackend.PASSWORD))
         assertEquals("prepared", first.pendingRecovery.allRecovery.value.first().phase)
         harness.backend.isPendingRecoveryFactorAvailable = false

@@ -126,11 +126,12 @@ fun PlainButton(
     color: Color = HisarTheme.colors.tint,
     enabled: Boolean = true,
     textStyle: TextStyle = HisarType.body,
+    onClickLabel: String? = null,
 ) {
     Box(
         Modifier
             .minimumInteractiveComponentSize()
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = onClickLabel, onClick = onClick)
             .testTag(testTag)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {

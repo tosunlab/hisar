@@ -34,10 +34,10 @@ class SignInModelTests {
         val model = AppModelHarness(this).startModel()
         val isSignedUp = model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
         assertTrue(isSignedUp)
-        assertEquals(NewAccountStep.SaveSecretKey(FakeBackend.SECRET_KEY), model.signIn.newAccountStep.value)
+        assertEquals(NewAccountStep.SaveSecretKey, model.signIn.newAccountStep.value)
         assertEquals(Screen.Unlocked, model.screen.value)
         assertFalse(model.pendingRecovery.isShown.value, "account recovery covered Save your Secret Key")
-        assertEquals(listOf(FakeBackend.NEW_ACCOUNT_OPERATION_ID), model.pendingRecovery.allRecovery.value.map { it.operationId })
+        assertEquals(FakeBackend.NEW_ACCOUNT_OPERATION_ID, model.status.value.emergencyKit?.operationId)
         model.signIn.dismissNewSecretKey()
         assertNull(model.signIn.newAccountStep.value)
     }
@@ -49,10 +49,12 @@ class SignInModelTests {
         val model = harness.startModel()
         model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
         assertFalse(model.signIn.finishNewSecretKey())
-        assertEquals(NewAccountStep.SaveSecretKey(FakeBackend.SECRET_KEY), model.signIn.newAccountStep.value)
+        assertEquals(NewAccountStep.SaveSecretKey, model.signIn.newAccountStep.value)
         assertEquals("finish setup and save the Emergency Kit before acknowledging delivery", model.errorMessage.value)
         val kit = assertNotNull(model.signIn.exportNewAccountEmergencyKit())
         try {
+            assertFalse(model.signIn.finishNewSecretKey(), "a temporary export is not delivery")
+            assertTrue(model.signIn.recordEmergencyKitDelivery(kit, "file"))
             assertTrue(model.signIn.finishNewSecretKey())
             assertNull(model.signIn.newAccountStep.value)
             assertEquals(emptyList(), model.pendingRecovery.allRecovery.value)
@@ -69,10 +71,10 @@ class SignInModelTests {
         model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
         model.signIn.postponeNewSecretKey()
         runCurrent()
-        assertNull(model.signIn.newAccountStep.value)
+        assertEquals(NewAccountStep.BiometricOffer, model.signIn.newAccountStep.value)
         assertFalse(model.pendingRecovery.isShown.value)
-        assertEquals(listOf(FakeBackend.NEW_ACCOUNT_OPERATION_ID), model.pendingRecovery.allRecovery.value.map { it.operationId })
-        assertTrue("forgetNewAccountSecretKey" in harness.backend.allCallName)
+        assertEquals(FakeBackend.NEW_ACCOUNT_OPERATION_ID, model.status.value.emergencyKit?.operationId)
+        assertTrue(harness.backend.isNewAccountSecretKeyKept)
         assertFalse("acknowledgeNewAccountRecovery" in harness.backend.allCallName)
     }
 
@@ -84,7 +86,7 @@ class SignInModelTests {
         assertTrue(isSignedUp)
         assertEquals("https://hisar.example.com", harness.backend.signUpWithoutInviteServer)
         assertFalse("signUp" in harness.backend.allCallName, "no invite was used")
-        assertEquals(NewAccountStep.SaveSecretKey(FakeBackend.SECRET_KEY), model.signIn.newAccountStep.value)
+        assertEquals(NewAccountStep.SaveSecretKey, model.signIn.newAccountStep.value)
         assertEquals(Screen.Unlocked, model.screen.value)
         assertEquals("https://hisar.example.com", model.status.value.server)
         assertEquals("bob@example.com", model.status.value.email)
@@ -97,7 +99,7 @@ class SignInModelTests {
         val model = harness.startModel()
         harness.backend.signUpWithoutInviteErrorMessage = "Sign-ups are not open on this server. Ask an admin for an invitation."
         assertFalse(model.signIn.signUpWithoutInvite("https://hisar.example.com", "bob@example.com", "Bob", FakeBackend.PASSWORD))
-        assertEquals("Sign-ups are not open on this server. Ask an admin for an invitation.", model.errorMessage.value)
+        assertEquals("Sign-ups on hisar.example.com need an invitation now. Ask someone with an account there to invite you.", model.errorMessage.value)
         assertEquals(Screen.SignedOut, model.screen.value)
         assertNull(model.signIn.newAccountStep.value)
     }
@@ -118,7 +120,8 @@ class SignInModelTests {
         model.lock()
         assertNull(model.signIn.newAccountStep.value)
         assertTrue(model.lock.unlock(FakeBackend.PASSWORD))
-        assertEquals(listOf(FakeBackend.NEW_ACCOUNT_OPERATION_ID), model.pendingRecovery.allRecovery.value.map { it.operationId })
+        assertEquals(NewAccountStep.SaveSecretKey, model.signIn.newAccountStep.value)
+        assertTrue(model.status.value.emergencyKit?.isAuthorized == true)
         assertFalse(model.pendingRecovery.isShown.value)
     }
 
@@ -127,7 +130,8 @@ class SignInModelTests {
         val harness = AppModelHarness(this)
         val model = harness.startModel()
         model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
-        model.signIn.exportNewAccountEmergencyKit()
+        val export = assertNotNull(model.signIn.exportNewAccountEmergencyKit())
+        assertTrue(model.signIn.recordEmergencyKitDelivery(export, "file"))
         model.signIn.finishNewSecretKey()
         assertEquals(NewAccountStep.BiometricOffer, model.signIn.newAccountStep.value)
         harness.backend.lock()
@@ -142,7 +146,8 @@ class SignInModelTests {
         val harness = AppModelHarness(this)
         val model = harness.startModel()
         model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
-        model.signIn.exportNewAccountEmergencyKit()
+        val export = assertNotNull(model.signIn.exportNewAccountEmergencyKit())
+        assertTrue(model.signIn.recordEmergencyKitDelivery(export, "file"))
         model.signIn.finishNewSecretKey()
         assertEquals(NewAccountStep.BiometricOffer, model.signIn.newAccountStep.value, "the cover stays up for the offer")
         val isTurnedOn = model.signIn.turnOnBiometricUnlockFromOffer()
@@ -160,7 +165,8 @@ class SignInModelTests {
         val harness = AppModelHarness(this)
         val model = harness.startModel()
         model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
-        model.signIn.exportNewAccountEmergencyKit()
+        val export = assertNotNull(model.signIn.exportNewAccountEmergencyKit())
+        assertTrue(model.signIn.recordEmergencyKitDelivery(export, "file"))
         model.signIn.finishNewSecretKey()
         harness.backend.isBiometricSucceeding = false
         val isTurnedOn = model.signIn.turnOnBiometricUnlockFromOffer()
@@ -180,7 +186,8 @@ class SignInModelTests {
         harness.backend.isBiometricAvailable = false
         val model = harness.startModel()
         model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
-        model.signIn.exportNewAccountEmergencyKit()
+        val export = assertNotNull(model.signIn.exportNewAccountEmergencyKit())
+        assertTrue(model.signIn.recordEmergencyKitDelivery(export, "file"))
         model.signIn.finishNewSecretKey()
         assertNull(model.signIn.newAccountStep.value)
         runCurrent()
@@ -275,8 +282,7 @@ class SignInModelTests {
             "hisar://invite/abc?invitation=organization&email=Alice%40Example.com" to InviteLink("abc", invitation = "organization", email = "alice@example.com"),
             "hisar://invite/abc?server=https%3A%2F%2Fhisar.example.com&invitation=share&email=bob%40example.com" to
                 InviteLink("https://hisar.example.com/invite/abc", "https://hisar.example.com", "share", "bob@example.com"),
-            // An unknown invitation is a plain invite, as in an older app, so its email is dropped too.
-            "hisar://invite/abc?invitation=team&email=carol%40example.com" to InviteLink("abc"),
+            "hisar://invite/abc?invitation=team&email=carol%40example.com" to InviteLink("abc", email = "carol@example.com"),
         )
         for ((link, expected) in expectedByLink) {
             assertEquals(expected, InviteLink.parse(link), link)

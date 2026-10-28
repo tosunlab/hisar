@@ -181,13 +181,29 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
     }
 
     if (isSignOutConfirmationShown) {
-        ConfirmationDialog(
-            title = AccountLifecycleLogic.SIGN_OUT_TITLE,
-            message = AccountLifecycleLogic.SIGN_OUT_MESSAGE,
-            confirmLabel = "Sign out",
-            confirmTestTag = "confirm-sign-out",
-            onConfirm = { scope.launch { model.lock.signOut() } },
-            onDismiss = { isSignOutConfirmationShown = false },
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { isSignOutConfirmationShown = false },
+            title = { Text(AccountLifecycleLogic.SIGN_OUT_TITLE) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(AccountLifecycleLogic.signOutMessage(status.emergencyKit, isLocked = false))
+                    if (status.emergencyKit != null) {
+                        com.tryhisar.hisar.ui.components.PlainButton("Save Emergency Kit", {
+                            isSignOutConfirmationShown = false
+                            model.signIn.openEmergencyKit()
+                        }, testTag = "sign-out-save-emergency-kit")
+                    }
+                }
+            },
+            confirmButton = {
+                com.tryhisar.hisar.ui.components.PlainButton("Sign out", {
+                    isSignOutConfirmationShown = false
+                    scope.launch { model.lock.signOut() }
+                }, testTag = "confirm-sign-out", color = HisarTheme.colors.destructiveText)
+            },
+            dismissButton = {
+                com.tryhisar.hisar.ui.components.PlainButton("Cancel", { isSignOutConfirmationShown = false }, testTag = "cancel-sign-out")
+            },
         )
     }
 }

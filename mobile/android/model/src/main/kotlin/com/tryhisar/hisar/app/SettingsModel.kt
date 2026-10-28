@@ -25,6 +25,13 @@ class SettingsModel(private val context: ModelContext) {
     private val temporaryDirectory = File(System.getProperty("java.io.tmpdir"), HANDOFF_FOLDER_NAME)
     val deviceOperationErrorMessage = MutableStateFlow<String?>(null)
     val macApprovalErrorMessage = MutableStateFlow<String?>(null)
+    private var accountEpoch = 0L
+
+    init {
+        context.addStatusListener { previous, current ->
+            if (previous.state != current.state || previous.email != current.email || previous.server != current.server) accountEpoch++
+        }
+    }
 
     private fun createFolder(prefix: String) = File(temporaryDirectory, "$prefix-${UUID.randomUUID()}")
 
@@ -70,8 +77,19 @@ class SettingsModel(private val context: ModelContext) {
         true
     }
 
-    suspend fun exportEmergencyKit(password: String): EmergencyKitExport? =
-        context.perform { it.exportEmergencyKit(password, createFolder("EmergencyKit")) }
+    suspend fun exportEmergencyKit(password: String): EmergencyKitExport? {
+        val directory = createFolder("EmergencyKit")
+        val epoch = accountEpoch
+        var published = false
+        try {
+            val result = context.perform { it.exportEmergencyKit(password, directory) } ?: return null
+            if (epoch != accountEpoch || !context.status.value.isUnlocked) return null
+            published = true
+            return result
+        } finally {
+            if (!published) directory.deleteRecursively()
+        }
+    }
 
     fun removeEmergencyKit(export: EmergencyKitExport) = removeFolder(export.emergencyKitPath)
 

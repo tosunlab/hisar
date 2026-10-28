@@ -78,8 +78,23 @@ data class InviteLink(
             val invite = if (server == DEFAULT_SERVER) code else "$server/invite/$code"
             // An unknown invitation is a plain invite, as in an older app.
             val invitation = link.readQueryValue("invitation")?.takeIf { it == INVITATION_ORGANIZATION || it == INVITATION_SHARE }
-            val email = if (invitation == null) "" else link.readQueryValue("email").orEmpty().trim().lowercase()
+            val email = link.readQueryValue("email").orEmpty().trim().lowercase()
             return InviteLink(invite = invite, server = server, invitation = invitation, email = email)
+        }
+
+        fun parseInvitation(text: String, selectedServer: String): InviteLink? {
+            parse(text)?.let { return it }
+            val trimmed = text.trim()
+            if (codePattern.matches(trimmed)) {
+                val server = resolveServer(selectedServer) ?: return null
+                return InviteLink(if (server == DEFAULT_SERVER) trimmed else "$server/invite/$trimmed", server)
+            }
+            val uri = parseHTTPURI(trimmed) ?: return null
+            val path = uri.rawPath.orEmpty()
+            val marker = path.lastIndexOf("/invite/")
+            if (marker < 0 || !codePattern.matches(path.substring(marker + 8))) return null
+            val server = "${uri.scheme}://${uri.rawAuthority}${path.substring(0, marker)}"
+            return InviteLink("$server/invite/${path.substring(marker + 8)}", server)
         }
 
         private fun resolveServer(text: String): String? {
