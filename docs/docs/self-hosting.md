@@ -134,18 +134,26 @@ The server never sends credentials without TLS. The emails are plain text withou
 ## Push notifications
 
 The iPhone and Android apps get a notification when your Mac asks the phone to approve something, when a device signs
-in to the account, and when someone shares with you ([Design](./design.md) §9.12). A notification names only its kind
-("Approval requested"), never what or who it is about.
+in to the account, and when someone shares with you ([Design](./design.md) §9.12). Delivery providers can see the
+notification kind, timing and size. Additional details, such as the sender of a sharing invitation, are encrypted to
+the phone; notifications do not include vault contents or the contents of approval requests.
 
-- **iPhones:** your server sends through Hisar's push relay at `https://push.tryhisar.com`, which holds Apple's key for
-  the official app, so you need no Apple account. The relay never learns which server or account sent a push.
-- **Android phones:** your server sends to the UnifiedPush app each user installed, such as ntfy, by Web Push, encrypted
-  to the phone, with no relay and no Google service. The server needs outbound HTTPS to those apps' servers, and it
-  refuses endpoints on private or loopback addresses, so a ntfy on your own network must have a public address.
+- **iPhones:** by default, your server sends through Hisar's push relay at `https://push.tryhisar.com`, which holds
+  Apple's key for the official app, so you need no Apple account. A self-hosted account server still uses that relay
+  unless you change its configuration. The relay processes the Apple push token and notification kind, and the relay
+  and its network proxy also process connection information.
+- **Android phones:** your server sends encrypted Web Push directly to the UnifiedPush provider each user chooses,
+  such as ntfy, with no Hisar relay or Firebase. A self-hosted provider works too. The server needs outbound HTTPS
+  and refuses endpoints on private or loopback addresses, so the provider must have a public HTTPS address. Its
+  message body is encrypted, but the HTTP `Topic` header exposes the notification kind.
 
-To turn notifications off, open **Settings → Push notifications** in the dashboard and empty the field, or set
-`HISAR_PUSH_RELAY_URL=off` in `.env`; this turns off Android notifications too. Your own relay (`hisar-server push-relay`,
-with its own APNs key) only works with an iPhone app you build and sign yourself.
+To turn notifications off, open **Settings → Push notifications** in the dashboard and empty the relay field, or set
+`HISAR_PUSH_RELAY_URL=off` in `.env`; this turns off Android notifications too.
+
+To use your own iPhone relay, run `hisar-server push-relay` with its sealing key and APNs credentials, and set the
+account server's **Settings → Push notifications** relay URL or `HISAR_PUSH_RELAY_URL` to its HTTPS address.
+Using your own APNs key only works with an iPhone app you build and sign yourself; it does not replace Hisar's
+APNs credentials for the official App Store app.
 
 ## Instance settings
 
