@@ -361,6 +361,9 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	} else if document, err := os.ReadFile(kit.Path); err != nil || !strings.HasPrefix(string(document), "%PDF-") {
 		t.Errorf("exported kit is not a PDF: %v", err)
 	}
+	if err := service.AcknowledgeNewAccountRecovery(); err != nil {
+		t.Fatalf("confirm the saved kit: %v", err)
+	}
 	newAccountBiometric := service.config.Biometric.(*fakeBiometric)
 	newAccountBiometric.setAuthenticateError(errors.New("Touch ID was cancelled"))
 	if _, err := service.EnableNewAccountBiometricUnlock(); err == nil || service.GetStatus().BiometricEnabled {
