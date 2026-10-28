@@ -1,5 +1,7 @@
 package hisarkit
 
+import "github.com/tryhisar/hisar/core/app"
+
 // SetPushToken takes the push token the OS gave the app ("apns" or "apns-sandbox" with the token) and registers
 // it for the signed-in account. Call it off the main thread: it reaches the server and the push relay.
 func (hisar *Hisar) SetPushToken(platform, token string) error {
@@ -10,6 +12,18 @@ func (hisar *Hisar) SetPushToken(platform, token string) error {
 // extension opens push details with. Call it before SetPushToken, off the main thread: it may reach the server.
 func (hisar *Hisar) SetPushPayloadKey(p256dh, auth string) error {
 	return hisar.service.SetPushPayloadKey(p256dh, auth)
+}
+
+// GetApprovalPushVerifier returns app.ApprovalPushVerifier as JSON: the account and its public signing key, which the
+// iPhone's notification service extension checks approval previews with. Both are empty before the first unlock.
+func (hisar *Hisar) GetApprovalPushVerifier() (string, error) {
+	return encodeJSON(app.GetApprovalPushVerifier(hisar.service), nil)
+}
+
+// OpenApprovalPush returns approval.PushPreview as JSON for a decrypted Web Push message that carries an approval
+// preview the account signed, and fails for any other message. It works while Hisar is locked.
+func (hisar *Hisar) OpenApprovalPush(message string) (string, error) {
+	return encodeJSON(app.OpenApprovalPush(hisar.service, message))
 }
 
 // SetPushKindEnabled turns one kind of notification ("approval", "security", "sharing") on or off for this phone.

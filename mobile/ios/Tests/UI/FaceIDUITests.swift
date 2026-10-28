@@ -26,8 +26,14 @@ final class FaceIDUITests: HisarUITestCase {
         postNotification("com.apple.BiometricKit.enrollmentChanged")
     }
 
-    // XCTest queries can block until the simulator's authentication UI times out, so matching starts before the tap
-    // and runs off the test thread. A background refresh can show an error while authentication still disables its control.
+    // Face ID ignores a match posted before it asks, and its prompt is not an element the test can wait for, so matches
+    // repeat until the app goes on. Like a real one, the simulator's prompt fails when no face matches within a few
+    // seconds, and a slow runner's UI queries can take that long, so a timer posts the matches off the test's thread,
+    // from just before the action that asks for Face ID. The first use's permission alert is answered in the loop.
+    // A step whose control stays disabled while Face ID runs passes its control: enabled again, without the step done
+    // and with an error shown, it means Face ID ended in a failure; the app asks no more, so the test stops there with
+    // the app's message. An error banner alone proves nothing: a background refresh can show one while Face ID still
+    // runs, but then the control is still disabled.
     private func matchFace(after action: () -> Void, until isDone: () -> Bool, failingWhenEnabled control: XCUIElement? = nil, file: StaticString = #filePath, line: UInt = #line) {
         let post = loadFunction("notify_post", as: NotifyPost.self)
         let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global())
@@ -53,6 +59,7 @@ final class FaceIDUITests: HisarUITestCase {
         XCTFail("Face ID did not let the app go on", file: file, line: line)
     }
 
+    // answerFaceIDPermission allows Face ID if iOS asks for the first time, without waiting for the alert.
     private func answerFaceIDPermission() {
         for button in [springboard.alerts.buttons["Allow"], app.alerts.buttons["Allow"], springboard.alerts.buttons["OK"]] where button.exists {
             button.tap()

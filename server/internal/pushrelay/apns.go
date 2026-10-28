@@ -112,12 +112,16 @@ func padTo32(value *big.Int) []byte {
 
 // apnsPayload is the alert: its text is the app's own localized sentence for the kind, so the push carries no words.
 // With a payload, the details encrypted to the phone, the app's notification service extension may replace the text
-// (mutable-content); APNs and the relay cannot read it.
+// (mutable-content); APNs and the relay cannot read it. An approval request ends within minutes, so it is
+// time-sensitive: it breaks through a Focus that allows time-sensitive notifications.
 func apnsPayload(kind apitypes.PushKind, payload string) []byte {
 	aps := map[string]any{
 		"alert":     map[string]string{"loc-key": "push." + string(kind)},
 		"sound":     "default",
 		"thread-id": string(kind),
+	}
+	if kind == apitypes.PushKindApproval {
+		aps["interruption-level"] = "time-sensitive"
 	}
 	message := map[string]any{"aps": aps, "kind": string(kind)}
 	if payload != "" {

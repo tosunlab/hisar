@@ -158,6 +158,7 @@ func (s *Service) registerPush() error {
 	platform, token, payloadKey, webPush := s.pushPlatform, s.pushToken, s.pushPayloadKey, s.webPush
 	allEnabledKind := s.listEnabledPushKinds()
 	registration := s.state.Push
+	signedKey, keySignature := s.signPushKey()
 	s.mutex.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), pushRequestTimeout)
@@ -188,10 +189,14 @@ func (s *Service) registerPush() error {
 	for _, kind := range allEnabledKind {
 		allKind = append(allKind, apitypes.PushKind(kind))
 	}
+	if !config.AcceptsKeySignature {
+		keySignature = ""
+	}
 	if webPush != nil {
-		if err := client.SetDevicePush(ctx, apitypes.PushRegistration{WebPush: webPush, AllKind: allKind}); err != nil {
+		if err := client.SetDevicePush(ctx, apitypes.PushRegistration{WebPush: webPush, KeySignature: keySignature, AllKind: allKind}); err != nil {
 			return s.recordServerPushError(fmt.Errorf("Hisar could not set up notifications on the server: %w", err))
 		}
+		s.recordSignedPushKey(signedKey)
 		return s.recordPushError(nil)
 	}
 
@@ -204,11 +209,12 @@ func (s *Service) registerPush() error {
 		registration = localstate.PushRegistration{RelayURL: config.RelayURL, TokenHash: tokenHash, Handle: handle}
 	}
 	if !config.AcceptsPayloadKey {
-		payloadKey = nil
+		payloadKey, keySignature = nil, ""
 	}
-	if err := client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: registration.Handle, PayloadKey: payloadKey, AllKind: allKind}); err != nil {
+	if err := client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: registration.Handle, PayloadKey: payloadKey, KeySignature: keySignature, AllKind: allKind}); err != nil {
 		return s.recordServerPushError(fmt.Errorf("Hisar could not set up notifications on the server: %w", err))
 	}
+	s.recordSignedPushKey(signedKey)
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -219,6 +225,50 @@ func (s *Service) registerPush() error {
 	}
 	s.state.Push = registration
 	return s.state.Save()
+}
+
+// getPushMessageKey returns the key this phone's push messages are encrypted to, base64url: its Web Push
+// subscription's, or its payload key; empty without one. It needs the mutex.
+func (s *Service) getPushMessageKey() (p256dh, auth string) {
+	switch {
+	case s.webPush != nil:
+		return s.webPush.P256DH, s.webPush.Auth
+	case s.pushPayloadKey != nil:
+		return s.pushPayloadKey.P256DH, s.pushPayloadKey.Auth
+	}
+	return "", ""
+}
+
+// signPushKey returns the account's signature over this phone's message key, base64url, and the key it signed; empty
+// while Hisar is locked, when only the unlock can sign. It needs the mutex.
+func (s *Service) signPushKey() (signedKey, keySignature string) {
+	p256dh, auth := s.getPushMessageKey()
+	publicKey, publicKeyErr := decodeBase64URL(p256dh)
+	authSecret, authErr := decodeBase64URL(auth)
+	if !s.isUnlocked() || p256dh == "" || publicKeyErr != nil || authErr != nil {
+		return "", ""
+	}
+	signature := s.unlockedSession.Keyset.SignPushKey(s.state.AccountID, s.state.DeviceID, publicKey, authSecret)
+	return p256dh, base64.RawURLEncoding.EncodeToString(signature)
+}
+
+// recordSignedPushKey remembers the key this phone registered while it could sign it (a server older than key
+// signatures does not take the signature), so an unlock registers again only for a new key.
+func (s *Service) recordSignedPushKey(signedKey string) {
+	if signedKey == "" {
+		return
+	}
+	s.mutex.Lock()
+	s.signedPushKey = signedKey
+	s.mutex.Unlock()
+}
+
+// registerSignedPushKey runs with the mutex held, after an unlock: a phone that registered its message key while
+// locked registers again, now that the keyset can sign it.
+func (s *Service) registerSignedPushKey() {
+	if p256dh, _ := s.getPushMessageKey(); s.state.IsLoggedIn() && p256dh != "" && p256dh != s.signedPushKey {
+		go s.registerPush()
+	}
 }
 
 func (s *Service) recordPushError(err error) error {

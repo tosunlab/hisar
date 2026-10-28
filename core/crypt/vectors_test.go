@@ -21,6 +21,15 @@ const (
 	vectorApprovalAnswerSignature = "6f5646f0c66eedff6393c6401fd1d4ca1c945eda2192719cdbd3e18ecfc37d7f687e913a2bd7305d7af79e1bc1e1231a507b9efa771be5d26f64a9ddd2a9490c"
 )
 
+// Approval push previews: signatures from the same keyset over a phone's push key (the bytes 0..64, then
+// "0123456789abcdef") and over a preview. Phones verify the preview signature, the iPhone in Swift.
+const (
+	vectorPushKeyMessage           = "68697361722f76312f707573682d6b6579000000064142433132330000000770686f6e652d3100000041000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f400000001030313233343536373839616263646566"
+	vectorPushKeySignature         = "2045ea9df63ce4551b9263143dd2048669b918df6f8002431572c511533b2c0d8130890e24a71a86ff69c24f50b5e2c450085fa171be4ad2ef3fc51de0b36807"
+	vectorApprovalPreviewMessage   = "68697361722f76312f617070726f76616c2d7072657669657700000006414243313233000000227b22726571756573744964223a227265712d31222c226b696e64223a22737368227d"
+	vectorApprovalPreviewSignature = "a0e0f2aaa514dc42d0806710b4037c8e2e077ca23fb0b53b4bb8db37a00c609d54fc02d9dcce7ed34a6147b6e68f035196e1f42e3117f3ee86d1c5c8ce345808"
+)
+
 // Web Push: RFC 8291 Appendix A, base64url without padding. A Hisar server must produce exactly this message, or
 // UnifiedPush distributors and phones could not read it.
 const (

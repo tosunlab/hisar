@@ -69,6 +69,7 @@ class FakeBackend: VaultBackend {
     var allPushToken: [String] = []
     var allPushPayloadKey: [String] = []
     var pushSettings = PushSettings(isAvailable: false, isServerSending: true, enabledKinds: PushKind.allCases.map(\.rawValue), errorMessage: nil)
+    var approvalPushVerifier = ApprovalPushVerifier(accountId: "", signingPublicKey: "")
     var websiteIconByURL: [String: Data] = [:]
     var preparedIcon: Data?
     var theme = VaultTheme.standard
@@ -1295,6 +1296,10 @@ extension FakeBackend {
 
     func getPushSettings() throws -> PushSettings {
         pushSettings
+    }
+
+    func getApprovalPushVerifier() throws -> ApprovalPushVerifier {
+        approvalPushVerifier
     }
 
     func getTheme() -> VaultTheme {
