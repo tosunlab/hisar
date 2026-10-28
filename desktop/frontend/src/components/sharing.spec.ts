@@ -138,6 +138,28 @@ describe("Vault sharing panel", () => {
     store.isBusy = false;
   });
 
+  it("contains a nested recipient review and returns to the still-open sharing panel", async () => {
+    api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [createSentShareInvitation({ id: "reviewed", requiresConfirmation: true, state: "accepted" })], completionError: "" });
+    const wrapper = await openSharingPanel();
+    const review = wrapper.find('[data-testid="review-share-reviewed"]');
+    (review.element as HTMLElement).focus();
+    await review.trigger("click");
+    await flushPromises();
+    const confirmation = wrapper.find('[data-testid="share-recipient-confirmation"]');
+    const all = confirmation.findAll("button").map((button) => button.element);
+    expect(all.map((button) => button.textContent)).toEqual(["Cancel", "Give access"]);
+    expect(document.activeElement).toBe(all[0]);
+    for (const shiftKey of [false, false, true, true]) {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey, cancelable: true }));
+      expect(all).toContain(document.activeElement);
+    }
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="share-recipient-confirmation"]').exists()).toBe(false);
+    expect(store.isSharingOpen).toBe(true);
+    expect(document.activeElement).toBe(review.element);
+    wrapper.unmount();
+  });
   it("lists the members with initials, role and a you tag", async () => {
     const wrapper = await openSharingPanel();
     expect(api.listAllVaultMember).toHaveBeenCalledWith("family");
@@ -521,8 +543,34 @@ describe("Settings people and devices", () => {
     api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [], completionError: "" });
     const wrapper = mount(SettingsPanel);
     await flushPromises();
-    expect(wrapper.find('[data-testid="people-empty-hint"]').text()).toBe("Nobody yet. Share a vault to see the people you share with here.");
+    expect(wrapper.find('[data-testid="people-empty-hint"]').text()).toBe("Nobody else yet. Share a vault to see the people you share with here.");
+    expect(wrapper.find('[data-testid="person-ALICE1"] [data-testid="person-security-code"]').text()).toBe(createPerson().securityCode);
     expect(wrapper.find('[data-testid="sent-invitations"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows the device's own code beside an accepted first invitation", async () => {
+    api.listAllPerson.mockResolvedValue([createPerson({ securityCode: "1234 5678 9012 3456" })]);
+    api.listAllShareInvitation.mockResolvedValue({
+      received: [], sent: [], completionError: "",
+      waiting: [{ id: "first", role: "editor", invitedByName: "Bob", invitedByEmail: "bob@example.com", acceptedAt: "" }],
+    });
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="waiting-invitation-first"] [data-testid="waiting-security-code"]').text()).toBe("1234 5678 9012 3456");
+    expect(wrapper.find('[data-testid="person-ALICE1"] [data-testid="person-security-code"]').text()).toBe("1234 5678 9012 3456");
+    wrapper.unmount();
+  });
+
+  it("does not replace loading people with the nobody-else hint", async () => {
+    api.listAllPerson.mockReturnValue(new Promise(() => {}));
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    store.isBusy = true;
+    await flushPromises();
+    expect(wrapper.find('[data-testid="people-section"]').text()).toContain("Loading people…");
+    expect(wrapper.find('[data-testid="people-empty-hint"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="person-security-code"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

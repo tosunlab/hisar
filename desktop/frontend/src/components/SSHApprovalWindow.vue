@@ -49,6 +49,7 @@ const promptSlot = ref<HTMLElement | null>(null);
 const passwordInput = ref<HTMLInputElement | null>(null);
 const denyButton = ref<HTMLButtonElement | null>(null);
 const contentElement = ref<HTMLElement | null>(null);
+const dialogBody = ref<HTMLElement | null>(null);
 const approval = computed(() => approvalStore.allApproval[0]);
 const now = ref(Date.now());
 const timeoutAt = computed(() => Date.parse(approval.value?.timeoutAt ?? ""));
@@ -197,15 +198,15 @@ const rememberLabel = computed(
     `Don’t ask again for ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} ${approval.value?.rememberPeriod || "for 1 hour"}`,
 );
 
-// commandLineCoverage is who approving a command-line request approves, and for how long, by ApprovalEvent.coverage.
-const commandLineCoverage = computed(() => {
+// commandLineApproved is who approving a command-line request approves, by ApprovalEvent.coverage.
+const commandLineApproved = computed(() => {
   switch (approval.value?.coverage) {
     case "app":
-      return { approved: `hisar in ${inlineAppName.value}`, note: `Lasts until 10 minutes after the last request from ${inlineAppName.value}, or until Hisar locks.` };
+      return `hisar in ${inlineAppName.value}`;
     case "connection":
-      return { approved: "this connection", note: "Lasts for this connection only; Hisar cannot verify the app it comes from." };
+      return "this connection";
     default:
-      return { approved: "this terminal", note: "Lasts until 10 minutes after this terminal’s last command, or until Hisar locks." };
+      return "this terminal";
   }
 });
 
@@ -216,14 +217,14 @@ const unlockNote = computed(() => {
   if (isLauncher.value) {
     return `Hisar is locked; unlocking it also approves ${approval.value?.appName}.`;
   }
-  return isCommandLine.value ? `Hisar is locked; unlocking it also approves ${commandLineCoverage.value.approved}.` : "Hisar is locked; approving also unlocks it.";
+  return isCommandLine.value ? `Hisar is locked; unlocking it also approves ${commandLineApproved.value}.` : "Hisar is locked; approving also unlocks it.";
 });
 
 const durationNote = computed(() => {
   if (isLauncher.value) {
     return isLauncherShare.value ? "" : "You can revoke it sooner in Settings → Developer tools.";
   }
-  return isCommandLine.value ? commandLineCoverage.value.note : "";
+  return isCommandLine.value && approval.value?.lifetime ? `Lasts ${approval.value.lifetime}.` : "";
 });
 
 const agentNote = computed(() => {
@@ -272,14 +273,17 @@ async function sendPromptFrame(): Promise<void> {
   await api.setApprovalTouchIDFrame(rectangle.x, rectangle.y, rectangle.width, rectangle.height).catch(() => undefined);
 }
 
-// fitWindow sizes the window to the dialog or the compact card.
+// fitWindow sizes the window to the dialog or the compact card. The dialog's height includes what its body scrolls, so a
+// tall dialog asks for its full height; the window is capped at the screen and the body scrolls the rest.
 async function fitWindow(): Promise<void> {
   await nextTick();
   const content = contentElement.value;
   if (!content || !approval.value) {
     return;
   }
-  await api.fitSSHApprovalWindow(isCompactShown.value, Math.ceil(content.getBoundingClientRect().height)).catch(() => undefined);
+  const body = dialogBody.value;
+  const scrolledHeight = body ? body.scrollHeight - body.clientHeight : 0;
+  await api.fitSSHApprovalWindow(isCompactShown.value, Math.ceil(content.getBoundingClientRect().height + scrolledHeight)).catch(() => undefined);
   if (isWaitingForTouchID.value) {
     await sendPromptFrame();
   }
@@ -464,137 +468,143 @@ onBeforeUnmount(() => {
 
         <section v-else class="dialog" role="alertdialog" aria-labelledby="approval-title" aria-describedby="approval-subtitle" data-testid="ssh-approval">
           <div class="drag-area"></div>
-          <div v-if="isForwarded" class="forwarded-banner" role="note" data-testid="approval-forwarded">
-            <AppIcon name="warning" :size="16" />
-            <p>
-              <strong>Forwarded from another computer</strong> — this request comes from
-              <strong class="monospace">{{ approval.forwardedFromHost || "a remote host" }}</strong> through agent forwarding, not from {{ getThisDeviceName() }}
-            </p>
-          </div>
-
-          <header class="request-header">
-            <div class="requester-icon" aria-hidden="true">
-              <img v-if="approval.appIconURL && !isForwarded" :src="approval.appIconURL" alt="" data-testid="app-icon" />
-              <span v-else class="icon-fallback"><AppIcon :name="isForwarded ? 'globe' : isLauncher ? 'search' : 'terminal'" :size="28" /></span>
-              <span class="hisar-badge"><HisarLogo :size="18" /></span>
+          <div ref="dialogBody" class="dialog-body" data-testid="approval-body">
+            <div v-if="isForwarded" class="forwarded-banner" role="note" data-testid="approval-forwarded">
+              <AppIcon name="warning" :size="16" />
+              <p>
+                <strong>Forwarded from another computer</strong> — this request comes from
+                <strong class="monospace">{{ approval.forwardedFromHost || "a remote host" }}</strong> through agent forwarding, not from {{ getThisDeviceName() }}
+              </p>
             </div>
-            <div class="request-text">
-              <span v-if="isSigning" class="signing-badge" data-testid="approval-signing-badge">
-                <AppIcon name="edit" :size="12" /> {{ approval.purpose === "sign-tag" ? "Sign a tag" : "Sign a commit" }}
-              </span>
-              <h1 id="approval-title">
-                <span v-if="harnessName" data-testid="approval-app">
-                  {{ harnessName
-                  }}<span v-if="isHarnessSigned" class="checked-name" :title="signedHarnessText" :aria-label="signedHarnessText" data-testid="approval-harness-checked"
-                    ><AppIcon name="check" :size="10" /></span
-                  >{{ harnessPlace }}
+
+            <header class="request-header">
+              <div class="requester-icon" aria-hidden="true">
+                <img v-if="approval.appIconURL && !isForwarded" :src="approval.appIconURL" alt="" data-testid="app-icon" />
+                <span v-else class="icon-fallback"><AppIcon :name="isForwarded ? 'globe' : isLauncher ? 'search' : 'terminal'" :size="28" /></span>
+                <span class="hisar-badge"><HisarLogo :size="18" /></span>
+              </div>
+              <div class="request-text">
+                <span v-if="isSigning" class="signing-badge" data-testid="approval-signing-badge">
+                  <AppIcon name="edit" :size="12" /> {{ approval.purpose === "sign-tag" ? "Sign a tag" : "Sign a commit" }}
                 </span>
-                <span v-else data-testid="approval-app">{{ requesterName }}</span> wants to {{ purposeText }}
-              </h1>
-              <p id="approval-subtitle" class="subtitle" :title="approval.fingerprint">{{ subtitle }}</p>
-              <p v-if="Number.isFinite(timeoutAt)" class="expiry" :class="{ 'is-warning': secondsLeft < 10 }" data-testid="approval-expiry">{{ expiryText }}</p>
-              <p v-if="phoneNote" class="phone-note" data-testid="approval-phone">{{ phoneNote }}</p>
-              <p v-if="approval.projectName" class="agent-line" data-testid="approval-project">
-                <AppIcon name="folder" :size="12" /> <span class="agent-line-text" :title="approval.projectPath">{{ approval.projectName }}</span>
-              </p>
-              <p v-else-if="isAgentNameGiven" class="agent-line" data-testid="approval-agent-name-given">
-                <AppIcon name="tag" :size="12" /> <span class="agent-line-text">“{{ approval.agentName }}” is the name the agent gave</span>
-              </p>
-              <p v-if="chainText || appSigner" class="requester-line" data-testid="approval-requester">
-                <span v-if="chainText" class="chain" :title="chainTitle" data-testid="approval-chain">{{ chainText }}</span>
-                <span v-if="appSigner" class="signer" :class="{ 'is-unverified': appWarning }" :title="approval.appPath" data-testid="approval-signer">
-                  <AppIcon :name="appWarning ? 'warning' : 'shield'" :size="11" /> {{ appSigner }}
-                </span>
-              </p>
+                <h1 id="approval-title">
+                  <span v-if="harnessName" data-testid="approval-app">
+                    {{ harnessName
+                    }}<span v-if="isHarnessSigned" class="checked-name" :title="signedHarnessText" :aria-label="signedHarnessText" data-testid="approval-harness-checked"
+                      ><AppIcon name="check" :size="10" /></span
+                    >{{ harnessPlace }}
+                  </span>
+                  <span v-else data-testid="approval-app">{{ requesterName }}</span> wants to {{ purposeText }}
+                </h1>
+                <p id="approval-subtitle" class="subtitle" :title="approval.fingerprint">{{ subtitle }}</p>
+                <p v-if="Number.isFinite(timeoutAt)" class="expiry" :class="{ 'is-warning': secondsLeft < 10 }" data-testid="approval-expiry">{{ expiryText }}</p>
+                <p v-if="phoneNote" class="phone-note" data-testid="approval-phone">{{ phoneNote }}</p>
+                <p v-if="approval.projectName" class="agent-line" data-testid="approval-project">
+                  <AppIcon name="folder" :size="12" /> <span class="agent-line-text" :title="approval.projectPath">{{ approval.projectName }}</span>
+                </p>
+                <p v-else-if="isAgentNameGiven" class="agent-line" data-testid="approval-agent-name-given">
+                  <AppIcon name="tag" :size="12" /> <span class="agent-line-text">“{{ approval.agentName }}” is the name the agent gave</span>
+                </p>
+                <p v-if="chainText || appSigner" class="requester-line" data-testid="approval-requester">
+                  <span v-if="chainText" class="chain" :title="chainTitle" data-testid="approval-chain">{{ chainText }}</span>
+                  <span v-if="appSigner" class="signer" :class="{ 'is-unverified': appWarning }" :title="approval.appPath" data-testid="approval-signer">
+                    <AppIcon :name="appWarning ? 'warning' : 'shield'" :size="11" /> {{ appSigner }}
+                  </span>
+                </p>
+              </div>
+            </header>
+
+            <div v-if="appWarning" class="app-warning" role="note" data-testid="approval-app-warning">
+              <AppIcon name="warning" :size="15" />
+              <p>{{ appWarning }}</p>
             </div>
-          </header>
 
-          <div v-if="appWarning" class="app-warning" role="note" data-testid="approval-app-warning">
-            <AppIcon name="warning" :size="15" />
-            <p>{{ appWarning }}</p>
-          </div>
-
-          <div v-if="allDetailLine.length > 0" class="detail-box" data-testid="approval-details">
-            <code
-              v-for="(line, index) in allDetailLine"
-              :key="index"
-              class="detail-line"
-              :class="{ secondary: index > 0, whole: index === 0 && isCommandShownWhole }"
-              :title="line"
-              >{{ line }}</code
-            >
-          </div>
-
-          <div v-if="isLauncher && !isLauncherShare" class="launcher-allowance" data-testid="approval-launcher-note">
-            <ul>
-              <li v-for="allowance in allLauncherAllowance" :key="allowance.text"><AppIcon :name="allowance.icon" :size="14" /> {{ allowance.text }}</li>
-            </ul>
-            <p class="muted">It cannot change or export anything, and every share link asks you first.</p>
-          </div>
-
-          <div v-if="(isCommandLine || isAgent || isLauncherShare) && allSecretName.length > 0" class="secret-list" data-testid="approval-secrets">
-            <p class="secret-heading">{{ allSecretName.length + approval.moreSecretCount === 1 ? "Secret" : "Secrets" }}</p>
-            <ul>
-              <li v-for="(name, index) in allSecretName" :key="index" :title="name"><AppIcon name="key" :size="12" /> {{ name }}</li>
-              <li v-if="approval.moreSecretCount > 0" class="muted">and {{ approval.moreSecretCount }} more</li>
-            </ul>
-          </div>
-
-          <div v-if="isSignIn" class="secret-list" data-testid="approval-logins">
-            <p class="secret-heading">Login</p>
-            <p v-if="allLogin.length === 0" class="muted" data-testid="approval-login-locked">Hisar shows the login saved for this website after you unlock it.</p>
-            <ul v-else-if="allLogin.length === 1">
-              <li :title="`${allLogin[0].vaultName} › ${allLogin[0].title}`" data-testid="approval-login">
-                <AppIcon name="key" :size="12" /> {{ allLogin[0].vaultName }} › {{ allLogin[0].title }}, {{ allLogin[0].username }}
-              </li>
-            </ul>
-            <div v-else class="login-choice" role="radiogroup" aria-label="Login">
-              <label v-for="(login, index) in allLogin" :key="index" class="login-option" :data-testid="`approval-login-${index}`">
-                <input
-                  type="radio"
-                  name="signInLogin"
-                  :value="index"
-                  :checked="approvalStore.loginIndex === index"
-                  @change="setSignInLogin(approval.requestID, index)"
-                />
-                <span class="login-text">{{ login.vaultName }} › {{ login.title }}, {{ login.username }}</span>
-              </label>
-            </div>
-            <p class="muted sign-in-note" data-testid="approval-sign-in-note">{{ signInNote }}</p>
-          </div>
-
-          <div v-if="approval.warning" class="reveal-warning" role="note" data-testid="approval-warning">
-            <AppIcon name="eye" :size="15" />
-            <p>{{ approval.warning }}</p>
-          </div>
-
-          <label v-if="approval.isRememberable" class="remember">
-            <input
-              type="checkbox"
-              name="isRemembered"
-              :checked="approvalStore.isRemembered"
-              @change="setRemembered(approval.requestID, ($event.target as HTMLInputElement).checked)"
-            />
-            {{ rememberLabel }}
-          </label>
-
-          <div v-if="allGrantDuration.length > 0" class="grant-duration" data-testid="approval-grant-duration">
-            <label>
-              Approve for
-              <select
-                name="grantDuration"
-                aria-label="How long to approve it"
-                data-testid="approval-grant-duration-menu"
-                :value="approvalStore.grantDuration"
-                @change="setGrantDuration(approval.requestID, ($event.target as HTMLSelectElement).value)"
+            <div v-if="allDetailLine.length > 0" class="detail-box" data-testid="approval-details">
+              <code
+                v-for="(line, index) in allDetailLine"
+                :key="index"
+                class="detail-line"
+                :class="{ secondary: index > 0, whole: index === 0 && isCommandShownWhole }"
+                :title="line"
+                >{{ line }}</code
               >
-                <option v-for="duration in allGrantDuration" :key="duration" :value="duration">{{ allGrantDurationLabel[duration] ?? duration }}</option>
-              </select>
+            </div>
+
+            <div v-if="isLauncher && !isLauncherShare" class="launcher-allowance" data-testid="approval-launcher-note">
+              <ul>
+                <li v-for="allowance in allLauncherAllowance" :key="allowance.text"><AppIcon :name="allowance.icon" :size="14" /> {{ allowance.text }}</li>
+              </ul>
+              <p class="muted">It cannot change or export anything, and every share link asks you first.</p>
+            </div>
+
+            <div v-if="(isCommandLine || isAgent || isLauncherShare) && allSecretName.length > 0" class="secret-list" data-testid="approval-secrets">
+              <p class="secret-heading">{{ allSecretName.length + approval.moreSecretCount === 1 ? "Secret" : "Secrets" }}</p>
+              <ul>
+                <li v-for="(name, index) in allSecretName" :key="index" :title="name"><AppIcon name="key" :size="12" /> {{ name }}</li>
+                <li v-if="approval.moreSecretCount > 0" class="muted">and {{ approval.moreSecretCount }} more</li>
+              </ul>
+            </div>
+
+            <div v-if="isSignIn" class="secret-list" data-testid="approval-logins">
+              <p class="secret-heading">Login</p>
+              <p v-if="allLogin.length === 0" class="muted" data-testid="approval-login-locked">Hisar shows the login saved for this website after you unlock it.</p>
+              <ul v-else-if="allLogin.length === 1">
+                <li :title="`${allLogin[0].vaultName} › ${allLogin[0].title}`" data-testid="approval-login">
+                  <AppIcon name="key" :size="12" /> {{ allLogin[0].vaultName }} › {{ allLogin[0].title }}, {{ allLogin[0].username }}
+                </li>
+              </ul>
+              <div v-else class="login-choice" role="radiogroup" aria-label="Login">
+                <label v-for="(login, index) in allLogin" :key="index" class="login-option" :data-testid="`approval-login-${index}`">
+                  <input
+                    type="radio"
+                    name="signInLogin"
+                    :value="index"
+                    :checked="approvalStore.loginIndex === index"
+                    :aria-label="[login.username, `${login.vaultName} › ${login.title}`].filter(Boolean).join(', ')"
+                    @change="setSignInLogin(approval.requestID, index)"
+                  />
+                  <span class="login-text">
+                    <span v-if="login.username" class="login-username">{{ login.username }}</span>
+                    <span class="login-item">{{ login.vaultName }} › {{ login.title }}</span>
+                  </span>
+                </label>
+              </div>
+              <p class="muted sign-in-note" data-testid="approval-sign-in-note">{{ signInNote }}</p>
+            </div>
+
+            <div v-if="approval.warning" class="reveal-warning" role="note" data-testid="approval-warning">
+              <AppIcon name="eye" :size="15" />
+              <p>{{ approval.warning }}</p>
+            </div>
+
+            <label v-if="approval.isRememberable" class="remember">
+              <input
+                type="checkbox"
+                name="isRemembered"
+                :checked="approvalStore.isRemembered"
+                @change="setRemembered(approval.requestID, ($event.target as HTMLInputElement).checked)"
+              />
+              {{ rememberLabel }}
             </label>
-            <p v-if="approval.grantScope" class="muted" data-testid="approval-grant-scope">{{ approval.grantScope }}</p>
-            <p v-if="isHarnessGrantOffered" class="muted" data-testid="approval-grant-note">
-              Longer choices cover {{ harnessName }} in every session until they expire, you revoke them in Settings → Coding agents, or you sign out.
-            </p>
+
+            <div v-if="allGrantDuration.length > 0" class="grant-duration" data-testid="approval-grant-duration">
+              <label>
+                Approve for
+                <select
+                  name="grantDuration"
+                  aria-label="How long to approve it"
+                  data-testid="approval-grant-duration-menu"
+                  :value="approvalStore.grantDuration"
+                  @change="setGrantDuration(approval.requestID, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option v-for="duration in allGrantDuration" :key="duration" :value="duration">{{ allGrantDurationLabel[duration] ?? duration }}</option>
+                </select>
+              </label>
+              <p v-if="approval.grantScope" class="muted" data-testid="approval-grant-scope">{{ approval.grantScope }}</p>
+              <p v-if="isHarnessGrantOffered" class="muted" data-testid="approval-grant-note">
+                Longer choices cover {{ harnessName }} in every session until they expire, you revoke them in Settings → Coding agents, or you sign out.
+              </p>
+            </div>
           </div>
 
           <p v-if="approval.isUnlockRequired" class="unlock-note" data-testid="approval-unlock-note">
@@ -696,7 +706,16 @@ onBeforeUnmount(() => {
 .dialog {
   display: flex;
   flex-direction: column;
+  max-height: 100vh;
   padding: 0 28px;
+}
+
+.dialog-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  margin: 0 -28px;
+  padding: 0 28px;
+  overflow-y: auto;
 }
 
 .forwarded-banner {
@@ -1098,12 +1117,12 @@ h1 {
 .login-choice {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .login-option {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 9px;
   margin: 0 0 0 2px;
   font-size: var(--font-size-13);
@@ -1114,14 +1133,24 @@ h1 {
 .login-option input {
   width: auto;
   flex: none;
-  margin: 0;
+  margin: 2px 0 0;
 }
 
 .login-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.login-username {
+  font-weight: 500;
+}
+
+.login-item {
+  font-size: var(--font-size-12);
+  color: var(--color-text-muted);
 }
 
 .sign-in-note {

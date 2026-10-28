@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { computePasswordStrength } from "../util";
+import { usePasswordStrength } from "../passwordStrength";
 
 const props = defineProps<{ password: string }>();
 
-const strength = computed(() => computePasswordStrength(props.password));
-const filledSegmentCount = computed(() => ({ empty: 0, weak: 1, fair: 2, good: 3, strong: 4 })[strength.value.level]);
+const segmentCountByLevel: Record<string, number> = { weak: 1, fair: 2, good: 3, strong: 4 };
+const strength = usePasswordStrength(() => props.password);
+const filledSegmentCount = computed(() => segmentCountByLevel[strength.value.level] ?? 0);
 </script>
 
 <template>
-  <div v-if="strength.level !== 'empty'" class="strength" :class="strength.level" data-testid="strength-meter">
+  <div v-if="strength.level !== ''" class="strength" :class="strength.level" data-testid="strength-meter">
     <span v-for="segment in 4" :key="segment" class="segment" :class="{ filled: segment <= filledSegmentCount }"></span>
     <span class="label">{{ strength.label }}</span>
   </div>

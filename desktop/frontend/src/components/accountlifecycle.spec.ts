@@ -92,12 +92,29 @@ describe("Change master password", () => {
     await wrapper.find('input[name="currentPassword"]').setValue("current password");
     await wrapper.find('input[name="newPassword"]').setValue("password1234");
     await wrapper.find('input[name="repeatedPassword"]').setValue("password1234");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="strength-meter"]').text()).toContain("Weak");
     expect(wrapper.find('[data-testid="new-password-feedback"]').text()).toBe("This password is too easy to guess. Add a few more words or characters.");
     expect(wrapper.find('[data-testid="confirm-change-master-password"]').attributes("disabled")).toBeDefined();
     await wrapper.find('input[name="newPassword"]').setValue(strongPassword);
     expect(wrapper.find('[data-testid="new-password-mismatch"]').exists()).toBe(true);
     await submitForm(wrapper);
     expect(api.changeMasterPassword).not.toHaveBeenCalled();
+  });
+
+  it("refuses the current password as the new one and says so", async () => {
+    const wrapper = mount(ChangeMasterPasswordDialog);
+    await wrapper.find('input[name="currentPassword"]').setValue(strongPassword);
+    await wrapper.find('input[name="newPassword"]').setValue(strongPassword);
+    await wrapper.find('input[name="repeatedPassword"]').setValue(strongPassword);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="new-password-same"]').text()).toBe("The new master password is the same as the current one.");
+    expect(wrapper.find('[data-testid="confirm-change-master-password"]').attributes("disabled")).toBeDefined();
+    await submitForm(wrapper);
+    expect(api.changeMasterPassword).not.toHaveBeenCalled();
+    await wrapper.find('input[name="currentPassword"]').setValue("current password");
+    expect(wrapper.find('[data-testid="new-password-same"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="confirm-change-master-password"]').attributes("disabled")).toBeUndefined();
   });
 
   it("changes it and reports the signed-out devices", async () => {

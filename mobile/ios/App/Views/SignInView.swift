@@ -22,6 +22,9 @@ struct SignInView: View {
     @FocusState private var isRepeatPasswordFocused: Bool
     @State private var hasValidatedRepeatedPassword = false
     @State private var isScannerShown = false
+    @State private var scannerMessage: String?
+    @State private var ratedPassword = ""
+    @State private var passwordFeedback: MasterPasswordFeedback?
 
     private var isPasswordMismatch: Bool {
         mode == .createAccount && hasValidatedRepeatedPassword && password != repeatedPassword
@@ -32,7 +35,8 @@ struct SignInView: View {
         case .signIn:
             return !server.isEmpty && !email.isEmpty && !secretKey.isEmpty && !password.isEmpty
         case .createAccount:
-            return (!isSignUpServerAsked || !server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) && !email.isEmpty && !name.isEmpty && !password.isEmpty && password == repeatedPassword
+            return (!isSignUpServerAsked || !server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) && !email.isEmpty && !name.isEmpty && password == repeatedPassword
+                && AccountLifecycleLogic.isMasterPasswordAccepted(password, feedback: ratedPassword == password ? passwordFeedback : nil)
         }
     }
 
@@ -250,17 +254,33 @@ struct SignInView: View {
                 .textContentType(.newPassword)
                 .focused($isRepeatPasswordFocused)
                 .accessibilityIdentifier("sign-up-repeated-password")
+                .validationError(isPasswordMismatch ? "The passwords do not match." : nil)
         } header: {
             Text("Master password")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
+                PasswordStrengthMeter(strength: passwordFeedback?.strength ?? PasswordStrength())
                 if isPasswordMismatch {
                     Text("The passwords do not match.")
                         .foregroundStyle(.red)
                 }
+                if let problem = AccountLifecycleLogic.describeMasterPasswordProblem(password, feedback: passwordFeedback) {
+                    Text(problem)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("sign-up-password-problem")
+                } else if let hint = AccountLifecycleLogic.describeMasterPasswordHint(feedback: passwordFeedback) {
+                    Text(hint)
+                }
                 Text("Choose a master password you can remember. A forgotten master password can't be recovered by anyone, including Hisar.")
                     .accessibilityIdentifier("create-account-note")
             }
+        }
+        .task(id: password) {
+            let typedPassword = password
+            let feedback = await model.checkMasterPassword(typedPassword)
+            guard !Task.isCancelled else { return }
+            ratedPassword = typedPassword
+            passwordFeedback = feedback
         }
     }
 

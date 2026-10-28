@@ -132,10 +132,26 @@ class OrganizationTests {
         val elsewhere = VaultSummary("other", "Other", VaultSummary.TYPE_ORGANIZATION, Member.VAULT_ROLE_OWNER, 0, organizationID = "globex")
         val allGivable = OrganizationLogic.listAllGivableVault(asAdmin, asAdmin.allTeam[1], listOf(onlyOnThisDevice, elsewhere))
         assertEquals(
-            listOf("Runbooks", "A vault you can't open"),
+            listOf("Runbooks", "A vault you can't open (Audit)"),
             allGivable.map { it.displayName },
             "Deploy is already Platform's; another organization's vault is not offered",
         )
+    }
+
+    @Test
+    fun testUnopenedVaultChoicesShowTeamsAndDistinctIDs() {
+        val vaults = listOf(
+            TeamVault("3fK9a2-1", "", Member.VAULT_ROLE_OWNER, canOpen = false),
+            TeamVault("8rP4b7-2", "", Member.VAULT_ROLE_OWNER, canOpen = false),
+        )
+        val target = Team(id = "target", name = "Review")
+        val organization = Organization(id = "acme", name = "Acme", role = OrganizationRole.ADMIN, isAdmin = true, allTeam = listOf(
+            Team(id = "platform", name = "Platform", allVault = vaults),
+            Team(id = "ops", name = "Ops", allVault = vaults), target,
+        ))
+        val choices = OrganizationLogic.listAllGivableVault(organization, target, emptyList())
+        assertEquals(listOf("A vault you can't open (Platform, Ops) · 3fK9a2", "A vault you can't open (Platform, Ops) · 8rP4b7"), choices.map { it.displayName })
+        assertEquals(listOf(false, false), choices.map { it.canOpen })
     }
 
     @Test

@@ -2,10 +2,11 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { api } from "../api";
 import { loadShareAwaitingUnlockQuietly, signOut, store, unlock, unlockWithBiometric } from "../store";
-import { describePerson } from "../util";
+import { describePerson, getSignOutCopy } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 
+const signOutCopy = getSignOutCopy(true);
 const password = ref("");
 const isConfirmingSignOut = ref(false);
 const isWaitingForTouchID = ref(false);
@@ -126,7 +127,8 @@ onBeforeUnmount(() => {
         <div class="sign-out">
           <button v-if="!isConfirmingSignOut" class="link" @click="isConfirmingSignOut = true">Sign out of this device</button>
           <div v-else class="card confirm">
-            <p>You will need your Secret Key to sign in again.</p>
+            <p><strong>{{ signOutCopy.title }}</strong></p>
+            <p>{{ signOutCopy.message }}</p>
             <div class="row">
               <button class="ghost" @click="isConfirmingSignOut = false">Cancel</button>
               <button class="danger-solid" data-testid="confirm-sign-out" @click="signOut"><AppIcon name="signOut" /> Sign out</button>

@@ -2,8 +2,11 @@
 import { ref } from "vue";
 import { signOut, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
+import { getSignOutCopy } from "../util";
 import DeleteAccountDialog from "./DeleteAccountDialog.vue";
 
+const emit = defineEmits<{ saveEmergencyKit: [] }>();
+const signOutCopy = getSignOutCopy(false);
 const isRowVisible = useSettingsRowVisibility();
 const isConfirmingSignOut = ref(false);
 const isDeletingAccount = ref(false);
@@ -20,10 +23,15 @@ const isDeletingAccount = ref(false);
             <p class="muted">{{ store.status.email }} · {{ store.status.server }}</p>
           </div>
           <button v-if="!isConfirmingSignOut" class="danger" @click="isConfirmingSignOut = true">Sign out</button>
-          <template v-else>
+        </div>
+        <div v-if="isConfirmingSignOut" class="card confirm" data-testid="settings-sign-out-confirmation">
+          <h3>{{ signOutCopy.title }}</h3>
+          <p>{{ signOutCopy.message }}</p>
+          <div class="row">
             <button class="ghost" @click="isConfirmingSignOut = false">Cancel</button>
+            <button data-testid="sign-out-save-emergency-kit" @click="isConfirmingSignOut = false; emit('saveEmergencyKit')">Save Emergency Kit…</button>
             <button class="danger-solid" data-testid="settings-confirm-sign-out" @click="signOut">Sign out</button>
-          </template>
+          </div>
         </div>
       </div>
     </div>
@@ -47,3 +55,19 @@ const isDeletingAccount = ref(false);
     <DeleteAccountDialog v-if="isDeletingAccount" @close="isDeletingAccount = false" />
   </section>
 </template>
+
+<style scoped>
+.confirm {
+  margin: 12px;
+  padding: 14px 16px;
+}
+
+.confirm h3,
+.confirm p {
+  margin: 0 0 10px;
+}
+
+.confirm .row {
+  flex-wrap: wrap;
+}
+</style>

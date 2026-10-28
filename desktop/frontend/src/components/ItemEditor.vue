@@ -20,6 +20,7 @@ import {
   apiCredentialCategory,
   creditCardCategory,
   databaseCategory,
+  customFieldNameWarning,
   describeAPICredentialExpiry,
   describeServerPort,
   identityCategory,
@@ -138,6 +139,7 @@ onBeforeUnmount(() => {
   store.editorDraft = null;
 });
 const isPasswordVisible = ref(false);
+const isSetupKeyVisible = ref(false);
 const isGeneratorOpen = ref(store.editorMode === "create");
 const isIconPickerOpen = ref(false);
 // websiteIconURL is the website whose icon Automatic shows, from the URLs as typed.
@@ -652,14 +654,21 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
       <PasswordGenerator v-if="isGeneratorOpen" @use="usePassword" @close="isGeneratorOpen = false" />
       <label v-if="!isDatabase">
         <span>One-time code setup key</span>
-        <input
-          v-model="draft.oneTimePassword"
-          name="oneTimePassword"
-          class="monospace"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Setup key or otpauth:// link"
-        />
+        <span class="row">
+          <input
+            v-model="draft.oneTimePassword"
+            name="oneTimePassword"
+            aria-label="One-time code setup key"
+            class="monospace"
+            :type="isSetupKeyVisible ? 'text' : 'password'"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Setup key or otpauth:// link"
+          />
+          <button type="button" class="icon-button" :aria-label="isSetupKeyVisible ? 'Hide setup key' : 'Show setup key'" @click="isSetupKeyVisible = !isSetupKeyVisible">
+            <AppIcon :name="isSetupKeyVisible ? 'eyeOff' : 'eye'" />
+          </button>
+        </span>
       </label>
       <label v-if="!isDatabase" class="last">
         <span>{{ isServer ? "Admin console URL" : "Websites" }}</span>
@@ -687,6 +696,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           <input v-model="field.concealed" type="checkbox" /> <span>Secret</span>
         </label>
         <button type="button" class="ghost icon-button" aria-label="Remove field" @click="removeField(index)"><AppIcon name="close" /></button>
+        <small v-if="customFieldNameWarning(draft.fields, index)" class="field-warning" :data-testid="`field-name-warning-${index}`">{{ customFieldNameWarning(draft.fields, index) }}</small>
       </div>
       <button type="button" class="ghost add-field" @click="addField"><AppIcon name="plus" /> Add field</button>
     </section>
@@ -862,6 +872,11 @@ button.active {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.custom-field .field-warning {
+  grid-column: 1 / -1;
+  color: var(--color-warning);
 }
 
 .concealed {

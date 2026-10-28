@@ -266,7 +266,7 @@ func TestNewAccountEmergencyKitAndAcknowledgementNeedNoPassword(t *testing.T) {
 	if err != nil || result.SetupState != "delivery-pending" || len(result.Problems) != 0 {
 		t.Fatalf("sign-up did not wait only for its kit: %+v %v", result, err)
 	}
-	if err := AcknowledgeNewAccountRecovery(service); err == nil {
+	if err := service.AcknowledgeNewAccountRecovery(); err == nil {
 		t.Fatal("the sign-up was acknowledged before its kit was saved")
 	}
 	directory := t.TempDir()
@@ -281,7 +281,7 @@ func TestNewAccountEmergencyKitAndAcknowledgementNeedNoPassword(t *testing.T) {
 	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 1 || !entries[0].KitSaved {
 		t.Fatalf("the kit was not recorded as saved: %+v %v", entries, err)
 	}
-	if err := AcknowledgeNewAccountRecovery(service); err != nil {
+	if err := service.AcknowledgeNewAccountRecovery(); err != nil {
 		t.Fatal(err)
 	}
 	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 0 {
@@ -290,6 +290,38 @@ func TestNewAccountEmergencyKitAndAcknowledgementNeedNoPassword(t *testing.T) {
 	service.ForgetNewAccountSecretKey()
 	if _, err := ExportNewAccountEmergencyKitToDirectory(service, t.TempDir()); !errors.Is(err, ErrNoNewAccountSecretKey) {
 		t.Fatalf("a kit was exported after onboarding ended: %v", err)
+	}
+}
+
+func TestSavedNewAccountEmergencyKitLetsTheMacAcknowledgeTheSignUp(t *testing.T) {
+	serverURL := startRegisteringServer(t, false)
+	service := recoveryTestService(t, filepath.Join(t.TempDir(), "state.json"), createMemorySecretKeyStore())
+	if _, err := service.SignUp(serverURL+"/invite/token", "kit@example.com", "Kit", "kit master password"); err != nil {
+		t.Fatal(err)
+	}
+	fileSaver := service.config.FileSaver.(*fakeFileSaver)
+	fileSaver.path = ""
+	if path, err := service.SaveNewAccountEmergencyKit(); err != nil || path != "" {
+		t.Fatalf("cancelled save: %q %v", path, err)
+	}
+	if err := service.AcknowledgeNewAccountRecovery(); err == nil {
+		t.Fatal("the sign-up was acknowledged after a cancelled save")
+	}
+	fileSaver.path = filepath.Join(t.TempDir(), "kit.pdf")
+	if path, err := service.SaveNewAccountEmergencyKit(); err != nil || path != fileSaver.path {
+		t.Fatalf("save: %q %v", path, err)
+	}
+	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 1 || !entries[0].KitSaved {
+		t.Fatalf("the saved kit was not recorded: %+v %v", entries, err)
+	}
+	if path, err := service.SaveNewAccountEmergencyKit(); err != nil || path != fileSaver.path {
+		t.Fatalf("saving over the first kit: %q %v", path, err)
+	}
+	if err := service.AcknowledgeNewAccountRecovery(); err != nil {
+		t.Fatal(err)
+	}
+	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 0 {
+		t.Fatalf("the sign-up record outlived its acknowledgement: %+v %v", entries, err)
 	}
 }
 
@@ -303,7 +335,7 @@ func TestLockDropsTheNewAccountProof(t *testing.T) {
 	if _, err := ExportNewAccountEmergencyKitToDirectory(service, t.TempDir()); err == nil {
 		t.Fatal("a locked app exported the new account's kit")
 	}
-	if err := AcknowledgeNewAccountRecovery(service); err == nil {
+	if err := service.AcknowledgeNewAccountRecovery(); err == nil {
 		t.Fatal("a locked app acknowledged the sign-up")
 	}
 	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 1 {

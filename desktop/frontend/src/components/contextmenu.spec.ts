@@ -55,6 +55,9 @@ function resetStore(allItem: ItemDetail[] = [github, bank]): void {
     noticeMessage: "",
     isBusy: false,
     isSettingsOpen: false,
+    shareLinkDialog: null,
+    vaultDialog: null,
+    itemDetailDialog: null,
   });
 }
 

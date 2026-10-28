@@ -73,6 +73,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
     var isRefreshing by remember { mutableStateOf(false) }
     var wasListed by remember { mutableStateOf(false) }
     var allRevealedFieldName by remember { mutableStateOf(emptySet<String>()) }
+    var allRevealedCustomIndex by remember { mutableStateOf(emptySet<Int>()) }
     var passkeyToDelete by remember { mutableStateOf<ItemPasskey?>(null) }
     var androidAppToRemove by remember { mutableStateOf<ItemAndroidApp?>(null) }
     var openedSSHKeyID by remember { mutableStateOf<String?>(null) }
@@ -80,6 +81,8 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
     suspend fun loadItem() {
         model.errorMessage.value = null
         item = model.item.loadItem(vaultID, itemID)
+        allRevealedFieldName = emptySet()
+        allRevealedCustomIndex = emptySet()
     }
 
     // The editor saves, or another device changes the item: its summary gets a new revision, and the item is read again.
@@ -150,6 +153,9 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                         copyReference = { fieldName -> scope.launch { model.copySecretReference(vaultID, itemID, fieldName) } },
                         isRevealed = { it in allRevealedFieldName },
                         toggleReveal = { allRevealedFieldName = if (it in allRevealedFieldName) allRevealedFieldName - it else allRevealedFieldName + it },
+                        copyText = { value, label -> scope.launch { model.copyText(value, label) } },
+                        isCustomRevealed = { it in allRevealedCustomIndex },
+                        toggleCustomReveal = { allRevealedCustomIndex = if (it in allRevealedCustomIndex) allRevealedCustomIndex - it else allRevealedCustomIndex + it },
                     )
                     ItemDetailContent(
                         model = model,
@@ -217,6 +223,9 @@ internal class ItemFieldActions(
     val copyReference: (fieldName: String) -> Unit,
     val isRevealed: (fieldName: String) -> Boolean,
     val toggleReveal: (fieldName: String) -> Unit,
+    val copyText: (value: String, label: String) -> Unit,
+    val isCustomRevealed: (index: Int) -> Boolean,
+    val toggleCustomReveal: (index: Int) -> Unit,
 )
 
 /** The star and, for those who may change the item, "Edit", on one glass capsule as the iPhone app groups them. */

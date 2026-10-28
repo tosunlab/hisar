@@ -102,6 +102,27 @@ class PhoneApprovalTests {
     }
 
     @Test
+    fun testCommandLineRequestSaysHowLongItsApprovalLasts() {
+        val approval = decode(
+            """
+            [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
+              "kind":"cli","appName":"hisar in Terminal","purpose":"use Hisar","commandLine":"/Applications/Hisar.app/Contents/Helpers/hisar","terminalName":"ttys003",
+              "lifetime":"until 10 minutes after this terminal’s last command, or until Hisar locks"}]
+            """,
+        ).first()
+        assertEquals(listOf("App", "Program", "Terminal", "Lasts"), approval.allDetailRow.map { it.label })
+        assertEquals("Until 10 minutes after this terminal’s last command, or until Hisar locks", approval.lifetime)
+        assertEquals(approval.lifetime, approval.detailLine, "the card says how long approving lasts")
+        assertEquals("Approving also lets hisar in Terminal use Hisar without asking until then. It does not unlock Hisar on your Mac.", approval.approvalNote)
+        assertEquals("It never unlocks Hisar on your Mac.", approval.cardApprovalNote, "the card's Lasts says the rest")
+
+        val fromAnOlderMac = approval.copy(commandLineLifetime = "")
+        assertEquals(listOf("App", "Program", "Terminal"), fromAnOlderMac.allDetailRow.map { it.label })
+        assertEquals("Approving lets this one request continue; it does not unlock Hisar on your Mac.", fromAnOlderMac.approvalNote)
+        assertEquals("Approving answers this one request. It never unlocks Hisar on your Mac.", fromAnOlderMac.cardApprovalNote)
+    }
+
+    @Test
     fun testCodingAgentRequestShowsItsProject() {
         val approval = decode(
             """

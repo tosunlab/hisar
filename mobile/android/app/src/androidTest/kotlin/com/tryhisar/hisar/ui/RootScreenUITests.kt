@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -18,11 +19,15 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
 import com.tryhisar.hisar.AppViewModel
 import com.tryhisar.hisar.HisarTestApplication
 import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.VaultStatus
+import java.util.regex.Pattern
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -89,7 +94,20 @@ class RootScreenUITests {
             val notice = composeRule.onNodeWithTag("notice").fetchSemanticsNode().boundsInRoot
             val done = composeRule.onNodeWithTag("new-secret-key-done").fetchSemanticsNode().boundsInRoot
             assertTrue("the notice clears the form's primary action", notice.bottom <= done.top)
-            composeRule.onNodeWithTag("new-secret-key-done").performClick()
+            composeRule.onNodeWithTag("new-secret-key-done").assertIsNotEnabled()
+            composeRule.onNodeWithTag("new-secret-key-hint").assertTextEquals("Save, print or share the Emergency Kit first.")
+
+            composeRule.waitForTag("new-secret-key-share-kit")
+            composeRule.tap("new-secret-key-share-kit")
+            val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+            val shareSheet = By.pkg(Pattern.compile("android|com\\.android\\.intentresolver"))
+            composeRule.waitUntil(10_000) { device.hasObject(shareSheet) }
+            device.pressBack()
+            composeRule.waitUntil(10_000) { !device.hasObject(shareSheet) }
+            composeRule.waitForTagToGo("new-secret-key-hint")
+            composeRule.onNodeWithTag("new-secret-key-done").assertIsEnabled().performClick()
+            composeRule.waitUntil { "acknowledgeNewAccountRecovery" in backend.allCallName }
+            assertTrue("the sign-up's record ended", backend.allPendingRecovery.isEmpty())
 
             composeRule.waitForTag("biometric-offer-not-now")
             composeRule.onNodeWithTag("biometric-offer-not-now").performClick()

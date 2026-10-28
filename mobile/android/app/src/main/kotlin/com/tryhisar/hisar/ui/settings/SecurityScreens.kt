@@ -130,7 +130,7 @@ private fun BiometricPasswordAlert(onTurnOn: (String) -> Unit, onDismiss: () -> 
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("Enter your master password to unlock with biometrics.")
                 Box(Modifier.background(HisarTheme.colors.fill, RoundedCornerShape(10.dp))) {
-                    FormTextField(password, { password = it }, placeholder = "Master password", testTag = "biometric-password", isSecure = true)
+                    FormTextField(password, { password = it }, placeholder = "Master password", testTag = "biometric-password", isSecure = true, label = "Master password")
                 }
             }
         },

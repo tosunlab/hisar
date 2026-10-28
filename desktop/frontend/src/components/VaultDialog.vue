@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
+import { useModalFocus } from "../modalFocus";
 import { closeVaultDialog, deleteVault, leaveVault, renameVault, store, type VaultDialog } from "../store";
 import { formatRole } from "../util";
 import AppIcon from "./AppIcon.vue";
@@ -57,19 +58,13 @@ function submitDeletion(): void {
   });
 }
 
-function closeOnEscape(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
-    closeVaultDialog();
-  }
-}
-
-onMounted(() => window.addEventListener("keydown", closeOnEscape));
-onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
+const panel = ref<HTMLElement | null>(null);
+useModalFocus(panel, closeVaultDialog);
 </script>
 
 <template>
   <div class="overlay" @click.self="closeVaultDialog">
-    <div class="card vault-dialog" role="dialog" aria-modal="true" aria-labelledby="vault-dialog-title" :data-testid="`vault-dialog-${dialog.mode}`">
+    <div ref="panel" class="card vault-dialog" role="dialog" aria-modal="true" aria-labelledby="vault-dialog-title" tabindex="-1" :data-testid="`vault-dialog-${dialog.mode}`">
       <header class="vault-dialog-header">
         <span class="vault-dialog-icon" :class="{ danger: dialog.mode === 'delete' }">
           <AppIcon :name="dialog.mode === 'rename' ? 'edit' : dialog.mode === 'leave' ? 'signOut' : dialog.mode === 'delete' ? 'trash' : 'lock'" :size="18" />
@@ -100,7 +95,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
       <template v-else-if="dialog.mode === 'leave'">
         <p class="body-text">You lose access to its {{ itemCountText }} on all your devices. An owner can invite you again.</p>
         <div class="actions">
-          <button class="ghost" @click="closeVaultDialog">Cancel</button>
+          <button class="ghost" data-dialog-initial-focus @click="closeVaultDialog">Cancel</button>
           <button class="danger-solid" data-testid="vault-leave-confirm" :disabled="store.isBusy" @click="leaveVault">Leave vault</button>
         </div>
       </template>
@@ -146,7 +141,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <p v-else class="body-text">The vault is empty.</p>
 
         <div class="actions">
-          <button type="button" class="ghost" @click="closeVaultDialog">Cancel</button>
+          <button type="button" class="ghost" data-dialog-initial-focus @click="closeVaultDialog">Cancel</button>
           <button class="danger-solid" type="submit" data-testid="vault-delete-confirm" :disabled="store.isBusy || !canSubmitDeletion">Delete vault</button>
         </div>
       </form>

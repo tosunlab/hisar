@@ -24,6 +24,7 @@ struct NewSecretKeyView: View {
                     Button {
                         _ = PasteboardClipboard().setText(secretKey)
                         isCopied = true
+                        model.reportActivity()
                     } label: {
                         Label(isCopied ? "Copied · clears in 90 seconds" : "Copy Secret Key", systemImage: isCopied ? "checkmark" : "doc.on.doc")
                             .contentTransition(.symbolEffect(.replace))
@@ -35,13 +36,12 @@ struct NewSecretKeyView: View {
                 }
                 Section {
                     if let export {
-                        ShareLink(item: URL(fileURLWithPath: export.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
-                            Label("Save or print Emergency Kit", systemImage: "square.and.arrow.up")
-                                .frame(maxWidth: .infinity)
+                        EmergencyKitShareButton(url: URL(fileURLWithPath: export.emergencyKitPath), label: "Save or print Emergency Kit", onPresent: model.reportActivity) {
+                            isKitShared = true
+                            model.reportActivity()
                         }
                         .applyProminentGlassStyle()
                         .controlSize(.large)
-                        .simultaneousGesture(TapGesture().onEnded { isKitShared = true })
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets())
                         .accessibilityIdentifier("new-secret-key-share-kit")
@@ -73,6 +73,7 @@ struct NewSecretKeyView: View {
                 }
             }
             .applyThemedListStyle()
+            .reportsActivity(to: model)
             .navigationTitle("Save your Secret Key")
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 8) {
@@ -90,8 +91,14 @@ struct NewSecretKeyView: View {
                     }
                     .applyProminentGlassStyle()
                     .controlSize(.large)
-                    .disabled(export == nil || !(isKitShared || isCopied) || model.isBusy)
+                    .disabled(export == nil || !isKitShared || model.isBusy)
                     .accessibilityIdentifier("new-secret-key-done")
+                    if !isKitShared {
+                        Text("Save or print the Emergency Kit to continue.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("new-secret-key-hint")
+                    }
                     Button("Finish later") {
                         Task { await model.postponeNewSecretKey() }
                     }
@@ -140,6 +147,7 @@ struct BiometricOfferView: View {
                 }
             }
             .applyThemedListStyle()
+            .reportsActivity(to: model)
             .navigationTitle("Unlock with \(SettingsView.biometryName)?")
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 8) {
@@ -170,5 +178,17 @@ struct BiometricOfferView: View {
                 .padding(.bottom, 8)
             }
         }
+    }
+}
+
+extension View {
+    // Onboarding screens hold the user for minutes (writing a Secret Key down, printing), so their appearance, taps and
+    // scrolling count as activity for auto-lock; idle time on them still locks.
+    func reportsActivity(to model: AppModel) -> some View {
+        onAppear { model.reportActivity() }
+            .simultaneousGesture(TapGesture().onEnded { model.reportActivity() })
+            .onScrollPhaseChange { _, phase in
+                if phase == .interacting { model.reportActivity() }
+            }
     }
 }

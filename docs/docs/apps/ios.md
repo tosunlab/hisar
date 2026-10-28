@@ -25,6 +25,9 @@ Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconp
 
 An empty writable vault says "Tap + to add your first item." Its **+** menu offers every item type.
 An empty Reader vault instead says "Items appear here once an editor adds them." It has no **+** menu.
+At accessibility text sizes, browsing rows wrap the full title and username, put the vault name on its own line,
+and cap the decorative tile at 44 points. Ordinary text sizes keep the compact row. Android browsing rows also wrap
+titles and subtitles at large font scales without reducing the selected text size.
 
 New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
@@ -100,6 +103,11 @@ to the tests as `TEST_RUNNER_HISAR_UI_TEST_*` variables. The test classes run on
 runs them on two clones of the simulator at once, which is quicker on a Mac with cores to spare but a loss on the CI runners.
 Set `HISAR_UI_TEST_SCREENSHOT_DIRECTORY` to save a PNG of each screen.
 
+The sign-up tests save each Emergency Kit under a unique name because the simulator's Files folder survives between tests.
+The helper waits for the Files picker to become tappable and for saving to finish. Formatted fields wait for each character's
+update before typing the next one. Custom-field clipboard checks paste inside Hisar because iOS does not grant the test
+runner access to the app's clipboard.
+
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.
 
@@ -116,18 +124,19 @@ means something on both the iPhone Duo simulator and the compact one CI uses.
 `FaceIDUITests` posts matching-face notifications every 500 ms on a background timer, starting before the action that requests authentication. Slow XCTest permission and accessibility queries must not delay the simulated face. The timer stops when that step finishes, and authentication errors still fail the test.
 
 `SharingUITests` scrolls the invitation's Send again action into view before revealing its swipe actions. After a confirmation closes, a partially visible invitation label can still count as hittable while its midpoint is over the home indicator.
-
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,
 or denied) is driven through a debug-only preview with a made-up request: launch with `-HisarApprovalPreview ssh` (or
 `cli`, `forwarded`, `signing`, `launcher`, `launcher-share`). Add `-HisarApprovalPreviewTouchID` for Touch ID button
 copy and its symbol, or `-HisarApprovalPreviewPassword` for the master password fallback.
-`-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
+`-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab;
+followed by a kind (`-HisarApprovalBannerPreview launcher-share`), it shows only that request. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
 whole flow between a desktop backend and a HisarKit backend in `make test-end-to-end`.
 
 The waiting-request card has a remember switch when the Mac allows remembering. Approve sends the switch's value.
-The sheet puts the request summary first, shows app warnings separately from details, and names the iPhone's biometric
-check on its Approve button.
+The card shows the app's warning, such as an unsigned app's or a share link's, in full between the request and the
+switch, so approving from the card never skips it. The sheet puts the request summary first, shows app warnings
+separately from details, and names the iPhone's biometric check on its Approve button.
 
 **AutoFill in the simulator.** A simulator build without a development team ("Sign to Run Locally") is registered
 (`pluginkit` lists the extension), but iOS 26.4 does not list it in Settings → General → AutoFill & Passwords, and

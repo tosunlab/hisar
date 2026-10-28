@@ -2,6 +2,8 @@ package com.tryhisar.hisar
 
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -52,6 +54,7 @@ class VaultManagementUITests : HisarUITestCase() {
         scrollTo("editor-website-0")
         composeRule.onNode(hasTestTag("editor-website-0")).assertTextEquals("https://moving.example.com")
         scrollTo("editor-one-time-password")
+        composeRule.onNodeWithContentDescription("Reveal setup key").performClick()
         composeRule.onNode(hasTestTag("editor-one-time-password")).assertTextEquals("otpauth://totp/?secret=JBSWY3DPEHPK3PXP")
         scrollTo("editor-notes")
         composeRule.onNode(hasTestTag("editor-notes")).assertTextEquals("Login notes survive the move")

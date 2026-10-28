@@ -65,6 +65,7 @@ struct UnlockPanel: View {
                     .focused($isPasswordFocused)
                     .onSubmit(submit)
                     .accessibilityIdentifier("unlock-password")
+                    .accessibilityHint(errorMessage ?? "")
             } footer: {
                 if isOffline {
                     Label("Offline. You can still unlock with the copy on this iPhone.", systemImage: "wifi.slash")

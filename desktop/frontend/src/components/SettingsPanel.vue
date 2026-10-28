@@ -33,6 +33,7 @@ const searchQuery = ref("");
 const selectedSectionID = ref<SettingsSectionID>(loadSelectedSectionID());
 const isInvitingPerson = ref(false);
 const isPasswordGeneratorOpen = ref(false);
+const isSavingEmergencyKit = ref(false);
 const searchInput = ref<HTMLInputElement | null>(null);
 const sectionList = ref<HTMLElement | null>(null);
 const sectionContent = ref<HTMLElement | null>(null);
@@ -76,6 +77,12 @@ function selectSection(sectionID: SettingsSectionID): void {
   }
   selectedSectionID.value = sectionID;
   saveSelectedSectionID(sectionID);
+}
+
+function showEmergencyKit(): void {
+  searchQuery.value = "";
+  selectSection("security");
+  isSavingEmergencyKit.value = true;
 }
 
 watch(allVisibleSection, (allSection) => {
@@ -219,7 +226,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
             </section>
           </div>
           <div v-show="displayedSection?.id === 'security'" data-testid="settings-page-security">
-            <SecuritySection />
+            <SecuritySection v-model:is-saving-emergency-kit="isSavingEmergencyKit" />
           </div>
           <div v-show="displayedSection?.id === 'ssh'" data-testid="settings-page-ssh">
             <SSHAgentSection />
@@ -245,7 +252,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
             <ExportSection />
           </div>
           <div v-show="displayedSection?.id === 'account'" data-testid="settings-page-account">
-            <AccountSection />
+            <AccountSection @save-emergency-kit="showEmergencyKit" />
           </div>
           <div v-show="displayedSection?.id === 'help'" data-testid="settings-page-help">
             <HelpSection />

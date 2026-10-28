@@ -4,7 +4,6 @@ import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.ItemDetail
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -18,7 +17,7 @@ class VaultsNavigationTests {
         val model = harness.startModel()
         model.selectedTab.value = Tab.SETTINGS
         val request = EditorRequest.New("personal", ItemDetail(title = "Example", username = "alice"))
-        model.requestedEditor.value = request
+        model.navigation.requestEditor(request)
         runCurrent()
         assertTrue(model.navigation.vaults.path.value.isEmpty(), "a locked app opens nothing")
 
@@ -30,7 +29,7 @@ class VaultsNavigationTests {
         val editor = model.navigation.vaults.path.value.single() as VaultsDestination.Editor
         model.navigation.finishEditor(model.navigation.vaults, editor, savedItemID = "item-1")
         assertEquals(listOf<VaultsDestination>(VaultsDestination.Item("personal", "item-1")), model.navigation.vaults.path.value)
-        assertNull(model.requestedEditor.value, "a closed editor's request is done")
+        assertEquals(emptyList(), model.navigation.allRequestedEditor.value, "a closed editor's request is done")
     }
 
     @Test
@@ -50,11 +49,15 @@ class VaultsNavigationTests {
     }
 
     @Test
-    fun testLockingClosesThePushedScreens() = runTest {
+    fun testLockingClosesOrdinaryScreensWithoutRestoringThem() = runTest {
         val model = AppModelHarness(this).startUnlockedModel()
         model.navigation.vaults.push(VaultsDestination.Vault("personal"))
         model.navigation.search.push(VaultsDestination.Item("personal", "github"))
         model.lock()
+        assertTrue(model.navigation.vaults.path.value.isEmpty())
+        assertTrue(model.navigation.search.path.value.isEmpty())
+        model.lock.unlock(FakeBackend.PASSWORD)
+        runCurrent()
         assertTrue(model.navigation.vaults.path.value.isEmpty())
         assertTrue(model.navigation.search.path.value.isEmpty())
     }

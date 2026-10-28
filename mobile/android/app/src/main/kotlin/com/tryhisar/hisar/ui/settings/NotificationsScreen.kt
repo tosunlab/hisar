@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import com.tryhisar.hisar.MainActivity
 import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.app.NotificationsModel
 import com.tryhisar.hisar.model.PushKind
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormButtonRow
@@ -86,9 +87,9 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
                         isPermissionGranted && !isDistributorInstalled ->
                             "Hisar gets notifications through a UnifiedPush app, such as ntfy, which keeps one connection open for all your apps. Install one, then come back here."
                         isPermissionGranted && !settings.isServerSending ->
-                            "Your Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
+                            "The Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
                         else ->
-                            "A notification only says what kind of thing happened, never what or who it is about. Open and unlock Hisar to see the details. Your Hisar server and your UnifiedPush app see when a notification is sent, but not what it is about."
+                            NotificationsModel.privacyExplanation
                     },
                 )
             },

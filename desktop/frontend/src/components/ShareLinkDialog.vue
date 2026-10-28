@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
+import { useModalFocus } from "../modalFocus";
 import type { ShareLink } from "../api";
 import { closeShareLinkDialog, copyText, createShareLink, store } from "../store";
 import { allShareLinkExpiry, capitalizeFirstLetter, describeShareLinkContent, formatDateTime, formatViewLimit } from "../util";
@@ -72,24 +73,18 @@ function selectLinkText(event: Event): void {
   (event.target as HTMLInputElement).select();
 }
 
-function closeOnEscape(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
-    closeShareLinkDialog();
-  }
-}
-
-onMounted(() => window.addEventListener("keydown", closeOnEscape));
-onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
+const panel = ref<HTMLElement | null>(null);
+useModalFocus(panel, closeShareLinkDialog);
 </script>
 
 <template>
   <div v-if="dialog" class="overlay" @click.self="closeShareLinkDialog">
-    <div class="card panel" role="dialog" aria-modal="true" aria-labelledby="share-link-title" data-testid="share-link-dialog">
+    <div ref="panel" class="card panel" role="dialog" aria-modal="true" aria-labelledby="share-link-title" aria-describedby="share-link-description" tabindex="-1" data-testid="share-link-dialog">
       <header class="panel-header">
         <span class="panel-icon"><AppIcon name="link" :size="18" /></span>
         <div class="panel-heading">
           <h2 id="share-link-title">{{ heading }}</h2>
-          <p class="muted">Anyone with the link can open it, even without a Hisar account.</p>
+          <p id="share-link-description" class="muted">Anyone with the link can open it, even without a Hisar account.</p>
         </div>
         <button class="ghost icon-button" aria-label="Close" @click="closeShareLinkDialog"><AppIcon name="close" /></button>
       </header>

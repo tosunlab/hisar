@@ -167,6 +167,16 @@ struct ItemField: Codable, Hashable {
     var name: String
     var value: String
     var concealed: Bool
+    private static let builtInReferenceNames: Set<String> = ["username", "password", "url", "notes", "one-time code", "public key", "fingerprint", "connection string"]
+
+    static func nameWarning(_ fields: [ItemField], index: Int) -> String {
+        let name = fields[index].name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if builtInReferenceNames.contains(name) {
+            return "A secret reference with this name reaches the built-in field."
+        }
+        return !name.isEmpty && fields.enumerated().contains { $0.offset != index && $0.element.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == name }
+            ? "Secret references need a unique name." : ""
+    }
 }
 
 struct ItemDetail: Codable, Identifiable, Hashable {
@@ -999,6 +1009,26 @@ struct LoginCredential: Codable, Equatable {
     }
 }
 
+/// core/item's rating of a password for the strength meter: level is "" for an empty password, else "weak", "fair", "good"
+/// or "strong", and label is the word the meter shows.
+struct PasswordStrength: Codable, Equatable {
+    var level = ""
+    var label = ""
+    var bits = 0
+}
+
+/// core/item's rule for a new master password: its rating and the one sentence under it. Create account and Change master
+/// password refuse a password whose feedback is blocking.
+struct MasterPasswordFeedback: Codable, Equatable {
+    var level = ""
+    var label = ""
+    var bits = 0
+    var message = ""
+    var isBlocking = false
+
+    var strength: PasswordStrength { PasswordStrength(level: level, label: label, bits: bits) }
+}
+
 struct OneTimeCode: Codable, Equatable {
     var code: String
     var expiresAt: String
@@ -1354,7 +1384,7 @@ struct ShareAwaitingUnlock: Codable, Identifiable, Hashable {
 
     var id: String { invitationID }
     var recipientDisplayName: String { recipientName.isEmpty || recipientName == recipientEmail ? recipientEmail : recipientName }
-    var message: String { "\(recipientDisplayName) accepted your invitation to a vault. Unlock to finish sharing." }
+    var message: String { "\(recipientDisplayName) accepted your invitation to a vault. Unlock to continue sharing." }
 
     enum CodingKeys: String, CodingKey {
         case recipientName, recipientEmail, acceptedAt
@@ -1379,6 +1409,10 @@ struct ShareInvitations: Codable, Hashable {
     var allSent: [SentShareInvitation]
     var allWaiting: [WaitingShareInvitation]
     var completionError: String
+
+    var allRequiringReview: [SentShareInvitation] {
+        allSent.filter { $0.state == SentShareInvitation.stateAccepted && $0.requiresConfirmation == true }
+    }
 
     enum CodingKeys: String, CodingKey {
         case allReceived = "received"
@@ -1845,6 +1879,11 @@ struct CredentialChangeResult: Codable, Equatable {
     var pendingOperationId: String = ""
     var setupState: String = ""
     var problems: [String] = []
+
+    var isWaitingOnlyForKit: Bool {
+        AccountLifecycleLogic.isWaitingOnlyForKit(setupState: setupState, secretKey: secretKey, problems: problems)
+            && localError.isEmpty && keychainError.isEmpty
+    }
 
     init(status: VaultStatus, secretKey: String = "", signedOutDeviceCount: Int = 0, keychainError: String = "", localError: String = "", emergencyKitPath: String = "", pendingOperationId: String = "", setupState: String = "", problems: [String] = []) {
         self.status = status

@@ -1,17 +1,36 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import type { SSHKeyType } from "../api";
-import { cancelEditing, generateSSHKey, importSSHKey, store } from "../store";
+import { onBeforeUnmount, ref, watch } from "vue";
+import { createEmptyItem, type SSHKeyType } from "../api";
+import { cancelEditing, generateSSHKey, importSSHKey, store, takeRestoredDraft } from "../store";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
 
 type Mode = "generate" | "import";
 
-const mode = ref<Mode>("generate");
-const title = ref("");
-const keyType = ref<SSHKeyType>("ed25519");
-const privateKeyText = ref("");
-const passphrase = ref("");
+const restored = takeRestoredDraft()?.sshKey;
+const mode = ref<Mode>(restored?.mode ?? "generate");
+const title = ref(restored?.title ?? "");
+const keyType = ref<SSHKeyType>(restored?.keyType ?? "ed25519");
+const privateKeyText = ref(restored?.privateKeyText ?? "");
+const passphrase = ref(restored?.passphrase ?? "");
+
+watch([mode, title, keyType, privateKeyText, passphrase], () => {
+  store.editorDraft = {
+    mode: "create-ssh-key",
+    vaultID: store.selectedVaultID,
+    itemID: "",
+    item: { ...createEmptyItem(), title: title.value },
+    urlText: "",
+    isDirty: mode.value !== "generate" || title.value !== "" || keyType.value !== "ed25519" || privateKeyText.value !== "" || passphrase.value !== "",
+    sshKey: { mode: mode.value, title: title.value, keyType: keyType.value, privateKeyText: privateKeyText.value, passphrase: passphrase.value },
+  };
+}, { immediate: true });
+
+onBeforeUnmount(() => {
+  store.editorDraft = null;
+  privateKeyText.value = "";
+  passphrase.value = "";
+});
 
 const allKeyTypeOption: { value: SSHKeyType; label: string; description: string }[] = [
   { value: "ed25519", label: "Ed25519", description: "Recommended. Small, fast and supported by current servers and GitHub." },
@@ -19,14 +38,13 @@ const allKeyTypeOption: { value: SSHKeyType; label: string; description: string 
 ];
 
 async function submitKey(): Promise<void> {
-  if (mode.value === "generate") {
-    await generateSSHKey(title.value, keyType.value);
-    return;
-  }
-  if (await importSSHKey(title.value, privateKeyText.value, passphrase.value)) {
+  const saved = mode.value === "generate"
+    ? await generateSSHKey(title.value, keyType.value)
+    : await importSSHKey(title.value, privateKeyText.value, passphrase.value);
+  if (saved) {
     privateKeyText.value = "";
+    passphrase.value = "";
   }
-  passphrase.value = "";
 }
 </script>
 
