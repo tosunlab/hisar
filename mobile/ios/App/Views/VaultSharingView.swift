@@ -15,6 +15,7 @@ struct VaultSharingView: View {
     @State private var roleChange: VaultRoleChange?
     @FocusState private var isEmailFocused: Bool
     @State private var presentationDetent = PresentationDetent.large
+    @State private var path: [SharingMemberRoute] = []
 
     private var vaultName: String { sharing?.vault.name ?? model.findVault(vaultID: vaultID)?.name ?? "Vault" }
     private var isOwner: Bool { sharing?.isOwner ?? (model.findVault(vaultID: vaultID)?.role == Member.vaultRoleOwner) }
@@ -22,7 +23,7 @@ struct VaultSharingView: View {
     private var canSend: Bool { trimmedEmail.contains("@") && !isSending }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 if let errorMessage = model.errorMessage {
                     Section {
@@ -72,7 +73,7 @@ struct VaultSharingView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: SharingMemberRoute.self) { route in
                 if let member = sharing?.allMember.first(where: { $0.accountID == route.accountID }) {
-                    VaultMemberView(vaultID: vaultID, vaultName: vaultName, member: member, isOwner: isOwner) {
+                    VaultMemberView(vaultID: vaultID, vaultName: vaultName, member: member, isOwner: isOwner, close: { path.removeAll() }) {
                         await load()
                     }
                 } else {
@@ -275,10 +276,12 @@ struct VaultMemberView: View {
     var vaultName: String
     var member: Member
     var isOwner: Bool
+    /// Returns to the members. The sheet owns the path: once a reload drops this member, the page's own DismissAction may
+    /// belong to a replaced view and close the whole sheet instead.
+    var close: () -> Void
     var reload: () async -> Void
 
     @EnvironmentObject private var model: AppModel
-    @Environment(\.dismiss) private var dismiss
     @State private var pendingRole: String?
     @State private var isRemoveConfirmationShown = false
     @State private var roleChange: VaultRoleChange?
@@ -386,8 +389,8 @@ struct VaultMemberView: View {
             Button("Remove", role: .destructive) {
                 Task {
                     if await model.removeVaultMember(vaultID: vaultID, accountID: member.accountID) {
+                        close()
                         await reload()
-                        dismiss()
                     }
                 }
             }

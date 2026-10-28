@@ -1020,9 +1020,9 @@ struct OrganizationMemberView: View {
                 confirmLabel: "Remove from \(organizationName)", confirmID: "confirm-remove-organization-member", refusal: $refusal, onCancel: { isRemoveConfirmationShown = false }
             ) {
                 if await model.removeOrganizationMember(organizationID: organizationID, accountID: member.accountID) {
-                    await reload()
                     isRemoveConfirmationShown = false
                     dismiss()
+                    await reload()
                 } else {
                     refusal = model.takeRefusal(title: "Remove from \(organizationName)")
                 }
