@@ -301,7 +301,7 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: docs/package-lock.json
-      - run: make test-docs
+      - run: cd docs && npm ci --no-audit --no-fund && npm run typecheck
       - name: Build the image and check that it serves the site
         run: |
           docker build --quiet --tag hisar-docs docs
