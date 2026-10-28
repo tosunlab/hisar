@@ -136,8 +136,8 @@ only Android calls:
 `cmd/hisar-ui-test-mac` plays the user's Mac in the Android phone approval UI test, which `scripts/test-android-ui.sh`
 starts it for: it signs up, sends the phone real approval requests, and saves each answer it verified in the Personal vault.
 `cmd/hisar-ui-test-partner` plays the sharing and organization partner of both phones' UI tests, which
-`scripts/ui-test-partner.sh` starts it for: it signs up, sets up the shared vault and the organization, writes a ready
-file, and answers every 2 seconds, so the run derives the partner's keys once.
+`scripts/ui-test-partner.sh` starts it for: it signs up, writes a ready file and answers every 2 seconds, so the run
+derives the partner's keys once and the UI tests never run the `hisar` CLI.
 
 ### mobile/android
 
@@ -322,9 +322,11 @@ check cache repair, concurrent reuse and Python failures.
   `fun test…` in `mobile/android/*/src/test` and `src/androidTest`. Each iPhone test needs an Android test of the same
   name, a row in its `renamed` table, or a reason in `notApplicable`. `model/src/test/resources/ios-test-parity-expected-missing.txt`
   lists the iPhone tests not ported yet and only shrinks: a ported test fails the check until its line is deleted.
+- The device UI tests (iPhone `Tests/UI`, Android `src/androidTest`) keep only the journeys a user depends on end to end
+  and the security checks only a device can make; a screen's logic gets unit tests (`HisarTests`, `:model`) instead. A
+  security assertion leaves a deleted UI test only by moving into a kept one.
 - `make test-android-ui` (`scripts/test-android-ui.sh`) starts `hisar-server`, the SMTP sink and the sharing partner
-  through `scripts/ui-test-partner.sh`, which `make test-ios-ui` shares, plus `hisar-ui-test-mac` and
-  `answer_as_other_device`, the `hisar` CLI as the user's other device in `CrossDeviceSyncUITests`. Each test reads its
+  through `scripts/ui-test-partner.sh`, which `make test-ios-ui` shares, plus `hisar-ui-test-mac`. Each test reads its
   account as `HISAR_UI_TEST_<NAME>_INVITE_LINK` and `_EMAIL`, the iPhone's names; invites are single-use, so a new
   server test adds a `ui_test_add_account` line. The test orchestrator runs each test in a new process with the app's
   data cleared. `ANDROID_UI_TESTS=<class or test names>` or `ANDROID_UI_TESTS=smoke` runs a subset.

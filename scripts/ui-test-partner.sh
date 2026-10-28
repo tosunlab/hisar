@@ -1,7 +1,7 @@
 # Sourced by scripts/test-ios-ui.sh and scripts/test-android-ui.sh, so both apps' UI tests meet the same server.
 # Builds and starts hisar-server and an SMTP sink against HISAR_DATABASE_URL (an empty, disposable database), creates the
-# invites the UI tests sign up with, and starts hisar-ui-test-partner, the partner who owns the shared vault and the
-# organization the tests join; it signs up, sets them up and then answers in the background as the partner's own Hisar would.
+# invites the UI tests sign up with, and starts hisar-ui-test-partner, which signs up a partner and answers in the
+# background as the partner's own Hisar would.
 #
 # Needs ROOT, UI_TEST_PLATFORM_NAME (iOS or Android) and UI_TEST_PORT. Leaves the server's address in HISAR_PUBLIC_URL
 # and every value the tests read in UI_TEST_VALUES, as NAME=value. On exit it stops what it started; a caller that needs
@@ -71,40 +71,29 @@ ui_test_start() {
   curl -sf --retry 20 --retry-all-errors --retry-delay 1 "$HISAR_PUBLIC_URL/healthz" >/dev/null
 
   EMAIL_PREFIX=$(printf '%s' "$UI_TEST_PLATFORM_NAME" | tr '[:upper:]' '[:lower:]')
-  SHARING_EMAIL="$EMAIL_PREFIX-sharing-$(date +%s)-$RANDOM@example.com"
-  BANNER_EMAIL="$EMAIL_PREFIX-banner-$(date +%s)-$RANDOM@example.com"
-  ORGANIZATION_JOIN_EMAIL="$EMAIL_PREFIX-organization-join-$(date +%s)-$RANDOM@example.com"
-
-  # The partner owns "Infrastructure", shared with the banner account before it exists, and is the admin of Northwind
-  # (§5.11), which invites the joining account before it exists.
   PARTNER_EMAIL="$EMAIL_PREFIX-partner-$(date +%s)-$RANDOM@example.com"
   "$ROOT/bin/hisar-ui-test-partner" -invite "$(ui_test_create_invite "$PARTNER_EMAIL")" -email "$PARTNER_EMAIL" \
-    -name "$UI_TEST_PLATFORM_NAME Partner" -password 'partner master password' -share-email "$BANNER_EMAIL" \
-    -join-email "$ORGANIZATION_JOIN_EMAIL" -ready-file "$T/partner-ready" >"$T/partner.log" 2>&1 &
+    -name "$UI_TEST_PLATFORM_NAME Partner" -password 'partner master password' \
+    -ready-file "$T/partner-ready" >"$T/partner.log" 2>&1 &
   UI_TEST_PARTNER=$!
   for _ in $(seq 120); do [ -e "$T/partner-ready" ] || ! kill -0 "$UI_TEST_PARTNER" 2>/dev/null && break; sleep 1; done
-  [ -e "$T/partner-ready" ] || { echo "hisar-ui-test-partner did not set up the partner:" >&2; cat "$T/partner.log" >&2; exit 1; }
+  [ -e "$T/partner-ready" ] || { echo "hisar-ui-test-partner did not sign up the partner:" >&2; cat "$T/partner.log" >&2; exit 1; }
 
   UI_TEST_VALUES=(
     "HISAR_UI_TEST_SERVER=$HISAR_PUBLIC_URL"
     "HISAR_UI_TEST_SHARING_PARTNER_EMAIL=$PARTNER_EMAIL"
   )
-  # The iPhone's tests sign up with the first five addresses, written in the tests.
+  # The iPhone's tests sign up with the first three addresses, written in the tests.
   ui_test_add_account "" "$EMAIL_PREFIX-ui@example.com"
   ui_test_add_account BIOMETRIC_ "$EMAIL_PREFIX-face-id@example.com"
-  ui_test_add_account ONE_TIME_CODE_ "$EMAIL_PREFIX-one-time-code@example.com"
   ui_test_add_account PASSKEY_ "$EMAIL_PREFIX-passkey@example.com"
-  ui_test_add_account FAVORITES_ "$EMAIL_PREFIX-favorites@example.com"
-  ui_test_add_account WIDE_LAYOUT_ "$EMAIL_PREFIX-wide-layout@example.com"
-  ui_test_add_account SHARING_ "$SHARING_EMAIL"
-  ui_test_add_account BANNER_ "$BANNER_EMAIL"
+  ui_test_add_account SHARING_ "$EMAIL_PREFIX-sharing-$(date +%s)-$RANDOM@example.com"
   ui_test_add_account LIFECYCLE_ "$EMAIL_PREFIX-lifecycle-$(date +%s)-$RANDOM@example.com"
-  ui_test_add_account ORGANIZATION_JOIN_ "$ORGANIZATION_JOIN_EMAIL"
   ui_test_add_account ORGANIZATION_ADMIN_ "$EMAIL_PREFIX-organization-admin-$(date +%s)-$RANDOM@example.com"
 }
 
-# Each test signs up with a single-use invite and an address written in the test, and the partner shares with and
-# invites addresses before they exist, so a test can only run a second time against an emptied database.
+# Each test signs up with a single-use invite, most with an address written in the test, so a test can only run a second
+# time against an emptied database.
 ui_test_restart() {
   command -v psql >/dev/null || { echo "psql is not on PATH, so the database cannot be emptied for a second run" >&2; return 1; }
   ui_test_stop

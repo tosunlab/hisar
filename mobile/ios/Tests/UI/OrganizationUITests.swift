@@ -1,79 +1,10 @@
 import XCTest
 
-// scripts/test-ios-ui.sh runs a partner (scripts/ui-test-partner.sh): the admin of Northwind, whose team Platform has Deploy as
-// editor and Audit as reader. It adds the joining account to Platform once it joined, removes it again once it saved
-// "Remove me" in Deploy, accepts every organization invitation and writes "Seen by partner" into Runbooks once it reads it.
+// scripts/test-ios-ui.sh runs a partner (scripts/ui-test-partner.sh) who accepts every organization invitation, gives team
+// members the keys of its vaults and writes "Seen by partner" into Runbooks once it reads it.
 final class OrganizationUITests: HisarUITestCase {
     private func findElement(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any)[identifier].firstMatch
-    }
-
-    private func findText(containing text: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
-    }
-
-    func testJoinAnOrganizationAndReachItsVaultsThroughATeam() throws {
-        let inviteLink = try readEnvironment("HISAR_UI_TEST_ORGANIZATION_JOIN_INVITE_LINK")
-        let email = try readEnvironment("HISAR_UI_TEST_ORGANIZATION_JOIN_EMAIL")
-        app.launch()
-        _ = signUp(inviteLink: inviteLink, email: email, name: "iOS Organization Member")
-
-        let acceptButton = app.buttons["banner-accept-organization-invitation"]
-        waitFor(acceptButton, timeout: 30)
-        saveScreenshot("organization-invitation-banner")
-        acceptButton.tap()
-
-        let deployVault = app.buttons["vault-Deploy"]
-        let auditVault = app.buttons["vault-Audit"]
-        waitFor(deployVault, timeout: 120)
-        waitFor(auditVault, timeout: 60)
-        XCTAssertTrue(deployVault.label.contains("Organization · Editor"), deployVault.label)
-        XCTAssertTrue(auditVault.label.contains("Organization · Reader"), auditVault.label)
-        let northwindSection = findElement("organization-section-Northwind")
-        waitFor(northwindSection)
-        XCTAssertLessThan(northwindSection.frame.minY, min(deployVault.frame.minY, auditVault.frame.minY), "both vaults are listed under Northwind")
-        saveScreenshot("organization-vaults")
-
-        auditVault.tap()
-        let auditItem = app.buttons["item-Audit log"]
-        waitFor(auditItem, timeout: 30)
-        XCTAssertFalse(app.buttons["add-item"].exists, "readers cannot add items")
-        auditItem.tap()
-        waitFor(findElement("favorite-item"))
-        XCTAssertFalse(app.buttons["edit-item"].exists, "readers cannot edit")
-        goBack()
-        goBack()
-
-        deployVault.tap()
-        waitFor(app.buttons["item-Release signing"], timeout: 30)
-        XCTAssertFalse(app.buttons["share-vault"].exists, "only owners get Share")
-        app.buttons["vault-members"].tap()
-        let platformRow = findElement("vault-team-Platform")
-        waitFor(platformRow, timeout: 30)
-        XCTAssertTrue(platformRow.label.contains("Editor"), platformRow.label)
-        XCTAssertFalse(app.textFields["share-email"].exists, "an organization vault has no Invite by email")
-        XCTAssertFalse(app.buttons["give-vault-to-team"].exists, "only admins give the vault to a team")
-        saveScreenshot("organization-vault-sharing-member")
-        app.buttons["vault-sharing-done"].tap()
-
-        choose("leave-vault", from: "vault-actions")
-        let blockedAlert = app.alerts["Can't do that"]
-        waitFor(blockedAlert)
-        blockedAlert.buttons["OK"].tap()
-
-        choose("add-login", from: "add-item")
-        type("Remove me", into: app.textFields["editor-title"])
-        type("member", into: app.textFields["editor-username"])
-        app.buttons["editor-save"].tap()
-        XCTAssertTrue(app.buttons["editor-save"].waitForNonExistence(timeout: 30), "the item is saved")
-
-        // The partner sees the item, removes this account from Platform and gives both vaults a new key, which can happen
-        // before the vault's list shows the item: the notice is what this account sees.
-        waitFor(findText(containing: "“Deploy” is no longer available"), timeout: 180)
-        waitFor(findText(containing: "“Audit” is no longer available"), timeout: 30)
-        XCTAssertTrue(deployVault.waitForNonExistence(timeout: 30), "Deploy is gone with the team")
-        XCTAssertFalse(northwindSection.exists, "no vaults are left under Northwind")
-        saveScreenshot("organization-vaults-removed")
     }
 
     func testCreateAnOrganizationAndGiveItsTeamAVault() throws {
