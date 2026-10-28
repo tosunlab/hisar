@@ -13,10 +13,12 @@ on pushes to `main`: a merge was already tested as its pull request. A new push 
 ## Continuous integration
 
 `.github/workflows/ci.yml` (Linux runners): gofmt, vet, all Go tests against Postgres (failing on any skipped test except the
-`TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
-binaries, the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed), the desktop frontend
-(typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pull request changes the desktop app or what it builds from, as below), the extension (tests, Chromium end-to-end tests, zip, and Firefox end-to-end tests on Firefox 140 and 153),
-the share link page in Chromium against the server, the docs site (typecheck, build, and its image built and served once), the admin dashboard (typecheck, tests, the `admin/src/themes.css`
+`TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform and the end-to-end test of the built
+binaries (unless the pull request changes only `extension/`, `docs/`, `raycast/`, `mobile/ios/`, `mobile/android/` or Markdown),
+the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed; when the server or what it
+builds from changes), the desktop app's Linux build (when the desktop app or what it builds from changes, as below), the extension
+(tests, Chromium end-to-end tests and zip, when `extension/` changes) with the share link page in Chromium against the server (when
+the extension or the server changes), the admin dashboard (typecheck, tests, the `admin/src/themes.css`
 freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
 `core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
 release APKs, lint and the JVM tests in one job, and the instrumented tests on x86_64 API 36 emulators against a local server in
@@ -24,11 +26,19 @@ two more, split by the test classes' measured run times in `scripts/ui-test-part
 `mobile/android/`, `mobile/hisarkit/`, `mobile/go.mod`, the Android scripts, the themes,
 `core/`, `go.work` or the workflow, and not while the pull request has the label `skip-android`, for changes whose Android build
 and tests already passed locally with `make build-android-aar build-android test-android test-android-ui`; add the label before
-pushing).
+pushing). One job runs the small checks, each when its app changes: the desktop frontend (typecheck, tests, bundle check), the docs
+site (typecheck, build, and its image built and served once), the extension's Firefox end-to-end tests on Firefox 140 and 153, the
+omp plugin and the Raycast extension. A change to the Makefile or to the workflow runs every job.
+
+`.github/workflows/caches.yml` runs on every push to `main`: it compiles every Go test and builds the Android app and both
+`HisarKit` builds, so main's caches hold what pull requests restore; a pull request saves a cache only when main has none for its
+key. It also deletes a closed pull request's caches, which otherwise count against the repository's 10 GB and evict main's.
+Gradle's configuration cache is saved only with the repository secret `GRADLE_ENCRYPTION_KEY` (`openssl rand -base64 16`).
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
-(HisarKit, Xcode project check, unit tests, then UI tests against a local server in three jobs that run the one build, split by
-the test classes' measured run times in `scripts/ui-test-parts.sh`) on
+(HisarKit, Xcode project check, unit tests, then UI tests against a local server in three parts, split by the test classes'
+measured run times in `scripts/ui-test-parts.sh`: the build job runs part 1 on the simulator it booted while building, and parts
+2 and 3 start alongside it, boot their simulators while the app builds and then run its build) on
 GitHub's `macos-26` runners with Xcode 26.6. macOS
 minutes count ten times against the plan's included minutes, so each job runs only when the pull request, compared with its base
 branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
@@ -43,8 +53,8 @@ branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
   reads the labels the pull request has when it starts. The jobs then report as skipped;
 - or by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to add the iPhone job).
 
-A run takes roughly 15–25 minutes for the Mac app, and for the iPhone app about 10 minutes of build then 18 minutes of UI tests in
-three jobs, so about 150–250 included minutes for the Mac app alone and up to 900 with the iPhone app. A desktop release build costs
+A run takes roughly 15–25 minutes for the Mac app, and for the iPhone app about 10 minutes of build then 15 minutes of UI tests in
+three parts, so about 150–250 included minutes for the Mac app alone and up to 900 with the iPhone app. A desktop release build costs
 about the same as the Mac app job.
 
 ## Releases
