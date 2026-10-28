@@ -66,6 +66,8 @@ class IosTestParityTest {
                 "Only iOS creates a separate UIKit privacy window; Android draws its privacy cover inside the themed Compose root",
             "testListsStayBesideWhatTheyOpenOnAWideScreen" to
                 "The iPhone app lays Vaults, Search and Settings out as split views for the open iPhone Duo; the Android app has one layout for every width so far",
+            "testAnApprovalPreviewVerifiesWithTheAccountsKey" to
+                "Android checks the preview in Go through HisarKit (OpenApprovalPush); core/approval's tests cover the signature",
         )
     }
 
