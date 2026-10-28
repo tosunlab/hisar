@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { configureSSHConfig, removeSSHConfig, setCompactSSHApproval, setPhoneApproval, setSigningRemember, setSSHRemember, store } from "../store";
+import { configureSSHConfig, openFromSettings, removeSSHConfig, setCompactSSHApproval, setPhoneApproval, setSigningRemember, setSSHRemember, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
+import { isMacPlatform } from "../util";
 
 const isRowVisible = useSettingsRowVisibility();
 const allSSHRememberOption = [
@@ -105,6 +106,7 @@ const allSigningRememberOption = [
           <div class="setting-text">
             <strong>Approve requests on my smart device</strong>
             <p class="muted">Requests to use SSH keys, the command-line tool, coding agents and apps also appear on your smart device while Hisar is open and unlocked on both devices.</p>
+            <p v-if="isMacPlatform()" class="muted">On your phone, turn on Settings → Mac approvals → Approve requests from my Mac.</p>
           </div>
           <input
             class="switch"
@@ -122,6 +124,13 @@ const allSigningRememberOption = [
     <div v-show="isRowVisible('commit-signing')" class="settings-block">
       <p class="section-label">Git</p>
       <div class="settings-group">
+        <div class="setting">
+          <div class="setting-text">
+            <strong>Set up commit signing</strong>
+            <p class="muted">Choose an SSH key to see its setup commands. Hisar does not change your Git configuration.</p>
+          </div>
+          <button data-testid="open-commit-signing" @click="openFromSettings('commit-signing')">Set up commit signing…</button>
+        </div>
         <div class="setting" data-testid="commit-signing">
           <div class="setting-text">
             <strong>Remember commit signing</strong>

@@ -41,7 +41,7 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "clipboard", title: "Clear copied values after 90 seconds", keywords: "clipboard copy clear" },
       { id: "change-master-password", title: "Change master password", keywords: "password change new rotate" },
       { id: "replace-secret-key", title: "Replace Secret Key", keywords: "secret key rotate new emergency kit leaked compromised" },
-      { id: "emergency-kit", title: "Emergency Kit", keywords: "secret key pdf recovery backup new device" },
+      { id: "emergency-kit", title: "Emergency Kit", keywords: "show copy scan qr secret key pdf recovery backup new device" },
     ],
   },
   {
@@ -53,7 +53,7 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "ssh-remember", title: "Remember SSH approvals", keywords: "don't ask again hour until locks remember ssh approval duration" },
       { id: "compact-ssh-approvals", title: "Compact SSH approvals", keywords: "approval card notification dialog" },
       { id: "phone-approval", title: "Approve requests on my smart device", keywords: "phone iphone android smart device allow approvals approve requests" },
-      { id: "commit-signing", title: "Remember commit signing", keywords: "git signature sign gpg always asks rebase remember commit tag" },
+      { id: "commit-signing", title: "Set up commit signing and remember approvals", keywords: "git signature sign gpg always asks rebase remember commit tag setup commands ssh key" },
     ],
   },
   {
@@ -64,7 +64,7 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "command-line-tool", title: "hisar command-line tool", keywords: "cli install uninstall path terminal" },
       { id: "command-line-integration", title: "Let the command-line tool use Hisar", keywords: "cli terminal approve session" },
       { id: "command-line-launchers", title: "Launchers", keywords: "raycast launcher approved apps revoke" },
-      { id: "coding-agents", title: "Coding agents", keywords: "hisar mcp claude code codex cursor omp tern plugin connect disconnect agent available to agents vaults use always permissions while hisar is locked" },
+      { id: "coding-agents", title: "Coding agents", keywords: "hisar mcp claude code codex hermes cursor omp tern plugin connect disconnect agent available to agents vaults use always permissions while hisar is locked" },
       { id: "agent-sign-in", title: "Website sign-in", keywords: "login website computer use hermes cua accessibility password chrome brave edge" },
       { id: "agent-grants", title: "Allowed without asking", keywords: "coding agent remembered approval grant revoke always hour day" },
       { id: "agent-sessions", title: "Running agents", keywords: "omp coding agent session revoke remembered secrets" },
@@ -113,7 +113,7 @@ export const allSettingsSection: SettingsSection[] = [
     label: "Import & Export",
     icon: "export",
     allRow: [
-      { id: "import", title: "Import from another password manager", keywords: "1password bitwarden csv chrome firefox safari edge export" },
+      { id: "import", title: "Import a Hisar export or another password manager", keywords: "hisar export .hisar json 1password 1pux bitwarden lastpass csv chrome firefox safari edge" },
       { id: "export", title: "Export your data", keywords: "export backup json download data encrypted passphrase plain file" },
     ],
   },

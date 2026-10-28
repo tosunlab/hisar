@@ -7,7 +7,8 @@ final class FakeNotificationCenter: NotificationScheduling, @unchecked Sendable 
     private var authorization: NotificationAuthorization
     private var isGrantedOnRequest: Bool
     private(set) var requestCount = 0
-    private(set) var allAdded: [UNNotificationRequest] = []
+    private var addedNotifications: [UNNotificationRequest] = []
+    var allAdded: [UNNotificationRequest] { lock.withLock { addedNotifications } }
     private(set) var allRemovedIdentifier: [String] = []
 
     init(authorization: NotificationAuthorization = .notDetermined, isGrantedOnRequest: Bool = true) {
@@ -27,14 +28,18 @@ final class FakeNotificationCenter: NotificationScheduling, @unchecked Sendable 
         lock.withLock { authorization }
     }
 
-    func add(_ request: UNNotificationRequest) async throws {
-        lock.withLock { allAdded.append(request) }
+    func setAuthorization(_ value: NotificationAuthorization) {
+        lock.withLock { authorization = value }
     }
 
-    func removeNotifications(withIdentifiers allIdentifier: [String]) {
+    func add(_ request: UNNotificationRequest) async throws {
+        lock.withLock { addedNotifications.append(request) }
+    }
+
+    func removeNotifications(withIdentifiers allIdentifier: [String]) async {
         lock.withLock {
             allRemovedIdentifier.append(contentsOf: allIdentifier)
-            allAdded.removeAll { allIdentifier.contains($0.identifier) }
+            addedNotifications.removeAll { allIdentifier.contains($0.identifier) }
         }
     }
 }
@@ -87,6 +92,23 @@ final class PushNotificationTests: XCTestCase {
         XCTAssertEqual(center.requestCount, 0, "permission is never asked again")
     }
 
+    func testForegroundRefreshRegistersOnlyNewlyAllowedNotifications() async {
+        for initial in [NotificationAuthorization.denied, .notDetermined] {
+            registerCount = 0
+            let model = await createUnlockedModel(authorization: initial)
+            await model.refreshExternalSetupStatus()
+            XCTAssertEqual(registerCount, 0)
+            XCTAssertEqual(center.requestCount, 0)
+            center.setAuthorization(.allowed)
+            await model.refreshExternalSetupStatus()
+            XCTAssertEqual(model.notifications.authorization, .allowed)
+            XCTAssertEqual(registerCount, 1)
+            await model.refreshExternalSetupStatus()
+            XCTAssertEqual(registerCount, 1, "unchanged permission does not register again")
+            XCTAssertEqual(center.requestCount, 0, "returning from Settings never asks for permission")
+        }
+    }
+
     func testTurningAKindOffReachesTheBackend() async {
         let model = await createUnlockedModel(authorization: .allowed)
         await model.notifications.setEnabled(.sharing, isEnabled: false)
@@ -134,6 +156,8 @@ final class PushNotificationTests: XCTestCase {
         XCTAssertFalse(reminder.content.body.contains("git"), "the reminder names nothing from the request")
         XCTAssertFalse(reminder.content.body.contains("MacBook"))
         model.handleWillEnterForeground()
+        let cleared = XCTNSPredicateExpectation(predicate: NSPredicate { [center] _, _ in center?.allAdded.isEmpty == true }, object: nil)
+        await fulfillment(of: [cleared], timeout: 5)
         XCTAssertTrue(center.allAdded.isEmpty)
     }
 

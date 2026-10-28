@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
+import android.os.Process
 import androidx.test.services.storage.TestStorage
 import com.tryhisar.hisar.HisarUITestCase
 import org.json.JSONObject
@@ -29,7 +30,7 @@ class AccountLifecycleUITests : HisarUITestCase() {
                 val oldSecretKey = signUp(readArgument("HISAR_UI_TEST_LIFECYCLE_INVITE_LINK"), email, "Lifecycle")
                 addLogin("Surviving login", "recovery-user", "recovery-password-canary", "https://recovery.example.com")
                 goBack()
-                openSettings("open-security")
+                openSettings("open-account")
                 tap("open-change-master-password")
                 type(MASTER_PASSWORD, "change-password-current")
                 type(NEW_MASTER_PASSWORD, "change-password-new")
@@ -42,15 +43,17 @@ class AccountLifecycleUITests : HisarUITestCase() {
                 type(NEW_MASTER_PASSWORD, "replace-secret-key-password")
                 tap("replace-secret-key-submit")
                 tap("replace-secret-key-confirm")
-                val kit = preparePendingRecoveryKit(email, NEW_MASTER_PASSWORD)
+                waitFor("new-secret-key", ACCOUNT_KEY_TIMEOUT)
+                assertFalse("the owed replacement kit must not open account recovery", exists(hasTestTag("pending-recovery-password")))
+                val secretKey = readText("new-secret-key")
+                assertTrue("the replacement shows a new Secret Key", secretKey != oldSecretKey)
+                saveScreenshot("account-life-new-secret-key")
                 checkpoint.openInternalOutputFile(RECOVERY_CHECKPOINT).bufferedWriter().use { output ->
                     output.write(JSONObject().apply {
                         put("email", email)
                         put("oldSecretKey", oldSecretKey)
-                        put("secretKey", kit.secretKey)
-                        put("recordTag", kit.recordTag)
-                        put("processID", kit.processID)
-                        put("phase", kit.phase)
+                        put("secretKey", secretKey)
+                        put("processID", Process.myPid())
                     }.toString())
                 }
                 return
@@ -58,8 +61,19 @@ class AccountLifecycleUITests : HisarUITestCase() {
             "finish-after-process-restart" -> {
                 val saved = JSONObject(checkpoint.openInternalInputFile(RECOVERY_CHECKPOINT).bufferedReader().use { it.readText() })
                 assertEquals(email, saved.getString("email"))
-                val kit = PendingRecoveryKit(saved.getString("recordTag"), saved.getString("secretKey"), saved.getString("phase"), saved.getInt("processID"))
-                finishPendingRecovery(email, NEW_MASTER_PASSWORD, preparedKit = kit)
+                check(Process.myPid() != saved.getInt("processID")) { "the kit must resume in a different app process" }
+                waitFor("unlock-password", ACCOUNT_KEY_TIMEOUT)
+                type(NEW_MASTER_PASSWORD, "unlock-password")
+                tap("unlock-submit")
+                waitFor("emergency-kit-save", ACCOUNT_KEY_TIMEOUT)
+                tap("emergency-kit-save")
+                waitFor("new-secret-key", ACCOUNT_KEY_TIMEOUT)
+                assertEquals("the replacement kit survives a process restart", saved.getString("secretKey"), readText("new-secret-key"))
+                saveEmergencyKit("new-secret-key-save-kit")
+                tapWhenEnabled("new-secret-key-done")
+                waitForGone("new-secret-key")
+                if (exists(hasTestTag("biometric-offer-not-now"))) tap("biometric-offer-not-now")
+                saved.getString("secretKey")
             }
             else -> error("unknown recovery test phase $phase")
         }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import type { VaultSummary } from "../api";
+import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
 import {
   createApiMock,
   createDevice,
@@ -45,6 +46,7 @@ function resetStore(familyRole = "owner"): void {
     status: createStatus("unlocked"),
     allVault: createVaultList(familyRole),
     selectedVaultID: "family",
+    listVaultID: "family",
     allItem: [createItem()],
     selectedItem: null,
     editorMode: "view",
@@ -147,7 +149,7 @@ describe("Vault sharing panel", () => {
     await flushPromises();
     const confirmation = wrapper.find('[data-testid="share-recipient-confirmation"]');
     const all = confirmation.findAll("button").map((button) => button.element);
-    expect(all.map((button) => button.textContent)).toEqual(["Cancel", "Give access"]);
+    expect(all.map((button) => button.textContent)).toEqual(["Cancel", "Codes don't match", "Give access"]);
     expect(document.activeElement).toBe(all[0]);
     for (const shiftKey of [false, false, true, true]) {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey, cancelable: true }));
@@ -179,13 +181,30 @@ describe("Vault sharing panel", () => {
     expect(bob.text()).not.toContain("you");
     expect((bob.find('[data-testid="role-select-BOB222"]').element as HTMLSelectElement).value).toBe("editor");
     for (const role of panel.findAll("select.role-select")) {
-      expect(role.attributes("title")).toBe("Readers view items, editors also change them, owners also share, rename and delete the vault.");
+      expect(role.attributes("aria-describedby")).toBe("sharing-role-legend");
     }
-    expect(panel.text()).not.toContain("Readers view items");
+    expect(panel.get("#sharing-role-legend").text()).toBe("Readers view items, editors also change them, owners also share, rename and delete the vault.");
+    expect(panel.findAll("#sharing-role-legend")).toHaveLength(1);
     expect(panel.text()).not.toContain("Editors can add and change items");
     store.allVaultMember = [store.allVaultMember[0]!];
     await flushPromises();
     expect(panel.find('[data-testid="sharing-member-count"]').text()).toBe("1 member");
+    wrapper.unmount();
+  });
+
+  it("announces a changed key before the security code is expanded", async () => {
+    api.listAllVaultMember.mockResolvedValue([createVaultMember(), createVaultMember({ ...testBob, isKeyChanged: true })]);
+    const wrapper = await openSharingPanel();
+    const member = wrapper.get('[data-testid="vault-member-BOB222"]');
+    const warning = member.get("#member-key-warning-BOB222");
+    expect(warning.text()).toBe("Key changed. Hisar stopped sharing with them.");
+    const toggle = member.get('[data-testid="security-code-toggle-BOB222"]');
+    expect(toggle.attributes("aria-describedby")).toBe(warning.attributes("id"));
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+    expect(member.find('[data-testid="security-code-detail"]').exists()).toBe(false);
+    await toggle.trigger("click");
+    expect(member.findAll("#member-key-warning-BOB222")).toHaveLength(1);
+    expect(member.text()).not.toContain("until you compare");
     wrapper.unmount();
   });
 
@@ -230,6 +249,31 @@ describe("Vault sharing panel", () => {
     wrapper.unmount();
   });
 
+  it("stages Owner changes, cancels without a request and keeps a refusal visible", async () => {
+    const wrapper = await openSharingPanel();
+    const select = wrapper.find('[data-testid="role-select-BOB222"]');
+    await select.setValue("owner");
+    expect(api.changeVaultMemberRole).not.toHaveBeenCalled();
+    expect((select.element as HTMLSelectElement).value).toBe("editor");
+    expect(wrapper.find('[data-testid="role-confirmation"]').text()).toContain("rename and delete this vault");
+    await wrapper.find('[data-testid="role-confirmation"] .ghost').trigger("click");
+    expect(wrapper.find('[data-testid="role-confirmation"]').exists()).toBe(false);
+    expect(api.changeVaultMemberRole).not.toHaveBeenCalled();
+    await select.setValue("owner");
+    api.changeVaultMemberRole.mockRejectedValueOnce(new Error("Sharing stopped"));
+    await wrapper.find('[data-testid="confirm-role-change"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="role-confirmation"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain("Sharing stopped");
+    expect((select.element as HTMLSelectElement).value).toBe("editor");
+    api.changeVaultMemberRole.mockResolvedValue(undefined);
+    await wrapper.find('[data-testid="confirm-role-change"]').trigger("click");
+    await flushPromises();
+    expect(api.changeVaultMemberRole).toHaveBeenLastCalledWith("family", "BOB222", "owner");
+    expect(wrapper.find('[data-testid="role-confirmation"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("changes a member's role", async () => {
     api.changeVaultMemberRole.mockResolvedValue(undefined);
     const wrapper = await openSharingPanel();
@@ -246,7 +290,8 @@ describe("Vault sharing panel", () => {
     const wrapper = await openSharingPanel();
     await wrapper.find('[data-testid="remove-member-BOB222"]').trigger("click");
     const confirmation = wrapper.find('[data-testid="remove-confirmation"]');
-    expect(confirmation.text()).toContain("Removing Bob re-encrypts this vault with a new key");
+    expect(confirmation.text()).toContain(`${testBob.name} is removed from “Family”`);
+    expect(confirmation.text()).toContain(`${testBob.name} can still read copies their devices already downloaded`);
     expect(api.removeVaultMember).not.toHaveBeenCalled();
 
     await confirmation.find("button.ghost").trigger("click");
@@ -280,7 +325,7 @@ describe("Vault sharing panel", () => {
     await toggle.trigger("click");
     const detail = wrapper.find('[data-testid="security-code-detail"]');
     expect(detail.find('[data-testid="security-code"]').text()).toBe("C0FF EE12 3456 789A");
-    expect(detail.text()).toContain("Compare this code with Bob in person or over a channel you trust");
+    expect(detail.text()).toContain(`Ask ${testBob.name} for the security code Hisar shows for their own account (Settings → People, the row marked you)`);
     expect(toggle.attributes("aria-expanded")).toBe("true");
     await toggle.trigger("click");
     expect(wrapper.find('[data-testid="security-code-detail"]').exists()).toBe(false);
@@ -304,6 +349,7 @@ describe("Vault sharing panel", () => {
 
   it("explains that personal vaults are private instead of offering to share", async () => {
     store.selectedVaultID = "personal";
+    store.listVaultID = "personal";
     const wrapper = mount(MainView, { attachTo: document.body });
     expect(wrapper.find('[data-testid="share-vault"]').exists()).toBe(false);
     const privateBadge = wrapper.find('[data-testid="personal-vault-private"]');
@@ -320,6 +366,59 @@ describe("Vault sharing panel", () => {
     await flushPromises();
     expect(store.isSharingOpen).toBe(false);
     expect(wrapper.find('[data-testid="vault-sharing-panel"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+});
+
+describe("Recipient review", () => {
+  const invitation = createSentShareInvitation({ id: "reviewed", state: "accepted", requiresConfirmation: true, recipientId: "NEW123", securityCode: "1111 2222 3333 4444", reviewToken: "exact-reviewed-context", email: "new@example.com", role: "reader" });
+
+  async function review() {
+    const wrapper = mount(ShareRecipientConfirmation, { props: { invitation }, attachTo: document.body });
+    await wrapper.find('[data-testid="review-share-reviewed"]').trigger("click");
+    return wrapper;
+  }
+
+  it("cancels a mismatched invitation without confirming its recipient", async () => {
+    api.cancelShareInvitation.mockResolvedValue(undefined);
+    const wrapper = await review();
+    expect(wrapper.find('[data-testid="review-security-code"]').text()).toBe(invitation.securityCode);
+    await wrapper.find('[data-testid="share-recipient-mismatch"]').trigger("click");
+    await flushPromises();
+    expect(api.cancelShareInvitation).toHaveBeenCalledWith(invitation.id);
+    expect(api.confirmShareRecipient).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="share-recipient-confirmation"]').exists()).toBe(false);
+    expect(store.noticeMessage).toBe("Cancelled the invitation to new@example.com.");
+    wrapper.unmount();
+  });
+
+  it("keeps a failed mismatch cancellation in the review without granting access", async () => {
+    api.cancelShareInvitation.mockRejectedValueOnce(new Error("Couldn't cancel while offline"));
+    const wrapper = await review();
+    await wrapper.find('[data-testid="share-recipient-mismatch"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="share-recipient-confirmation"] [role="alert"]').text()).toContain("Couldn't cancel while offline");
+    expect(api.confirmShareRecipient).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("dismisses without changing the invitation", async () => {
+    const wrapper = await review();
+    await wrapper.find(".actions .ghost").trigger("click");
+    expect(wrapper.find('[data-testid="share-recipient-confirmation"]').exists()).toBe(false);
+    expect(api.cancelShareInvitation).not.toHaveBeenCalled();
+    expect(api.confirmShareRecipient).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps a stale-token refusal visible and sends only the displayed token", async () => {
+    api.confirmShareRecipient.mockRejectedValueOnce(new Error("Review this recipient again"));
+    const wrapper = await review();
+    await wrapper.find('[data-testid="confirm-share-recipient"]').trigger("click");
+    await flushPromises();
+    expect(api.confirmShareRecipient).toHaveBeenCalledWith(invitation.id, invitation.reviewToken);
+    expect(wrapper.find('[data-testid="share-recipient-confirmation"] [role="alert"]').text()).toContain("Review this recipient again");
+    expect(api.cancelShareInvitation).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });

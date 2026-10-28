@@ -54,6 +54,7 @@ beforeEach(() => {
     status: createStatus("signed-out"),
     allVault: [],
     selectedVaultID: "",
+    listVaultID: "",
     allItem: [],
     selectedItem: null,
     isFavoritesSelected: false,
@@ -176,9 +177,11 @@ describe("Open in Hisar from a launcher", () => {
     api.getItem.mockImplementation((_vaultID: string, itemID: string) => itemID === "deploy" ? deploy.promise : Promise.resolve(allItemByVaultID.work[1]));
     sendEvent("show-item", { vaultID: "work", itemID: "deploy", isEditing: true });
     await flushPromises();
+    const favorite = createFavoriteItem({ vaultId: "work", item: allItemByVaultID.work[1] });
+    api.listAllFavoriteItem.mockResolvedValue([favorite]);
     await selectFavorites();
     if (isSelectingItem) {
-      await selectFavoriteItem(createFavoriteItem({ vaultId: "work", item: allItemByVaultID.work[1] }));
+      await selectFavoriteItem(favorite);
     }
     deploy.resolve(allItemByVaultID.work[0]);
     await flushPromises();

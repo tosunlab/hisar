@@ -42,6 +42,7 @@ beforeEach(() => {
     status: createStatus("unlocked"),
     allVault: [personalVault, workVault],
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [bank, github],
     selectedItem: null,
     allFavorite: [createFavoriteItem({ item: github })],
@@ -154,6 +155,7 @@ describe("Keyboard navigation in the item list", () => {
   it("Return in a read-only vault only shows the item", async () => {
     store.allItem = [github];
     store.selectedVaultID = "work";
+    store.listVaultID = "work";
     const wrapper = mountView();
     const row = wrapper.find('[role="option"]');
     (row.element as HTMLElement).focus();
@@ -217,6 +219,36 @@ describe("Copy shortcuts", () => {
     pressKey({ key: "C", metaKey: true, shiftKey: true });
     await flushPromises();
     expect(api.copyField).not.toHaveBeenCalled();
+  });
+
+  it.each(["Bank", "no matches"])("clears a filtered-out selection without selecting a replacement for %s", async (query) => {
+    store.selectedItem = github;
+    const wrapper = mountView();
+    await wrapper.find('input[name="search"]').setValue(query);
+    pressKey({ key: "C", metaKey: true, shiftKey: true });
+    await flushPromises();
+    expect(store.selectedItem).toBeNull();
+    expect(wrapper.text()).toContain("Select an item to see its details.");
+    expect(api.copyField).not.toHaveBeenCalled();
+    if (query === "Bank") {
+      await wrapper.find('input[name="search"]').trigger("keydown", { key: "ArrowDown" });
+      await flushPromises();
+      expect(store.selectedItem?.id).toBe("bank");
+    }
+  });
+
+  it("preserves the editor when a background filter changes and reconciles on return", async () => {
+    store.selectedItem = github;
+    store.editorMode = "edit";
+    const wrapper = mountView();
+    await wrapper.find('input[name="search"]').setValue("Bank");
+    expect(store.selectedItem?.id).toBe("github");
+    expect(store.editorMode).toBe("edit");
+    expect(wrapper.findComponent({ name: "ItemEditor" }).exists()).toBe(true);
+    store.editorMode = "view";
+    await flushPromises();
+    expect(store.selectedItem).toBeNull();
+    expect(wrapper.text()).toContain("Select an item to see its details.");
   });
 
   it("lists both shortcuts when no item is selected", () => {

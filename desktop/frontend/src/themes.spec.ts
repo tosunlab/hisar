@@ -4,6 +4,8 @@ import generatedCSS from "./themes.css?raw";
 import generatedAdminCSS from "../../../admin/src/themes.css?raw";
 import generatedSwift from "../../../mobile/ios/Shared/Views/ThemePalettes.swift?raw";
 import generatedKotlin from "../../../mobile/android/model/src/main/kotlin/com/tryhisar/hisar/model/theme/ThemePalettes.kt?raw";
+import detailSource from "./components/ItemDetailPanel.vue?raw";
+import codeSource from "./components/OneTimeCodeField.vue?raw";
 import androidColors from "../../../mobile/android/app/src/main/kotlin/com/tryhisar/hisar/ui/theme/HisarTheme.kt?raw";
 import { computeContrastRatio, renderThemeCSS, renderThemeKotlin, renderThemeSwift, resolveAllTheme, type ThemeSource } from "../../../scripts/themes/render";
 
@@ -36,6 +38,7 @@ const allRule: ContrastRule[] = [
   { allForeground: ["controlBorder"], allBackground: ["surface", "panel"], minimum: interfaceMinimum },
   ...allTileIndex.map((index) => ({ allForeground: [`tile${index}Text`], allBackground: [`tile${index}`], minimum: textMinimum })),
   { allForeground: ["iosTint", "iosSecondaryLabel", "iosWarning"], allBackground: ["iosGroupedBackground", "iosCellBackground"], minimum: textMinimum },
+  { allForeground: ["dangerText"], allBackground: ["iosGroupedBackground", "iosCellBackground"], minimum: textMinimum },
   { allForeground: ["iosOnTint"], allBackground: ["iosTint"], minimum: textMinimum },
 ];
 
@@ -62,6 +65,26 @@ describe("themes", () => {
       }
     }
     expect(allFailure).toEqual([]);
+  });
+
+  it.each([["item fields", detailSource], ["one-time codes", codeSource]])("keeps enabled %s actions legible at rest and during interaction", (_name, componentSource) => {
+    const style = document.createElement("style");
+    style.textContent = componentSource.match(/<style scoped>([\s\S]*?)<\/style>/)![1]!;
+    const row = document.createElement("div");
+    row.className = "field";
+    row.innerHTML = '<span class="field-actions"><button class="ghost">Copy</button></span>';
+    document.head.append(style);
+    document.body.append(row);
+    const actions = row.querySelector<HTMLElement>(".field-actions")!;
+    const opacity = Number(getComputedStyle(actions).opacity || "1");
+    expect(opacity).toBe(1);
+    for (const theme of allTheme.filter((theme) => theme.appearance === "light")) {
+      expect(computeContrastRatio(theme.tokens.textSecondary!, theme.tokens.panel!), theme.color).toBeGreaterThanOrEqual(interfaceMinimum);
+    }
+    row.querySelector("button")!.focus();
+    expect(Number(getComputedStyle(actions).opacity || "1")).toBe(1);
+    row.remove();
+    style.remove();
   });
 
   it.each(allTheme.map((theme) => [theme.color, theme.appearance, theme.tokens] as const))("%s %s keeps Android prompts readable on cells, dialogs and search", (_color, appearance, tokens) => {

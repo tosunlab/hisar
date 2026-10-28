@@ -3,7 +3,8 @@
 # invites the UI tests sign up with, and starts hisar-ui-test-partner, which signs up a partner and answers in the
 # background as the partner's own Hisar would.
 #
-# Needs ROOT, UI_TEST_PLATFORM_NAME (iOS or Android) and UI_TEST_PORT. Leaves the server's address in HISAR_PUBLIC_URL
+# Needs ROOT, UI_TEST_PLATFORM_NAME (iOS or Android) and UI_TEST_PORT; with UI_TEST_OPEN_PORT it also starts a second
+# server there, on the same database, with open registration. Leaves the server's address in HISAR_PUBLIC_URL
 # and every value the tests read in UI_TEST_VALUES, as NAME=value. On exit it stops what it started; a caller that needs
 # more cleanup sets its own EXIT trap that also calls ui_test_stop. ui_test_print_logs prints the partner and server logs.
 # ui_test_restart empties the database with psql and starts all of it again, with new invites and a new partner.
@@ -11,17 +12,18 @@
 
 T=
 UI_TEST_SERVER=
+UI_TEST_OPEN_SERVER=
 UI_TEST_SINK=
 UI_TEST_PARTNER=
 # Stops the server, the sink, the partner and any processes passed in, then deletes $T once they stopped writing.
 ui_test_stop() {
   local allProcess
-  allProcess=$(echo "$@" $UI_TEST_SERVER $UI_TEST_SINK $UI_TEST_PARTNER)
+  allProcess=$(echo "$@" $UI_TEST_SERVER $UI_TEST_OPEN_SERVER $UI_TEST_SINK $UI_TEST_PARTNER)
   if [ -n "$allProcess" ]; then
     kill $allProcess 2>/dev/null || true
     wait $allProcess 2>/dev/null || true
   fi
-  UI_TEST_SERVER='' UI_TEST_SINK='' UI_TEST_PARTNER=''
+  UI_TEST_SERVER='' UI_TEST_OPEN_SERVER='' UI_TEST_SINK='' UI_TEST_PARTNER=''
   [ -n "$T" ] || return 0
   # A child of a stopped process can still be writing into $T for a moment.
   for _ in 1 2 3 4 5; do
@@ -36,6 +38,10 @@ ui_test_print_logs() {
   cat "$T/partner.log" >&2
   echo "server log:" >&2
   cat "$T/server.log" >&2
+  if [ -n "$UI_TEST_OPEN_SERVER" ]; then
+    echo "open registration server log:" >&2
+    cat "$T/open-server.log" >&2
+  fi
 }
 
 (cd "$ROOT" && go build -o bin/hisar-server ./server/cmd/hisar-server && go build -o bin/hisar-smtp-sink ./server/cmd/hisar-smtp-sink &&
@@ -78,6 +84,13 @@ ui_test_start() {
   UI_TEST_PARTNER=$!
   for _ in $(seq 120); do [ -e "$T/partner-ready" ] || ! kill -0 "$UI_TEST_PARTNER" 2>/dev/null && break; sleep 1; done
   [ -e "$T/partner-ready" ] || { echo "hisar-ui-test-partner did not sign up the partner:" >&2; cat "$T/partner.log" >&2; exit 1; }
+  # Started once the partner exists, so this process reads a setup that is past its first admin and answers "open".
+  if [ -n "${UI_TEST_OPEN_PORT:-}" ]; then
+    HISAR_OPEN_REGISTRATION=true HISAR_PUBLIC_URL=http://127.0.0.1:$UI_TEST_OPEN_PORT \
+      "$ROOT/bin/hisar-server" serve -addr "127.0.0.1:$UI_TEST_OPEN_PORT" >"$T/open-server.log" 2>&1 &
+    UI_TEST_OPEN_SERVER=$!
+    curl -sf --retry 20 --retry-all-errors --retry-delay 1 "http://127.0.0.1:$UI_TEST_OPEN_PORT/healthz" >/dev/null
+  fi
 
   UI_TEST_VALUES=(
     "HISAR_UI_TEST_SERVER=$HISAR_PUBLIC_URL"
@@ -90,6 +103,14 @@ ui_test_start() {
   ui_test_add_account SHARING_ "$EMAIL_PREFIX-sharing-$(date +%s)-$RANDOM@example.com"
   ui_test_add_account LIFECYCLE_ "$EMAIL_PREFIX-lifecycle-$(date +%s)-$RANDOM@example.com"
   ui_test_add_account ORGANIZATION_ADMIN_ "$EMAIL_PREFIX-organization-admin-$(date +%s)-$RANDOM@example.com"
+  ui_test_add_account ONBOARDING_POSTPONED_ "$EMAIL_PREFIX-onboarding-postponed-$(date +%s)-$RANDOM@example.com"
+  ui_test_add_account EMERGENCY_KIT_BANNER_ "$EMAIL_PREFIX-emergency-kit-banner-$(date +%s)-$RANDOM@example.com"
+  if [ -n "$UI_TEST_OPEN_SERVER" ]; then
+    UI_TEST_VALUES+=(
+      "HISAR_UI_TEST_OPEN_SERVER=http://127.0.0.1:$UI_TEST_OPEN_PORT"
+      "HISAR_UI_TEST_OPEN_EMAIL=$EMAIL_PREFIX-open-$(date +%s)-$RANDOM@example.com"
+    )
+  fi
 }
 
 # Each test signs up with a single-use invite, most with an address written in the test, so a test can only run a second

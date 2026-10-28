@@ -24,6 +24,7 @@ type fakePhone struct {
 	expiresAt      []time.Time
 	finishCount    int
 	startedChannel chan struct{}
+	posted         []func(bool)
 }
 
 func createFakePhone() *fakePhone {
@@ -37,7 +38,7 @@ func (phone *fakePhone) IsPhoneApprovalAvailable() bool {
 }
 
 // StartPhoneApproval seals the request as the vault backend does, so a request too long for a phone fails as it would.
-func (phone *fakePhone) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) (func(), error) {
+func (phone *fakePhone) StartPhoneApproval(description approval.Description, expiresAt time.Time, posted func(bool), decide func(answer approval.AcceptedAnswer)) (func(), error) {
 	request := approval.NewRequest("4a1c9e2b-7d3f-4e8a-9b6c-2f5d8e1a3c7b", "MacBook Pro", description, time.Now(), approval.MaximumLifetime)
 	if _, err := approval.SealRequest(getPhoneTestKeyset(), "account", request); err != nil {
 		return nil, err
@@ -46,6 +47,7 @@ func (phone *fakePhone) StartPhoneApproval(description approval.Description, exp
 	phone.descriptions = append(phone.descriptions, description)
 	phone.decisions = append(phone.decisions, decide)
 	phone.expiresAt = append(phone.expiresAt, expiresAt)
+	phone.posted = append(phone.posted, posted)
 	phone.mutex.Unlock()
 	phone.startedChannel <- struct{}{}
 	return func() {
@@ -53,6 +55,29 @@ func (phone *fakePhone) StartPhoneApproval(description approval.Description, exp
 		defer phone.mutex.Unlock()
 		phone.finishCount++
 	}, nil
+}
+
+func TestPhonePostFailureKeepsLocalApprovalAndDeadline(t *testing.T) {
+	emitter, phone := createFakeEmitter(), createFakePhone()
+	approver := createPhoneApprover(emitter, phone, &fakeBiometric{}, nil, nil)
+	request := createAgentRequest(clisocket.AgentRequestRun)
+	result := startAgentApproval(approver, request)
+	first := waitForApprovalEvent(t, emitter)
+	if first.PhoneApprovalState != "pending" {
+		t.Fatalf("phone state = %q", first.PhoneApprovalState)
+	}
+	phone.mutex.Lock()
+	posted := phone.posted[0]
+	phone.mutex.Unlock()
+	posted(false)
+	updated := waitForApprovalEvent(t, emitter)
+	if updated.PhoneApprovalState != "failed" || updated.TimeoutAt != first.TimeoutAt {
+		t.Fatalf("updated event = %+v", updated)
+	}
+	approver.Respond(updated.RequestID, false, false)
+	if answer := waitForAgentResult(t, result); !errors.Is(answer.err, clisocket.ErrDenied) {
+		t.Fatalf("local denial = %v", answer.err)
+	}
 }
 
 var getPhoneTestKeyset = sync.OnceValue(func() *crypt.Keyset {
@@ -128,7 +153,7 @@ func TestPhoneApprovesTheDialog(t *testing.T) {
 	want := approval.Description{
 		Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22",
 		CommandLine: "git push origin main", RepositoryPath: "~/src/core", KeyName: "Laptop",
-		RememberLabel: "Also allows Terminal for 1 hour", IsRememberedByDefault: true,
+		RememberLabel: "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", IsRememberedByDefault: true,
 	}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("phone request = %+v", description)
@@ -301,7 +326,7 @@ func TestPhoneApprovesCommandLine(t *testing.T) {
 	description := phone.waitForStart(t)
 	want := approval.Description{
 		Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar", CommandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003",
-		Lifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks",
+		Allowance: commandLineAllowance, Lifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks",
 	}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("command-line request on the phone = %+v", description)

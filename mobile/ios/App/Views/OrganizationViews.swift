@@ -45,7 +45,7 @@ struct OrganizationsView: View {
     var body: some View {
         List {
             if !model.allOrganizationInvitation.isEmpty {
-                Section("Invitations for you") {
+                Section {
                     ForEach(model.allOrganizationInvitation) { invitation in
                         OrganizationInvitationRow(invitation: invitation) {
                             Task { await accept(invitation) }
@@ -53,6 +53,9 @@ struct OrganizationsView: View {
                             Task { await decline(invitation) }
                         }
                     }
+                } header: {
+                    Text("Invitations for you")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !model.allOrganization.isEmpty {
@@ -83,6 +86,7 @@ struct OrganizationsView: View {
                 .accessibilityIdentifier("create-organization")
             } footer: {
                 Text("An organization shares vaults through its teams instead of person by person. You become its first admin.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
         .applyThemedListStyle()
@@ -132,6 +136,7 @@ struct OrganizationInvitationRow: View {
     var identifierPrefix = ""
     var accept: () -> Void
     var decline: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     static func describeJoined(_ invitation: OrganizationInvitation) -> String {
         "You joined \(invitation.organizationName). Its vaults appear once an admin adds you to a team."
@@ -145,35 +150,49 @@ struct OrganizationInvitationRow: View {
 
     private func row(at now: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 2) {
+                Label {
                     Text(invitation.message)
-                    Text(invitation.invitedByEmail)
-                        .font(.footnote)
-                        .foregroundStyle(.themeSecondary)
-                    InvitationExpiryText(timestamp: invitation.expiresAt)
+                } icon: {
+                    Image(systemName: "building.2.fill")
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
                 }
-            } icon: {
-                Image(systemName: "building.2.fill")
-                    .foregroundStyle(.tint)
+                InvitationEmailText(email: invitation.invitedByEmail)
+                InvitationExpiryText(timestamp: invitation.expiresAt)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("\(identifierPrefix)organization-invitation-text")
-            HStack(spacing: 10) {
-                Button(action: decline) {
-                    Text("Decline").frame(maxWidth: .infinity)
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 10) {
+                    acceptButton(at: now)
+                    declineButton
                 }
-                .applyGlassButtonStyle(isProminent: false)
-                .accessibilityIdentifier("\(identifierPrefix)decline-organization-invitation")
-                Button(action: accept) {
-                    Text("Accept").frame(maxWidth: .infinity)
+            } else {
+                HStack(spacing: 10) {
+                    declineButton
+                    acceptButton(at: now)
                 }
-                .applyGlassButtonStyle(isProminent: true)
-                .accessibilityIdentifier("\(identifierPrefix)accept-organization-invitation")
-                .disabled(InvitationLifetime(invitation.expiresAt).isExpired(at: now))
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func acceptButton(at now: Date) -> some View {
+        Button(action: accept) {
+            Text("Accept").frame(maxWidth: .infinity)
+        }
+        .applyGlassButtonStyle(isProminent: true)
+        .accessibilityIdentifier("\(identifierPrefix)accept-organization-invitation")
+        .disabled(InvitationLifetime(invitation.expiresAt).isExpired(at: now))
+    }
+
+    private var declineButton: some View {
+        Button(action: decline) {
+            Text("Decline").frame(maxWidth: .infinity)
+        }
+        .applyGlassButtonStyle(isProminent: false)
+        .accessibilityIdentifier("\(identifierPrefix)decline-organization-invitation")
     }
 }
 
@@ -203,6 +222,7 @@ struct CreateOrganizationView: View {
                         .accessibilityIdentifier("new-organization-name")
                 } footer: {
                     Text("1 to 100 characters. The Hisar server sees the names of organizations and teams, but never the names of their vaults.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .navigationTitle("Create organization")
@@ -267,6 +287,9 @@ struct OrganizationView: View {
     @State private var isRenameShown = false
     @State private var isDeleteShown = false
     @State private var isLeaveShown = false
+    @State private var memberRoleChange: Member?
+    @State private var teamMemberToRemove: TeamMemberRemoval?
+    @State private var vaultToTakeBack: TeamVaultTakeback?
 
     private var name: String {
         organization?.name ?? model.allOrganization.first { $0.id == organizationID }?.name ?? "Organization"
@@ -286,6 +309,7 @@ struct OrganizationView: View {
             Text(organization.isAdmin
                  ? "Admins manage members, teams and which teams have which vaults; being an admin gives no vault."
                  : "Members get the vaults of the teams they are in. Admins of \(organization.name) manage its teams.")
+                .foregroundStyle(.themeSecondary)
         }
         if organization.isAdmin {
             inviteSection
@@ -309,6 +333,7 @@ struct OrganizationView: View {
             } footer: {
                 if organization.allTeam.isEmpty {
                     Text("Teams get the organization's vaults. Create one, add members and give it a vault.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
@@ -339,9 +364,13 @@ struct OrganizationView: View {
         .applyThemedListStyle()
         .refreshable { await load() }
         .navigationTitle(name)
-        .navigationDestination(for: Member.self) { member in
-            OrganizationMemberView(organizationID: organizationID, organizationName: name, member: member, isAdmin: isAdmin) {
-                await load()
+        .navigationDestination(for: SharingMemberRoute.self) { route in
+            if let organization, let member = organization.allMember.first(where: { $0.accountID == route.accountID }) {
+                OrganizationMemberView(organizationID: organizationID, organizationName: name, member: member, isAdmin: isAdmin, organization: organization) {
+                    await load()
+                }
+            } else {
+                SharingMemberUnavailableView()
             }
         }
         .toolbar {
@@ -406,6 +435,15 @@ struct OrganizationView: View {
 
     private var organizationListWithConfirmations: some View {
         organizationListWithAlerts
+        .confirmationDialog(memberRoleChange.map { organizationRoleChangeTitle($0, organizationName: name) } ?? "", isPresented: Binding(get: { memberRoleChange != nil }, set: { if !$0 { memberRoleChange = nil } }), titleVisibility: .visible, presenting: memberRoleChange) { member in
+            Button(member.role == OrganizationRole.admin ? (member.isCurrentUser ? "Make me a member" : "Make member") : "Make admin", role: member.role == OrganizationRole.admin ? .destructive : nil) {
+                Task { await change(member.role == OrganizationRole.admin ? "Make member" : "Make admin") { await model.setOrganizationMemberRole(organizationID: organizationID, accountID: member.accountID, role: member.role == OrganizationRole.admin ? OrganizationRole.member : OrganizationRole.admin) } }
+            }
+            .accessibilityIdentifier("confirm-organization-role")
+            Button("Cancel", role: .cancel) {}
+        } message: { member in
+            Text(organizationRoleChangeMessage(member))
+        }
         .confirmationDialog(
             "Cancel the invitation to \(invitationToCancel?.email ?? "")?",
             isPresented: Binding(get: { invitationToCancel != nil }, set: { if !$0 { invitationToCancel = nil } }),
@@ -418,31 +456,29 @@ struct OrganizationView: View {
             .accessibilityIdentifier("confirm-cancel-organization-invitation")
             Button("Keep invitation", role: .cancel) {}
         }
-        .confirmationDialog(
-            "Remove \(memberToRemove?.name ?? "") from \(name)?",
-            isPresented: Binding(get: { memberToRemove != nil }, set: { if !$0 { memberToRemove = nil } }),
-            titleVisibility: .visible,
-            presenting: memberToRemove
-        ) { member in
-            Button("Remove from \(name)", role: .destructive) {
-                Task { await change("Remove from \(name)") { await model.removeOrganizationMember(organizationID: organizationID, accountID: member.accountID) } }
+        .sheet(item: $memberToRemove) { member in
+            if let organization {
+                OrganizationAccessConfirmation(
+                    title: "Remove \(member.name) from \(name)?",
+                    message: OrganizationMemberView.describeRemoval(memberName: member.name, organizationName: name),
+                    consequences: OrganizationLogic.accessConsequences(organization: organization, change: .removeMember(member.accountID)),
+                    confirmLabel: "Remove from \(name)", confirmID: "confirm-remove-organization-member", refusal: $refusal, onCancel: { memberToRemove = nil }
+                ) {
+                    if await change("Remove from \(name)", { await model.removeOrganizationMember(organizationID: organizationID, accountID: member.accountID) }) { memberToRemove = nil }
             }
-            .accessibilityIdentifier("confirm-remove-organization-member")
-        } message: { member in
-            Text(OrganizationMemberView.describeRemoval(memberName: member.name, organizationName: name))
         }
-        .confirmationDialog(
-            "Delete team \(teamToDelete?.name ?? "")?",
-            isPresented: Binding(get: { teamToDelete != nil }, set: { if !$0 { teamToDelete = nil } }),
-            titleVisibility: .visible,
-            presenting: teamToDelete
-        ) { team in
-            Button("Delete team", role: .destructive) {
-                Task { await change("Delete team") { await model.deleteTeam(organizationID: organizationID, teamID: team.id) } }
             }
-            .accessibilityIdentifier("confirm-delete-team")
-        } message: { team in
-            Text("Its members lose the vaults they have only through \(team.name).")
+        .sheet(item: $teamToDelete) { team in
+            if let organization {
+                OrganizationAccessConfirmation(
+                    title: "Delete team \(team.name)?",
+                    message: "Its members lose the vaults they have only through \(team.name).",
+                    consequences: OrganizationLogic.accessConsequences(organization: organization, change: .removeTeam(team.id)),
+                    confirmLabel: "Delete team", confirmID: "confirm-delete-team", refusal: $refusal, onCancel: { teamToDelete = nil }
+                ) {
+                    if await change("Delete team", { await model.deleteTeam(organizationID: organizationID, teamID: team.id) }) { teamToDelete = nil }
+                }
+            }
         }
     }
 
@@ -456,13 +492,46 @@ struct OrganizationView: View {
         } message: {
             Text("Its teams and pending invitations are deleted with it.")
         }
-        .confirmationDialog("Leave \(name)?", isPresented: $isLeaveShown, titleVisibility: .visible) {
-            Button("Leave \(name)", role: .destructive) {
-                Task { await finishRemoval("Leave \(name)") { await model.leaveOrganization(organizationID: organizationID) } }
+        .sheet(isPresented: $isLeaveShown) {
+            if let organization, let member = organization.allMember.first(where: \.isCurrentUser) {
+                OrganizationAccessConfirmation(
+                    title: "Leave \(name)?", message: "You lose the vaults you have through \(name)'s teams.",
+                    consequences: OrganizationLogic.accessConsequences(organization: organization, change: .removeMember(member.accountID)),
+                    confirmLabel: "Leave \(name)", confirmID: "confirm-leave-organization", refusal: $refusal, onCancel: { isLeaveShown = false }
+                ) {
+                    if await model.leaveOrganization(organizationID: organizationID) { isLeaveShown = false; dismiss() }
+                    else { refusal = model.takeRefusal(title: "Leave \(name)") }
+                }
             }
-            .accessibilityIdentifier("confirm-leave-organization")
-        } message: {
-            Text("You lose the vaults you have through \(name)'s teams.")
+        }
+        .sheet(item: $vaultToTakeBack) { takeback in
+            if let organization {
+                OrganizationAccessConfirmation(
+                    title: "Take \(takeback.vault.displayName) back from \(takeback.team.name)?",
+                    message: "Review who loses access or has a reduced role through the remaining teams.",
+                    consequences: OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: takeback.team.id, vaultID: takeback.vault.vaultID)),
+                    confirmLabel: "Take back", confirmID: "confirm-take-back", refusal: $refusal, onCancel: { vaultToTakeBack = nil }
+                ) {
+                    if await change("Take back", { await model.takeVaultFromTeam(organizationID: organizationID, teamID: takeback.team.id, vaultID: takeback.vault.vaultID) }) {
+                        vaultToTakeBack = nil
+                    }
+                }
+            }
+        }
+        .sheet(item: $teamMemberToRemove) { removal in
+            if let organization {
+                OrganizationAccessConfirmation(
+                    title: "Remove \(removal.member.displayName) from \(removal.team.name)?",
+                    message: removal.member.isCurrentUser ? "You lose access to vaults this team alone gives you." : "Their vault access changes only where no other team gives the same role.",
+                    consequences: OrganizationLogic.accessConsequences(organization: organization, change: .removeTeamMember(teamID: removal.team.id, accountID: removal.member.accountID)),
+                    confirmLabel: "Remove from \(removal.team.name)", confirmID: "confirm-remove-team-member", refusal: $refusal,
+                    onCancel: { teamMemberToRemove = nil }
+                ) {
+                    if await change("Remove", { await model.removeTeamMember(organizationID: organizationID, teamID: removal.team.id, accountID: removal.member.accountID) }) {
+                        teamMemberToRemove = nil
+                    }
+                }
+            }
         }
         .sheet(item: $teamGivenVault) { team in
             if let organization {
@@ -522,8 +591,10 @@ struct OrganizationView: View {
             }
         } header: {
             Text("Invite by email")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             Text("They accept in Hisar, or create an account from the email first. Every address gets the same answer.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -531,7 +602,7 @@ struct OrganizationView: View {
         Section {
             ForEach(organization.allMember) { member in
                 let allAction = OrganizationLogic.listAllMemberAction(organization: organization, member: member)
-                NavigationLink(value: member) {
+                NavigationLink(value: SharingMemberRoute(accountID: member.accountID)) {
                     MemberRow(member: member, roleText: OrganizationRole.describe(member.role))
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -543,9 +614,9 @@ struct OrganizationView: View {
                     ForEach(allAction, id: \.self) { action in
                         switch action {
                         case .makeAdmin:
-                            Button("Make admin", systemImage: "person.badge.shield.checkmark") { setRole(of: member, to: OrganizationRole.admin) }
+                            Button("Make admin…", systemImage: "person.badge.shield.checkmark") { setRole(of: member, to: OrganizationRole.admin) }
                         case .makeMember:
-                            Button("Make member", systemImage: "person") { setRole(of: member, to: OrganizationRole.member) }
+                            Button("Make member…", systemImage: "person") { setRole(of: member, to: OrganizationRole.member) }
                         case .remove:
                             Button("Remove from \(organization.name)…", systemImage: "person.badge.minus", role: .destructive) { memberToRemove = member }
                         }
@@ -555,13 +626,15 @@ struct OrganizationView: View {
             }
         } header: {
             Text(OrganizationLogic.describeMemberCount(organization.allMember.count))
+                .foregroundStyle(.themeSecondary)
         } footer: {
-            Text("Compare security codes with people once, in person or over a channel you trust. Tap a person to see theirs.")
+            Text("Tap a person to see their security code. Ask them for the code Hisar shows for their own account in Settings → People, the row marked you. It must match the code you see for them.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
     private func invitedSection(_ organization: Organization) -> some View {
-        Section("Invited") {
+        Section {
             ForEach(organization.allInvitation) { invitation in
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
@@ -584,6 +657,9 @@ struct OrganizationView: View {
                 }
                 .accessibilityIdentifier("organization-invitation-\(invitation.email)")
             }
+        } header: {
+            Text("Invited")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -625,19 +701,23 @@ struct OrganizationView: View {
                             .foregroundStyle(.themeSecondary)
                     }
                     Spacer()
+                    if organization.isAdmin {
+                        TeamVaultRolePicker(organization: organization, organizationID: organizationID, teamID: team.id, teamName: team.name, vaultID: vault.vaultID, vaultName: vault.displayName, role: vault.role, reload: load)
+                    } else {
                     Text(describeVaultRole(vault.role))
                         .font(.subheadline)
                         .foregroundStyle(.themeSecondary)
                 }
-                .accessibilityElement(children: .combine)
+                }
+                .accessibilityElement(children: .contain)
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     if organization.isAdmin {
-                        Button("Take back") { takeBack(vault, from: team) }
+                        Button("Take back…", role: .destructive) { takeBack(vault, from: team) }
                     }
                 }
                 .contextMenu {
                     if organization.isAdmin {
-                        Button("Take back", systemImage: "arrow.uturn.backward") { takeBack(vault, from: team) }
+                        Button("Take back…", systemImage: "arrow.uturn.backward", role: .destructive) { takeBack(vault, from: team) }
                     }
                 }
                 .accessibilityIdentifier("team-\(team.name)-vault-\(vault.displayName)")
@@ -666,6 +746,7 @@ struct OrganizationView: View {
         } header: {
             HStack {
                 Text("Team \(team.name)")
+                    .foregroundStyle(.themeSecondary)
                 Spacer()
                 if organization.isAdmin {
                     Menu {
@@ -686,6 +767,11 @@ struct OrganizationView: View {
         } footer: {
             if team.allMember.isEmpty && team.allVault.isEmpty {
                 Text("No members or vaults yet.")
+                    .foregroundStyle(.themeSecondary)
+            }
+            if organization.isAdmin && !team.allVault.isEmpty {
+                Text("Someone in several teams gets the strongest of their roles.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
@@ -739,7 +825,7 @@ struct OrganizationView: View {
     }
 
     private func setRole(of member: Member, to role: String) {
-        Task { await change(role == OrganizationRole.admin ? "Make admin" : "Make member") { await model.setOrganizationMemberRole(organizationID: organizationID, accountID: member.accountID, role: role) } }
+        memberRoleChange = member
     }
 
     private func addToTeam(_ member: Member, team: Team) {
@@ -747,11 +833,64 @@ struct OrganizationView: View {
     }
 
     private func removeFromTeam(_ member: TeamMember, team: Team) {
-        Task { await change("Remove") { await model.removeTeamMember(organizationID: organizationID, teamID: team.id, accountID: member.accountID) } }
+        teamMemberToRemove = TeamMemberRemoval(team: team, member: member)
     }
 
     private func takeBack(_ vault: TeamVault, from team: Team) {
-        Task { await change("Take back") { await model.takeVaultFromTeam(organizationID: organizationID, teamID: team.id, vaultID: vault.vaultID) } }
+        vaultToTakeBack = TeamVaultTakeback(team: team, vault: vault)
+    }
+}
+
+private struct TeamVaultTakeback: Identifiable {
+    var team: Team
+    var vault: TeamVault
+    var id: String { "\(team.id)/\(vault.vaultID)" }
+}
+
+private struct TeamMemberRemoval: Identifiable {
+    var team: Team
+    var member: TeamMember
+    var id: String { "\(team.id)/\(member.accountID)" }
+}
+
+struct OrganizationAccessConfirmation: View {
+    var title: String
+    var message: String
+    var consequences: [String]
+    var confirmLabel: String
+    var confirmID: String
+    @Binding var refusal: Refusal?
+    var onCancel: () -> Void
+    var onConfirm: () async -> Void
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text(title).font(.headline)
+                    Text(message)
+                }
+                Section {
+                    ForEach(consequences, id: \.self) { Text($0) }
+                } header: {
+                    Text("Vault access")
+                        .foregroundStyle(.themeSecondary)
+                }
+                Section {
+                    Button(confirmLabel, role: .destructive) { Task { await onConfirm() } }
+                        .disabled(model.isBusy)
+                        .accessibilityIdentifier(confirmID)
+                }
+            }
+            .navigationTitle("Review changes")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onCancel).disabled(model.isBusy) }
+            }
+            .refusalAlert($refusal)
+        }
+        .interactiveDismissDisabled(model.isBusy)
     }
 }
 
@@ -761,22 +900,23 @@ struct OrganizationMemberView: View {
     var member: Member
     var isAdmin: Bool
     var reload: () async -> Void
+    var organization: Organization
+    @State private var isRoleConfirmationShown = false
 
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
-    @State private var role: String
+    private var role: String { member.role }
     @State private var isRemoveConfirmationShown = false
     @State private var refusal: Refusal?
 
-    init(organizationID: String, organizationName: String, member: Member, isAdmin: Bool, reload: @escaping () async -> Void) {
+    init(organizationID: String, organizationName: String, member: Member, isAdmin: Bool, organization: Organization, reload: @escaping () async -> Void) {
         self.organizationID = organizationID
         self.organizationName = organizationName
         self.member = member
         self.isAdmin = isAdmin
         self.reload = reload
-        _role = State(initialValue: member.role)
+        self.organization = organization
     }
-
     static func describeRemoval(memberName: String, organizationName: String) -> String {
         "\(memberName) loses the vaults they have through \(organizationName)'s teams."
     }
@@ -804,7 +944,7 @@ struct OrganizationMemberView: View {
             if member.isKeyChanged {
                 Section {
                     Label {
-                        Text("\(member.name)'s key changed since you last shared with them. Hisar refuses to give them vault keys until you compare security codes again.")
+                        Text("\(member.name)'s key changed since this iPhone first shared with them, so Hisar stopped sharing with them. Contact them over a channel you trust. Comparing security codes does not restore sharing.")
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.themeWarning)
@@ -826,10 +966,10 @@ struct OrganizationMemberView: View {
                     }
                 } header: {
                     Text("Security code")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
-                    Text(member.isCurrentUser
-                         ? "Others see this code for you. When they compare it with you, they know vaults they give you reach you and nobody else."
-                         : "Compare it with \(member.name) once, in person or over a channel you trust. If it matches what their Hisar shows, vaults their teams get reach them and nobody else.")
+                    Text(describeSecurityCode(member))
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             Section {
@@ -837,8 +977,8 @@ struct OrganizationMemberView: View {
                     .accessibilityIdentifier("organization-member-role")
                 if isAdmin {
                     let isAdminRole = role == OrganizationRole.admin
-                    Button(isAdminRole ? "Make member" : "Make admin", systemImage: isAdminRole ? "person" : "person.badge.shield.checkmark") {
-                        setRole(isAdminRole ? OrganizationRole.member : OrganizationRole.admin)
+                    Button(isAdminRole ? "Make member…" : "Make admin…", systemImage: isAdminRole ? "person" : "person.badge.shield.checkmark") {
+                        isRoleConfirmationShown = true
                     }
                     .disabled(model.isBusy)
                     .accessibilityIdentifier("organization-member-toggle-role")
@@ -847,6 +987,7 @@ struct OrganizationMemberView: View {
                 Text(role == OrganizationRole.admin
                      ? "Admins manage members, teams and which teams have which vaults; being an admin gives no vault."
                      : "Members get the vaults of the teams they are in.")
+                    .foregroundStyle(.themeSecondary)
             }
             if isAdmin && !member.isCurrentUser {
                 Section {
@@ -861,20 +1002,31 @@ struct OrganizationMemberView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(member.name)
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog("Remove \(member.name) from \(organizationName)?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
-            Button("Remove from \(organizationName)", role: .destructive) {
-                Task {
-                    if await model.removeOrganizationMember(organizationID: organizationID, accountID: member.accountID) {
-                        await reload()
-                        dismiss()
-                    } else {
-                        refusal = model.takeRefusal(title: "Remove from \(organizationName)")
-                    }
+        .refreshable { await reload() }
+        .confirmationDialog(organizationRoleChangeTitle(member, organizationName: organizationName), isPresented: $isRoleConfirmationShown, titleVisibility: .visible) {
+            Button(role == OrganizationRole.admin ? (member.isCurrentUser ? "Make me a member" : "Make member") : "Make admin", role: role == OrganizationRole.admin ? .destructive : nil) {
+                setRole(role == OrganizationRole.admin ? OrganizationRole.member : OrganizationRole.admin)
+            }
+            .accessibilityIdentifier("confirm-organization-role")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(organizationRoleChangeMessage(member))
+        }
+        .sheet(isPresented: $isRemoveConfirmationShown) {
+            OrganizationAccessConfirmation(
+                title: "Remove \(member.name) from \(organizationName)?",
+                message: Self.describeRemoval(memberName: member.name, organizationName: organizationName),
+                consequences: OrganizationLogic.accessConsequences(organization: organization, change: .removeMember(member.accountID)),
+                confirmLabel: "Remove from \(organizationName)", confirmID: "confirm-remove-organization-member", refusal: $refusal, onCancel: { isRemoveConfirmationShown = false }
+            ) {
+                if await model.removeOrganizationMember(organizationID: organizationID, accountID: member.accountID) {
+                    isRemoveConfirmationShown = false
+                    dismiss()
+                    await reload()
+                } else {
+                    refusal = model.takeRefusal(title: "Remove from \(organizationName)")
                 }
             }
-            .accessibilityIdentifier("confirm-remove-organization-member")
-        } message: {
-            Text(Self.describeRemoval(memberName: member.name, organizationName: organizationName))
         }
         .refusalAlert($refusal)
     }
@@ -882,13 +1034,27 @@ struct OrganizationMemberView: View {
     private func setRole(_ newRole: String) {
         Task {
             if await model.setOrganizationMemberRole(organizationID: organizationID, accountID: member.accountID, role: newRole) {
-                role = newRole
                 await reload()
             } else {
                 refusal = model.takeRefusal(title: newRole == OrganizationRole.admin ? "Make admin" : "Make member")
+                await reload()
             }
         }
     }
+}
+
+private func organizationRoleChangeTitle(_ member: Member, organizationName: String) -> String {
+    if member.role != OrganizationRole.admin { return "Make \(member.name) an admin of \(organizationName)?" }
+    return member.isCurrentUser ? "Make yourself a member of \(organizationName)?" : "Make \(member.name) a member of \(organizationName)?"
+}
+
+private func organizationRoleChangeMessage(_ member: Member) -> String {
+    if member.role != OrganizationRole.admin {
+        return "Admins manage members, teams and which teams have which vaults. Being an admin gives no vault by itself."
+    }
+    return member.isCurrentUser
+        ? "You can no longer manage members, teams or which teams have which vaults. Another admin can make you an admin again."
+        : "\(member.name) can no longer manage members, teams or which teams have which vaults. Another admin can make them an admin again."
 }
 
 /// Gives a team an organization vault with a role: from a team (pick the vault) or from the vault's sheet (pick the team).
@@ -933,7 +1099,8 @@ struct GiveVaultSheet: View {
                     }
                     .accessibilityIdentifier("give-vault-role")
                 } footer: {
-                    Text("Everyone in the team gets the vault with this role. Someone in several teams gets the strongest of their roles.")
+                    Text("\(describeTeamVaultRoleAbility(role)) Everyone in the team gets the vault with this role. Someone in several teams gets the strongest of their roles.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .navigationTitle(title)
@@ -989,6 +1156,7 @@ struct OrganizationVaultSharingView: View {
     @State private var isGiveShown = false
     @State private var refusal: Refusal?
     @State private var presentationDetent = PresentationDetent.large
+    @State private var teamToTakeBack: Team?
 
     private var vaultName: String { model.findVault(vaultID: vaultID)?.name ?? "Vault" }
     private var sharing: OrganizationVaultSharing? {
@@ -1003,7 +1171,7 @@ struct OrganizationVaultSharingView: View {
                         ForEach(sharing.allTeamAccess) { access in
                             NavigationLink {
                                 if let organization {
-                                    teamMemberList(access, organization: organization)
+                                    teamMemberList(access, organization: organization, canChangeRole: sharing.canChangeTeams)
                                 }
                             } label: {
                                 HStack {
@@ -1033,23 +1201,29 @@ struct OrganizationVaultSharingView: View {
                             .accessibilityElement(children: .combine)
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 if sharing.canChangeTeams {
-                                    Button("Take back") { takeBack(from: access.team) }
+                                    Button("Take back…", role: .destructive) { teamToTakeBack = access.team }
                                 }
                             }
                             .contextMenu {
                                 if sharing.canChangeTeams {
-                                    Button("Take back", systemImage: "arrow.uturn.backward") { takeBack(from: access.team) }
+                                    Button("Take back…", systemImage: "arrow.uturn.backward", role: .destructive) { teamToTakeBack = access.team }
                                 }
                             }
                             .accessibilityIdentifier("vault-team-\(access.team.name)")
                         }
                     } header: {
                         Text("Shared through teams in \(sharing.organizationName)")
+                            .foregroundStyle(.themeSecondary)
                             .accessibilityIdentifier("shared-through-teams")
                     } footer: {
                         if let askAdminNote = sharing.askAdminNote {
                             Text(askAdminNote)
+                                .foregroundStyle(.themeSecondary)
                                 .accessibilityIdentifier("ask-an-admin")
+                        }
+                        if sharing.canChangeTeams {
+                            Text("Someone in several teams gets the strongest of their roles.")
+                                .foregroundStyle(.themeSecondary)
                         }
                     }
                     if sharing.canChangeTeams {
@@ -1095,6 +1269,16 @@ struct OrganizationVaultSharingView: View {
                     .environmentObject(model)
                 }
             }
+            .sheet(item: $teamToTakeBack) { team in
+                if let organization {
+                    OrganizationAccessConfirmation(
+                        title: "Take \(vaultName) back from \(team.name)?",
+                        message: "Review who loses access or has a reduced role through the remaining teams.",
+                        consequences: OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: team.id, vaultID: vaultID)),
+                        confirmLabel: "Take back", confirmID: "confirm-take-back", refusal: $refusal, onCancel: { teamToTakeBack = nil }
+                    ) { await takeBack(from: team) }
+                }
+            }
             .refusalAlert($refusal)
             .task { await load() }
             .onChange(of: model.remoteChangeCount) { _, _ in
@@ -1105,10 +1289,14 @@ struct OrganizationVaultSharingView: View {
         .interactiveDismissDisabled(model.isBusy)
     }
 
-    private func teamMemberList(_ access: TeamAccess, organization: Organization) -> some View {
+    private func teamMemberList(_ access: TeamAccess, organization: Organization, canChangeRole: Bool) -> some View {
         List {
             Section {
-                LabeledContent("Role for this vault", value: describeVaultRole(access.role))
+                if canChangeRole {
+                    TeamVaultRolePicker(organization: organization, organizationID: organizationID, teamID: access.team.id, teamName: access.team.name, vaultID: vaultID, vaultName: vaultName, role: access.role, reload: load)
+                } else {
+                    LabeledContent("Role for this vault", value: describeVaultRole(access.role))
+                }
             }
             Section {
                 ForEach(OrganizationLogic.listAllTeamMember(organization: organization, team: access.team)) { member in
@@ -1117,7 +1305,8 @@ struct OrganizationVaultSharingView: View {
                             organizationID: organization.id,
                             organizationName: organization.name,
                             member: member,
-                            isAdmin: organization.isAdmin
+                            isAdmin: organization.isAdmin,
+                            organization: organization
                         ) {
                             await load()
                         }
@@ -1146,13 +1335,95 @@ struct OrganizationVaultSharingView: View {
         }
     }
 
-    private func takeBack(from team: Team) {
-        Task {
+    private func takeBack(from team: Team) async {
             if await model.takeVaultFromTeam(organizationID: organizationID, teamID: team.id, vaultID: vaultID) {
                 await load()
+            teamToTakeBack = nil
             } else {
                 refusal = model.takeRefusal(title: "Take back")
             }
+        }
+}
+
+func describeTeamVaultRoleAbility(_ role: String) -> String {
+    if role == Member.vaultRoleOwner {
+        return "Owners view and change items, share, rename and delete the vault. Access is managed through the organization's teams."
+    }
+    return describeVaultRoleAbility(role)
+}
+
+struct TeamVaultRolePicker: View {
+    var organization: Organization
+    var organizationID: String
+    var teamID: String
+    var teamName: String
+    var vaultID: String
+    var vaultName: String
+    var role: String
+    var reload: () async -> Void
+
+    @EnvironmentObject private var model: AppModel
+    @State private var pendingRole: String?
+    @State private var isSubmitting = false
+    @State private var refusal: Refusal?
+
+    private var isPromotion: Bool { pendingRole == Member.vaultRoleOwner }
+    private var confirmationMessage: String {
+        let ability = isPromotion
+            ? "Owners view and change items, share, rename and delete the vault. Access is managed through the organization's teams. Newly entitled members wait for an owner's Hisar to give them their keys."
+            : "\(teamName)'s members lose Owner powers unless another team gives them Owner. Access is managed through the organization's teams."
+        let effects = OrganizationLogic.accessConsequences(organization: organization, change: .teamRole(teamID: teamID, vaultID: vaultID, role: pendingRole ?? role))
+        return ([ability, "Someone in several teams gets the strongest of their roles."] + effects).joined(separator: "\n\n")
+    }
+
+    var body: some View {
+        Picker("Role for this vault", selection: Binding(get: { role }, set: choose)) {
+            ForEach(Member.allVaultRole, id: \.self) { choice in
+                Text(describeVaultRole(choice)).tag(choice)
+            }
+        }
+        .pickerStyle(.menu)
+        .disabled(model.isBusy || isSubmitting)
+        .accessibilityLabel("Role for \(teamName) in \(vaultName)")
+        .accessibilityValue(describeVaultRole(role))
+        .accessibilityHint("Someone in several teams gets the strongest of their roles.")
+        .accessibilityIdentifier("team-role-\(teamID)-\(vaultID)")
+        .confirmationDialog(
+            isPromotion ? "Make \(teamName) an owner of “\(vaultName)”?" : "Change \(teamName)'s role from Owner to \(describeVaultRole(pendingRole ?? role))?",
+            isPresented: Binding(get: { pendingRole != nil }, set: { if !$0 { pendingRole = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let selected = pendingRole {
+                Button(isPromotion ? "Make owner" : "Change role", role: isPromotion ? nil : .destructive) {
+                    submit(selected)
+                }
+                .accessibilityIdentifier("confirm-team-role")
+            }
+            Button("Cancel", role: .cancel) { pendingRole = nil }
+        } message: {
+            Text(confirmationMessage)
+        }
+        .refusalAlert($refusal)
+    }
+
+    private func choose(_ newRole: String) {
+        guard newRole != role, !isSubmitting else { return }
+        if role == Member.vaultRoleOwner || newRole == Member.vaultRoleOwner {
+            pendingRole = newRole
+        } else {
+            submit(newRole)
+        }
+    }
+
+    private func submit(_ newRole: String) {
+        isSubmitting = true
+        pendingRole = nil
+        Task {
+            if !(await model.giveVaultToTeam(organizationID: organizationID, teamID: teamID, vaultID: vaultID, role: newRole)) {
+                refusal = model.takeRefusal(title: "Change role")
+            }
+            await reload()
+            isSubmitting = false
         }
     }
 }

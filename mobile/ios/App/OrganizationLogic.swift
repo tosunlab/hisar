@@ -8,6 +8,17 @@ struct OrganizationVaultGroup: Identifiable, Equatable {
     var waitingMessage: String
 }
 
+struct ImportVaultChoice: Identifiable, Equatable {
+    var id: String
+    var label: String
+}
+
+struct ImportVaultGroup: Identifiable, Equatable {
+    var id: String
+    var name: String
+    var allChoice: [ImportVaultChoice]
+}
+
 /// Where a new vault goes: a shared vault, or an organization vault for one of the user's teams.
 struct VaultLocation: Identifiable, Hashable {
     static let sharedVault = VaultLocation(organizationID: "", organizationName: "", teamID: "", teamName: "")
@@ -48,6 +59,14 @@ enum OrganizationMemberAction: Equatable {
     case remove
 }
 
+enum OrganizationAccessChange {
+    case removeTeam(String)
+    case removeTeamMember(teamID: String, accountID: String)
+    case removeMember(String)
+    case takeVault(teamID: String, vaultID: String)
+    case teamRole(teamID: String, vaultID: String, role: String)
+}
+
 struct GivableVault: Equatable {
     var vaultID: String
     var displayName: String
@@ -63,8 +82,47 @@ enum OrganizationLoad: Equatable {
     case failed
 }
 
+struct VaultChoice: Identifiable, Equatable {
+    var id: String
+    var label: String
+    var context: String
+}
+
+struct VaultDestinationGroup: Identifiable, Equatable {
+    var id: String
+    var name: String
+    var destinations: [VaultChoice]
+}
+
 enum OrganizationLogic {
     static let maxNameLength = 100
+
+    static func destinationGroups(_ vaults: [VaultSummary], organizations: [OrganizationSummary]) -> [VaultDestinationGroup] {
+        func groupID(_ vault: VaultSummary) -> String {
+            vault.isOrganization ? "organization/\(vault.organizationID)" : vault.type
+        }
+        var groups: [VaultDestinationGroup] = []
+        for vault in vaults {
+            let id = groupID(vault)
+            let organization = organizations.first { $0.id == vault.organizationID }
+            var name = vault.isOrganization ? organization?.name ?? "Organization \(vault.organizationID.prefix(8))" : vault.type == "personal" ? "Private vault" : "Shared vault"
+            if let organization, organizations.contains(where: { $0.id != organization.id && $0.name == organization.name }) {
+                name += " (\(organization.id.prefix(8)))"
+            }
+            let collisions = vaults.filter { $0.name == vault.name && groupID($0) == id }
+            var length = 8
+            while collisions.contains(where: { $0.id != vault.id && $0.id.prefix(length) == vault.id.prefix(length) }) { length += 1 }
+            let suffix = collisions.count > 1 ? " (\(vault.id.prefix(length)))" : ""
+            let context = vault.isOrganization ? "Shared through teams in \(name)." : vault.type == "personal" ? "Only you have access to this private vault." : "Everyone with access to this shared vault can see the item."
+            let destination = VaultChoice(id: vault.id, label: "\(name) / \(vault.name)\(suffix)", context: context)
+            if let index = groups.firstIndex(where: { $0.id == id }) {
+                groups[index].destinations.append(destination)
+            } else {
+                groups.append(VaultDestinationGroup(id: id, name: name, destinations: [destination]))
+            }
+        }
+        return groups.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
 
     /// Organization and team names are 1 to 100 characters, as apitypes.CleanOrganizationName checks again.
     static func isValidName(_ name: String) -> Bool {
@@ -103,6 +161,44 @@ enum OrganizationLogic {
             )
         }
         return (allOtherVault, allGroup.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
+    }
+
+    static func importVaultGroups(_ allVault: [VaultSummary], allOrganization: [OrganizationSummary]) -> [ImportVaultGroup] {
+        let grouped = groupVaults(allVault, allOrganization: allOrganization, allWaiting: [])
+        let personal = grouped.allOtherVault.filter { $0.type == "personal" }
+        let shared = grouped.allOtherVault.filter { !$0.isOrganization && $0.type != "personal" }
+        let missing = Dictionary(grouping: grouped.allOtherVault.filter(\.isOrganization), by: \.organizationID)
+        var groups = [
+            OrganizationVaultGroup(id: "_personal", name: "Personal", allVault: personal, waitingMessage: ""),
+            OrganizationVaultGroup(id: "_shared", name: "Shared vaults", allVault: shared, waitingMessage: ""),
+        ].filter { !$0.allVault.isEmpty }
+        let known = grouped.allGroup.map {
+            OrganizationVaultGroup(id: $0.id, name: $0.name.isEmpty ? $0.id : $0.name, allVault: $0.allVault, waitingMessage: "")
+        }
+        groups += (known + missing.map {
+            OrganizationVaultGroup(id: $0.key, name: $0.key, allVault: $0.value, waitingMessage: "")
+        }).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let sameName = Dictionary(grouping: groups, by: { $0.name.lowercased() })
+        return groups.map { group in
+            let peers = sameName[group.name.lowercased()] ?? []
+            let name = peers.count > 1 ? "\(group.name) (\(shortImportID(group.id, among: peers.map(\.id))))" : group.name
+            let sameVaultName = Dictionary(grouping: group.allVault, by: { $0.name.lowercased() })
+            let choices = group.allVault.map { vault in
+                let peers = sameVaultName[vault.name.lowercased()] ?? []
+                let vaultName = peers.count > 1 ? "\(vault.name) (\(shortImportID(vault.id, among: peers.map(\.id))))" : vault.name
+                let label = group.id == "_personal" && name == vaultName ? name : "\(name) › \(vaultName)"
+                return ImportVaultChoice(id: vault.id, label: label)
+            }
+            return ImportVaultGroup(id: group.id, name: name, allChoice: choices)
+        }
+    }
+
+    private static func shortImportID(_ id: String, among allID: [String]) -> String {
+        var length = min(8, id.count)
+        while length < id.count && allID.contains(where: { $0 != id && $0.prefix(length) == id.prefix(length) }) {
+            length += 1
+        }
+        return String(id.prefix(length))
     }
 
     static func describeWaiting(count: Int, organizationName: String) -> String {
@@ -216,6 +312,64 @@ enum OrganizationLogic {
         guard organization.isAdmin else { return [] }
         let roleAction: OrganizationMemberAction = member.role == OrganizationRole.admin ? .makeMember : .makeAdmin
         return member.isCurrentUser ? [roleAction] : [roleAction, .remove]
+    }
+
+    static func accessConsequences(organization: Organization, change: OrganizationAccessChange) -> [String] {
+        var after = organization.allTeam
+        switch change {
+        case .removeTeam(let teamID):
+            after.removeAll { $0.id == teamID }
+        case .removeTeamMember(let teamID, let accountID):
+            for index in after.indices where after[index].id == teamID {
+                after[index].allMember.removeAll { $0.accountID == accountID }
+            }
+        case .removeMember(let accountID):
+            for index in after.indices { after[index].allMember.removeAll { $0.accountID == accountID } }
+        case .takeVault(let teamID, let vaultID):
+            for index in after.indices where after[index].id == teamID {
+                after[index].allVault.removeAll { $0.vaultID == vaultID }
+            }
+        case .teamRole(let teamID, let vaultID, let role):
+            for index in after.indices where after[index].id == teamID {
+                for vaultIndex in after[index].allVault.indices where after[index].allVault[vaultIndex].vaultID == vaultID {
+                    after[index].allVault[vaultIndex].role = role
+                }
+            }
+        }
+        let rank = ["reader": 1, "editor": 2, "owner": 3]
+        func strongest(_ teams: [Team], _ accountID: String, _ vaultID: String) -> String {
+            teams.filter { $0.allMember.contains { $0.accountID == accountID } }
+                .flatMap(\.allVault).filter { $0.vaultID == vaultID }
+                .map(\.role).max { (rank[$0] ?? 0) < (rank[$1] ?? 0) } ?? ""
+        }
+        let vaultByID = Dictionary(organization.allTeam.flatMap(\.allVault).map { ($0.vaultID, $0) }, uniquingKeysWith: { first, second in first.canOpen ? first : second })
+        let memberByID = Dictionary(organization.allTeam.flatMap(\.allMember).map { ($0.accountID, $0) }, uniquingKeysWith: { first, _ in first })
+        var lines: [String] = []
+        for vaultID in vaultByID.keys.sorted() {
+            guard let vault = vaultByID[vaultID] else { continue }
+            var losses: [String] = []
+            var roleChanges: [String] = []
+            for accountID in memberByID.keys.sorted() {
+                guard let member = memberByID[accountID] else { continue }
+                let beforeRole = strongest(organization.allTeam, accountID, vaultID)
+                let afterRole = strongest(after, accountID, vaultID)
+                guard beforeRole != afterRole else { continue }
+                let name = member.name.isEmpty ? member.email : member.name
+                if afterRole.isEmpty {
+                    losses.append(member.isCurrentUser ? "You lose access too." : "\(name) loses access.")
+                } else {
+                    let subject = member.isCurrentUser ? "Your role" : "\(name)'s role"
+                    roleChanges.append("\(subject) changes from \(beforeRole.capitalized) to \(afterRole.capitalized).")
+                }
+            }
+            let name = vault.canOpen ? vault.name : "A vault you can't open (\(vaultID))"
+            if !losses.isEmpty { lines.append("\(name): \(losses.joined(separator: " "))") }
+            if !roleChanges.isEmpty { lines.append("\(name): \(roleChanges.joined(separator: " "))") }
+        }
+        if !lines.isEmpty { return lines }
+        if case .removeTeamMember = change { return ["They keep their vault access through other teams."] }
+        if case .removeMember = change { return ["They have no vault access through this organization's teams."] }
+        return ["Everyone keeps their vault access through other teams."]
     }
 
     static func describeMemberCount(_ count: Int) -> String {

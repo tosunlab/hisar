@@ -19,6 +19,14 @@ var (
 	ErrBiometricCancelled    = errors.New("biometric authentication was cancelled")
 )
 
+type biometricResetError struct {
+	message string
+	cause   error
+}
+
+func (err *biometricResetError) Error() string { return err.message }
+func (err *biometricResetError) Unwrap() error { return err.cause }
+
 func buildBiometricContext(accountID string) []byte {
 	return []byte("hisar/v1/biometric-unlock:" + accountID)
 }
@@ -117,7 +125,7 @@ func (s *Service) EnableNewAccountBiometricUnlock() (Status, error) {
 
 func (s *Service) enableBiometricUnlock(password string, isNewAccount bool) (Status, error) {
 	s.mutex.Lock()
-	if isNewAccount && len(s.newAccountUnlockKey) == 0 {
+	if isNewAccount && (s.kitGrant == nil || len(s.kitGrant.unlockKey) == 0) {
 		s.mutex.Unlock()
 		return Status{}, ErrNoNewAccountUnlockKey
 	}
@@ -129,7 +137,7 @@ func (s *Service) enableBiometricUnlock(password string, isNewAccount bool) (Sta
 	server, token, accountCache := s.state.Server, s.state.Token, s.unlockedSession.Cache
 	var accountUnlockKey []byte
 	if isNewAccount {
-		accountUnlockKey = bytes.Clone(s.newAccountUnlockKey)
+		accountUnlockKey = bytes.Clone(s.kitGrant.unlockKey)
 	}
 	s.mutex.Unlock()
 	defer func() { clear(accountUnlockKey) }()
@@ -171,8 +179,7 @@ func (s *Service) enableBiometricUnlock(password string, isNewAccount bool) (Sta
 	s.biometricSetupError = ""
 	s.recordPasswordUnlock()
 	if isNewAccount {
-		clear(s.newAccountUnlockKey)
-		s.newAccountUnlockKey = nil
+		s.dropKitUnlockKey()
 	}
 	return s.buildStatus(), s.state.Save()
 }
@@ -259,29 +266,9 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 
 	s.biometricMutex.Lock()
 	defer s.biometricMutex.Unlock()
-	if !s.isSessionEpoch(epoch) {
-		return Status{}, errUnlockInterrupted
-	}
-
-	if preparer != nil {
-		if err := preparer.PrepareLoadKey(accountID); err != nil {
-			return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the biometric unlock key can no longer be used: %w", err))
-		}
-	}
-	if err := authenticate(); err != nil {
+	accountUnlockKey, err := s.openBiometricUnlockKey(accountID, sealedUnlockKey, epoch, preparer, authenticate)
+	if err != nil {
 		return Status{}, err
-	}
-	wrappingKey, err := s.config.Biometric.LoadKey(accountID)
-	if err != nil {
-		if errors.Is(err, ErrBiometricCancelled) {
-			return Status{}, err
-		}
-		return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the %s key is missing: %w", s.config.BiometricName, err))
-	}
-	defer clear(wrappingKey)
-	accountUnlockKey, err := crypt.Open(wrappingKey, sealedUnlockKey, buildBiometricContext(accountID))
-	if err != nil {
-		return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the %s key does not match", s.config.BiometricName))
 	}
 	defer clear(accountUnlockKey)
 
@@ -295,7 +282,7 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 		return s.GetStatus(), nil
 	}
 	if errors.Is(err, session.ErrBadCredentials) {
-		return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, errors.New("your master password changed"))
+		return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, session.ErrBadCredentials)
 	}
 	if err != nil {
 		return Status{}, convertError(err)
@@ -309,6 +296,35 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 	return s.buildStatus(), nil
 }
 
+// openBiometricUnlockKey needs biometricMutex: it runs the biometric check and opens the account unlock key that
+// sealedUnlockKey keeps for accountID in the session of epoch. A key the OS no longer has turns biometric unlock off.
+func (s *Service) openBiometricUnlockKey(accountID string, sealedUnlockKey []byte, epoch uint64, preparer BiometricKeyPreparer, authenticate func() error) ([]byte, error) {
+	if !s.isSessionEpoch(epoch) {
+		return nil, errUnlockInterrupted
+	}
+	if preparer != nil {
+		if err := preparer.PrepareLoadKey(accountID); err != nil {
+			return nil, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the biometric unlock key can no longer be used: %w", err))
+		}
+	}
+	if err := authenticate(); err != nil {
+		return nil, err
+	}
+	wrappingKey, err := s.config.Biometric.LoadKey(accountID)
+	if err != nil {
+		if errors.Is(err, ErrBiometricCancelled) {
+			return nil, err
+		}
+		return nil, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the %s key is missing: %w", s.config.BiometricName, err))
+	}
+	defer clear(wrappingKey)
+	accountUnlockKey, err := crypt.Open(wrappingKey, sealedUnlockKey, buildBiometricContext(accountID))
+	if err != nil {
+		return nil, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the %s key does not match", s.config.BiometricName))
+	}
+	return accountUnlockKey, nil
+}
+
 // resetBiometricAfterFailure turns off the biometric unlock that failed, sealedUnlockKey of accountID, unless another
 // account or a newer setup replaced it meanwhile.
 func (s *Service) resetBiometricAfterFailure(accountID string, sealedUnlockKey []byte, cause error) error {
@@ -319,7 +335,11 @@ func (s *Service) resetBiometricAfterFailure(accountID string, sealedUnlockKey [
 	}
 	s.forgetBiometricUnlock()
 	s.state.Save()
-	return fmt.Errorf("%v; %s unlock was turned off, unlock with your master password and turn it on again", cause, s.config.BiometricName)
+	message := fmt.Sprintf("%s unlock was turned off. Unlock with your master password, then turn it on again in Settings, Security.", s.config.BiometricName)
+	if errors.Is(cause, session.ErrBadCredentials) {
+		message = "Your master password changed. " + message
+	}
+	return &biometricResetError{message: message, cause: cause}
 }
 
 // SetBiometricKeyPreparer is for apps that create the preparer after the service (hisarkit); it must run right after

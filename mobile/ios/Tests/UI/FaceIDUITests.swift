@@ -103,10 +103,10 @@ final class FaceIDUITests: HisarUITestCase {
         expectation(for: NSPredicate(format: "value == '0' AND enabled == true"), evaluatedWith: toggle)
         waitForExpectations(timeout: 10)
         (knob.exists ? knob : toggle).tap()
-        let passwordField = app.alerts.secureTextFields.firstMatch
+        let passwordField = app.secureTextFields["biometric-password"]
         waitFor(passwordField)
-        typeText(Self.masterPassword, into: passwordField)
-        matchFace(after: { app.alerts.buttons["Turn on"].tap() }, until: { toggle.value as? String == "1" }, failingWhenEnabled: toggle)
+        type(Self.masterPassword, into: passwordField)
+        matchFace(after: { app.navigationBars.buttons["Turn on"].firstMatch.tap() }, until: { toggle.value as? String == "1" }, failingWhenEnabled: toggle)
         expectation(for: enabledPredicate, evaluatedWith: toggle)
         waitForExpectations(timeout: 20)
         sleep(2)
@@ -135,7 +135,8 @@ final class FaceIDUITests: HisarUITestCase {
         app.activate()
         expectation(for: hasFocus, evaluatedWith: unlockPasswordField)
         waitForExpectations(timeout: 10)
-        XCTAssertEqual(app.descendants(matching: .any)["error-message"].firstMatch.label, "Face ID was cancelled.")
+        XCTAssertFalse(app.descendants(matching: .any)["error-message"].firstMatch.exists, "cancelling Face ID leaves the lock screen quiet")
+        XCTAssertFalse(app.buttons["vault-Personal"].exists, "cancelling Face ID does not unlock the vaults")
         matchFace(after: { app.buttons["unlock-biometric"].tap() }, until: { app.buttons["vault-Personal"].exists })
         waitFor(app.buttons["vault-Personal"], timeout: 15)
         XCTAssertFalse(springboard.otherElements["Face ID"].exists, "one Face ID prompt unlocks: the keychain reuses the evaluated context")

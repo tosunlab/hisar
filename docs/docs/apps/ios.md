@@ -22,6 +22,12 @@ Tests/UI/                XCUITests against a real hisar-server (scripts/test-ios
 Item icons ([Design](../design.md) §4.5): the editor's icon opens `IconPickerView` (Automatic, presets, colors, Choose photo); `ItemIcon`
 draws the chosen icon, else a login's website icon, which `AppModel.loadWebsiteIcon` loads once per domain through HisarKit.
 Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconpresets_test.go` keeps the list on core's.
+At accessibility text sizes, item-detail headers stack a capped decorative icon above the full-width title.
+The icon picker's preset grid adapts its column count to the scaled tiles instead of fixing six columns.
+Color swatches, the editor's **Change icon**, and removed-vault dismiss buttons each have at least a 44-point target.
+Dismiss buttons name their vault so VoiceOver distinguishes notices. Each notice keeps its dismiss action separate from
+the message. The empty Approvals screen likewise keeps its setup link separate from its explanation.
+The Mac approvals page shows both the iPhone's approval explanation and the Mac settings needed to turn requests on.
 
 An empty writable vault says "Tap + to add your first item." Its **+** menu offers every item type.
 An empty Reader vault instead says "Items appear here once an editor adds them." It has no **+** menu.
@@ -31,8 +37,35 @@ titles and subtitles at large font scales without reducing the selected text siz
 
 New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
-Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
+Text and secret fields retain visible labels above their values, including populated identity, address, credential,
+license, server and database editors. Labels and inputs stay vertically stacked at larger text sizes.
+Organization vault role pickers announce the team, vault, and current role to VoiceOver.
+The Search tab keeps its search field visible in compact and wide layouts without a pull-down gesture.
+Nonempty item passwords show their strength below the field in detail, the editor, and the generator,
+without revealing the password.
+Account settings group the master password, Secret Key, Emergency Kit, imports, exports, account deletion, and sign out.
+**Sign out** has its own final section below **Delete account** and still asks for confirmation.
+Help and About remain informational destinations on the Settings root.
 Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
+Section headings and explanations use the palette's solid secondary text color, including recovery, export and
+account-change instructions. The color keeps at least 4.5:1 contrast on grouped backgrounds in Light and Dark appearance.
+
+At accessibility text sizes, the lock screen keeps the account email on one line, shrinking it or truncating its middle.
+VoiceOver reads the full address.
+Sign-in and create-account failures appear immediately above their submit button, without clearing the entered fields.
+At accessibility text sizes, sign-in modes use stacked buttons and a wrapping heading instead of a segmented control.
+The Emergency Kit scanner explains denied or restricted camera access. **Open Settings** is available for denied access.
+Returning from Settings rechecks permission before starting the camera.
+If preparing the Emergency Kit fails, the kit screen offers **Try again**, which uses a fresh temporary folder. The Secret Key
+and **Copy** appear without waiting for the kit and stay when preparing it fails. Only a completed non-copy handoff records
+delivery and shows **I saved my Emergency Kit**.
+Devices distinguishes a failed first fetch from a successful empty list and offers **Retry**.
+A failed refresh keeps the last loaded list with a warning that it has not refreshed; pull-to-refresh remains available.
+Vaults and item lists show failed favorite, rename, and invitation actions on the screen where they began.
+A failed refresh keeps the last readable list and offers **Retry**. A failed rename keeps the entered name when
+**Rename** is opened again. Background successes do not dismiss these failures.
+At accessibility text sizes, tag counts move below their names and the tag symbol stays at most 32 points wide.
+Ordinary text sizes keep the native count badge.
 
 Sign in keeps the server behind **Use a different server…**. The expanded editor labels the URL **Server** and
 keeps **Signs in to \<server>.** visible as the value changes. **Use eu.tryhisar.com** explicitly restores the
@@ -55,11 +88,30 @@ An absent plan version never enables the delete button.
 `ListPendingRecovery` supplies account metadata, not the new Secret Key. The user chooses a record and enters its
 master password to resume setup or prepare an Emergency Kit. The kit and Secret Key remain visible until the user
 closes recovery, changes accounts, or locks the app. Closing removes the temporary PDF but keeps the protected journal.
-Only **I saved the new Emergency Kit** calls `AcknowledgePendingRecovery`. Without the OS keychain, setup stops before
+Only an explicit saved confirmation calls `AcknowledgePendingRecovery`. Without the OS keychain, setup stops before
 the remote change until the user saves and confirms the new kit. After a restart, the user supplies the saved kit's
 Secret Key through `ResumePendingRecoveryWithSecretKey`. Metadata-only manual-unlock records remain visible for
 future sign-ins. `DiscardPreparedRecovery` removes only a setup for which no remote change was sent.
 The Android root screen and `PendingRecoveryModel` use the same protocol and test names.
+The installed account's own owed kit is never in this list; it opens the Emergency Kit screen below.
+
+## Account setup and the Emergency Kit
+
+`SignInView` shows **Welcome to Hisar** on a fresh installation. Create account (`SignUpForm`) checks the server's
+sign-up policy before asking for account fields, binds an invitation and its email to the invitation's server, and
+focuses the first missing field on submit. Its fields are Email, then Name, then the master password twice. With the
+email directly above the new-password fields, iOS takes the form for a website sign-up and offers **Use Strong
+Password?**; while that offer is up, every keystroke goes into both password fields. A master password must be one the
+user can remember, so Hisar never offers a generated one, and the Name field between them stops the offer. Android
+keeps the same order so the phones match.
+
+`NewSecretKeyView` is the one screen for the installed account's owed kit, after sign-up and after a Secret Key
+replacement, driven by `status.emergencyKit`. `EmergencyKitShareButton.deliveryMethod` turns the activity sheet's
+completion into `file` (Save to Files), `print` or `share`; Copy, cancellation and errors record nothing. **Save later**
+leaves the reminder at the top of Vaults (`EmergencyKitBanner`), and the lock screen shows a static line instead. If
+Hisar locks while the kit screen is open, `AppModel.interruptedKitOperationID` reopens the same kit after unlock. The
+kit screens count appearing and scrolling as activity for auto-lock through `reportsActivity`. It adds no tap gesture:
+one on the list takes the taps of its rows' buttons, such as **Save later** and **Copy Secret Key**.
 
 ## iPhone Duo
 
@@ -110,6 +162,8 @@ accessibility tree and can exhaust a wait after the sheet has already closed. Th
 Formatted fields wait for each character's update before typing the next one.
 Back navigation first selects the frontmost navigation bar, then its back button. A global `BackButton` query can
 select a covered stack's button instead of the visible sheet's back button.
+Scrolling to a row continues until the row ends above the floating tab bar. A row partly under the bar counts as
+hittable, but taps there go to the bar. Switching between Sign in and Create account taps the mode until it is selected.
 
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.
@@ -118,23 +172,44 @@ What the UI tests cover: only the journeys a user depends on end to end, plus th
 logic behind each screen is in the unit tests. `HisarUITests` creates an account from an invite, saves the Emergency
 Kit, adds a login with a one-time code (its password hidden until revealed, copied without revealing, revealed without
 copying; its setup key hidden in the editor until revealed) and a card (number and security code hidden until revealed),
-locks and unlocks with the master password, signs out and signs in again with the Secret Key, and checks the privacy
+locks and unlocks with the master password (a revealed password conceals again when Hisar leaves the foreground and
+when an unlock fails), signs out and signs in again with the Secret Key, and checks the privacy
 cover. `FaceIDUITests` turns on Face ID and unlocks with it (the test enrolls a face in the simulator and posts its
 "matching face" notification). `SharingUITests` shares a new vault, manages its members and invites someone from
 Settings → People. `AccountLifecycleUITests` changes the master password, replaces the Secret Key and deletes the
 account. `PasskeyUITests` registers a passkey into a login and signs in with it, checks the attestation and the ES256
 signature with CryptoKit, then sees and deletes it in the item. `OrganizationUITests` creates an organization and gives
 its team a vault. `PhoneApprovalUITests` approves a Mac's SSH request with Face ID.
+`OnboardingUITests` covers a postponed kit that needs only the unlock password, the reminder at the default and the
+largest accessibility text size (every toolbar and tab control stays tappable and the reminder scrolls with Vaults),
+invitation-first Create account on an invite-only server, and Create account without an invitation on a server with open
+registration. Its accounts come from the `ONBOARDING_POSTPONED` and `EMERGENCY_KIT_BANNER` invites that
+`scripts/ui-test-partner.sh` creates, and from the open-registration server it starts beside the test server.
+
+The icon picker keeps the last completed icon while a photo is preparing. **Done** stays disabled until it finishes.
+**Cancel preparation**, selecting another icon, or dismissing the sheet cancels the pending photo.
+An older photo or its error cannot replace a newer choice.
 
 `FaceIDUITests` first launches `com.apple.LocalAuthenticationUIService`, waits for it to reach the foreground, and returns Home. A cold service can start after `coreauthd`'s five-second UI activation deadline on a CI runner. Warming it before the real account flow avoids that startup condition without retrying a failed authentication or changing the app.
 
 `FaceIDUITests` posts matching-face notifications every 500 ms on a background timer, starting before the action that requests authentication. Slow XCTest permission and accessibility queries must not delay the simulated face. The timer stops when that step finishes, and authentication errors still fail the test.
+
+UI tests wait for the Files picker's **Save** button to become tappable before renaming an Emergency Kit.
+They wait for the filename field to disappear after saving, before continuing in Hisar.
+Formatted input, concealed card numbers included, and live search are entered one character at a time, with each field update observed before the next character. A concealed field is checked by its count of dots.
+
+`FaceIDUITests` checks that cancelling authentication leaves Hisar locked, focuses the master password field, and shows no error banner.
+
+Notification removal runs off the main thread because the system call can wait for the notification service during a scene transition.
+Returning from another app keeps the interface responsive while Hisar clears its approval reminder and refreshes setup status.
 
 `SharingUITests` scrolls the invitation's Send again action into view before revealing its swipe actions. After a confirmation closes, a partially visible invitation label can still count as hittable while its midpoint is over the home indicator.
 
 The sharing sheet updates its presenting UIKit controller's busy-dismissal policy directly. Updating SwiftUI's
 `interactiveDismissDisabled` preference can recreate the sheet on iOS 27 and discard its form state after an
 invitation succeeds. The UI test checks that the success message and chosen role survive the response.
+Removing a member returns to the members through the sheet's own navigation path. Once a reload drops that member,
+the member page's dismiss action can belong to a replaced view and close the whole sheet.
 
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,
@@ -165,6 +240,8 @@ The full flow (enable Hisar in Settings or with the "Turn on Hisar
 AutoFill" button in the app's Settings, open a login page in Safari, tap the password field) should work once a team
 is set in `Configuration/Local.xcconfig`. That has not been verified yet, and neither has the system passkey flow
 (Safari offering Hisar for a passkey sign-in or "Save passkey"): both need the paid team.
+
+When saving a passkey, a failed destination load stops the spinner and offers **Try again** for the same request. If Hisar locked or signed out, the extension shows its authentication screen instead.
 
 Manual run: open `Hisar.xcodeproj`, choose the **Hisar** scheme and an iPhone simulator, and Run. The simulator
 reaches a server on your Mac at `http://127.0.0.1:<port>`; plain `http` is allowed for local addresses only

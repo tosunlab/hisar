@@ -19,6 +19,7 @@ struct ItemEditorView: View {
     @State private var isDiscardConfirmationShown = false
     @State private var isPasswordRevealed = false
     @State private var isSetupKeyRevealed = false
+    @State private var revealedCustomFields = Set<Int>()
     @State private var isGeneratorShown = false
     @State private var isIconPickerShown = false
     @State private var isDeleteConfirmationShown = false
@@ -38,6 +39,14 @@ struct ItemEditorView: View {
     @State private var numberBrand = ""
     @State private var isUnnamedFieldShown = false
     @FocusState private var focusedFieldNameIndex: Int?
+    @State private var saveError: String?
+    @State private var saveFailureCount = 0
+    private enum SaveErrorFocus: Hashable { case summary, oneTimeCode }
+    @AccessibilityFocusState private var focusedSaveError: SaveErrorFocus?
+
+    private var oneTimeCodeError: String? {
+        saveError == "The one-time code is not a valid secret or otpauth:// link" ? saveError : nil
+    }
 
     private var isNew: Bool { originalItem == nil }
 
@@ -46,6 +55,7 @@ struct ItemEditorView: View {
     }
 
     private var allWritableVault: [VaultSummary] { model.allVault.filter(AppModel.isWritableVault) }
+    private var destinationGroups: [VaultDestinationGroup] { OrganizationLogic.destinationGroups(allWritableVault, organizations: model.allOrganization) }
 
     private var credentialExpiryWarning: String {
         ItemAPICredential.describeEditedExpiry(draft.apiCredential?.expiry ?? "", saved: originalItem?.apiCredential)
@@ -54,214 +64,262 @@ struct ItemEditorView: View {
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
-                Form {
-                    if let errorMessage = model.errorMessage {
-                        Section {
-                            ErrorBanner(message: errorMessage)
+            Form {
+                if let errorMessage = saveError ?? model.errorMessage {
+                    Section {
+                        ErrorBanner(message: errorMessage)
+                            .id("editor-save-error")
+                            .accessibilityFocused($focusedSaveError, equals: .summary)
+                    }
+                }
+                Section {
+                    HStack(spacing: 12) {
+                        Button {
+                            isIconPickerShown = true
+                        } label: {
+                            AppItemIcon(item: buildIconPreviewItem(), size: 40)
+                                .overlay(alignment: .bottomTrailing) {
+                                    Image(systemName: "pencil.circle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.themeSecondary, .background)
+                                        .offset(x: 4, y: 4)
+                                }
+                                .iconButtonHitArea()
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Change icon")
+                        .accessibilityIdentifier("editor-icon")
+                        TextField("Title", text: $draft.title)
+                            .accessibilityIdentifier("editor-title")
+                            .editorFieldLabel("Title")
+                    }
+                    if isNew {
+                        Picker("Vault", selection: $chosenVaultID) {
+                            ForEach(destinationGroups) { group in
+                                Section(group.name) {
+                                    ForEach(group.destinations) { destination in
+                                        Text(destination.label).tag(destination.id)
+                                    }
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("editor-vault")
+                        if let destination = destinationGroups.flatMap(\.destinations).first(where: { $0.id == chosenVaultID }) {
+                            Text(destination.context)
+                                .font(.footnote)
+                                .foregroundStyle(.themeSecondary)
+                                .accessibilityIdentifier("editor-vault-context")
+                        }
+                    }
+                }
+                if draft.isSecureNote {
+                    Section {
+                        TextField("Recovery codes, door codes, account details…", text: $draft.notes, axis: .vertical)
+                            .lineLimit(8...30)
+                            .accessibilityIdentifier("editor-notes")
+                            .editorFieldLabel("Note")
+                    } header: {
+                        Text("Note")
+                            .foregroundStyle(.themeSecondary)
+                    }
+                    buildFieldSection()
+                } else if draft.isCreditCard {
+                    buildCardSections()
+                    buildFieldSection()
+                } else if draft.isIdentity {
+                    buildIdentitySections()
+                    buildFieldSection()
+                } else if draft.isAPICredential {
+                    buildAPICredentialSections()
+                    buildFieldSection()
+                } else if draft.isAddress {
+                    buildAddressSection("Address", bindAddress)
+                    buildFieldSection()
+                } else if draft.isSoftwareLicense {
+                    buildSoftwareLicenseSection()
+                    buildFieldSection()
+                } else if !draft.isSSHKey {
+                    if draft.isServer {
+                        buildServerSection()
+                    }
+                    if draft.isDatabase {
+                        buildDatabaseSection()
                     }
                     Section {
-                        HStack(spacing: 12) {
-                            Button {
-                                isIconPickerShown = true
-                            } label: {
-                                AppItemIcon(item: buildIconPreviewItem(), size: 40)
-                                    .overlay(alignment: .bottomTrailing) {
-                                        Image(systemName: "pencil.circle.fill")
-                                            .font(.caption)
-                                            .foregroundStyle(.themeSecondary, .background)
-                                            .offset(x: 4, y: 4)
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Change icon")
-                            .accessibilityIdentifier("editor-icon")
-                            TextField("Title", text: $draft.title)
-                                .accessibilityIdentifier("editor-title")
-                        }
-                        if isNew {
-                            Picker("Vault", selection: $chosenVaultID) {
-                                ForEach(allWritableVault) { vault in
-                                    Text(vault.name).tag(vault.id)
+                        TextField("Username or email", text: $draft.username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            // Without content types iOS takes the username and password for a sign-in and, seconds after the
+                            // editor closes, offers to save them in Apple's Passwords. A one-time code type on both opts out.
+                            .textContentType(.oneTimeCode)
+                            .accessibilityIdentifier("editor-username")
+                            .editorFieldLabel("Username or email")
+                        HStack {
+                            Group {
+                                if isPasswordRevealed {
+                                    TextField("Password", text: $draft.password)
+                                        .font(.system(.body, design: .monospaced))
+                                } else {
+                                    SecureField("Password", text: $draft.password, prompt: Text("Password").foregroundStyle(.themeSecondary))
                                 }
                             }
-                            .accessibilityIdentifier("editor-vault")
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .textContentType(.oneTimeCode)
+                            .accessibilityIdentifier("editor-password")
+                            .editorFieldLabel("Password")
+                            Button {
+                                isPasswordRevealed.toggle()
+                            } label: {
+                                Image(systemName: isPasswordRevealed ? "eye.slash" : "eye")
+                                    .iconButtonHitArea()
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.themeSecondary)
+                            .accessibilityLabel(isPasswordRevealed ? "Hide password" : "Reveal password")
+                            Button {
+                                isGeneratorShown = true
+                            } label: {
+                                Image(systemName: "wand.and.stars")
+                                    .iconButtonHitArea()
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.themeSecondary)
+                            .accessibilityLabel("Generate password")
+                            .accessibilityIdentifier("editor-generate-password")
                         }
+                        ItemPasswordStrengthMeter(password: draft.password)
+                    } header: {
+                        Text("Login")
+                            .foregroundStyle(.themeSecondary)
                     }
-                    if draft.isSecureNote {
-                        Section("Note") {
-                            TextField("Recovery codes, door codes, account details…", text: $draft.notes, axis: .vertical)
-                                .lineLimit(8...30)
-                                .accessibilityIdentifier("editor-notes")
-                        }
-                        buildFieldSection()
-                    } else if draft.isCreditCard {
-                        buildCardSections()
-                        buildFieldSection()
-                    } else if draft.isIdentity {
-                        buildIdentitySections()
-                        buildFieldSection()
-                    } else if draft.isAPICredential {
-                        buildAPICredentialSections()
-                        buildFieldSection()
-                    } else if draft.isAddress {
-                        buildAddressSection("Address", bindAddress)
-                        buildFieldSection()
-                    } else if draft.isSoftwareLicense {
-                        buildSoftwareLicenseSection()
-                        buildFieldSection()
-                    } else if !draft.isSSHKey {
-                        if draft.isServer {
-                            buildServerSection()
-                        }
-                        if draft.isDatabase {
-                            buildDatabaseSection()
-                        }
-                        Section("Login") {
-                            TextField("Username or email", text: $draft.username)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                // Without content types iOS takes the username and password for a sign-in and, seconds after the
-                                // editor closes, offers to save them in Apple's Passwords. A one-time code type on both opts out.
-                                .textContentType(.oneTimeCode)
-                                .accessibilityIdentifier("editor-username")
+                    if !draft.isDatabase {
+                        Section {
                             HStack {
                                 Group {
-                                    if isPasswordRevealed {
-                                        TextField("Password", text: $draft.password)
-                                            .font(.system(.body, design: .monospaced))
+                                    if isSetupKeyRevealed {
+                                        TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
                                     } else {
-                                        SecureField("Password", text: $draft.password, prompt: Text("Password").foregroundStyle(.themeSecondary))
+                                        SecureField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
                                     }
                                 }
+                                .font(.system(.body, design: .monospaced))
+                                .textContentType(.oneTimeCode)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
-                                .textContentType(.oneTimeCode)
-                                .accessibilityIdentifier("editor-password")
+                                .accessibilityIdentifier("editor-one-time-password")
+                                .accessibilityHint(oneTimeCodeError ?? "")
+                                .editorFieldLabel("Setup key or otpauth:// link")
                                 Button {
-                                    isPasswordRevealed.toggle()
+                                    isSetupKeyRevealed.toggle()
                                 } label: {
-                                    Image(systemName: isPasswordRevealed ? "eye.slash" : "eye")
+                                    Image(systemName: isSetupKeyRevealed ? "eye.slash" : "eye")
                                         .iconButtonHitArea()
                                 }
                                 .buttonStyle(.borderless)
                                 .foregroundStyle(.themeSecondary)
-                                .accessibilityLabel(isPasswordRevealed ? "Hide password" : "Reveal password")
-                                Button {
-                                    isGeneratorShown = true
-                                } label: {
-                                    Image(systemName: "wand.and.stars")
-                                        .iconButtonHitArea()
-                                }
-                                .buttonStyle(.borderless)
-                                .foregroundStyle(.themeSecondary)
-                                .accessibilityLabel("Generate password")
-                                .accessibilityIdentifier("editor-generate-password")
+                                .accessibilityLabel(isSetupKeyRevealed ? "Hide setup key" : "Reveal setup key")
                             }
+                            if let oneTimeCodeError {
+                                Text(oneTimeCodeError)
+                                    .foregroundStyle(.red)
+                                    .id("editor-one-time-code-error")
+                                    .accessibilityIdentifier("editor-one-time-code-error")
+                                    .accessibilityFocused($focusedSaveError, equals: .oneTimeCode)
+                            }
+                        } header: {
+                            Text("One-time code")
+                                .foregroundStyle(.themeSecondary)
                         }
-                        if !draft.isDatabase {
-                            Section("One-time code") {
-                                HStack {
-                                    Group {
-                                        if isSetupKeyRevealed {
-                                            TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
-                                        } else {
-                                            SecureField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
-                                        }
-                                    }
-                                    .font(.system(.body, design: .monospaced))
-                                    .textContentType(.oneTimeCode)
+                        Section {
+                            ForEach(allURLText.indices, id: \.self) { index in
+                                TextField(draft.isServer ? "Admin console URL" : "Website", text: $allURLText[index], prompt: Text(verbatim: draft.isServer ? "https://console.example.com" : "https://example.com"))
+                                    .keyboardType(.URL)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
-                                    .accessibilityIdentifier("editor-one-time-password")
-                                    Button {
-                                        isSetupKeyRevealed.toggle()
-                                    } label: {
-                                        Image(systemName: isSetupKeyRevealed ? "eye.slash" : "eye")
-                                            .iconButtonHitArea()
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .foregroundStyle(.themeSecondary)
-                                    .accessibilityLabel(isSetupKeyRevealed ? "Hide setup key" : "Reveal setup key")
-                                }
+                                    .accessibilityIdentifier("editor-website-\(index)")
+                                    .editorFieldLabel(draft.isServer ? "Admin console URL" : "Website")
                             }
-                            Section(draft.isServer ? "Admin console" : "Websites") {
-                                ForEach(allURLText.indices, id: \.self) { index in
-                                    TextField(draft.isServer ? "Admin console URL" : "Website", text: $allURLText[index], prompt: Text(verbatim: draft.isServer ? "https://console.example.com" : "https://example.com"))
-                                        .keyboardType(.URL)
-                                        .textInputAutocapitalization(.never)
-                                        .autocorrectionDisabled()
-                                        .accessibilityIdentifier("editor-website-\(index)")
-                                }
-                                .onDelete { allURLText.remove(atOffsets: $0) }
-                                Button {
-                                    allURLText.append("")
-                                } label: {
-                                    Label("Add website", systemImage: "plus")
-                                }
+                            .onDelete { allURLText.remove(atOffsets: $0) }
+                            Button {
+                                allURLText.append("")
+                            } label: {
+                                Label("Add website", systemImage: "plus")
                             }
-                        }
-                        buildFieldSection()
-                    }
-                    if !draft.isSecureNote {
-                        Section("Notes") {
-                            TextField("Notes", text: $draft.notes, axis: .vertical)
-                                .lineLimit(3...10)
-                                .accessibilityIdentifier("editor-notes")
+                        } header: {
+                            Text(draft.isServer ? "Admin console" : "Websites")
+                                .foregroundStyle(.themeSecondary)
                         }
                     }
-                    buildTagSection()
-                    if !isNew {
-                        Section {
-                            Button("Delete item", role: .destructive) {
-                                isDeleteConfirmationShown = true
-                            }
-                            .frame(maxWidth: .infinity)
-                            .accessibilityIdentifier("editor-delete")
+                    buildFieldSection()
+                }
+                if !draft.isSecureNote {
+                    Section {
+                        TextField("Notes", text: $draft.notes, axis: .vertical)
+                            .lineLimit(3...10)
+                            .accessibilityIdentifier("editor-notes")
+                            .editorFieldLabel("Notes")
+                    } header: {
+                        Text("Notes")
+                            .foregroundStyle(.themeSecondary)
+                    }
+                }
+                buildTagSection()
+                if !isNew {
+                    Section {
+                        Button("Delete item", role: .destructive) {
+                            isDeleteConfirmationShown = true
                         }
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("editor-delete")
                     }
                 }
-                .navigationTitle(navigationTitle)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel", action: cancel)
-                            .accessibilityIdentifier("editor-cancel")
+            }
+            .navigationTitle(navigationTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: cancel)
+                        .accessibilityIdentifier("editor-cancel")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if model.isBusy {
+                        ProgressView()
+                    } else {
+                        Button("Save") { save(scrollingWith: proxy) }
+                            .disabled(draft.title.trimmingCharacters(in: .whitespaces).isEmpty)
+                            .accessibilityIdentifier("editor-save")
                     }
-                    ToolbarItem(placement: .confirmationAction) {
-                        if model.isBusy {
-                            ProgressView()
-                        } else {
-                            Button("Save") { save(scrollingWith: proxy) }
-                                .disabled(draft.title.trimmingCharacters(in: .whitespaces).isEmpty)
-                                .accessibilityIdentifier("editor-save")
-                        }
-                    }
                 }
-                .confirmationDialog("Delete “\(draft.title)”?", isPresented: $isDeleteConfirmationShown, titleVisibility: .visible) {
-                    Button("Delete", role: .destructive, action: delete)
-                } message: {
-                    Text("It is deleted on every device that can see this vault.")
+            }
+            .confirmationDialog("Delete “\(draft.title)”?", isPresented: $isDeleteConfirmationShown, titleVisibility: .visible) {
+                Button("Delete item", role: .destructive, action: delete)
+            } message: {
+                Text(VaultSummary.itemDeletionMessage(model.findVault(vaultID: vaultID)))
+            }
+            .confirmationDialog("Discard changes?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
+                Button("Discard", role: .destructive, action: close)
+                    .accessibilityIdentifier("editor-discard")
+                Button("Keep editing", role: .cancel) {}
+                    .accessibilityIdentifier("editor-keep-editing")
+            }
+            .background(SheetDismissAttemptObserver { isDiscardConfirmationShown = true })
+            .sheet(isPresented: $isGeneratorShown) {
+                PasswordGeneratorSheet { password in
+                    draft.password = password
+                    isPasswordRevealed = true
                 }
-                .confirmationDialog("Discard changes?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
-                    Button("Discard", role: .destructive, action: close)
-                        .accessibilityIdentifier("editor-discard")
-                    Button("Keep editing", role: .cancel) {}
-                        .accessibilityIdentifier("editor-keep-editing")
-                }
-                .background(SheetDismissAttemptObserver { isDiscardConfirmationShown = true })
-                .sheet(isPresented: $isGeneratorShown) {
-                    PasswordGeneratorSheet { password in
-                        draft.password = password
-                        isPasswordRevealed = true
-                    }
-                    .environmentObject(model)
-                }
-                // Outside the Form: a sheet attached to a row inside it is rebuilt whenever the model or the draft changes, which
-                // resets the picker's color and drops a tap in flight.
-                .sheet(isPresented: $isIconPickerShown) {
-                    IconPickerView(icon: $draft.icon, item: buildIconPreviewItem())
-                }
+                .environmentObject(model)
+            }
+            // Outside the Form: a sheet attached to a row inside it is rebuilt whenever the model or the draft changes, which
+            // resets the picker's color and drops a tap in flight.
+            .sheet(isPresented: $isIconPickerShown) {
+                IconPickerView(icon: $draft.icon, item: buildIconPreviewItem())
+            }
+            .onChange(of: saveFailureCount) { _, _ in
+                withAnimation { proxy.scrollTo(oneTimeCodeError == nil ? "editor-save-error" : "editor-one-time-code-error", anchor: .center) }
+                focusedSaveError = oneTimeCodeError == nil ? .summary : .oneTimeCode
+            }
             }
         }
         .interactiveDismissDisabled(model.isBusy || hasChanges)
@@ -399,6 +457,7 @@ struct ItemEditorView: View {
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
         .accessibilityIdentifier(identifier)
+        .editorFieldLabel(title)
     }
 
     @ViewBuilder
@@ -407,6 +466,7 @@ struct ItemEditorView: View {
             TextField("Name on the card", text: bindCard(\.cardholder))
                 .textContentType(.name)
                 .accessibilityIdentifier("editor-cardholder")
+                .editorFieldLabel("Name on the card")
             buildCardField("Card number", \.number, identifier: "editor-card-number", isSecret: true)
             Picker("Type", selection: bindCard(\.type)) {
                 Text("Not set").tag("")
@@ -418,6 +478,7 @@ struct ItemEditorView: View {
             TextField("Expiry (MM/YY)", text: bindCard(\.expiry))
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("editor-card-expiry")
+                .editorFieldLabel("Expiry (MM/YY)")
             buildCardField("Security code", \.securityCode, identifier: "editor-card-security-code", isSecret: true)
             buildCardField("PIN", \.pin, identifier: "editor-card-pin", isSecret: true)
             Button {
@@ -427,11 +488,12 @@ struct ItemEditorView: View {
             }
         } header: {
             Text("Card")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             let allWarning = [cardDescription.numberWarning, cardTypeMismatch, cardDescription.expiryWarning].filter { !$0.isEmpty }
             if !allWarning.isEmpty {
                 Text(allWarning.joined(separator: "\n"))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.themeWarning)
                     .accessibilityIdentifier("editor-card-warning")
             }
         }
@@ -508,6 +570,7 @@ struct ItemEditorView: View {
         } else {
             TextField(title, text: value)
                 .accessibilityIdentifier(identifier)
+                .editorFieldLabel(title)
         }
     }
 
@@ -527,22 +590,29 @@ struct ItemEditorView: View {
         .textInputAutocapitalization(.characters)
         .autocorrectionDisabled()
         .accessibilityIdentifier(identifier)
+        .editorFieldLabel(title)
     }
 
     @ViewBuilder
     private func buildIdentitySections() -> some View {
-        Section("Name") {
+        Section {
             TextField("First name", text: bindIdentity(\.firstName))
                 .textContentType(.givenName)
                 .accessibilityIdentifier("editor-identity-first-name")
+                .editorFieldLabel("First name")
             TextField("Middle name", text: bindIdentity(\.middleName))
                 .textContentType(.middleName)
                 .accessibilityIdentifier("editor-identity-middle-name")
+                .editorFieldLabel("Middle name")
             TextField("Last name", text: bindIdentity(\.lastName))
                 .textContentType(.familyName)
                 .accessibilityIdentifier("editor-identity-last-name")
+                .editorFieldLabel("Last name")
+        } header: {
+            Text("Name")
+                .foregroundStyle(.themeSecondary)
         }
-        Section("Details") {
+        Section {
             buildDateRow("Birth date", bindIdentity(\.birthDate), identifier: "editor-identity-birth-date", isFutureAllowed: false)
             TextField("Email", text: bindIdentity(\.email))
                 .keyboardType(.emailAddress)
@@ -550,13 +620,18 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-identity-email")
+                .editorFieldLabel("Email")
             TextField("Phone", text: bindIdentity(\.phone))
                 .keyboardType(.phonePad)
                 .textContentType(.telephoneNumber)
                 .accessibilityIdentifier("editor-identity-phone")
+                .editorFieldLabel("Phone")
+        } header: {
+            Text("Details")
+                .foregroundStyle(.themeSecondary)
         }
         buildAddressSection("Address", { bindIdentity((\ItemIdentity.postalAddress).appending(path: $0)) }, oldText: bindIdentity(\.address))
-        Section("Documents") {
+        Section {
             buildDocumentField("Passport number", \.passportNumber, identifier: "editor-identity-passport-number")
             buildDocumentField("Driver's license number", \.driversLicenseNumber, identifier: "editor-identity-drivers-license-number")
             buildDocumentField("National ID number", \.nationalIDNumber, identifier: "editor-identity-national-id-number")
@@ -565,6 +640,9 @@ struct ItemEditorView: View {
             } label: {
                 Label(isDocumentNumberRevealed ? "Hide document numbers" : "Show document numbers", systemImage: isDocumentNumberRevealed ? "eye.slash" : "eye")
             }
+        } header: {
+            Text("Documents")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -585,24 +663,29 @@ struct ItemEditorView: View {
     /// button that moves it into the street.
     @ViewBuilder
     private func buildAddressSection(_ title: String, _ bind: @escaping (WritableKeyPath<ItemAddress, String>) -> Binding<String>, oldText: Binding<String>? = nil) -> some View {
-        Section(title) {
+        Section {
             TextField("Street", text: bind(\.street), axis: .vertical)
                 .lineLimit(1...4)
                 .textContentType(.fullStreetAddress)
                 .accessibilityIdentifier("editor-address-street")
+                .editorFieldLabel("Street")
             TextField("City", text: bind(\.city))
                 .textContentType(.addressCity)
                 .accessibilityIdentifier("editor-address-city")
+                .editorFieldLabel("City")
             TextField("Region", text: bind(\.region), prompt: Text("State or province").foregroundStyle(.themeSecondary))
                 .textContentType(.addressState)
                 .accessibilityIdentifier("editor-address-region")
+                .editorFieldLabel("Region")
             TextField("Postal code", text: bind(\.postalCode))
                 .textContentType(.postalCode)
                 .textInputAutocapitalization(.characters)
                 .accessibilityIdentifier("editor-address-postal-code")
+                .editorFieldLabel("Postal code")
             TextField("Country", text: bind(\.country))
                 .textContentType(.countryName)
                 .accessibilityIdentifier("editor-address-country")
+                .editorFieldLabel("Country")
             if let oldText, isOldAddressShown {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("\(title) (old format)")
@@ -624,6 +707,9 @@ struct ItemEditorView: View {
                     .accessibilityIdentifier("editor-use-as-street")
                 }
             }
+        } header: {
+            Text(title)
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -644,11 +730,13 @@ struct ItemEditorView: View {
         Section {
             TextField("Service", text: bindAPICredential(\.service))
                 .accessibilityIdentifier("editor-api-credential-service")
+                .editorFieldLabel("Service")
             TextField("Key ID", text: bindAPICredential(\.keyID))
                 .font(.system(.body, design: .monospaced))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-api-credential-key-id")
+                .editorFieldLabel("Key ID")
             HStack {
                 Group {
                     if isCredentialSecretRevealed {
@@ -663,6 +751,7 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-api-credential-secret")
+                .editorFieldLabel("Secret")
                 Button {
                     isCredentialSecretRevealed.toggle()
                 } label: {
@@ -678,13 +767,15 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-api-credential-host")
+                .editorFieldLabel("Host")
             buildDateRow("Expiry", bindAPICredential(\.expiry), identifier: "editor-api-credential-expiry", isFutureAllowed: true)
         } header: {
             Text("Credential")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             if !credentialExpiryWarning.isEmpty {
                 Text(credentialExpiryWarning)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.themeWarning)
                     .accessibilityIdentifier("editor-api-credential-warning")
             }
         }
@@ -717,9 +808,11 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-server-host")
+                .editorFieldLabel("Host")
             TextField("Port", text: bindServer(\.port), prompt: Text(verbatim: "22"))
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("editor-server-port")
+                .editorFieldLabel("Port")
             Picker("SSH key", selection: bindServer(\.sshKeyID)) {
                 Text("None").tag("")
                 if !sshKeyID.isEmpty && !allVaultSSHKey.contains(where: { $0.id == sshKeyID }) {
@@ -732,10 +825,11 @@ struct ItemEditorView: View {
             .accessibilityIdentifier("editor-server-ssh-key")
         } header: {
             Text("Server")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             if !portWarning.isEmpty {
                 Text(portWarning)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.themeWarning)
                     .accessibilityIdentifier("editor-server-port-warning")
             }
         }
@@ -788,33 +882,40 @@ struct ItemEditorView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("editor-database-other-engine")
+                    .editorFieldLabel("Other engine")
             }
             TextField("Host", text: bindDatabase(\.host), prompt: Text(verbatim: "db.example.com"))
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-database-host")
+                .editorFieldLabel("Host")
             TextField("Port", text: bindDatabase(\.port), prompt: Text(verbatim: "5432"))
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("editor-database-port")
+                .editorFieldLabel("Port")
             TextField("Database", text: bindDatabase(\.name), prompt: Text(verbatim: "app"))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-database-name")
+                .editorFieldLabel("Database")
             TextField("Options", text: bindDatabase(\.options), prompt: Text(verbatim: "sslmode=require"))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-database-options")
+                .editorFieldLabel("Options")
         } header: {
             Text("Database")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             if !portWarning.isEmpty {
                 Text(portWarning)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.themeWarning)
                     .accessibilityIdentifier("editor-database-port-warning")
             }
             if isOtherEngine {
                 Text("Hisar builds connection strings only for the engines listed.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
@@ -833,13 +934,15 @@ struct ItemEditorView: View {
 
     @ViewBuilder
     private func buildSoftwareLicenseSection() -> some View {
-        Section("License") {
+        Section {
             TextField("Product", text: bindSoftwareLicense(\.product))
                 .accessibilityIdentifier("editor-license-product")
+                .editorFieldLabel("Product")
             TextField("Version", text: bindSoftwareLicense(\.version))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-license-version")
+                .editorFieldLabel("Version")
             HStack {
                 Group {
                     if isLicenseKeyRevealed {
@@ -854,6 +957,7 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-license-key")
+                .editorFieldLabel("License key")
                 Button {
                     isLicenseKeyRevealed.toggle()
                 } label: {
@@ -867,12 +971,14 @@ struct ItemEditorView: View {
             TextField("Licensed to", text: bindSoftwareLicense(\.licensedTo))
                 .textContentType(.name)
                 .accessibilityIdentifier("editor-license-licensed-to")
+                .editorFieldLabel("Licensed to")
             TextField("Email", text: bindSoftwareLicense(\.email))
                 .keyboardType(.emailAddress)
                 .textContentType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-license-email")
+                .editorFieldLabel("Email")
             buildDateRow("Purchase date", bindSoftwareLicense(\.purchaseDate), identifier: "editor-license-purchase-date", isFutureAllowed: false)
             TextField("Download URL", text: bindSoftwareLicense(\.downloadURL), prompt: Text(verbatim: "https://example.com/download"))
                 .keyboardType(.URL)
@@ -880,16 +986,21 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-license-download-url")
+                .editorFieldLabel("Download URL")
+        } header: {
+            Text("License")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
     private func buildFieldSection() -> some View {
-        Section("Other fields") {
+        Section {
             ForEach(draft.allField.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Name", text: $draft.allField[index].name)
                         .focused($focusedFieldNameIndex, equals: index)
                         .accessibilityIdentifier("editor-field-\(index)-name")
+                        .editorFieldLabel("Name")
                     if isUnnamedFieldShown && draft.allField[index].isNameMissing {
                         Text("Enter a name for this field.")
                             .font(.footnote)
@@ -904,33 +1015,49 @@ struct ItemEditorView: View {
                             .accessibilityIdentifier("editor-field-\(index)-name-warning")
                     }
                     HStack {
-                        if draft.allField[index].concealed {
+                        if draft.allField[index].concealed && !revealedCustomFields.contains(index) {
                             SecureField("Value", text: $draft.allField[index].value)
+                                .accessibilityLabel(draft.allField[index].name.isEmpty ? "Value" : draft.allField[index].name)
                                 .accessibilityIdentifier("editor-field-\(index)-value")
+                                .editorFieldLabel("Value")
                         } else {
                             TextField("Value", text: $draft.allField[index].value)
+                                .accessibilityLabel(draft.allField[index].name.isEmpty ? "Value" : draft.allField[index].name)
                                 .accessibilityIdentifier("editor-field-\(index)-value")
+                                .editorFieldLabel("Value")
                         }
-                        Button {
-                            draft.allField[index].concealed.toggle()
-                        } label: {
-                            Image(systemName: draft.allField[index].concealed ? "eye" : "eye.slash")
-                                .iconButtonHitArea()
+                        if draft.allField[index].concealed {
+                            Button {
+                                if revealedCustomFields.contains(index) { revealedCustomFields.remove(index) }
+                                else { revealedCustomFields.insert(index) }
+                            } label: {
+                                Image(systemName: revealedCustomFields.contains(index) ? "eye.slash" : "eye")
+                                    .iconButtonHitArea()
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.themeSecondary)
+                            .accessibilityLabel("\(revealedCustomFields.contains(index) ? "Hide" : "Show") \(draft.allField[index].name.isEmpty ? "value" : draft.allField[index].name)")
+                            .accessibilityIdentifier("editor-field-\(index)-reveal")
                         }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.themeSecondary)
-                        .accessibilityLabel("Secret")
-                        .accessibilityAddTraits(draft.allField[index].concealed ? .isSelected : [])
                     }
+                    Toggle("Secret", isOn: $draft.allField[index].concealed)
+                        .accessibilityLabel("Secret \(draft.allField[index].name)")
+                        .accessibilityIdentifier("editor-field-\(index)-secret")
                 }
                 .id(fieldRowID(index))
             }
-            .onDelete { draft.allField.remove(atOffsets: $0) }
+            .onDelete { offsets in
+                draft.allField.remove(atOffsets: offsets)
+                revealedCustomFields = Set(revealedCustomFields.filter { !offsets.contains($0) }.map { row in row - offsets.filter { $0 < row }.count })
+            }
             Button {
                 draft.allField.append(ItemField(name: "", value: "", concealed: false))
             } label: {
                 Label("Add field", systemImage: "plus")
             }
+        } header: {
+            Text("Other fields")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -948,11 +1075,14 @@ struct ItemEditorView: View {
                 .submitLabel(.done)
                 .onSubmit(addTags)
                 .accessibilityIdentifier("editor-new-tag")
+                .editorFieldLabel("Add a tag")
         } header: {
             Text("Tags")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             if draft.allTag.isEmpty {
                 Text("Tags group items across vaults; open Tags on the Vaults screen to browse them.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
@@ -995,6 +1125,10 @@ struct ItemEditorView: View {
                 finish(savedItem, vaultID)
                 dismiss()
             }
+            else {
+                saveError = model.errorMessage
+                saveFailureCount += 1
+            }
         }
     }
 
@@ -1009,6 +1143,27 @@ struct ItemEditorView: View {
                 finish(nil, vaultID)
             }
         }
+    }
+}
+
+struct EditorFieldLabel: ViewModifier {
+    var title: String
+
+    func body(content: Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.footnote)
+                .foregroundStyle(.themeSecondary)
+                .accessibilityHidden(true)
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+extension View {
+    func editorFieldLabel(_ title: String) -> some View {
+        modifier(EditorFieldLabel(title: title))
     }
 }
 

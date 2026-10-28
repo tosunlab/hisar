@@ -78,7 +78,7 @@ function blockBackground(event: Event): void {
   }
 }
 
-export function useModalFocus(panel: Ref<HTMLElement | null>, close: () => void): void {
+export function useModalFocus(panel: Ref<HTMLElement | null>, close: () => void, fallback: () => HTMLElement | null = () => null): void {
   let modal: Modal | null = null;
   function remove(): void {
     if (!modal) return;
@@ -94,8 +94,9 @@ export function useModalFocus(panel: Ref<HTMLElement | null>, close: () => void)
       document.removeEventListener("click", blockBackground, true);
     }
     if (wasTop) {
-      if (restore?.isConnected && (!stack.length || stack[stack.length - 1]!.panel.contains(restore))) restore.focus();
+      if (restore?.isConnected && restore.tabIndex >= 0 && (!stack.length || stack[stack.length - 1]!.panel.contains(restore))) restore.focus();
       else if (stack.length) focusInitial(stack[stack.length - 1]!);
+      else fallback()?.focus();
     }
   }
   watch(panel, (element) => {

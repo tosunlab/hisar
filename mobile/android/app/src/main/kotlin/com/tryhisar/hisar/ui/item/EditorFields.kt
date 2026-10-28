@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -121,6 +122,7 @@ fun InlineTitleForm(
     title: String,
     leading: @Composable RowScope.() -> Unit,
     trailing: @Composable RowScope.() -> Unit,
+    status: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -145,10 +147,12 @@ fun InlineTitleForm(
                 maxLines = 1,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .padding(horizontal = 96.dp),
+                    .padding(horizontal = 96.dp)
+                    .then(if (title.isNotBlank()) Modifier.semantics { heading() } else Modifier),
             )
             Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, content = trailing)
         }
+        status?.invoke()
         Column(
             Modifier
                 .weight(1f)
@@ -495,7 +499,7 @@ fun DestructiveConfirmation(title: String, message: String, action: String, onCo
         containerColor = HisarTheme.colors.cellBackground,
         title = { Text(title, style = HisarType.headline, color = HisarTheme.colors.label) },
         text = { Text(message, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel) },
-        confirmButton = { ToolbarTextButton(action, onClick = onConfirm, testTag = "$testTag-confirm", isProminent = true, color = HisarTheme.colors.destructive) },
+        confirmButton = { ToolbarTextButton(action, onClick = onConfirm, testTag = "$testTag-confirm", isProminent = true, color = HisarTheme.colors.destructiveText) },
         dismissButton = { ToolbarTextButton(dismissLabel, onClick = onDismiss, testTag = "$testTag-dismiss") },
         modifier = Modifier.testTag(testTag),
     )

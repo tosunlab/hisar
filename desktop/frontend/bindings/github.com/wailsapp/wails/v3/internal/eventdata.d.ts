@@ -18,6 +18,7 @@ declare module "@wailsio/runtime" {
             "agent-sessions-changed": string;
             "invite-link": app$0.InviteLink;
             "locked": string;
+            "missing-agent-keys-changed": string;
             "open-from-settings": string;
             "open-settings-window": void;
             "show-item": app$0.ItemLocation;

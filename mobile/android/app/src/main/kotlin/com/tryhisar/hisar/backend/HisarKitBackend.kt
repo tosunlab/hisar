@@ -148,6 +148,9 @@ class HisarKitBackend(
     override fun signUpWithoutInvite(server: String, email: String, name: String, password: String): SignUpResult =
         decode(SignUpResult.serializer(), call { signUpWithoutInvite(server, email, name, password) })
 
+    override fun getSignUpPolicy(server: String): com.tryhisar.hisar.model.SignUpPolicy =
+        decode(com.tryhisar.hisar.model.SignUpPolicy.serializer(), call { getSignUpPolicy(server) })
+
     override fun unlock(password: String): VaultStatus = decode(VaultStatus.serializer(), call { unlock(password) })
 
     override fun unlockWithBiometric(): VaultStatus = decode(VaultStatus.serializer(), call { unlockWithBiometric() })
@@ -159,6 +162,14 @@ class HisarKitBackend(
         decode(VaultStatus.serializer(), call { enableNewAccountBiometricUnlock() })
 
     override fun forgetNewAccountSecretKey() = call { forgetNewAccountSecretKey() }
+
+    override fun authorizeNewAccountEmergencyKit(password: String) = call { authorizeNewAccountEmergencyKit(password) }
+    override fun authorizeNewAccountEmergencyKitWithBiometric() = call { authorizeNewAccountEmergencyKitWithBiometric() }
+    override fun revealNewAccountSecretKey(): com.tryhisar.hisar.model.RevealedSecretKey =
+        decode(com.tryhisar.hisar.model.RevealedSecretKey.serializer(), call { revealNewAccountSecretKey() })
+    override fun recordNewAccountEmergencyKitDelivery(exportID: String, method: String) = call { recordNewAccountEmergencyKitDelivery(exportID, method) }
+    override fun postponeNewAccountEmergencyKit() = call { postponeNewAccountEmergencyKit() }
+    override fun hideEmergencyKitReminder() = call { hideEmergencyKitReminder() }
 
     override fun exportNewAccountEmergencyKit(directory: File): EmergencyKitExport =
         decode(EmergencyKitExport.serializer(), call { exportNewAccountEmergencyKit(directory.path) })
@@ -317,6 +328,9 @@ class HisarKitBackend(
     }
 
     override fun deleteItem(vaultID: String, itemID: String) = call { deleteItem(vaultID, itemID) }
+
+    override fun moveItem(vaultID: String, itemID: String, targetVaultID: String): ItemDetail =
+        decode(ItemDetail.serializer(), call { moveItem(vaultID, itemID, targetVaultID) })
 
     override fun deleteUnreadableItem(vaultID: String, itemID: String, revision: String) = call { deleteUnreadableItem(vaultID, itemID, revision) }
 
@@ -483,6 +497,8 @@ class HisarKitBackend(
     override fun exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: File): PendingRecoveryExport =
         decode(PendingRecoveryExport.serializer(), call { exportPendingRecoveryEmergencyKit(operationID, password, directory.path) })
 
+    override fun recordPendingRecoveryEmergencyKitDelivery(exportID: String, method: String) = call { recordPendingRecoveryEmergencyKitDelivery(exportID, method) }
+
     override fun acknowledgePendingRecovery(operationID: String, password: String) = call { acknowledgePendingRecovery(operationID, password) }
 
     override fun dismissSignedOutReason(): VaultStatus = readStatus(call { dismissSignedOutReason() })
@@ -493,6 +509,10 @@ class HisarKitBackend(
     override fun isMacApprovalAllowed(): Boolean = call { isMacApprovalAllowed() }
 
     override fun setMacApprovalAllowed(isAllowed: Boolean) = call { setMacApprovalAllowed(isAllowed) }
+
+    override fun isExactHostMatch(): Boolean = call { isExactHostMatch() }
+
+    override fun setExactHostMatch(isExact: Boolean) = call { setExactHostMatch(isExact) }
 
     override fun getTheme(): VaultTheme = try {
         decode(VaultTheme.serializer(), call { getTheme() })
@@ -548,9 +568,9 @@ class HisarKitBackend(
         /** Go's sentences start in lower case and already say "biometric" on Android. */
         fun convertError(error: Throwable): BackendError {
             val raw = error.message.orEmpty().ifEmpty { "Something went wrong." }
-            val prefix = BackendError.PASSKEY_VERIFICATION_FAILED + ": "
-            val code = BackendError.PASSKEY_VERIFICATION_FAILED.takeIf { raw.startsWith(prefix) }
-            val message = if (code != null) raw.removePrefix(prefix) else raw
+            val code = listOf(BackendError.PASSKEY_VERIFICATION_FAILED, BackendError.PENDING_RECOVERY_PASSWORD)
+                .firstOrNull { raw.startsWith("$it: ") }
+            val message = if (code != null) raw.removePrefix("$code: ") else raw
             return BackendError(message.replaceFirstChar { it.uppercaseChar() }, code)
         }
 

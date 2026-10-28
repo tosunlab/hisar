@@ -78,6 +78,8 @@ data class VaultStatus(
     val autoLockSeconds: Int = DEFAULT_AUTO_LOCK_SECONDS,
     val signedOutReason: String = "",
     val updateRequired: UpdateRequirement? = null,
+    val emergencyKit: EmergencyKitStatus? = null,
+    val biometricOfferAvailable: Boolean = false,
 ) {
     val isSignedIn: Boolean get() = state != STATE_SIGNED_OUT
     val isUnlocked: Boolean get() = state == STATE_UNLOCKED
@@ -117,7 +119,64 @@ object VaultStatusSerializer : JsonTransformingSerializer<VaultStatus>(VaultStat
 }
 
 @Serializable
-data class ReadIssue(val vaultId: String, val itemId: String = "", val revision: String = "", val kind: String, val canRename: Boolean = false, val canDelete: Boolean = false)
+data class EmergencyKitStatus(
+    val operationId: String,
+    val kind: String = "signup",
+    val savedBy: String = "",
+    val postponedAt: String = "",
+    val reminder: String = "new",
+    val isAuthorized: Boolean = false,
+    val isReminderHidden: Boolean = false,
+) {
+    val savedMessage: String get() = when (savedBy) {
+        "file" -> "Emergency Kit saved."
+        "print" -> "Emergency Kit sent to the printer."
+        "share" -> "Emergency Kit shared."
+        else -> ""
+    }
+    val title: String get() = when {
+        savedBy.isNotEmpty() -> "Confirm your Emergency Kit"
+        kind == "replace-secret-key" -> "Save your new Emergency Kit"
+        reminder == "14-days" -> "Save your Emergency Kit now"
+        reminder == "3-days" -> "Your Emergency Kit still isn't saved"
+        else -> "Save your Emergency Kit"
+    }
+    val reminderBody: String get() = when {
+        savedBy.isNotEmpty() -> "$savedMessage A copy saved only on this device is lost with it. Print it, or keep another copy somewhere else."
+        kind == "replace-secret-key" -> "Your old Emergency Kit no longer works. Save the new one where you can reach it without this device."
+        reminder == "14-days" -> "It's been at least 2 weeks. Save a copy you can reach without this device so losing your devices doesn't mean losing access."
+        reminder == "3-days" -> "You haven't saved an Emergency Kit yet. Losing access to your signed-in devices could lock you out."
+        else -> SAVE_LATER_MESSAGE
+    }
+
+    companion object {
+        const val SAVE_LATER_MESSAGE = "Save a copy you can reach without this device. Losing access to your signed-in devices before you save it could lock you out."
+    }
+}
+
+@Serializable
+data class SignUpPolicy(val server: String, val host: String, val mode: String)
+
+@Serializable
+data class ReadIssue(val vaultId: String, val itemId: String = "", val revision: String = "", val kind: String, val canRename: Boolean = false, val canDelete: Boolean = false) {
+    val explanation: String get() = when (kind) {
+        "vault-name" -> "Vault name could not be opened. Its readable items remain available."
+        "vault-key" -> "Vault key could not be opened. Items in this vault cannot be displayed."
+        "item" -> "Item could not be opened. It remains saved."
+        else -> "Saved data could not be opened. It remains saved."
+    }
+}
+
+data class ReadIssueSummary(val issues: List<ReadIssue>) {
+    val affectedVaultCount: Int get() = issues.map { it.vaultId }.distinct().size
+    val knownItemCount: Int get() = issues.filter { it.kind == "item" && it.itemId.isNotEmpty() }.map { it.vaultId to it.itemId }.distinct().size
+    val text: String get() {
+        val vaults = "$affectedVaultCount affected ${if (affectedVaultCount == 1) "vault" else "vaults"}"
+        val items = "$knownItemCount known unreadable ${if (knownItemCount == 1) "item" else "items"}"
+        val counts = if (knownItemCount > 0) "$items in $vaults." else "$vaults."
+        return if (issues.any { it.kind == "vault-key" }) "$counts Items behind unopened vault keys are not counted." else counts
+    }
+}
 
 @Serializable
 data class VaultSummary(
@@ -137,6 +196,13 @@ data class VaultSummary(
         const val TYPE_PERSONAL = "personal"
         const val TYPE_SHARED = "shared"
         const val TYPE_ORGANIZATION = "organization"
+
+        fun itemDeletionMessage(vault: VaultSummary?): String =
+            if (vault?.type == TYPE_PERSONAL) {
+                "It is removed from all your devices. It can't be undone."
+            } else {
+                "It is removed from ${vault?.name?.ifEmpty { null } ?: "this vault"} for everyone with access to the vault. It can't be undone."
+            }
     }
 }
 
@@ -690,10 +756,28 @@ data class PendingRecovery(
     val problems: List<String> = emptyList(),
     val manualUnlock: Boolean = false,
     val keychainProtected: Boolean = false,
+    val savedBy: String = "",
+    val postponedAt: String = "",
 )
 
+val PendingRecovery.reminderLabel: String
+    get() = when {
+        phase == "manual-unlock" -> "Sign in with your saved Emergency Kit."
+        phase == "awaiting-kit" || phase == "delivery-pending" ->
+            if (kind == "signup") "Save your Emergency Kit to finish setting up $email."
+            else "Save your new Emergency Kit to finish replacing your Secret Key."
+        else -> "Finish setting up $email."
+    }
+
+val PendingRecovery.reminderHint: String
+    get() = when (phase) {
+        "manual-unlock" -> "Opens sign-in with your saved Emergency Kit"
+        "awaiting-kit", "delivery-pending" -> "Opens the Emergency Kit step"
+        else -> "Opens the unfinished account setup"
+    }
+
 @Serializable
-data class PendingRecoveryExport(val secretKey: String, val path: String)
+data class PendingRecoveryExport(val secretKey: String, val path: String, val exportId: String = "")
 
 @Serializable
 data class LoginMatch(
@@ -789,6 +873,16 @@ data class ItemPasskey(
 ) {
     val id: String get() = credentialID
     val createdDate: Instant? get() = parseTimestamp(createdAt)
+
+    fun deletionMessage(vault: VaultSummary?): String {
+        val account = userName.ifEmpty { userDisplayName }
+        val consequence = if (vault?.type == VaultSummary.TYPE_PERSONAL) {
+            "It is removed from all your devices. Make sure you can sign in another way first."
+        } else {
+            "It is removed from ${vault?.name?.ifEmpty { null } ?: "this vault"} for everyone with access. Make sure they can sign in another way first."
+        }
+        return "You can no longer sign in to $relyingPartyID as $account with it. $consequence"
+    }
 }
 
 /** An Android app a login fills into: its package name and the SHA-256 of its signing certificate, in colon hex. */
@@ -964,6 +1058,7 @@ data class SentShareInvitation(
     @SerialName("recipientId") val recipientID: String = "",
     val securityCode: String = "",
     val reviewToken: String = "",
+    val recipientName: String = "",
 ) {
     companion object {
         const val STATE_ACCEPTED = "accepted"
@@ -1188,7 +1283,10 @@ data class Device(
 enum class DeviceIcon { PHONE, LAPTOP, DESKTOP, TERMINAL, EXTENSION }
 
 @Serializable
-data class EmergencyKitExport(val secretKey: String, val emergencyKitPath: String)
+data class EmergencyKitExport(val secretKey: String, val emergencyKitPath: String, val qrCode: String = "", val exportId: String = "")
+
+@Serializable
+data class RevealedSecretKey(val secretKey: String, val qrPayload: String = "", val qrCode: String = "")
 
 /** Who may rename, delete or leave a vault and what deleting it means; members leave out the user. */
 @Serializable
@@ -1402,7 +1500,12 @@ data class WaitingVaultKeys(
 
 /** An item an import leaves out or failed to save, with why. */
 @Serializable
-data class ImportSkippedEntry(val title: String = "", val reason: String = "")
+data class ImportSkippedEntry(val title: String = "", val reason: String = "") {
+    companion object {
+        fun heading(count: Int): String = "Not imported · $count"
+        const val EXPLANATION = "Some entries below are fields or credentials from items that will still be imported."
+    }
+}
 
 /**
  * An item the chosen vault already has. passkeyCount is how many of its passkeys the existing login lacks; skipping
@@ -1466,6 +1569,15 @@ data class ImportPreview(
     /** When the Hisar export was made, RFC 3339 UTC, or empty. */
     val exportedAt: String = "",
 ) {
+    val isHisarExport: Boolean get() = format == "hisar-export" || format == "hisar-encrypted-export"
+
+    val groupDestinationExplanation: String
+        get() = if (isHisarExport) {
+            "This export has ${groups.size} vaults. Each goes to the vault it came from, or your Personal vault, unless you choose another."
+        } else {
+            "The other app kept these items in ${groups.size} groups. Each goes to your Personal vault unless you choose another vault for it."
+        }
+
     /** The preview's non-zero counts, as the import sheet lists them. */
     val allCountRow: List<ImportCountRow>
         get() = listOf(
@@ -1498,6 +1610,9 @@ data class ImportProgress(
     val totalCount: Int = 0,
     val isDone: Boolean = false,
     val allFailed: List<ImportSkippedEntry> = emptyList(),
+    val allSkipped: List<ImportSkippedEntry> = emptyList(),
+    val allDuplicateOutcomes: List<ImportSkippedEntry> = emptyList(),
+    val leftBehindCount: Int = 0,
     /** The source is kept rather than offered for deletion, see [ImportPreview.isSourceKept]. */
     val isSourceKept: Boolean = false,
 )

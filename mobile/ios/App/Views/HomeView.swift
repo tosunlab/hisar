@@ -195,6 +195,63 @@ struct NewItemMoreMenu: View {
     }
 }
 
+struct EmergencyKitBanner: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.themePalette) private var palette
+    var kit: EmergencyKitStatus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(kit.title, systemImage: "exclamationmark.triangle")
+                .font(.headline)
+                .foregroundStyle(palette.warning.color)
+                .accessibilityAddTraits(.isHeader)
+            Text(kit.reminderMessage)
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+            ViewThatFits(in: .horizontal) {
+                HStack { actions }
+                VStack(alignment: .leading) { actions }
+            }
+        }
+        .padding(kit.reminder == "14-days" ? 8 : 0)
+        .overlay {
+            if kit.reminder == "14-days" {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(palette.warning.color, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("emergency-kit-banner")
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        Button {
+            model.openEmergencyKit()
+        } label: {
+            Text(kit.savedBy.isEmpty ? "Save Emergency Kit" : "Continue to confirmation")
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityIdentifier("emergency-kit-banner-save")
+        Button {
+            model.hideEmergencyKitReminder()
+        } label: {
+            Text("Not now")
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+            .buttonStyle(.borderless)
+            .accessibilityHint("Hides until Hisar locks")
+            .accessibilityIdentifier("emergency-kit-banner-not-now")
+    }
+}
+
 struct VaultsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selection: VaultsSelection?
@@ -202,6 +259,7 @@ struct VaultsView: View {
     @State private var isNewVaultShown = false
     @State private var newItemType: NewItemType?
     @State private var refusal: Refusal?
+    @State private var refreshFailure: String?
 
     private var personalVault: VaultSummary? { model.allVault.first { $0.type == "personal" } }
 
@@ -214,6 +272,16 @@ struct VaultsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
+                if let kit = model.status.emergencyKit, !kit.isReminderHidden {
+                    Section { EmergencyKitBanner(kit: kit) }
+                }
+                if let refreshFailure {
+                    Section {
+                        ErrorBanner(message: refreshFailure)
+                        Button("Retry") { Task { await refresh() } }
+                            .accessibilityIdentifier("browse-refresh-retry")
+                    }
+                }
                 if model.status.isOffline {
                     Section {
                         OfflineNote()
@@ -222,6 +290,8 @@ struct VaultsView: View {
                 PendingApprovalCardSection(
                     allApproval: model.allPendingApproval,
                     isBusy: model.isAnsweringApproval,
+                    isBiometricAvailable: model.status.biometricAvailable,
+                    rememberChoice: { approval in Binding(get: { model.rememberChoice(for: approval) }, set: { model.setRememberChoice($0, for: approval) }) },
                     review: { model.reviewApproval($0) },
                     approve: { approval, isRemembered in Task { await model.approve(approval, isRemembered: isRemembered) } },
                     deny: { approval in Task { await model.deny(approval) } },
@@ -267,7 +337,7 @@ struct VaultsView: View {
                 }
             }
             .applyThemedListStyle()
-            .refreshable { await model.refreshAll() }
+            .refreshable { await refresh() }
             .navigationTitle("Vaults")
             .refusalAlert($refusal)
             .toolbar {
@@ -346,6 +416,14 @@ struct VaultsView: View {
         }
     }
 
+    private func refresh() async {
+        refreshFailure = nil
+        await model.refreshAll { message in
+            refreshFailure = message
+            model.clearError()
+        }
+    }
+
     @ViewBuilder
     private var reviewRecipientSection: some View {
         if !model.allReviewInvitation.isEmpty {
@@ -369,12 +447,16 @@ struct VaultsView: View {
                         Task {
                             if await model.acceptShareInvitation(invitationID: invitation.id) {
                                 model.showNotice("Accepted. The vault appears once \(invitation.inviterName)'s Hisar finishes sharing.")
+                            } else {
+                                refusal = model.takeRefusal(title: "Accept")
                             }
                         }
                     } decline: {
                         Task {
                             if await model.declineShareInvitation(invitationID: invitation.id) {
                                 model.showNotice("Invitation declined.")
+                            } else {
+                                refusal = model.takeRefusal(title: "Decline")
                             }
                         }
                     }
@@ -418,10 +500,11 @@ struct VaultsView: View {
             Section {
                 ForEach(allFavorite) { reference in
                     NavigationLink(value: VaultsSelection.item(ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id))) {
-                        ItemRow(item: reference.item, vaultName: reference.vaultName)
+                        ItemRow(item: reference.item, vaultName: reference.vaultName, showsFavorite: false)
                     }
+                    .itemRowActions(vaultID: reference.vaultID, item: reference.item)
                     .swipeActions(edge: .trailing) {
-                        FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item)
+                        FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item) { refusal = $0 }
                     }
                     .accessibilityIdentifier("favorite-\(reference.item.title)")
                 }
@@ -451,6 +534,7 @@ struct VaultsView: View {
                 }
             } footer: {
                 Text("Hisar gives vault keys only to the keys it pinned for each person. Compare security codes in Settings → Organizations.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
@@ -528,22 +612,63 @@ struct VaultsDetailView: View {
 
 struct TagListView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var refreshFailure: String?
 
     var body: some View {
         let allTag = VaultLogic.listAllTag(model.listAllItemReference())
         List {
+            if let refreshFailure {
+                Section {
+                    ErrorBanner(message: refreshFailure)
+                    Button("Retry") { Task { await refresh() } }
+                        .accessibilityIdentifier("browse-refresh-retry")
+                }
+            }
+            TagRows(allTag: allTag)
+        }
+        .applyThemedListStyle()
+        .refreshable { await refresh() }
+        .navigationTitle("Tags")
+    }
+
+    private func refresh() async {
+        refreshFailure = nil
+        await model.refreshAll { message in
+            refreshFailure = message
+            model.clearError()
+        }
+    }
+}
+
+struct TagRows: View {
+    var allTag: [TagSummary]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
             ForEach(allTag) { tag in
                 NavigationLink(value: TagDestination(tag: tag.name)) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "tag")
+                            .font(.system(size: 28))
+                            .frame(width: 32, height: 32, alignment: .top)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(tag.name)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(tag.itemCount == 1 ? "1 item" : "\(tag.itemCount) items")
+                                .font(.subheadline)
+                                .foregroundStyle(.themeSecondary)
+                        }
+                    }
+                } else {
                     Label(tag.name, systemImage: "tag")
                         .badge(tag.itemCount)
                 }
+            }
                 .accessibilityIdentifier("tag-\(tag.name)")
             }
         }
-        .applyThemedListStyle()
-        .refreshable { await model.refreshAll() }
-        .navigationTitle("Tags")
-    }
 }
 
 struct VaultRow: View {
@@ -551,7 +676,7 @@ struct VaultRow: View {
     var itemCount: Int
 
     private var subtitle: String {
-        if !vault.readIssues.isEmpty { return "\(vault.readIssues.count) unreadable records. Retry or repair." }
+        if !vault.readIssues.isEmpty { return "\(ReadIssueSummary(issues: vault.readIssues).text) Retry or repair." }
         if vault.isPersonalExtra { return "Legacy Personal vault. Recover items before deleting." }
         switch vault.type {
         case VaultSummary.typePersonal: return "Only you"
@@ -587,12 +712,18 @@ struct VaultRow: View {
 struct FavoriteSwipeButton: View {
     var vaultID: String
     var item: ItemDetail
+    var onRefusal: (Refusal) -> Void
 
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
         Button {
-            Task { await model.setItemFavorite(vaultID: vaultID, itemID: item.id, isFavorite: !item.isFavorite) }
+            Task {
+                await model.setItemFavorite(vaultID: vaultID, itemID: item.id, isFavorite: !item.isFavorite) { message in
+                    onRefusal(Refusal(title: item.isFavorite ? "Remove from Favorites" : "Add to Favorites", message: message))
+                    model.clearError()
+                }
+            }
         } label: {
             Label(item.isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: item.isFavorite ? "star.slash" : "star")
         }
@@ -604,6 +735,7 @@ struct FavoriteSwipeButton: View {
 struct ItemRow: View {
     var item: ItemDetail
     var vaultName: String?
+    var showsFavorite = true
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -611,9 +743,17 @@ struct ItemRow: View {
         HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
             AppItemIcon(item: item, maxSize: 44)
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Text(item.title)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if showsFavorite && item.isFavorite {
+                        Image(systemName: "star.fill")
+                            .font(.caption)
+                            .foregroundStyle(.themeSecondary)
+                            .accessibilityHidden(true)
+                    }
+                }
                 let subtitle = buildSubtitle()
                 if !subtitle.isEmpty {
                     Text(subtitle)
@@ -622,7 +762,7 @@ struct ItemRow: View {
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                if dynamicTypeSize.isAccessibilitySize, let vaultName {
+                if let vaultName {
                     Text(vaultName)
                         .font(.footnote)
                         .foregroundStyle(.themeSecondary)
@@ -631,6 +771,7 @@ struct ItemRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityValue(showsFavorite && item.isFavorite ? "In Favorites" : "")
         .accessibilityIdentifier("item-\(item.title)")
     }
 
@@ -657,7 +798,6 @@ struct ItemRow: View {
         } else {
             detail = item.username
         }
-        guard let vaultName, !dynamicTypeSize.isAccessibilitySize else { return detail }
-        return detail.isEmpty ? vaultName : "\(detail) · \(vaultName)"
+        return detail
     }
 }

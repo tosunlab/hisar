@@ -341,7 +341,11 @@ class CredentialActivity : FragmentActivity() {
         }
         lifecycleScope.launch {
             viewModel.isContentShown.first { it }
-            setContent { AutoFillRoot(viewModel.model) }
+            setContent {
+                AutoFillRoot(viewModel.model) {
+                    startActivity(Intent(this@CredentialActivity, com.tryhisar.hisar.MainActivity::class.java))
+                }
+            }
         }
         lifecycleScope.launch {
             val result = viewModel.result.filterNotNull().first()

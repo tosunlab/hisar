@@ -596,6 +596,9 @@ func TestHarnessGrantsOutliveSessionsAndLock(t *testing.T) {
 	if durations := fixture.agentApprover.getLastRequest().GrantDurations; !slices.Equal(durations, []AgentGrantDuration{AgentGrantOnce, AgentGrantHour, AgentGrantDay, AgentGrantAlways}) {
 		t.Errorf("a harness was offered %v", durations)
 	}
+	if scope := fixture.agentApprover.getLastRequest().GrantHolderScope; scope != AgentGrantForHarness {
+		t.Errorf("holder scope = %q", scope)
+	}
 	first.connection.Close()
 	fixture.agentApprover.set(ErrDenied, AgentGrantOnce)
 
@@ -637,6 +640,9 @@ func TestAgentOutsideAHarnessIsOfferedAnHourAtMost(t *testing.T) {
 	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAgentResolveSecret, References: []string{stripeReference}, CommandLine: []string{"make"}})
 	if durations := fixture.agentApprover.getLastRequest().GrantDurations; !slices.Equal(durations, []AgentGrantDuration{AgentGrantOnce, AgentGrantHour}) {
 		t.Errorf("offered %v", durations)
+	}
+	if scope := fixture.agentApprover.getLastRequest().GrantHolderScope; scope != AgentGrantForConnection {
+		t.Errorf("holder scope = %q", scope)
 	}
 	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAgentResolveSecret, References: []string{stripeReference}, CommandLine: []string{"make"}})
 	if count := fixture.agentApprover.getRequestCount(); count != 2 {

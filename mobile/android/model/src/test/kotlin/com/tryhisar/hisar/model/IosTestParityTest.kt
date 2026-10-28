@@ -45,6 +45,30 @@ class IosTestParityTest {
         val identityStore = "Android AutoFill asks Hisar for logins at fill time; it has no credential identity store to keep up to date (D3)"
         val deviceOnly = "Android's counterpart could only run as an instrumented test on a device, where the UI tests keep the core journeys and the device-only security checks"
         mapOf(
+            "testCameraAuthorizationChoosesActionableScannerState" to
+                "Covers AVFoundation camera authorization and the iOS app Settings route",
+            "testForegroundRefreshUpdatesAutoFillWithoutRequestingPermission" to
+                "iOS Settings exposes the credential identity store's enabled state; Android uses its own AutoFill service status.",
+            "testForegroundRefreshRegistersOnlyNewlyAllowedNotifications" to
+                "Only iOS registers an APNs token when notification authorization changes; Android receives its UnifiedPush endpoint separately.",
+            "testInvitationEmailWrapsLiteralCharactersAtAccessibilitySizes" to
+                "UIKit-specific regression for iOS automatic hyphenation and selectable UITextView Dynamic Type wrapping; Android does not use UIKit",
+            "testIconPhotoPreparationRejectsStaleResults" to
+                "iOS PhotosPicker uses an asynchronous transfer and conversion task; this test covers its generation guard and sheet dismissal",
+            "testRefreshFailureKeepsReadableListAndOperationError" to
+                "The iPhone's operation callback retains browse errors independently of AppModel.errorMessage; Android uses area-model refusals",
+            "testDetailHeaderUsesFullWidthAtAccessibilitySizesAndCapsItsIcon" to
+                "SwiftUI Dynamic Type header layout; Android uses its own Compose header and font scaling",
+            "testPresetGridFitsScaledTargetsAtBothPhoneWidths" to
+                "SwiftUI adaptive preset grid at iOS Dynamic Type sizes; Android uses its own Compose icon picker",
+            "testSupportingTextContrastAcrossPalettesAndAppearances" to
+                "Resolves SwiftUI themeSecondary against iOS grouped Form and List backgrounds",
+            "testLightSupportingInstructionsRenderInSignInExportAndAccountChange" to
+                "Captures iPhone supporting-text rendering in Light appearance; Android uses Compose",
+            "testPersistentEditorLabelsKeepTheirSpaceWithPopulatedAndEmptyValues" to
+                "SwiftUI persistent visible editor labels; Android field labeling is covered by its Compose semantics tests",
+            "testPopulatedEditorsRenderLabeledIdentityAddressCredentialLicenseServerAndDatabaseFields" to
+                "Captures native SwiftUI populated editors at iOS Dynamic Type sizes; Android uses Compose",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,
@@ -67,6 +91,15 @@ class IosTestParityTest {
                 "Android seals the Secret Key into an AtomicFile, which replaces the old copy in one rename; there is no keychain item to delete first",
             "testNewPrivacyWindowsUseTheSelectedTheme" to
                 "Only iOS creates a separate UIKit privacy window; Android draws its privacy cover inside the themed Compose root",
+            "testCredentialInputPreservesSelectionAndFocus" to deviceOnly,
+            "testImportFileNameWrapsAtLargeTextSize" to deviceOnly,
+            "testImportFileNameWrapsAtStandardTextSize" to deviceOnly,
+            "testLoadedItemConversionFailurePreservesItemAndReportsError" to deviceOnly,
+            "testLoadedItemCopyFailurePreservesItemAndReportsError" to deviceOnly,
+            "testLoadedItemPasskeyDeletionFailurePreservesItemAndReportsError" to deviceOnly,
+            "testInvitationEmailAndServerStayBound" to deviceOnly,
+            "testCrossVaultRowsReserveSourceLine" to deviceOnly,
+            "testOfflineDisclosuresFollowOnlineStatus" to deviceOnly,
             "testErrorPresentationAnnouncesChangedMessagesOnce" to deviceOnly,
             "testPhotosInFormatsTheBackendDoesNotReadBecomeJPEGOrPNG" to deviceOnly,
             "testPlainTextAndLegacyKitFramesDecodeForSignIn" to deviceOnly,

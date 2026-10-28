@@ -670,9 +670,7 @@ func (s *Service) MoveItem(vaultID, itemID, targetVaultID string) (ItemDetail, e
 		return ItemDetail{}, convertError(err)
 	}
 	s.removeCachedItem(vaultID, itemID)
-	if _, isLoaded := s.itemsByVaultID[targetVaultID]; isLoaded {
-		s.replaceCachedItem(targetVaultID, movedItem)
-	}
+	s.replaceCachedItem(targetVaultID, movedItem)
 	return s.describeItem(&movedItem), nil
 }
 

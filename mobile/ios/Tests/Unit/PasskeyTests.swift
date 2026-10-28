@@ -3,6 +3,21 @@ import XCTest
 
 @MainActor
 final class PasskeyTests: XCTestCase {
+    func testPasskeyDeletionDescribesVaultWideConsequences() {
+        for userName in ["alice", ""] {
+            let passkey = ItemPasskey(credentialID: "key", relyingPartyID: "github.com", userName: userName, userDisplayName: "Alice")
+            let account = userName.isEmpty ? "Alice" : "alice"
+            let prefix = "You can no longer sign in to github.com as \(account) with it. "
+            for type in ["personal", "shared", "organization"] {
+                let vault = VaultSummary(id: "v", name: "Production", type: type, role: "owner", itemCount: 0)
+                let consequence = type == "personal"
+                    ? "It is removed from all your devices. Make sure you can sign in another way first."
+                    : "It is removed from Production for everyone with access. Make sure they can sign in another way first."
+                XCTAssertEqual(passkey.deletionMessage(vault: vault), prefix + consequence)
+            }
+        }
+    }
+
     func testBase64URLRoundTrip() {
         let allValue = [Data(), Data([0xfb]), Data([0xfb, 0xff]), Data([0xfb, 0xff, 0x01]), Data((0..<64).map { UInt8($0 * 4) })]
         for value in allValue {

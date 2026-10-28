@@ -88,59 +88,85 @@ internal fun PasskeyRegistrationView(model: AutoFillModel) {
     val selectedLoginID by model.selectedRegistrationLoginID.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = ScreenMargin),
-    ) {
+    Column(Modifier.fillMaxSize()) {
         Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 28.dp, bottom = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = ScreenMargin),
         ) {
-            Icon(Icons.Outlined.Key, contentDescription = null, tint = HisarTheme.colors.secondaryLabel, modifier = Modifier.size(40.dp))
-            Text("Save passkey", style = SaveTitleStyle, color = HisarTheme.colors.label)
-            request?.let { current ->
-                Text(
-                    if (current.userName.isEmpty()) current.relyingPartyID else "${current.userName} on ${current.relyingPartyID}",
-                    style = HisarType.body, color = HisarTheme.colors.secondaryLabel, textAlign = TextAlign.Center,
-                    modifier = Modifier.testTag("autofill-passkey-account"),
-                )
+            Column(
+                Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(Icons.Outlined.Key, contentDescription = null, tint = HisarTheme.colors.secondaryLabel, modifier = Modifier.size(40.dp))
+                Text("Save passkey", style = SaveTitleStyle, color = HisarTheme.colors.label)
+                request?.let { current ->
+                    Text(
+                        if (current.userName.isEmpty()) current.relyingPartyID else "${current.userName} on ${current.relyingPartyID}",
+                        style = HisarType.body, color = HisarTheme.colors.secondaryLabel, textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("autofill-passkey-account"),
+                    )
+                }
             }
-        }
-        errorMessage?.let { message -> ClearSection { ErrorBanner(message) } }
-        when (val current = options) {
-            null -> FormRow { CircularProgressIndicator(Modifier.size(22.dp), color = HisarTheme.colors.secondaryLabel) }
-            else -> if (current.isExcluded) {
-                FormSection {
-                    FormRow {
-                        Text(
-                            "Hisar already has a passkey for this account. Sign in with it instead.",
-                            style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.testTag("autofill-passkey-excluded"),
-                        )
+            errorMessage?.let { message -> ClearSection { ErrorBanner(message) } }
+            when (val current = options) {
+                null -> FormRow { CircularProgressIndicator(Modifier.size(22.dp), color = HisarTheme.colors.secondaryLabel) }
+                else -> if (current.isExcluded) {
+                    FormSection {
+                        FormRow {
+                            Text(
+                                "Hisar already has a passkey for this account. Sign in with it instead.",
+                                style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.testTag("autofill-passkey-excluded"),
+                            )
+                        }
+                        RowDivider()
+                        FormButtonRow("OK", model::rejectExcludedPasskeyRegistration, "autofill-passkey-excluded-ok", color = HisarTheme.colors.tint)
                     }
-                    RowDivider()
-                    FormButtonRow("OK", model::rejectExcludedPasskeyRegistration, "autofill-passkey-excluded-ok", color = HisarTheme.colors.tint)
-                }
-            } else {
-                LoginChoices(current, selectedLoginID, isBusy) { model.selectedRegistrationLoginID.value = it }
-                ClearSection {
-                    ProminentButton("Save passkey", { scope.launch { model.savePasskey() } }, "autofill-save-passkey", isBusy = isBusy)
+                } else {
+                    val userName = request?.userName?.trim().orEmpty()
+                    val isNewDefault = current.allLogin.none { it.isPersonal && userName.isNotEmpty() && it.username.equals(userName, ignoreCase = true) }
+                    LoginChoices(current, selectedLoginID, isBusy, isNewDefault) { model.selectedRegistrationLoginID.value = it }
                 }
             }
+            Spacer(Modifier.height(24.dp))
         }
-        Spacer(Modifier.height(24.dp))
-        Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars))
+        options?.takeIf { !it.isExcluded }?.let { current ->
+            val login = current.allLogin.firstOrNull { it.id == selectedLoginID }
+            Column(
+                Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = ScreenMargin, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    if (login == null) "New login in Personal" else "${login.title} · ${login.username} · ${login.vaultName}",
+                    style = HisarType.subheadline, color = HisarTheme.colors.label,
+                    modifier = Modifier.testTag("autofill-passkey-destination"),
+                )
+                if (login != null && !login.isPersonal) {
+                    Text("Shared. Other members can sign in with this passkey.", style = HisarType.footnote, color = HisarTheme.colors.warning)
+                }
+                ProminentButton("Save passkey", { scope.launch { model.savePasskey() } }, "autofill-save-passkey", isBusy = isBusy)
+            }
+        }
     }
 }
 
 @Composable
-private fun LoginChoices(options: PasskeyRegistrationOptions, selectedLoginID: String?, isBusy: Boolean, select: (String?) -> Unit) {
+private fun LoginChoices(options: PasskeyRegistrationOptions, selectedLoginID: String?, isBusy: Boolean, isNewDefault: Boolean, select: (String?) -> Unit) {
+    val newLogin: @Composable () -> Unit = {
+        ChoiceRow(
+            title = "New login in Personal",
+            subtitle = "Only you can use it",
+            testTag = "autofill-passkey-new-login",
+            isSelected = selectedLoginID == null,
+            onClick = { if (!isBusy) select(null) },
+        )
+    }
     FormSection(header = "Save to") {
-        options.allLogin.forEach { login ->
+        if (isNewDefault) {
+            newLogin()
+            if (options.allLogin.isNotEmpty()) RowDivider()
+        }
+        options.allLogin.forEachIndexed { index, login ->
+            if (index > 0) RowDivider()
             ChoiceRow(
                 title = login.title,
                 subtitle = (if (login.username.isEmpty()) login.vaultName else "${login.username} · ${login.vaultName}") +
@@ -149,15 +175,11 @@ private fun LoginChoices(options: PasskeyRegistrationOptions, selectedLoginID: S
                 isSelected = selectedLoginID == login.id,
                 onClick = { if (!isBusy) select(login.id) },
             )
-            RowDivider()
         }
-        ChoiceRow(
-            title = "New login",
-            subtitle = "In your Personal vault",
-            testTag = "autofill-passkey-new-login",
-            isSelected = selectedLoginID == null,
-            onClick = { if (!isBusy) select(null) },
-        )
+        if (!isNewDefault) {
+            if (options.allLogin.isNotEmpty()) RowDivider()
+            newLogin()
+        }
     }
 }
 

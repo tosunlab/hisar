@@ -37,6 +37,7 @@ beforeEach(() => {
     status: createStatus("unlocked"),
     allVault: allTestVault.map((vault) => ({ ...vault })),
     selectedVaultID: "personal",
+    listVaultID: "personal",
     selectedItem: createItem({
       id: "github",
       password: "hunter2hunter2",

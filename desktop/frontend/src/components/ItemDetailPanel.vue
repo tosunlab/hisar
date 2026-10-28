@@ -33,7 +33,6 @@ import {
   formatDatabaseSummary,
   formatIdentitySummary,
   formatKeyType,
-  formatServerAddress,
   formatServerSummary,
   formatSoftwareLicenseSummary,
   getDomain,
@@ -235,9 +234,9 @@ function buildItemMenuActions(): ContextMenuAction[] {
   const vaultID = store.selectedVaultID;
   const hasMoveTarget = store.allVault.some((vault) => vault.id !== vaultID && vault.role !== "reader");
   const allAction: (ContextMenuAction | null)[] = [
-    item.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate", run: () => duplicateItem(vaultID, item.id) } : null,
-    hasMoveTarget ? { id: "move", label: "Move to…", icon: "move", run: () => (store.itemDetailDialog = "move") } : null,
-    { id: "delete", label: "Delete…", icon: "trash", isDanger: true, run: () => (store.itemDetailDialog = "delete") },
+    item.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate", opensDestination: true, run: () => duplicateItem(vaultID, item.id) } : null,
+    hasMoveTarget ? { id: "move", label: "Move to…", icon: "move", opensDestination: true, run: () => (store.itemDetailDialog = "move") } : null,
+    { id: "delete", label: "Delete…", icon: "trash", isDanger: true, opensDestination: true, run: () => (store.itemDetailDialog = "delete") },
   ];
   return allAction.filter((action): action is ContextMenuAction => action !== null);
 }
@@ -248,15 +247,11 @@ function openItemMenu(event: MouseEvent): void {
   itemMenu.value = { x: Math.max(8, bounds.right - 200), y: bounds.bottom + 6, trigger };
 }
 
-function closeItemMenu(): void {
-  itemMenu.value?.trigger.focus();
-  itemMenu.value = null;
-}
 
 // fieldMenu is the right-click menu of a field row. It offers the row's own buttons, by their labels, so it always matches
 // what the row can do: copy, reveal or hide, copy the secret reference, open. A row is a .field with its .field-actions, or
 // a block marked data-field-menu-row, such as an SSH key's public key or a note, whose buttons sit in data-field-menu-actions.
-const fieldMenu = ref<{ label: string; x: number; y: number; allAction: ContextMenuAction[] } | null>(null);
+const fieldMenu = ref<{ label: string; x: number; y: number; allAction: ContextMenuAction[]; invoker: HTMLElement } | null>(null);
 
 function chooseFieldMenuIcon(label: string): ContextMenuAction["icon"] {
   if (label.startsWith("Copy secret reference")) {
@@ -300,7 +295,8 @@ function openFieldMenu(event: MouseEvent): void {
     allAction.push({ id, label: referenceLabel, icon: "terminal", run: () => copySecretReference(referenceField) });
   }
   const label = row.querySelector(".field-label, .section-label")?.textContent?.trim() || "Field";
-  fieldMenu.value = { label, x: event.clientX, y: event.clientY, allAction };
+  row.tabIndex = -1;
+  fieldMenu.value = { label, x: event.clientX, y: event.clientY, allAction, invoker: row };
 }
 
 function maskSecret(secret: string): string {
@@ -319,7 +315,7 @@ function maskSecret(secret: string): string {
         :websiteURL="getWebsiteIconURL(store.selectedItem)"
       />
       <div class="heading">
-        <h2>{{ store.selectedItem.title }}</h2>
+        <h2 tabindex="-1" data-testid="item-heading">{{ store.selectedItem.title }}</h2>
         <div class="meta">
           <span class="badge" data-testid="item-vault"><AppIcon :name="vaultType === 'personal' ? 'user' : 'users'" :size="12" /> {{ vaultName }}</span>
           <span v-if="vaultType === 'shared'" class="badge" data-testid="item-shared">Shared</span>
@@ -524,7 +520,7 @@ function maskSecret(secret: string): string {
         <div v-if="server.host" class="field" v-bind="bindFieldRow(serverFieldName.host, serverFieldName.host)">
           <div class="field-copy-target" v-bind="bindCopyTarget()">
           <span class="copy-prefix">Copy </span><span class="field-label">{{ serverFieldName.host }}</span>
-          <span class="field-value monospace" data-testid="server-host">{{ formatServerAddress(server) }}</span>
+          <span class="field-value monospace" data-testid="server-host">{{ server.host }}</span>
           </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy Host" title="Copy" @click="copyField(serverFieldName.host, serverFieldName.host)"><AppIcon name="copy" /></button>
@@ -710,7 +706,7 @@ function maskSecret(secret: string): string {
       </p>
     </section>
 
-    <PasskeyList v-if="(store.selectedItem.passkeys ?? []).length > 0" :passkeys="store.selectedItem.passkeys ?? []" :can-delete="canEdit" />
+    <PasskeyList v-if="(store.selectedItem.passkeys ?? []).length > 0" :passkeys="store.selectedItem.passkeys ?? []" :can-delete="canEdit" :vault-name="vaultName" :vault-type="vaultType" />
 
     <section v-if="store.selectedItem.notes && !isSecureNote" class="card notes-card copy-block" data-field-menu-row v-bind="bindFieldRow('notes', 'Notes')">
       <div class="block-copy-target" v-bind="bindCopyTarget()">
@@ -732,14 +728,15 @@ function maskSecret(secret: string): string {
       <SharedLinksList :all-share-link="allItemShareLink" :is-title-shown="false" />
     </section>
 
-    <ContextMenu v-if="fieldMenu" :label="fieldMenu.label" :x="fieldMenu.x" :y="fieldMenu.y" :all-action="fieldMenu.allAction" @close="fieldMenu = null" />
+    <ContextMenu v-if="fieldMenu" :label="fieldMenu.label" :x="fieldMenu.x" :y="fieldMenu.y" :all-action="fieldMenu.allAction" :invoker="fieldMenu.invoker" @close="fieldMenu = null" />
     <ContextMenu
       v-if="itemMenu"
       :label="store.selectedItem.title"
       :x="itemMenu.x"
       :y="itemMenu.y"
       :all-action="buildItemMenuActions()"
-      @close="closeItemMenu"
+      :invoker="itemMenu.trigger"
+      @close="itemMenu = null"
     />
     <MoveItemDialog v-if="store.itemDetailDialog === 'move'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="store.itemDetailDialog = null" />
     <ConfirmDeleteDialog v-if="store.itemDetailDialog === 'delete'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="store.itemDetailDialog = null" />
@@ -863,6 +860,36 @@ h2 {
   min-width: 0;
 }
 
+@container detail (max-width: 479px) {
+  .field {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    row-gap: 4px;
+  }
+
+  .field-copy-target {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: subgrid;
+  }
+
+  .field-label {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .field-value {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .field-actions {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
 .copy-block {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -944,13 +971,6 @@ h2 {
 .field-actions {
   display: flex;
   gap: 2px;
-  opacity: 0.55;
-  transition: opacity 120ms;
-}
-
-.field:hover .field-actions,
-.field:focus-within .field-actions {
-  opacity: 1;
 }
 
 .no-fields {

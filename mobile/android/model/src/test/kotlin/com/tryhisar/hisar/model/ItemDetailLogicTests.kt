@@ -9,6 +9,18 @@ import kotlin.test.assertTrue
 
 class ItemDetailLogicTests {
     @Test
+    fun testItemDeletionNamesTheVaultAndHasNoUndo() {
+        assertEquals("It is removed from all your devices. It can't be undone.",
+            VaultSummary.itemDeletionMessage(VaultSummary(id = "p", name = "Personal", type = "personal")))
+        for (type in listOf("shared", "organization")) {
+            assertEquals("It is removed from Production for everyone with access to the vault. It can't be undone.",
+                VaultSummary.itemDeletionMessage(VaultSummary(id = "s", name = "Production", type = type)))
+        }
+        assertEquals("It is removed from this vault for everyone with access to the vault. It can't be undone.",
+            VaultSummary.itemDeletionMessage(null))
+    }
+
+    @Test
     fun testItemDetailDecodesAndroidAppsAndDefaultsToNone() {
         val json = """{"id":"1","title":"Bank","urls":["https://bank.example"],"androidApps":[{"packageName":"com.bank.app","certificateSha256":"14:6D:E9"}]}"""
         val linked = backendJson.decodeFromString<ItemDetail>(json)

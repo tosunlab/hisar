@@ -26,6 +26,27 @@ final class SettingsModelTests: XCTestCase {
         )
     }
 
+    func testForegroundRefreshUpdatesAutoFillWithoutRequestingPermission() async {
+        var isEnabled = false
+        let identityStore = FakeCredentialIdentityStore()
+        backend.seedSignedIn()
+        let model = AppModel(credentialIdentityStore: identityStore, checkAutoFillEnabled: { isEnabled })
+        await model.start { self.backend }?.value
+        await model.refreshExternalSetupStatus()
+        XCTAssertFalse(model.isAutoFillEnabled)
+        let before = identityStore.replaceCount
+        isEnabled = true
+        await model.refreshExternalSetupStatus()
+        XCTAssertTrue(model.isAutoFillEnabled)
+        XCTAssertGreaterThan(identityStore.replaceCount, before, "newly enabled AutoFill receives this device's identities")
+        let enabledCount = identityStore.replaceCount
+        await model.refreshExternalSetupStatus()
+        XCTAssertEqual(identityStore.replaceCount, enabledCount)
+        isEnabled = false
+        await model.refreshExternalSetupStatus()
+        XCTAssertFalse(model.isAutoFillEnabled)
+    }
+
     func testAutoLockSettingChangesTheBackgroundLock() async {
         let model = await createUnlockedModel()
         XCTAssertEqual(model.autoLockInterval, 300, "5 minutes until the user picks another delay")
@@ -70,6 +91,65 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertEqual(allTint, [0x1D2025, 0x2356C4, 0x6A3DCC, 0x1B7348])
         let darkTint = ThemePalette.blue.tint.uiColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
         XCTAssertEqual(darkTint, UIColor(hexadecimal: 0x7EA6F8))
+    }
+
+    func testSupportingTextContrastAcrossPalettesAndAppearances() {
+        func luminance(_ color: UIColor, traits: UITraitCollection) -> CGFloat {
+            var red: CGFloat = 0
+            var green: CGFloat = 0
+            var blue: CGFloat = 0
+            var alpha: CGFloat = 0
+            XCTAssertTrue(color.resolvedColor(with: traits).getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+            XCTAssertEqual(alpha, 1)
+            func linear(_ value: CGFloat) -> CGFloat {
+                value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        }
+        for name in ThemeColorName.allCases {
+            let palette = ThemePalette.find(color: name)
+            for isDark in [false, true] {
+                var environment = EnvironmentValues()
+                environment.themePalette = palette
+                environment.colorScheme = isDark ? .dark : .light
+                let foreground = UIColor(ThemeSecondaryLabelStyle().resolve(in: environment))
+                let traits = UITraitCollection(userInterfaceStyle: isDark ? .dark : .light)
+                let foregroundLuminance = luminance(foreground, traits: traits)
+                for background in [palette.groupedBackground.uiColor, UIColor.systemGroupedBackground, UIColor.secondarySystemGroupedBackground] {
+                    let backgroundLuminance = luminance(background, traits: traits)
+                    let contrast = (max(foregroundLuminance, backgroundLuminance) + 0.05) / (min(foregroundLuminance, backgroundLuminance) + 0.05)
+                    XCTAssertGreaterThanOrEqual(contrast, 4.5, "\(name), \(isDark ? "Dark" : "Light")")
+                }
+            }
+        }
+    }
+
+    func testLightSupportingInstructionsRenderInSignInExportAndAccountChange() async throws {
+        let model = await createUnlockedModel()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let views: [(String, AnyView)] = [
+            ("sign-in", AnyView(SignInView())),
+            ("export", AnyView(ExportDataForm(options: ExportOptions(isBiometricAvailable: false, minPassphraseLength: 10), isBusy: false, errorMessage: nil, result: nil) { _, _, _ in })),
+            ("account-change", AnyView(ChangeMasterPasswordView())),
+        ]
+        for (name, view) in views {
+            let root = NavigationStack { view }.environmentObject(model).applyTheme(VaultTheme(appearance: .light, color: .neutral))
+            let host = UIHostingController(rootView: root)
+            let window = UIWindow(windowScene: scene)
+            window.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            host.view.layoutIfNeeded()
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "light-instructions-\(name)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            window.isHidden = true
+        }
     }
 
     func testNewPrivacyWindowsUseTheSelectedTheme() throws {
@@ -130,6 +210,25 @@ final class SettingsModelTests: XCTestCase {
             Device(id: "mac", name: "MacBook Pro", platform: "darwin/desktop", lastSeenAt: "2027-01-14T08:00:00Z"),
         ]
         let model = await createUnlockedModel()
+        let devices = DevicesLoadState()
+        backend.deviceListError = "Offline"
+        await devices.load(using: model)
+        XCTAssertNil(devices.allDevice, "a first failure must not assert that no devices exist")
+        XCTAssertTrue(devices.didFail)
+        backend.deviceListError = nil
+        let seededDevices = backend.allDevice
+        backend.allDevice = []
+        await devices.load(using: model)
+        XCTAssertEqual(devices.allDevice?.count, 0, "an empty successful fetch is loaded data")
+        XCTAssertFalse(devices.didFail)
+        backend.allDevice = seededDevices
+        await devices.load(using: model)
+        XCTAssertEqual(devices.allDevice?.map(\.id), ["this", "mac"], "Retry replaces the failed state")
+        backend.deviceListError = "Offline again"
+        await devices.load(using: model)
+        XCTAssertEqual(devices.allDevice?.map(\.id), ["this", "mac"], "a failed refresh retains the last loaded list")
+        XCTAssertTrue(devices.didFail)
+        backend.deviceListError = nil
         let allDevice = await model.loadAllDevice()
         XCTAssertEqual(allDevice?.map(\.id), ["this", "mac"])
         let isMacSignedOut = await model.revokeDevice(backend.allDevice[1])
@@ -138,6 +237,38 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertEqual(model.noticeMessage, "MacBook Pro is signed out.")
         let isThisPhoneSignedOut = await model.revokeDevice(backend.allDevice[0])
         XCTAssertFalse(isThisPhoneSignedOut, "this iPhone signs out from Settings instead")
+    }
+
+    func testFailedDeviceSignOutStaysVisibleAndCanBeRetried() async {
+        let device = Device(id: "mac", name: "MacBook", platform: "darwin/desktop")
+        backend.allDevice = [device]
+        let model = await createUnlockedModel()
+        backend.revokeDeviceErrorMessage = "Could not reach the Hisar server."
+        let failed = await model.revokeDevice(device)
+        XCTAssertFalse(failed)
+        XCTAssertEqual(model.deviceOperationErrorMessage, "Could not reach the Hisar server.")
+        XCTAssertEqual(backend.allDevice.map(\.id), ["mac"])
+        XCTAssertNil(model.noticeMessage)
+        backend.revokeDeviceErrorMessage = nil
+        let retried = await model.revokeDevice(device)
+        XCTAssertTrue(retried)
+        XCTAssertNil(model.deviceOperationErrorMessage)
+        XCTAssertEqual(model.noticeMessage, "MacBook is signed out.")
+    }
+
+    func testFailedMacApprovalChangeKeepsTheActualStateAndCanBeRetried() async {
+        let model = await createUnlockedModel()
+        let previous = model.isMacApprovalAllowed
+        backend.macApprovalErrorMessage = "Could not save Mac approvals."
+        let failed = await model.setMacApprovalAllowed(!previous)
+        XCTAssertFalse(failed)
+        XCTAssertEqual(model.isMacApprovalAllowed, previous)
+        XCTAssertEqual(model.macApprovalErrorMessage, "Could not save Mac approvals.")
+        backend.macApprovalErrorMessage = nil
+        let retried = await model.setMacApprovalAllowed(!previous)
+        XCTAssertTrue(retried)
+        XCTAssertNil(model.macApprovalErrorMessage)
+        XCTAssertEqual(model.isMacApprovalAllowed, !previous)
     }
 
     func testDeviceDescribesItsPlatform() throws {
@@ -164,6 +295,14 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertTrue(export.emergencyKitPath.hasPrefix(FileManager.default.temporaryDirectory.path), "the kit is written to the app's temporary folder")
         model.removeEmergencyKit(export)
         XCTAssertFalse(FileManager.default.fileExists(atPath: export.emergencyKitPath))
+        var latePath: URL?
+        backend.onExportEmergencyKit = { path in
+            latePath = path
+            DispatchQueue.main.sync { model.lock() }
+        }
+        let lateExport = await model.exportEmergencyKit(password: FakeBackend.password)
+        XCTAssertNil(lateExport, "a kit prepared before lock cannot reveal its key or QR afterward")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(latePath).path))
     }
 
     func testCopyingCountsForHapticsAndCopiesReferences() async {
@@ -192,6 +331,16 @@ final class SettingsModelTests: XCTestCase {
         let isTurnedOn = await model.setMacApprovalAllowed(true)
         XCTAssertTrue(isTurnedOn)
         XCTAssertTrue(model.isMacApprovalAllowed)
+    }
+
+    func testExactHostPreferenceStartsFromTheBackendAndIsSaved() async {
+        backend.isExactHostMatchValue = true
+        let model = await createUnlockedModel()
+        XCTAssertTrue(model.isExactHostMatch)
+        let changed = await model.setExactHostMatch(false)
+        XCTAssertTrue(changed)
+        XCTAssertFalse(model.isExactHostMatch)
+        XCTAssertFalse(backend.isExactHostMatchValue)
     }
 
     func testApproveFromTheCardWithoutOpeningTheSheet() async {

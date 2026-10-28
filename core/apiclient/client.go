@@ -67,6 +67,9 @@ var ErrAccountSuspended = errors.New(apitypes.AccountSuspendedMessage)
 // whose admin has not opened registration. The sentence is the one to show.
 var ErrSignUpClosed = errors.New(apitypes.RegistrationClosedMessage)
 
+// ErrRegistrationPolicyUnsupported means the server has no registration policy route.
+var ErrRegistrationPolicyUnsupported = errors.New("server: registration policy is not supported")
+
 // ErrInsecureRedirect is a redirect from https to plain http, which would expose the bearer and the traffic.
 var ErrInsecureRedirect = errors.New("the server redirected from https to an unencrypted http address")
 
@@ -234,6 +237,46 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 // CheckVersion fails with *UpgradeRequiredError when the server no longer accepts this app's version.
 func (c *Client) CheckVersion(ctx context.Context) error {
 	return c.sendRequest(ctx, "GET", "/api/v1/version-check", nil, nil, nil, nil)
+}
+
+// GetRegistrationPolicy discovers sign-up options without following redirects to another server.
+func (c *Client) GetRegistrationPolicy(ctx context.Context) (apitypes.RegistrationPolicy, error) {
+	var policy apitypes.RegistrationPolicy
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/api/v1/auth/register/policy", nil)
+	if err != nil {
+		return policy, err
+	}
+	c.setClientHeader(request.Header)
+	client := *c.HTTP
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, err := client.Do(request)
+	if err != nil {
+		return policy, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusMethodNotAllowed {
+		return policy, ErrRegistrationPolicyUnsupported
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, 1025))
+	if err != nil {
+		return policy, err
+	}
+	if len(data) > 1024 {
+		return policy, errors.New("server: registration policy exceeds 1 KiB")
+	}
+	if response.StatusCode == http.StatusUpgradeRequired {
+		return policy, c.readUpgradeRequired(data)
+	}
+	if response.StatusCode != http.StatusOK {
+		return policy, readError(response.StatusCode, data)
+	}
+	if err := json.Unmarshal(data, &policy); err != nil {
+		return apitypes.RegistrationPolicy{}, fmt.Errorf("server: invalid registration policy: %w", err)
+	}
+	if policy.Mode == "" {
+		return policy, errors.New("server: registration policy has no mode")
+	}
+	return policy, nil
 }
 
 func (c *Client) FetchPrelogin(ctx context.Context, email string) (*apitypes.PreloginResponse, error) {

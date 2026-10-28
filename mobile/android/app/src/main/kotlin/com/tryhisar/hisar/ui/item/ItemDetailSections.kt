@@ -235,6 +235,7 @@ private fun FieldRow(actions: ItemFieldActions, fieldName: String, label: String
         copy = { actions.copy(fieldName, label) },
         copyReference = { actions.copyReference(fieldName) },
         warning = warning,
+        copyErrorMessage = actions.errorMessage,
         actionLabel = if (isCustom || label.take(2).all(Char::isUpperCase)) label else label.replaceFirstChar { it.lowercase() },
     )
 }
@@ -292,7 +293,12 @@ private fun TagChip(tag: String) {
 private fun LoginSection(model: AppModel, vaultID: String, item: ItemDetail, actions: ItemFieldActions) {
     RowsSection {
         if (item.username.isNotEmpty()) row { FieldRow(actions, "username", "Username", item.username, isConcealed = false) }
-        if (item.password.isNotEmpty()) row { FieldRow(actions, "password", "Password", item.password, isConcealed = true) }
+        if (item.password.isNotEmpty()) row {
+            Column {
+                FieldRow(actions, "password", "Password", item.password, isConcealed = true)
+                ItemPasswordStrengthMeter(model, item.password, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            }
+        }
         if (item.hasOneTimePassword) {
             row {
                 OneTimeCodeRow(
@@ -409,7 +415,7 @@ private fun SoftwareLicenseSection(license: ItemSoftwareLicense, actions: ItemFi
 @Composable
 private fun ServerSection(server: ItemServer, actions: ItemFieldActions, openSSHKey: (String) -> Unit) {
     RowsSection(header = "Server") {
-        if (server.host.isNotEmpty()) row { FieldRow(actions, ServerFieldName.HOST, ServerFieldName.HOST, server.address, isConcealed = false) }
+        if (server.host.isNotEmpty()) row { FieldRow(actions, ServerFieldName.HOST, ServerFieldName.HOST, server.host, isConcealed = false) }
         if (server.port.isNotEmpty()) row { FieldRow(actions, ServerFieldName.PORT, ServerFieldName.PORT, server.port, isConcealed = false, warning = server.portWarning) }
         if (server.sshKeyID.isNotEmpty()) {
             row {

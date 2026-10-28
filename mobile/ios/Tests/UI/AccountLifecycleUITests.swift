@@ -10,12 +10,21 @@ final class AccountLifecycleUITests: HisarUITestCase {
         }
         let screenshotSuffix = ProcessInfo.processInfo.environment["HISAR_UI_TEST_SCREENSHOT_SUFFIX"] ?? ""
         app.launch()
-        waitFor(app.segmentedControls["sign-in-mode"])
+        selectSignInMode("Sign in")
         XCTAssertFalse(app.staticTexts["Sign in to use Hisar on this iPhone."].exists)
-        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
         XCTAssertFalse(app.staticTexts["Enter the invite code you received, or sign up on a server that lets anyone join."].exists)
         signUp(inviteLink: inviteLink, email: email, name: "Lifecycle")
         dismissSavePasswordPrompt()
+        openTab("Vaults")
+        app.buttons["lock-now"].tap()
+        scrollTo(app.buttons["lock-sign-out"])
+        app.buttons["lock-sign-out"].tap()
+        waitForHittable(app.alerts.buttons["Cancel"])
+        app.alerts.buttons["Cancel"].tap()
+        XCTAssertEqual(app.staticTexts["lock-email"].label, email)
+        type(Self.masterPassword, into: app.secureTextFields["unlock-password"])
+        app.buttons["unlock-submit"].tap()
+        waitForHittable(app.buttons["vault-Personal"])
 
         openSettings("open-account")
         app.buttons["open-change-master-password"].tap()
@@ -39,19 +48,20 @@ final class AccountLifecycleUITests: HisarUITestCase {
         app.buttons["replace-secret-key-submit"].tap()
         waitFor(secretKeyWarning)
         tapConfirmation(identifier: "replace-secret-key-confirm")
-        waitFor(app.navigationBars["Save your new Secret Key"], timeout: 60)
-        let newSecretKey = app.staticTexts["new-secret-key-value"].label
+        waitFor(app.navigationBars["Save your new Emergency Kit"], timeout: 60)
+        let newSecretKey = app.staticTexts["new-secret-key"].label
         XCTAssertFalse(app.navigationBars["Account recovery"].exists)
-        waitFor(app.buttons["share-new-emergency-kit"])
+        waitFor(app.buttons["new-secret-key-share-kit"])
         XCTAssertTrue(newSecretKey.hasPrefix("H1-"), newSecretKey)
         saveScreenshot("account-life-new-secret-key\(screenshotSuffix)")
-        let savedKit = app.buttons["replace-secret-key-done"]
-        XCTAssertEqual(savedKit.label, "I saved the new Emergency Kit")
-        XCTAssertFalse(savedKit.isEnabled)
-        handOffEmergencyKit(shareIdentifier: "share-new-emergency-kit")
-        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: savedKit)
-        waitForExpectations(timeout: 10)
+        let savedKit = app.buttons["new-secret-key-done"]
+        XCTAssertFalse(savedKit.exists)
+        handOffEmergencyKit(shareIdentifier: "new-secret-key-share-kit")
+        scrollTo(savedKit)
+        waitForHittable(savedKit)
         savedKit.tap()
+        let notNow = app.buttons["biometric-offer-not-now"]
+        if notNow.waitForExistence(timeout: 3) { notNow.tap() }
         waitFor(app.buttons["open-replace-secret-key"])
         openTab("Vaults")
 

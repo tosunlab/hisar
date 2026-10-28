@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { api, getErrorMessage, type LoginItemStatus } from "../api";
 import { useSettingsRowVisibility } from "../settingsSections";
 import { getTrayName } from "../util";
@@ -52,7 +52,15 @@ async function openLoginItemSettings(): Promise<void> {
   }
 }
 
-onMounted(() => applyChange(() => api.getLoginItemStatus()));
+function refreshStatus(): Promise<void> {
+  return applyChange(() => api.getLoginItemStatus());
+}
+
+onMounted(() => {
+  window.addEventListener("focus", refreshStatus);
+  return refreshStatus();
+});
+onBeforeUnmount(() => window.removeEventListener("focus", refreshStatus));
 </script>
 
 <template>

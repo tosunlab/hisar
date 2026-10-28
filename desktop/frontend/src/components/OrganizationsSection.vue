@@ -116,6 +116,7 @@ onMounted(async () => {
 
       <div v-show="isRowVisible('organizations')" class="settings-block">
         <p class="section-label">Your organizations</p>
+        <p v-if="store.organizations.isCached" class="muted" role="status">Saved organization names. Connect to load current membership and invitations.</p>
         <p v-if="store.organizations.organizations.length === 0" class="muted empty-note" data-testid="organizations-empty">
           {{ isLoading ? "Loading organizations…" : "You are not in an organization yet. Create one, or ask an admin of one to invite you." }}
         </p>
@@ -126,12 +127,13 @@ onMounted(async () => {
             type="button"
             class="setting organization-row"
             :data-testid="`organization-${organization.id}`"
+            :disabled="store.organizations.isCached"
             @click="openOrganization(organization.id)"
           >
             <span class="settings-row-icon"><AppIcon name="building" :size="14" /></span>
             <span class="setting-text">
               <strong class="title-line"><span class="title-text">{{ organization.name }}</span></strong>
-              <span class="muted organization-summary">{{ formatRole(organization.role) }} · {{ formatCount(organization.memberCount, "member") }}</span>
+              <span v-if="!store.organizations.isCached" class="muted organization-summary">{{ formatRole(organization.role) }} · {{ formatCount(organization.memberCount, "member") }}</span>
             </span>
             <AppIcon name="chevronRight" :size="14" class="row-chevron" />
           </button>

@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 import XCTest
@@ -34,6 +35,12 @@ final class ItemIconTests: XCTestCase {
             XCTAssertNotNil(ItemIcon.getColor(color), "color \(color)")
         }
         XCTAssertNil(ItemIcon.getColor(""))
+        for (category, preset) in ["login": "lock", "credit-card": "card", "server": "server", "database": "database", "ssh-key": "key",
+                                   "secure-note": "lock", "identity": "lock", "api-credential": "lock", "address": "lock", "software-license": "lock"] {
+            XCTAssertEqual(ChosenIcon.applyingColor("green", to: nil, category: category), ChosenIcon(preset: preset, color: "green"))
+        }
+        let photo = ChosenIcon(image: Data([1, 2, 3]))
+        XCTAssertEqual(ChosenIcon.applyingColor("green", to: photo, category: "login"), photo)
     }
 
     func testIconsRoundTripThroughTheItemJSON() throws {
@@ -43,6 +50,9 @@ final class ItemIconTests: XCTestCase {
         let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(withImage)) as? [String: Any]
         XCTAssertEqual((encoded?["icon"] as? [String: Any])?["image"] as? String, "AQID", "images cross as base64, as Go's []byte")
         XCTAssertNil(try JSONDecoder().decode(ItemDetail.self, from: Data(#"{"title":"Old"}"#.utf8)).icon)
+        let colored = ItemDetail(title: "Login", icon: ChosenIcon.applyingColor("blue", to: nil, category: "login"))
+        let reopened = try JSONDecoder().decode(ItemDetail.self, from: JSONEncoder().encode(colored))
+        XCTAssertEqual(reopened.icon, ChosenIcon(preset: "lock", color: "blue"))
     }
 
     func testOnlyLoginsWithAnHTTPSWebsiteAndNoIconShowAWebsiteIcon() {
@@ -110,18 +120,81 @@ final class ItemIconTests: XCTestCase {
 
     func testPreparingAPhotoShowsWhyItWasRefused() async throws {
         let model = await createUnlockedModel()
-        let unreadable = await model.prepareItemIcon(Data([1]))
-        XCTAssertNil(unreadable)
-        XCTAssertEqual(model.errorMessage, AppModel.unreadablePhotoMessage)
+        do {
+            _ = try await model.prepareItemIcon(Data([1]))
+            XCTFail("Unreadable photos must fail")
+        } catch {
+            XCTAssertEqual(describeError(error), AppModel.unreadablePhotoMessage)
+        }
         XCTAssertFalse(backend.allCallName.contains("prepareItemIcon"), "nothing UIKit can't read reaches the backend")
 
         let photo = try XCTUnwrap(encodeTestPhoto(type: .tiff, size: CGSize(width: 100, height: 100)))
-        let refused = await model.prepareItemIcon(photo)
-        XCTAssertNil(refused)
-        XCTAssertEqual(model.errorMessage, "choose a PNG, JPEG, GIF or WebP image")
+        do {
+            _ = try await model.prepareItemIcon(photo)
+            XCTFail("Refused photos must fail")
+        } catch {
+            XCTAssertEqual(describeError(error), "choose a PNG, JPEG, GIF or WebP image")
+        }
         backend.preparedIcon = Data([4, 5])
-        let prepared = await model.prepareItemIcon(photo)
+        let prepared = try await model.prepareItemIcon(photo)
         XCTAssertEqual(prepared, Data([4, 5]))
+        XCTAssertNil(model.errorMessage, "the picker owns preparation errors")
+    }
+
+    func testDetailHeaderUsesFullWidthAtAccessibilitySizesAndCapsItsIcon() throws {
+        let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore())
+        for width: CGFloat in [320, 393] {
+            for size: DynamicTypeSize in [.large, .xxxLarge, .accessibility5] {
+                let icon = ImageRenderer(content: ItemIcon(item: ItemDetail(title: "Bank"), size: 56, maxSize: 56).environment(\.dynamicTypeSize, size))
+                XCTAssertEqual(try XCTUnwrap(icon.uiImage).size, CGSize(width: 56, height: 56))
+                for title in ["GitHub", "Northwind's production account and recovery credentials"] {
+                    let content = ItemDetailHeader(item: ItemDetail(title: title), subtitle: "Personal · Login")
+                        .environmentObject(model)
+                        .environment(\.dynamicTypeSize, size)
+                        .frame(width: width)
+                    let image = try XCTUnwrap(ImageRenderer(content: content).uiImage)
+                    XCTAssertEqual(image.size.width, width)
+                    if size.isAccessibilitySize {
+                        let text = VStack(alignment: .leading, spacing: 2) {
+                            Text(title).font(.title2.weight(.bold))
+                            Text("Personal · Login").font(.subheadline)
+                        }
+                        .frame(width: width, alignment: .leading)
+                        .environment(\.dynamicTypeSize, size)
+                        let textHeight = try XCTUnwrap(ImageRenderer(content: text).uiImage).size.height
+                        XCTAssertEqual(image.size.height, 56 + 14 + textHeight, accuracy: 1)
+                    }
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "detail-\(width)-\(size)-\(title.prefix(8))"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+            }
+        }
+    }
+
+    func testPresetGridFitsScaledTargetsAtBothPhoneWidths() throws {
+        for width: CGFloat in [320, 393] {
+            for size: DynamicTypeSize in [.large, .xxxLarge, .accessibility5] {
+                let tile = ItemIcon(item: ItemDetail(icon: ChosenIcon(preset: "bank")), size: 40)
+                    .environment(\.dynamicTypeSize, size)
+                let tileWidth = max(44, try XCTUnwrap(ImageRenderer(content: tile).uiImage).size.width + 6)
+                let gridWidth = width - 32
+                let columns = floor((gridWidth + 8) / (tileWidth + 8))
+                let rows = ceil(CGFloat(ChosenIcon.allPreset.count) / columns)
+                let grid = IconPresetGrid(item: ItemDetail(), icon: ChosenIcon(preset: "bank"), color: "", onChoose: { _ in })
+                    .frame(width: gridWidth)
+                    .environment(\.dynamicTypeSize, size)
+                let image = try XCTUnwrap(ImageRenderer(content: grid).uiImage)
+                XCTAssertEqual(image.size.width, gridWidth)
+                XCTAssertEqual(image.size.height, rows * tileWidth + (rows - 1) * 8 + 8, accuracy: rows)
+                XCTAssertGreaterThanOrEqual((gridWidth - (columns - 1) * 8) / columns, tileWidth)
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "presets-\(width)-\(size)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
     }
 
     private func waitUntil(_ condition: () -> Bool) async throws {

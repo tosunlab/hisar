@@ -68,6 +68,9 @@ final class OrganizationUITests: HisarUITestCase {
         XCTAssertTrue(app.buttons["give-vault-to-team"].exists, "admins give the vault to other teams")
         saveScreenshot("organization-vault-sharing-admin")
         opsRow.tap()
+        let role = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'team-role-'")).firstMatch
+        waitFor(role)
+        XCTAssertEqual(role.value as? String, "Owner")
         goBack()
         app.buttons["vault-sharing-done"].tap()
 

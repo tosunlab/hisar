@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import Hisar
 
 @MainActor
@@ -38,6 +40,71 @@ final class OrganizationTests: XCTestCase {
         let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore())
         await model.start { self.backend }?.value
         return model
+    }
+
+    func testInvitationEmailWrapsLiteralCharactersAtAccessibilitySizes() {
+        let email = "a-very-long-local-part@a-very-long-domain.example.com"
+        let host = UIHostingController(rootView: InvitationEmailText(email: email).dynamicTypeSize(.accessibility5))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 240, height: 600))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        host.view.layoutIfNeeded()
+        func findTextView(_ view: UIView) -> UITextView? {
+            if let textView = view as? UITextView { return textView }
+            return view.subviews.compactMap(findTextView).first
+        }
+        guard let textView = findTextView(host.view) else {
+            return XCTFail("The email must remain selectable.")
+        }
+        XCTAssertEqual(textView.text, email)
+        XCTAssertEqual(textView.accessibilityLabel, email)
+        XCTAssertTrue(textView.isSelectable)
+        XCTAssertFalse(textView.isScrollEnabled)
+        XCTAssertEqual(textView.textContainer.lineBreakMode, .byCharWrapping)
+        let paragraph = textView.attributedText.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(paragraph?.hyphenationFactor, 0)
+        XCTAssertGreaterThan(textView.font?.pointSize ?? 0, 13)
+        XCTAssertGreaterThan(textView.sizeThatFits(CGSize(width: 240, height: CGFloat.greatestFiniteMagnitude)).height, textView.font?.lineHeight ?? 0)
+    }
+
+    func testDeletingTeamsAndLeavingNameEveryUnopenedVault() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allVault.append(TeamVault(vaultID: "ledger-2", name: "", role: "reader", canOpen: false))
+        let lines = OrganizationLogic.accessConsequences(organization: organization, change: .removeTeam("audit"))
+        XCTAssertEqual(lines, ["Deploy: Carol loses access.", "A vault you can't open (ledger): Carol loses access.", "A vault you can't open (ledger-2): Carol loses access."])
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .removeMember("alice-id")), ["Deploy: You lose access too."])
+        var backup = organization.allTeam[0]
+        backup.id = "backup"
+        organization.allTeam.append(backup)
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .removeTeam("audit")), ["Everyone keeps their vault access through other teams."])
+    }
+
+    func testTakingBackVaultKeepsOtherTeamsAndNamesRoleReductions() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: "platform", vaultID: "deploy")),
+                       ["Deploy: You lose access too.", "Deploy: Bob's role changes from Editor to Reader."])
+        organization.allTeam[0].allVault[0].role = "editor"
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: "audit", vaultID: "deploy")),
+                       ["Deploy: Carol loses access."])
+    }
+
+    func testRemovingTeamMembershipPreviewsOnlyThatPersonsLosses() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
+        let lines = OrganizationLogic.accessConsequences(organization: organization, change: .removeTeamMember(teamID: "platform", accountID: "bob-id"))
+        XCTAssertEqual(lines, ["Deploy: Bob's role changes from Editor to Reader."])
+        let selfLines = OrganizationLogic.accessConsequences(organization: organization, change: .removeTeamMember(teamID: "platform", accountID: "alice-id"))
+        XCTAssertEqual(selfLines, ["Deploy: You lose access too."])
+    }
+
+    func testTeamRoleChangeKeepsTheStrongestOtherGrant() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
+        organization.allTeam[0].allVault[0].role = "owner"
+        let lines = OrganizationLogic.accessConsequences(organization: organization, change: .teamRole(teamID: "audit", vaultID: "deploy", role: "reader"))
+        XCTAssertTrue(lines.joined().contains("Bob's role changes from Owner to Editor."))
+        XCTAssertFalse(lines.joined().contains("Alice"))
     }
 
     func testDecodesWhatCoreSends() throws {
@@ -98,6 +165,21 @@ final class OrganizationTests: XCTestCase {
         XCTAssertEqual(grouping.allGroup[1].waitingMessage, "Waiting for the owners of 2 vaults in Globex to give you their keys")
         XCTAssertEqual(grouping.allGroup[2].allVault.map(\.id), ["audit", "deploy"])
         XCTAssertEqual(grouping.allGroup[2].waitingMessage, "Waiting for an owner of a vault in Northwind to give you its key", "a vault that arrived no longer waits")
+        var sharedA = family
+        sharedA.name = "Production"
+        var sharedB = sharedA
+        sharedB.id = "family-other"
+        var northwind = deploy
+        northwind.name = "Production"
+        var acme = ledger
+        acme.name = "Production"
+        let destinations = OrganizationLogic.destinationGroups([sharedA, sharedB, northwind, acme], organizations: allOrganization)
+        XCTAssertEqual(destinations.map(\.name), ["acme", "Northwind", "Shared vault"])
+        XCTAssertEqual(destinations.flatMap(\.destinations).map(\.label), [
+            "acme / Production", "Northwind / Production", "Shared vault / Production (family)", "Shared vault / Production (family-o)",
+        ])
+        XCTAssertEqual(destinations[1].destinations.first?.id, "deploy")
+        XCTAssertEqual(destinations[1].destinations.first?.context, "Shared through teams in Northwind.")
     }
 
     func testKeyWarningsSayWhatHisarCouldNotDo() {
@@ -136,6 +218,25 @@ final class OrganizationTests: XCTestCase {
         XCTAssertNil(asAdmin.askAdminNote)
         XCTAssertEqual(asAdmin.allTeamAccess.map(\.team.name), ["Audit"])
         XCTAssertEqual(asAdmin.allTeamWithoutVault.map(\.name), ["Platform"], "Give to a team… offers the teams without the vault")
+    }
+
+    func testChangeTeamVaultRoleWithoutTakingBackAccess() async {
+        backend.allOrganization = [Self.buildAcme(isAdmin: true)]
+        let model = await createUnlockedModel()
+        let changed = await model.giveVaultToTeam(organizationID: "acme", teamID: "platform", vaultID: "deploy", role: Member.vaultRoleReader)
+        XCTAssertTrue(changed)
+        let loaded = await model.loadOrganization(organizationID: "acme")
+        XCTAssertEqual(loaded?.allTeam.first(where: { $0.id == "platform" })?.allVault.first(where: { $0.vaultID == "deploy" })?.role, Member.vaultRoleReader)
+        XCTAssertFalse(backend.allCallName.contains("takeVaultFromTeam"))
+        XCTAssertFalse(backend.allCallName.contains("removeVaultMember"))
+    }
+
+    func testTeamRoleConsequencesKeepStrongerOtherTeam() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
+        organization.allTeam[0].allVault[0].role = Member.vaultRoleOwner
+        let effects = OrganizationLogic.accessConsequences(organization: organization, change: .teamRole(teamID: "platform", vaultID: "deploy", role: Member.vaultRoleReader))
+        XCTAssertEqual(effects, ["Deploy: Your role changes from Editor to Reader."])
     }
 
     func testOnlyAdminsManageMembersAndTeams() {

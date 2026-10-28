@@ -28,6 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,6 +40,7 @@ import com.tryhisar.hisar.app.EditorRequest
 import com.tryhisar.hisar.app.ItemEditorDraft
 import com.tryhisar.hisar.app.CredentialImportModel
 import com.tryhisar.hisar.model.CardDescription
+import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.theme.HisarTheme
@@ -118,8 +122,14 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                 GlassTextButton("Save", onClick = ::save, testTag = "editor-save", enabled = currentDraft?.canSave == true && session?.recoveryMessage == null, isProminent = true)
             }
         },
+        status = {
+            errorMessage?.let { message ->
+                Box(Modifier.semantics { liveRegion = LiveRegionMode.Assertive; error(message) }.testTag("editor-save-error")) {
+                    ErrorBanner(message)
+                }
+            }
+        },
     ) {
-        errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
         session?.recoveryMessage?.let { message ->
             FormSection(footer = { Text(message) }) {
                 EditorButtonRow("Recover a copy", Icons.Outlined.ContentCopy, onClick = { model.itemEditor.recoverCopy() }, testTag = "editor-recover-copy", enabled = unlockedData.allVault.any(CredentialImportModel::isWritableVault))
@@ -196,7 +206,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                     ServerSection(currentDraft, onChange, allVaultSSHKey)
                 }
                 if (item.isDatabase) DatabaseSection(currentDraft, onChange)
-                LoginSections(currentDraft, onChange, revealed, onRevealedChange, onGeneratePassword = { isGeneratorShown = true })
+                LoginSections(model, currentDraft, onChange, revealed, onRevealedChange, onGeneratePassword = { isGeneratorShown = true }, errorMessage = errorMessage)
                 OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
         }
@@ -216,7 +226,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                         .padding(vertical = 15.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("Delete item", style = HisarType.body, color = HisarTheme.colors.destructive, textAlign = TextAlign.Center)
+                    Text("Delete item", style = HisarType.body, color = HisarTheme.colors.destructiveText, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -244,8 +254,8 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
     if (isDeleteConfirmationShown && currentDraft != null) {
         DestructiveConfirmation(
             title = "Delete “${currentDraft.item.title}”?",
-            message = "It is deleted on every device that can see this vault.",
-            action = "Delete",
+            message = VaultSummary.itemDeletionMessage(unlockedData.allVault.firstOrNull { it.id == vaultID }),
+            action = "Delete item",
             onConfirm = ::delete,
             onDismiss = { isDeleteConfirmationShown = false },
             testTag = "editor-delete-confirmation",

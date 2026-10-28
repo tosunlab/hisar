@@ -99,7 +99,7 @@ class AppModel(
     val signIn = SignInModel(this, isPlainHttpAllowed)
     val lock = LockModel(this)
     val settings = SettingsModel(this)
-    val pendingRecovery = PendingRecoveryModel(this) { signIn.offerBiometricUnlock() }
+    val pendingRecovery = PendingRecoveryModel(this) { signIn.openEmergencyKit() }
     val credentialImport = CredentialImportModel(this)
     val itemEditor = ItemEditorModel(this)
     val favorites = FavoritesModel(this)
@@ -114,18 +114,28 @@ class AppModel(
     val notifications = NotificationsModel(this, notificationPlatform)
 
     val autoLockInterval: Duration get() = Duration.ofSeconds(status.value.autoLockSeconds.toLong())
+    private var isStarting = false
+    private var isCollectingBackendEvents = false
 
     /** Builds the backend, then shows the screen its status asks for; a backend that cannot start shows why. */
     suspend fun start(createBackend: () -> VaultBackend) {
+        if (isStarting || backend != null) return
+        isStarting = true
+        mutableScreen.value = Screen.Starting
         notifications.clearApprovalReminder()
         // Events are not replayed, so they are collected before the backend is first asked for its status.
-        scope.launch(start = CoroutineStart.UNDISPATCHED) { backendEvents.collect(::handleEvent) }
+        if (!isCollectingBackendEvents) {
+            isCollectingBackendEvents = true
+            scope.launch(start = CoroutineStart.UNDISPATCHED) { backendEvents.collect(::handleEvent) }
+        }
         val started = try {
             withContext(ioDispatcher) {
                 val backend = createBackend()
                 StartedBackend(backend, backend.isMacApprovalAllowed(), backend.isWebsiteIconsEnabled(), backend.getTheme(), backend.getStatus())
             }
         } catch (error: Exception) {
+            isStarting = false
+            if (error is CancellationException) throw error
             mutableScreen.value = Screen.Failed(describeError(error))
             return
         }
@@ -138,6 +148,7 @@ class AppModel(
         scope.launch { checkMinimumVersion() }
         scope.launch { notifications.refresh() }
         refreshPendingRecovery()
+        isStarting = false
     }
 
     private class StartedBackend(
@@ -249,8 +260,8 @@ class AppModel(
         attempt { it.getStatus() }?.let(::applyStatus)
     }
 
-    override suspend fun refreshPendingRecovery(isOpening: Boolean) {
-        pendingRecovery.refresh(isOpening)
+    override suspend fun refreshPendingRecovery(isOpening: Boolean, operationID: String?) {
+        pendingRecovery.refresh(isOpening, operationID)
         if (isOpening && pendingRecovery.allRecovery.value.isNotEmpty()) pendingRecovery.open()
     }
 

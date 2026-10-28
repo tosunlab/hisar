@@ -34,7 +34,7 @@ Five Go modules joined by `go.work`, plus seven non-Go apps.
 | `crypt` | Every cryptographic operation and AAD label: sealing, Argon2id/HKDF, keyset, vault keys, items, approvals, share links, exports, Secret Key, Web Push message encryption (RFC 8291). `vectors_test.go` freezes the formats. `NewAccountArgon2Params` is what sign-ups and credential changes use: the defaults, or the minimum under the test-only build tag `hisar_fast_test_kdf` (`newaccount_fast_test_kdf.go`) |
 | `pake` | The OPAQUE configuration shared by apps and server |
 | `apitypes` | JSON wire types of `/api/v1`, event names, roles, platform headers, share-link limits, `IsValidVaultRole`, `NormalizeEmail` |
-| `apiclient` | Typed HTTP client of `/api/v1` and its event stream |
+| `apiclient` | Typed HTTP client of `/api/v1` and its event stream; `GetRegistrationPolicy` discovers sign-up policy without redirects |
 | `session` | A signed-in account: sign-up, login, unlock, item sync and encryption, rotation, sharing, share links, organization vaults (`CompleteVaultKeyRequests`, `RotatePendingVaults`), account changes, `Reauthenticate` (the OPAQUE proof that account changes carry), the account preferences record with the favorites, `GetVaultPermissions` |
 | `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), the chosen icon and its presets (`icon.go`), the Android apps a login fills into, stored among its URLs as `androidapp://<package>?sha256=<certificate>` so older apps keep them (`androidapp.go`), `LookupField`, the password generator |
 | `itemicon` | Icon images: normalizing uploads and website icons into small PNGs, and fetching website icons from public https sites only |
@@ -68,6 +68,9 @@ agent harnesses may do without asking, sealed into `state.json` with a head that
 `phoneapproval.go` (Mac side), `phoneapproval_answer.go` (phone side), `import.go`, `hisarexport.go` (importing Hisar's own export, with its passphrase step), `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses and identities for the extension), `cards.go` (cards for the extension),
 `browseritems.go` (the extension popup's vault: items, vaults, new items), `browserunlock.go` (the popup's master password unlock),
 `organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync), `push.go` (the iPhone's push token, registered with the push relay and the server, and the Android phone's Web Push subscription, registered with the server).
+`emergencykit.go` owns the installed account's memory-only kit grant, export-bound delivery recording, postponement and reminders.
+`pendingrecovery.go` owns separately protected unfinished operations and their kit exports. `auth.go` exposes `GetSignUpPolicy`;
+`Status.emergencyKit` distinguishes an installed account's owed kit from operations that need Finish account setup.
 Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_test.go`. `Config` (`types.go`) has
 `BiometricName`, the name Go's sentences give the biometric check: "Touch ID" on the Mac and in iOS hisarkit (Swift
 replaces it with the device's Face ID or Touch ID), "biometric" on Android.
@@ -87,6 +90,9 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 | `internal/settings` | The instance settings admins edit: defaults, the stored document, `HISAR_*` overrides, `Validate` |
 | `internal/mail`, `internal/desktopupdate`, `internal/serverupdate` | SMTP; the Sparkle appcast from GitHub Releases; the newest server release for Overview |
 | `cmd/hisar-fake-github`, `cmd/hisar-smtp-sink`, `cmd/hisar-share-link-page-fixture`, `cmd/hisar-admin-page-fixture`, `cmd/hisar-sign-in-site-fixture` (the sign-in pages `desktop/axfill`'s real-browser test fills), `internal/desktopupdate/fakegithub`, `internal/mail/mailtest` | Fakes and fixtures for the end-to-end and browser tests; `internal/fixturedatabase` keeps the two page fixtures' secrets, one file per database, so a restart on the same database works |
+
+`GET /api/v1/auth/register/policy` is public, minimum-version guarded, rate limited and not cached.
+`internal/service/auth.go` uses one `registrationMode` for its `open`, `invite` and `setup` answer and sign-up enforcement.
 
 ### cli
 
@@ -257,7 +263,7 @@ export HISAR_TEST_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar?
 make vet test            # every module; server with -p 1 because its database tests share one schema, the rest beside it
 make build build-cli-all # hisar-server with the admin dashboard (needs Node 24), and hisar; the CLI for every OS
 make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
-make test-desktop-frontend
+make test-desktop-frontend # includes the reminder-banner layout test; needs Playwright's Chromium
 make test-agent-sign-in  # local Mac only, not CI; terminal Accessibility and Screen Recording, hisar-pg, official test browsers, yabai and two Spaces
 make test-extension-firefox-end-to-end # the extension in a pinned Firefox through geckodriver; HISAR_TEST_FIREFOX=esr_140.17.0esr for the oldest supported
 make test-raycast        # the Raycast extension's typecheck, tests, lint and build; it never installs into Raycast
@@ -275,6 +281,9 @@ gofmt -l $(git ls-files '*.go')
 
 Make selects the exact `go.work` toolchain even if `GOTOOLCHAIN` is set in your environment or Make arguments.
 The first use needs network access unless that release is already cached.
+
+For the desktop frontend's browser tests, install its locked dependencies with `npm ci` in `desktop/frontend`,
+then run `npx playwright install chromium` there. CI's combined web job installs Chromium and its Linux dependencies.
 
 The Android targets need `ANDROID_HOME` (the SDK, with the command-line tools in `cmdline-tools/latest`),
 `ANDROID_NDK_HOME` (`$ANDROID_HOME/ndk/30.0.16248370`) and JDK 21 for the Gradle daemon

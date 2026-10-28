@@ -39,6 +39,9 @@ data class UnlockedData(
 
     fun findVault(vaultID: String): VaultSummary? = allVault.firstOrNull { it.id == vaultID }
 
+    val readIssueSummary: com.tryhisar.hisar.model.ReadIssueSummary
+        get() = com.tryhisar.hisar.model.ReadIssueSummary(allVault.flatMap { it.readIssues })
+
     /** The items of one vault, or of every vault, sorted by title then username. */
     fun listAllItemReference(vaultID: String? = null): List<VaultItemReference> = VaultLogic.sortAllItem(
         allVault.filter { vaultID == null || it.id == vaultID }.flatMap { vault ->
@@ -103,7 +106,7 @@ interface ModelContext {
     suspend fun refreshAll()
 
     /** Reloads the pending recovery records and, unless [isOpening] is false, shows them when there are any. */
-    suspend fun refreshPendingRecovery(isOpening: Boolean = true)
+    suspend fun refreshPendingRecovery(isOpening: Boolean = true, operationID: String? = null)
 
     /** Shows a snackbar, with an optional action until it is dismissed. */
     fun showNotice(message: String, action: Notice.Action? = null)

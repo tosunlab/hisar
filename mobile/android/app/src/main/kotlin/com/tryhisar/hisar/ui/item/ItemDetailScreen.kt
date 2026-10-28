@@ -29,6 +29,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +44,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
@@ -52,6 +55,7 @@ import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.ItemPasskey
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.ui.components.ContentUnavailable
+import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.PushedTopBar
 import com.tryhisar.hisar.ui.components.ScreenMargin
@@ -60,12 +64,22 @@ import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import kotlinx.coroutines.launch
 
+@Composable
+fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (EditorRequest) -> Unit, onBack: () -> Unit) {
+    var activeVaultID by remember(vaultID, itemID) { mutableStateOf(vaultID) }
+    key(activeVaultID, itemID) {
+        ItemDetailScreenContent(model, activeVaultID, itemID, onEdit, onBack, onMoved = { activeVaultID = it })
+    }
+}
+
 /** One item's detail screen, pushed by the Vaults and Search tabs. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (EditorRequest) -> Unit, onBack: () -> Unit) {
+private fun ItemDetailScreenContent(model: AppModel, vaultID: String, itemID: String, onEdit: (EditorRequest) -> Unit, onBack: () -> Unit, onMoved: (String) -> Unit) {
     val scope = rememberCoroutineScope()
+    val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val unlockedData by model.unlockedData.collectAsStateWithLifecycle()
+    val status by model.status.collectAsStateWithLifecycle()
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
     val vault = unlockedData.findVault(vaultID)
     val summary = unlockedData.allItemByVaultID[vaultID]?.firstOrNull { it.id == itemID }
@@ -77,6 +91,19 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
     var passkeyToDelete by remember { mutableStateOf<ItemPasskey?>(null) }
     var androidAppToRemove by remember { mutableStateOf<ItemAndroidApp?>(null) }
     var openedSSHKeyID by remember { mutableStateOf<String?>(null) }
+    var actionFailure by remember { mutableStateOf<ItemActionFailure?>(null) }
+
+    fun performAction(failureTitle: String, action: suspend () -> Unit) {
+        scope.launch {
+            actionFailure = null
+            model.errorMessage.value = null
+            action()
+            model.errorMessage.value?.let { message ->
+                actionFailure = ItemActionFailure("$failureTitle $message") { performAction(failureTitle, action) }
+            }
+        }
+    }
+    var isMoveShown by remember { mutableStateOf(false) }
 
     suspend fun loadItem() {
         model.errorMessage.value = null
@@ -92,8 +119,17 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
     }
     // Deleted in the editor or elsewhere: the item is gone from its vault's list, so its screen closes.
     LaunchedEffect(summary == null) {
-        if (summary == null && wasListed) onBack()
+        if (summary == null && wasListed && !isMoveShown) onBack()
     }
+    LaunchedEffect(status.isUnlocked) {
+        if (!status.isUnlocked) {
+            item = null
+            allRevealedFieldName = emptySet()
+            passkeyToDelete = null
+            actionFailure = null
+        }
+    }
+    if (!status.isUnlocked) return
 
     val openedKeyID = openedSSHKeyID
     BackHandler(enabled = openedKeyID != null) { openedSSHKeyID = null }
@@ -126,10 +162,19 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                             }
                         },
                         edit = if (isWritable) ({ onEdit(EditorRequest.Edit(vaultID, itemID)) }) else null,
+                        move = if (model.item.moveDestinations(vaultID).isNotEmpty()) ({ model.errorMessage.value = null; isMoveShown = true }) else null,
                     )
                 }
             },
         )
+        if (shownItem != null && passkeyToDelete == null) {
+            actionFailure?.let { failure ->
+                Column(Modifier.semantics { liveRegion = LiveRegionMode.Assertive }.testTag("item-action-error")) {
+                    ErrorBanner(failure.message)
+                    PlainButton("Retry", failure.retry, testTag = "retry-item-action")
+                }
+            }
+        }
         when {
             shownItem != null -> PullToRefreshBox(
                 isRefreshing = isRefreshing,
@@ -149,10 +194,11 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                         .padding(horizontal = ScreenMargin),
                 ) {
                     val actions = ItemFieldActions(
-                        copy = { fieldName, label -> scope.launch { model.copyField(vaultID, itemID, fieldName, label) } },
-                        copyReference = { fieldName -> scope.launch { model.copySecretReference(vaultID, itemID, fieldName) } },
+                        copy = { fieldName, label -> performAction("Could not copy $label.") { model.copyField(vaultID, itemID, fieldName, label) } },
+                        copyReference = { fieldName -> performAction("Could not copy the secret reference.") { model.copySecretReference(vaultID, itemID, fieldName) } },
                         isRevealed = { it in allRevealedFieldName },
                         toggleReveal = { allRevealedFieldName = if (it in allRevealedFieldName) allRevealedFieldName - it else allRevealedFieldName + it },
+                        errorMessage = actionFailure?.message,
                         copyText = { value, label -> scope.launch { model.copyText(value, label) } },
                         isCustomRevealed = { it in allRevealedCustomIndex },
                         toggleCustomReveal = { allRevealedCustomIndex = if (it in allRevealedCustomIndex) allRevealedCustomIndex - it else allRevealedCustomIndex + it },
@@ -166,10 +212,10 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                         isWritable = isWritable,
                         actions = actions,
                         openSSHKey = { openedSSHKeyID = it },
-                        deletePasskey = { passkeyToDelete = it },
+                        deletePasskey = { actionFailure = null; passkeyToDelete = it },
                         removeAndroidApp = { androidAppToRemove = it },
                         convertToSecureNote = {
-                            scope.launch { model.item.convertToSecureNote(vaultID, itemID)?.let { item = it } }
+                            performAction("Could not convert this item.") { model.item.convertToSecureNote(vaultID, itemID)?.let { item = it } }
                         },
                     )
                     Spacer(Modifier.height(TabBarHeight))
@@ -186,19 +232,30 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
             }
         }
     }
+    if (isMoveShown && shownItem != null) {
+        MoveItemSheet(model, vaultID, shownItem, onDismiss = { isMoveShown = false }, onMoved = onMoved)
+    }
 
     passkeyToDelete?.let { passkey ->
         AlertDialog(
-            onDismissRequest = { passkeyToDelete = null },
+            onDismissRequest = { if (!isBusy) { passkeyToDelete = null; actionFailure = null } },
             title = { Text("Delete this passkey?") },
-            text = { Text("You can no longer sign in to ${passkey.relyingPartyID} as ${passkey.userName} with it.") },
-            confirmButton = {
-                PlainButton("Delete passkey", {
-                    passkeyToDelete = null
-                    scope.launch { model.item.deletePasskey(vaultID, itemID, passkey.credentialID)?.let { item = it } }
-                }, testTag = "confirm-delete-passkey", color = HisarTheme.colors.destructive)
+            text = {
+                Column {
+                    Text(passkey.deletionMessage(vault))
+                    actionFailure?.let { failure ->
+                        Column(Modifier.semantics { liveRegion = LiveRegionMode.Assertive }.testTag("passkey-action-error")) { ErrorBanner(failure.message) }
+                    }
+                }
             },
-            dismissButton = { PlainButton("Cancel", { passkeyToDelete = null }, testTag = "cancel-delete-passkey") },
+            confirmButton = {
+                PlainButton(if (actionFailure == null) "Delete passkey" else "Retry deletion", {
+                    performAction("Could not delete the passkey for ${passkey.relyingPartyID}.") {
+                        model.item.deletePasskey(vaultID, itemID, passkey.credentialID)?.let { item = it; passkeyToDelete = null }
+                    }
+                }, testTag = "confirm-delete-passkey", color = HisarTheme.colors.destructiveText, enabled = !isBusy)
+            },
+            dismissButton = { PlainButton("Cancel", { passkeyToDelete = null; actionFailure = null }, testTag = "cancel-delete-passkey", enabled = !isBusy) },
         )
     }
     androidAppToRemove?.let { androidApp ->
@@ -210,12 +267,14 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                 PlainButton("Remove app", {
                     androidAppToRemove = null
                     scope.launch { model.item.removeAndroidApp(vaultID, itemID, androidApp)?.let { item = it } }
-                }, testTag = "confirm-remove-android-app", color = HisarTheme.colors.destructive)
+                }, testTag = "confirm-remove-android-app", color = HisarTheme.colors.destructiveText)
             },
             dismissButton = { PlainButton("Cancel", { androidAppToRemove = null }, testTag = "cancel-remove-android-app") },
         )
     }
 }
+
+private class ItemActionFailure(val message: String, val retry: () -> Unit)
 
 /** What a field row of the shown item does: copy the field or its secret reference, and reveal a concealed one. */
 internal class ItemFieldActions(
@@ -223,6 +282,7 @@ internal class ItemFieldActions(
     val copyReference: (fieldName: String) -> Unit,
     val isRevealed: (fieldName: String) -> Boolean,
     val toggleReveal: (fieldName: String) -> Unit,
+    val errorMessage: String? = null,
     val copyText: (value: String, label: String) -> Unit,
     val isCustomRevealed: (index: Int) -> Boolean,
     val toggleCustomReveal: (index: Int) -> Unit,
@@ -230,7 +290,7 @@ internal class ItemFieldActions(
 
 /** The star and, for those who may change the item, "Edit", on one glass capsule as the iPhone app groups them. */
 @Composable
-private fun ItemToolbar(isFavorite: Boolean, toggleFavorite: () -> Unit, edit: (() -> Unit)?) {
+private fun ItemToolbar(isFavorite: Boolean, toggleFavorite: () -> Unit, edit: (() -> Unit)?, move: (() -> Unit)?) {
     Row(
         Modifier
             .height(44.dp)
@@ -253,6 +313,9 @@ private fun ItemToolbar(isFavorite: Boolean, toggleFavorite: () -> Unit, edit: (
                 tint = HisarTheme.colors.label,
                 modifier = Modifier.size(22.dp),
             )
+        }
+        if (move != null) {
+            PlainButton("Move to vault…", move, testTag = "move-item")
         }
         if (edit != null) {
             Box(

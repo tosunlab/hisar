@@ -21,6 +21,7 @@ struct PhoneApprovalPreviewView: View {
             return PhoneApproval(
                 requestID: "preview-cli", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindCommandLine,
                 appName: "hisar in Terminal", purpose: "use Hisar", commandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", terminalName: "ttys003",
+                allowance: "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time.",
                 commandLineLifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks"
             )
         case "forwarded":
@@ -57,7 +58,7 @@ struct PhoneApprovalPreviewView: View {
             return PhoneApproval(
                 requestID: "preview-ssh", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindSSH,
                 appName: "Terminal", purpose: "push to git.tryhisar.com", host: "git.tryhisar.com:22", commandLine: "git push origin main",
-                repositoryPath: "~/Documents/hisar/core", keyName: "hisar gitlab", rememberLabel: "Also allows Terminal for 1 hour", isRememberedByDefault: true
+                repositoryPath: "~/Documents/hisar/core", keyName: "hisar gitlab", rememberLabel: "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", isRememberedByDefault: true
             )
         }
     }
@@ -70,9 +71,10 @@ struct PhoneApprovalPreviewView: View {
 
     @State private var isSheetShown = true
     @State private var isBusy = false
-    @State private var isPasswordRequired = false
+    @State private var isPasswordRequired = ProcessInfo.processInfo.arguments.contains(PhoneApprovalPreviewView.passwordArgument)
     @State private var errorMessage: String?
     @State private var resultMessage: String?
+    @State private var chosenRemember: Bool?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -89,6 +91,7 @@ struct PhoneApprovalPreviewView: View {
                 isBusy: isBusy,
                 isPasswordRequired: isPasswordRequired,
                 errorMessage: errorMessage,
+                isRemembered: Binding(get: { approval.resolveRememberChoice(chosenRemember) }, set: { chosenRemember = $0 }),
                 biometryName: biometryName,
                 biometrySystemImage: biometryName == "Touch ID" ? "touchid" : "faceid",
                 approve: { await approve(isRemembered: $0) },
@@ -158,6 +161,7 @@ struct PendingApprovalPreviewView: View {
     @State private var resultMessage: String?
     @State private var selectedTab = Self.readThemeArgument().tab
     @State private var theme = Self.readThemeArgument().theme
+    @State private var rememberChoices: [String: Bool] = [:]
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -167,6 +171,7 @@ struct PendingApprovalPreviewView: View {
                         PendingApprovalCardSection(
                             allApproval: allApproval,
                             isBusy: false,
+                            rememberChoice: rememberChoice,
                             review: { presentedApproval = $0 },
                             approve: { finish($0, message: "Approved \($0.requestID) with Face ID\($1 ? ", remembered" : "")") },
                             deny: { finish($0, message: "Denied \($0.requestID)") },
@@ -195,6 +200,8 @@ struct PendingApprovalPreviewView: View {
                     ApprovalList(
                         allApproval: allApproval,
                         isMacApprovalAllowed: true,
+                        listState: .loaded,
+                        retry: {},
                         review: { presentedApproval = $0 },
                         deny: { finish($0, message: "Denied \($0.requestID)") },
                         allowMacApproval: {}
@@ -219,11 +226,16 @@ struct PendingApprovalPreviewView: View {
                 isBusy: false,
                 isPasswordRequired: false,
                 errorMessage: nil,
+                isRemembered: rememberChoice(approval),
                 approve: { finish(approval, message: "Approved \(approval.requestID) with Face ID\($0 ? ", remembered" : "")") },
                 approveWithPassword: { _, _ in },
                 deny: { finish(approval, message: "Denied \(approval.requestID)") }
             )
         }
+    }
+
+    private func rememberChoice(_ approval: PhoneApproval) -> Binding<Bool> {
+        Binding(get: { approval.resolveRememberChoice(rememberChoices[approval.requestID]) }, set: { rememberChoices[approval.requestID] = $0 })
     }
 
     @ViewBuilder

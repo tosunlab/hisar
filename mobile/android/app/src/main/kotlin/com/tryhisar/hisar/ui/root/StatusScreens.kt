@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Warning
@@ -41,10 +42,19 @@ fun StartingScreen() {
 }
 
 @Composable
-fun StartupFailureScreen(message: String) {
+fun StartupFailureScreen(message: String, retry: () -> Unit, copyDetails: (String) -> Unit) {
     Box(Modifier.fillMaxSize().background(HisarTheme.colors.groupedBackground)) {
         ContentUnavailable("Hisar could not start", Icons.Outlined.Warning, description = {
-            Text(message, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, textAlign = TextAlign.Center, modifier = Modifier.testTag("error-message"))
+            SelectionContainer {
+                Text(message, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, textAlign = TextAlign.Center, modifier = Modifier.testTag("error-message"))
+            }
+        }, actions = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ProminentButton("Try again", retry, testTag = "startup-retry")
+                PlainButton("Copy details", { copyDetails(message) }, testTag = "startup-copy-details")
+                Text("If this keeps happening, email support@tryhisar.com.", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+                Text("Don't clear Hisar's storage unless you have your Emergency Kit. Clearing storage removes this phone's saved Secret Key and offline vault copy.", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+            }
         })
     }
 }

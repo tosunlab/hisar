@@ -4,6 +4,7 @@ import type {
   AgentSession,
   ApprovalEvent,
   CodingAgent,
+  EmergencyKitStatus,
   FavoriteItem,
   ShareLink,
   ShareLinkField,
@@ -33,6 +34,10 @@ import type {
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600, signedOutReason: "", updateRequired: null };
+}
+
+export function createEmergencyKit(overrides: Partial<EmergencyKitStatus> = {}): EmergencyKitStatus {
+  return { operationId: "signup", kind: "signup", savedBy: "", postponedAt: "", reminder: "new", isAuthorized: true, isReminderHidden: false, ...overrides };
 }
 
 export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
@@ -299,6 +304,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     isCompact: false,
     isTouchIDApproval: true,
     isPhoneApproval: false,
+    phoneApprovalState: "",
     isTooLongForPhone: false,
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
     timeoutMilliseconds: 60_000,
@@ -307,6 +313,8 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     agentName: "",
     harnessName: "",
     agentNameSource: "",
+    harnessProgramPath: "",
+    harnessProgramEntrypoint: "",
     projectName: "",
     projectPath: "",
     workingDirectory: "",
@@ -319,6 +327,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     allGrantDuration: [],
     grantDuration: "",
     grantScope: "",
+    grantHolderScope: "",
     website: "",
     browserName: "",
     allLogin: [],
@@ -365,6 +374,7 @@ export function createAgentRunApprovalEvent(overrides: Partial<ApprovalEvent> = 
     allGrantDuration: ["once", "hour"],
     grantDuration: "once",
     grantScope: "A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again.",
+    grantHolderScope: "connection",
     isConnectionApproval: false,
     ...overrides,
   });
@@ -379,6 +389,7 @@ export function createAgentRevealApprovalEvent(overrides: Partial<ApprovalEvent>
     allGrantDuration: ["once", "hour"],
     grantDuration: "once",
     grantScope: "A longer choice covers only reading “Stripe › api key” again, nothing else.",
+    grantHolderScope: "connection",
     isConnectionApproval: false,
     warning: "The value will be visible to Claude Code and can end up in its transcript and logs.",
     ...overrides,
@@ -399,6 +410,7 @@ export function createSignInApprovalEvent(overrides: Partial<ApprovalEvent> = {}
     allGrantDuration: ["once", "hour", "day", "always"],
     grantDuration: "once",
     grantScope: "A longer choice covers only the chosen login at https://tosunlab.com.",
+    grantHolderScope: "harness",
     ...overrides,
   });
 }
@@ -410,6 +422,7 @@ export function createHarnessApprovalEvent(overrides: Partial<ApprovalEvent> = {
     agentName: "omp in Tern",
     harnessName: "omp",
     agentNameSource: "signature",
+    grantHolderScope: "harness",
     projectName: "hisarapp-core",
     projectPath: "~/Chore/hisarapp-core",
     clientName: "hisar",
@@ -484,6 +497,7 @@ export function createCommandLineApprovalEvent(overrides: Partial<ApprovalEvent>
     isRememberable: false,
     terminalName: "ttys003",
     coverage: "terminal-session",
+    allowance: "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time.",
     lifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks",
     ...overrides,
   });
@@ -729,6 +743,12 @@ export function createApiMock() {
     signIn: vi.fn(),
     signUp: vi.fn(),
     signUpWithoutInvite: vi.fn(),
+    getSignUpPolicy: vi.fn(async (server: string) => ({ server, host: server.replace(/^https:\/\//, ""), mode: "unknown" })),
+    authorizeNewAccountEmergencyKit: vi.fn().mockResolvedValue(undefined),
+    authorizeNewAccountEmergencyKitWithBiometric: vi.fn().mockResolvedValue(undefined),
+    revealNewAccountSecretKey: vi.fn().mockResolvedValue({ secretKey: "H1-ABC123-SECRET", qrPayload: "", qrCode: "" }),
+    postponeNewAccountEmergencyKit: vi.fn().mockResolvedValue(undefined),
+    hideEmergencyKitReminder: vi.fn().mockResolvedValue(undefined),
     unlock: vi.fn(),
     lock: vi.fn(),
     signOut: vi.fn(),
@@ -812,6 +832,7 @@ export function createApiMock() {
     removeSSHConfig: vi.fn(),
     respondSSHApproval: vi.fn().mockResolvedValue(undefined),
     listAllPendingSSHApproval: vi.fn().mockResolvedValue([]),
+    listMissingAgentKeys: vi.fn().mockResolvedValue([]),
     respondApprovalWithPassword: vi.fn().mockResolvedValue(undefined),
     getCommandLineStatus: vi.fn().mockResolvedValue(createCommandLineStatus()),
     installCommandLineTool: vi.fn(),
@@ -849,6 +870,7 @@ export function createApiMock() {
     hasNativeTouchIDView: false,
     saveNewAccountEmergencyKit: vi.fn(),
     saveEmergencyKit: vi.fn(),
+    revealSecretKey: vi.fn(),
     checkMasterPassword: vi.fn(async (password: string) => checkTestMasterPassword(password)),
     changeMasterPassword: vi.fn(),
     replaceSecretKey: vi.fn(),
@@ -959,6 +981,8 @@ export function createImportProgress(overrides: Partial<ImportProgress> = {}): I
     leftBehindCount: 0,
     isDone: false,
     allFailed: [],
+    allSkipped: [],
+    allDuplicateOutcomes: [],
     isSourceKept: false,
     ...overrides,
   };

@@ -3,6 +3,7 @@ package com.tryhisar.hisar.ui.settings
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Warning
@@ -43,9 +44,11 @@ import com.tryhisar.hisar.ui.theme.HisarType
 import java.io.File
 import kotlinx.coroutines.launch
 
+private enum class ExportAuthentication { BIOMETRIC, PASSWORD }
+
 /**
  * Settings → Account → Export data, the iPhone's sheet: an encrypted or plain export of every vault, which the user then
- * saves through the system's file creator or sends to another app. Closing the screen deletes the file from this device.
+ * saves through the system's file creator or sends to another app. Closing deletes only Hisar's temporary copies.
  */
 @Composable
 fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
@@ -58,15 +61,19 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
     var passphrase by remember { mutableStateOf("") }
     var repeatedPassphrase by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var authentication by remember { mutableStateOf(ExportAuthentication.BIOMETRIC) }
     val latestResult by rememberUpdatedState(result)
     val inputProblem = ExportLogic.checkInput(format, passphrase, repeatedPassphrase, options.minPassphraseLength)
     val isPassphraseTooShort = passphrase.codePointCount(0, passphrase.length) < options.minPassphraseLength
-    val isPasswordNeeded = !options.isBiometricAvailable
+    val isPasswordNeeded = authentication == ExportAuthentication.PASSWORD || !options.isBiometricAvailable
     val canExport = inputProblem == null && !isBusy && (!isPasswordNeeded || password.isNotEmpty())
 
     LaunchedEffect(Unit) {
         model.errorMessage.value = null
         model.settings.loadExportOptions()?.let { options = it }
+    }
+    LaunchedEffect(errorMessage) {
+        if (ExportLogic.isPasswordRequested(errorMessage)) authentication = ExportAuthentication.PASSWORD
     }
     DisposableEffect(Unit) {
         onDispose { latestResult?.let(model.settings::removeExport) }
@@ -90,11 +97,20 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
                 header = "Export ready",
                 footer = {
                     Text(
-                        "${if (exported.vaultCount == 1) "1 vault" else "${exported.vaultCount} vaults"}, ${if (exported.itemCount == 1) "1 item" else "${exported.itemCount} items"}. The file is removed from this device when you close this screen.",
+                        "${if (exported.vaultCount == 1) "1 vault" else "${exported.vaultCount} vaults"}, ${if (exported.itemCount == 1) "1 item" else "${exported.itemCount} items"}.",
                     )
+                    Text("Hisar deletes its temporary copy when you close this screen. Copies you save or share are not deleted.")
                 },
             ) {
                 if (exported.warning.isNotEmpty()) Text(exported.warning, color = HisarTheme.colors.warning, modifier = Modifier.testTag("export-provenance"))
+                if (file.extension == "json") {
+                    FormRow(Modifier.testTag("export-plain-warning")) {
+                        Text(ExportLogic.PLAIN_WARNING, style = HisarType.subheadline, color = HisarTheme.colors.label)
+                    }
+                    FormRow {
+                        Text("Delete saved or received Plain JSON files when you are finished.", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+                    }
+                }
                 FormButtonRow("Save export", { save(file) }, testTag = "save-export", icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
                 RowDivider()
                 FormButtonRow("Share export", { share(file) }, testTag = "share-export", icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
@@ -104,7 +120,7 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
             FormSection(
                 header = "Format",
                 footer = { Text("Offline exports are cached copies. Changes since completed syncs may be absent. The result and file report known omissions. hisar import reads both formats.") },
-                modifier = Modifier.testTag("export-format"),
+                modifier = Modifier.testTag("export-format").selectableGroup(),
             ) {
                 CheckRow("Encrypted export (recommended)", format == ExportFormat.ENCRYPTED, { format = ExportFormat.ENCRYPTED }, testTag = "export-format-encrypted")
                 RowDivider()
@@ -112,9 +128,9 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
             }
             if (format == ExportFormat.ENCRYPTED) {
                 FormSection(footer = { Text("At least ${options.minPassphraseLength} characters. You need it to import the file; Hisar can't recover it.") }) {
-                    FormTextField(passphrase, { passphrase = it }, placeholder = "Export passphrase", testTag = "export-passphrase", isSecure = true, label = "Export passphrase", errorMessage = inputProblem.takeIf { isPassphraseTooShort && passphrase.isNotEmpty() })
+                    FormTextField(passphrase, { passphrase = it }, placeholder = "Export passphrase", testTag = "export-passphrase", isSecure = true, label = "Export passphrase", errorMessage = inputProblem.takeIf { isPassphraseTooShort && passphrase.isNotEmpty() }, revealName = "export passphrase", concealWhen = isBusy)
                     RowDivider()
-                    FormTextField(repeatedPassphrase, { repeatedPassphrase = it }, placeholder = "Repeat export passphrase", testTag = "export-passphrase-repeat", isSecure = true, label = "Repeat export passphrase", errorMessage = inputProblem.takeUnless { isPassphraseTooShort })
+                    FormTextField(repeatedPassphrase, { repeatedPassphrase = it }, placeholder = "Repeat export passphrase", testTag = "export-passphrase-repeat", isSecure = true, label = "Repeat export passphrase", errorMessage = inputProblem.takeUnless { isPassphraseTooShort }, revealName = "repeated export passphrase", concealWhen = isBusy)
                 }
             } else {
                 FormSection {
@@ -129,7 +145,7 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
             }
             if (isPasswordNeeded) {
                 FormSection {
-                    FormTextField(password, { password = it }, placeholder = "Master password", testTag = "export-password", isSecure = true, label = "Master password")
+                    FormTextField(password, { password = it }, placeholder = "Master password", testTag = "export-password", isSecure = true, label = "Master password", revealName = "master password", concealWhen = isBusy)
                 }
             }
             val shownError = errorMessage
@@ -145,13 +161,29 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
                     if (isPasswordNeeded) "Export" else "Export with biometrics",
                     {
                         val chosenFormat = format
-                        scope.launch { result = model.settings.exportAllData(chosenFormat, passphrase, password) }
+                        val entered = if (isPasswordNeeded) password else ""
+                        password = ""
+                        scope.launch {
+                            result = model.settings.exportAllData(chosenFormat, passphrase, entered)
+                            if (result == null) {
+                                val error = model.errorMessage.value
+                                if (ExportLogic.isPasswordRequested(error)) authentication = ExportAuthentication.PASSWORD
+                                model.settings.loadExportOptions()?.let { options = it }
+                                model.errorMessage.value = error
+                            }
+                        }
                     },
                     testTag = "export-start",
                     enabled = canExport,
                     isBusy = isBusy,
+                    busyLabel = "Exporting…",
                     icon = if (isPasswordNeeded) null else Icons.Filled.Fingerprint,
                 )
+                if (options.isBiometricAvailable) {
+                    PlainButton(if (isPasswordNeeded) "Use biometrics instead" else "Use master password instead", {
+                        authentication = if (isPasswordNeeded) ExportAuthentication.BIOMETRIC else ExportAuthentication.PASSWORD
+                    }, testTag = "export-switch-authentication", enabled = !isBusy)
+                }
             }
         }
     }

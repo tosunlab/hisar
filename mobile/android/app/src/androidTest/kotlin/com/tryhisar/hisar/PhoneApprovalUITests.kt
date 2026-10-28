@@ -37,12 +37,12 @@ class PhoneApprovalUITests : HisarUITestCase() {
         // An event and the poll can list the request together; the sheet's window composes a moment after the card.
         Thread.sleep(2_000)
         if (exists(hasTestTag("phone-approval"))) {
-            assertEquals("Approve on UI Test Mac?", readText("phone-approval-title"))
+            assertEquals("UI Test Mac", readText("phone-approval-mac"))
             tap("phone-approval-close")
         }
         assertEquals("Waiting for your approval", readText("pending-approval-header"))
         waitFor(hasText("It never unlocks Hisar on your Mac."))
-        waitFor(hasTestTagPrefix("pending-approval-remember-") and hasText("Also allows Terminal for 1 hour"))
+        waitFor(hasTestTagPrefix("pending-approval-remember-") and hasText("Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks."))
         val card = readText(cardSummary)
         assertTrue(card, "UI Test Mac · expires in" in card && "Terminal wants to push to git.tryhisar.com" in card && "with “hisar gitlab”" in card)
         waitFor(hasTestTag("tab-approvals") and hasText("1", substring = false))
@@ -68,7 +68,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
         waitForPersonalItem("SSH request: approve, remembered")
 
         waitFor("phone-approval", 120_000)
-        assertEquals("Approve on UI Test Mac?", readText("phone-approval-title"))
+        assertEquals("UI Test Mac", readText("phone-approval-mac"))
         assertEquals("hisar in Terminal wants to use Hisar", readText("phone-approval-summary"))
         assertEquals("/dev/ttys003", readText("phone-approval-row-Terminal"))
         saveScreenshot("phone-approval-real-cli")

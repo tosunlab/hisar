@@ -7,10 +7,18 @@ protocol VaultBackend: AnyObject {
     func signUp(inviteLink: String, email: String, name: String, password: String) throws -> SignUpResult
     /// signUpWithoutInvite is signUp on a server whose admin opened registration: the server's address instead of an invite.
     func signUpWithoutInvite(server: String, email: String, name: String, password: String) throws -> SignUpResult
+    func getSignUpPolicy(server: String) throws -> SignUpPolicy
+    func authorizeNewAccountEmergencyKit(password: String) throws
+    func authorizeNewAccountEmergencyKitWithBiometric() throws
+    func recordNewAccountEmergencyKitDelivery(exportID: String, method: String) throws
+    func postponeNewAccountEmergencyKit() throws
+    func hideEmergencyKitReminder()
+    func recordPendingRecoveryEmergencyKitDelivery(exportID: String, method: String) throws
     func unlock(password: String) throws -> VaultStatus
     func unlockWithBiometric() throws -> VaultStatus
     func enableBiometricUnlock(password: String) throws -> VaultStatus
     func enableNewAccountBiometricUnlock() throws -> VaultStatus
+    func revealNewAccountSecretKey() throws -> RevealedSecretKey
     func exportNewAccountEmergencyKit(directory: URL) throws -> EmergencyKitExport
     func acknowledgeNewAccountRecovery() throws
     func forgetNewAccountSecretKey()
@@ -82,6 +90,7 @@ protocol VaultBackend: AnyObject {
     func getItem(vaultID: String, itemID: String) throws -> ItemDetail
     func saveItem(vaultID: String, item: ItemDetail) throws -> ItemDetail
     func deleteItem(vaultID: String, itemID: String) throws
+    func moveItem(vaultID: String, itemID: String, targetVaultID: String) throws -> ItemDetail
     func listAllFavoriteItem() throws -> [FavoriteItem]
     func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) throws
     func convertToSecureNote(vaultID: String, itemID: String) throws -> ItemDetail
@@ -127,6 +136,8 @@ protocol VaultBackend: AnyObject {
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String
     func isMacApprovalAllowed() -> Bool
     func setMacApprovalAllowed(_ isAllowed: Bool) throws
+    func isExactHostMatch() -> Bool
+    func setExactHostMatch(_ isExact: Bool) throws
     func getTheme() -> VaultTheme
     func setTheme(_ theme: VaultTheme) throws -> VaultTheme
     /// prepareItemIcon turns a photo into the PNG an item's icon keeps.
@@ -152,6 +163,9 @@ struct BackendError: LocalizedError, Equatable {
     var message: String
     var code: String? = nil
     static let passkeyVerificationFailed = "passkey-verification-failed"
+    static let biometricCancelled = "biometric-cancelled"
+    static let biometricNeedsPassword = "biometric-needs-password"
+    static let pendingRecoveryPassword = "pending-recovery-password"
     var errorDescription: String? { message }
 }
 

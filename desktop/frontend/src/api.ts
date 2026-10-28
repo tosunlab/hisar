@@ -2,6 +2,7 @@ import { Browser } from "@wailsio/runtime";
 import { ApprovalTouchIDService, SettingsWindowService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
+import type { MissingAgentKey } from "../bindings/github.com/tryhisar/hisar/core/sshagent";
 import { BrowserBridge, InviteLinkService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/core/app";
 import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/core/browserprotocol";
 import { Service as CommandLineService } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
@@ -58,9 +59,11 @@ import type {
   OrganizationMember,
   Organizations as BoundOrganizations,
   OrganizationSummary,
+  EmergencyKitStatus,
   PendingRecoverySummary,
   PasswordConfig,
   ReceivedShareInvitation,
+  RevealedSecretKey,
   SentOrganizationInvitation,
   SentShareInvitation,
   ShareAwaitingUnlock,
@@ -76,6 +79,7 @@ import type {
   ShareLink as BoundShareLink,
   ShareLinkField,
   ShareLinkRequest,
+  SignUpPolicy,
   SignUpResult,
   Status,
   Team as BoundTeam,
@@ -96,6 +100,7 @@ export type {
   AgentHost,
   AgentSignIn,
   ApprovalEvent,
+  MissingAgentKey,
   RememberedAgentSecret,
   CardDescription,
   CredentialChangeResult,
@@ -132,7 +137,10 @@ export type {
   OrganizationSummary,
   PasswordConfig,
   ReceivedShareInvitation,
+  RevealedSecretKey,
   PendingRecoverySummary,
+  EmergencyKitStatus,
+  SignUpPolicy,
   SentOrganizationInvitation,
   SentShareInvitation,
   ShareAwaitingUnlock,
@@ -157,7 +165,7 @@ export type VaultRole = "owner" | "editor" | "reader";
 export type OrganizationRole = "admin" | "member";
 // MainWindowAction is what a Settings action leads to in the main window, which owns the vaults, the sharing panel and
 // pending recovery.
-export type MainWindowAction = "import" | "sharing" | "recovery";
+export type MainWindowAction = "import" | "sharing" | "recovery" | "commit-signing";
 
 // ShareInvitations: waiting lists the shares this user accepted that the owner's app has not finished yet.
 export interface ShareInvitations {
@@ -269,12 +277,14 @@ function normalizeImportPreview(boundPreview: BoundImportPreview): ImportPreview
   return { ...boundPreview, groups: boundPreview.groups ?? [], allSkipped: boundPreview.allSkipped ?? [], allDuplicate: boundPreview.allDuplicate ?? [] };
 }
 
-export interface ImportProgress extends Omit<BoundImportProgress, "allFailed"> {
+export interface ImportProgress extends Omit<BoundImportProgress, "allFailed" | "allSkipped" | "allDuplicateOutcomes"> {
   allFailed: ImportSkippedEntry[];
+  allSkipped: ImportSkippedEntry[];
+  allDuplicateOutcomes: ImportSkippedEntry[];
 }
 
 function normalizeImportProgress(boundProgress: BoundImportProgress): ImportProgress {
-  return { ...boundProgress, allFailed: boundProgress.allFailed ?? [] };
+  return { ...boundProgress, allFailed: boundProgress.allFailed ?? [], allSkipped: boundProgress.allSkipped ?? [], allDuplicateOutcomes: boundProgress.allDuplicateOutcomes ?? [] };
 }
 
 export interface AccountDeletionPreview extends Omit<BoundAccountDeletionPreview, "ownedVaults" | "memberVaults" | "organizations"> {
@@ -295,10 +305,11 @@ function normalizeAccountDeletionPreview(boundPreview: BoundAccountDeletionPrevi
 export interface Organizations {
   organizations: OrganizationSummary[];
   invitations: OrganizationInvitation[];
+  isCached?: boolean;
 }
 
 function normalizeOrganizations(boundOrganizations: BoundOrganizations): Organizations {
-  return { organizations: boundOrganizations.organizations ?? [], invitations: boundOrganizations.invitations ?? [] };
+  return { organizations: boundOrganizations.organizations ?? [], invitations: boundOrganizations.invitations ?? [], isCached: boundOrganizations.isCached ?? false };
 }
 
 export interface Team extends Omit<BoundTeam, "members" | "vaults"> {
@@ -347,6 +358,7 @@ const wailsApi = {
     Service.SignUp(invite, email, name, password),
   signUpWithoutInvite: (server: string, email: string, name: string, password: string): Promise<SignUpResult> =>
     Service.SignUpWithoutInvite(server, email, name, password),
+  getSignUpPolicy: (server: string): Promise<SignUpPolicy> => Service.GetSignUpPolicy(server),
   unlock: (password: string): Promise<Status> => Service.Unlock(password),
   lock: (): Promise<Status> => Service.Lock(),
   signOut: (): Promise<Status> => Service.SignOut(),
@@ -444,6 +456,7 @@ const wailsApi = {
   respondSSHApproval: (requestID: string, isAuthorized: boolean, isRemembered: boolean): Promise<void> =>
     AgentService.RespondSSHApproval(requestID, isAuthorized, isRemembered),
   listAllPendingSSHApproval: async (): Promise<ApprovalEvent[]> => (await AgentService.ListPendingSSHApprovals()) ?? [],
+  listMissingAgentKeys: async (): Promise<MissingAgentKey[]> => (await AgentService.ListMissingAgentKeys()) ?? [],
   respondApprovalWithPassword: (requestID: string, password: string, isRemembered: boolean): Promise<void> =>
     AgentService.RespondApprovalWithPassword(requestID, password, isRemembered),
   setSSHApprovalRemembered: (requestID: string, isRemembered: boolean): Promise<void> => AgentService.SetSSHApprovalRemembered(requestID, isRemembered),
@@ -488,8 +501,14 @@ const wailsApi = {
   hasNativeTouchIDView: true,
   saveNewAccountEmergencyKit: (): Promise<string> => Service.SaveNewAccountEmergencyKit(),
   saveEmergencyKit: (password: string): Promise<string> => Service.SaveEmergencyKit(password),
+  revealSecretKey: (password: string): Promise<RevealedSecretKey> => Service.RevealSecretKey(password),
   forgetNewAccountSecretKey: (): Promise<void> => Service.ForgetNewAccountSecretKey(),
   acknowledgeNewAccountRecovery: (): Promise<void> => Service.AcknowledgeNewAccountRecovery(),
+  authorizeNewAccountEmergencyKit: (password: string): Promise<void> => Service.AuthorizeNewAccountEmergencyKit(password),
+  authorizeNewAccountEmergencyKitWithBiometric: (): Promise<void> => Service.AuthorizeNewAccountEmergencyKitWithBiometric(),
+  revealNewAccountSecretKey: (): Promise<RevealedSecretKey> => Service.RevealNewAccountSecretKey(),
+  postponeNewAccountEmergencyKit: (): Promise<void> => Service.PostponeNewAccountEmergencyKit(),
+  hideEmergencyKitReminder: (): Promise<void> => Service.HideEmergencyKitReminder(),
   listPendingRecovery: async (): Promise<PendingRecoverySummary[]> => (await Service.ListPendingRecovery()) ?? [],
   resumePendingRecovery: (operationID: string, password: string, secretKey = "", priorSecretKey = ""): Promise<SignUpResult> => Service.ResumePendingRecoveryWithSecretKey(operationID, password, secretKey, priorSecretKey),
   savePendingRecoveryEmergencyKit: (operationID: string, password: string): Promise<string> => Service.SavePendingRecoveryEmergencyKit(operationID, password),

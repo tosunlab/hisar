@@ -6,6 +6,20 @@ final class HisarKitBackend: VaultBackend {
     private let hisar: HisarkitHisar
     private let biometryName: String
     private let allRetainedAdapter: [AnyObject]
+    #if DEBUG
+    private let browseFailureLock = NSLock()
+    private var browseFailureCalls: [String: Int] = [:]
+
+    private func failBrowseActionForUITest(_ action: String) throws {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("-HisarUITest"), arguments.contains("-HisarBrowseFailure-\(action)") else { return }
+        let call = browseFailureLock.withLock {
+            browseFailureCalls[action, default: 0] += 1
+            return browseFailureCalls[action, default: 0]
+        }
+        if call == 1 { throw BackendError(message: "This action couldn't reach the Hisar server. Try again.") }
+    }
+    #endif
 
     init(stateDirectory: URL, secretKeyStore: KeychainSecretKeyStore, biometric: BiometricKeychain?, clipboard: PasteboardClipboard?, eventListener: LockEventRelay?) throws {
         var error: NSError?
@@ -28,9 +42,9 @@ final class HisarKitBackend: VaultBackend {
 
     static func convertError(_ error: Error, biometryName: String) -> BackendError {
         var message = (error as NSError).localizedDescription
-        let prefix = BackendError.passkeyVerificationFailed + ": "
-        let code = message.hasPrefix(prefix) ? BackendError.passkeyVerificationFailed : nil
-        if code != nil { message = String(message.dropFirst(prefix.count)) }
+        let code = [BackendError.passkeyVerificationFailed, BackendError.biometricCancelled, BackendError.biometricNeedsPassword, BackendError.pendingRecoveryPassword]
+            .first { message.hasPrefix($0 + ": ") }
+        if let code { message = String(message.dropFirst(code.count + 2)) }
         message = message.replacingOccurrences(of: "Touch ID", with: biometryName)
         if let first = message.first {
             message = first.uppercased() + message.dropFirst()
@@ -82,6 +96,38 @@ final class HisarKitBackend: VaultBackend {
     func signUpWithoutInvite(server: String, email: String, name: String, password: String) throws -> SignUpResult {
         try decode(SignUpResult.self, from: callReturningText { hisar.signUpWithoutInvite(server, email: email, name: name, password: password, error: $0) })
     }
+    func getSignUpPolicy(server: String) throws -> SignUpPolicy {
+        try decode(SignUpPolicy.self, from: callReturningText { hisar.getSignUpPolicy(server, error: $0) })
+    }
+
+    func authorizeNewAccountEmergencyKit(password: String) throws {
+        try callReturningNothing { try hisar.authorizeNewAccountEmergencyKit(password) }
+    }
+
+    func authorizeNewAccountEmergencyKitWithBiometric() throws {
+        try callReturningNothing { try hisar.authorizeNewAccountEmergencyKitWithBiometric() }
+    }
+
+    func revealNewAccountSecretKey() throws -> RevealedSecretKey {
+        try decode(RevealedSecretKey.self, from: callReturningText { hisar.revealNewAccountSecretKey($0) })
+    }
+
+    func recordNewAccountEmergencyKitDelivery(exportID: String, method: String) throws {
+        try callReturningNothing { try hisar.recordNewAccountEmergencyKitDelivery(exportID, method: method) }
+    }
+
+    func postponeNewAccountEmergencyKit() throws {
+        try callReturningNothing { try hisar.postponeNewAccountEmergencyKit() }
+    }
+
+    func hideEmergencyKitReminder() {
+        hisar.hideEmergencyKitReminder()
+    }
+
+    func recordPendingRecoveryEmergencyKitDelivery(exportID: String, method: String) throws {
+        try callReturningNothing { try hisar.recordPendingRecoveryEmergencyKitDelivery(exportID, method: method) }
+    }
+
 
     func unlock(password: String) throws -> VaultStatus {
         try decode(VaultStatus.self, from: callReturningText { hisar.unlock(password, error: $0) })
@@ -148,6 +194,9 @@ final class HisarKitBackend: VaultBackend {
     }
 
     func acceptShareInvitation(invitationID: String) throws {
+        #if DEBUG
+        try failBrowseActionForUITest("accept")
+        #endif
         try callReturningNothing { try hisar.acceptShareInvitation(invitationID) }
     }
 
@@ -192,7 +241,10 @@ final class HisarKitBackend: VaultBackend {
     }
 
     func renameVault(vaultID: String, name: String) throws -> VaultSummary {
-        try decode(VaultSummary.self, from: callReturningText { hisar.renameVault(vaultID, name: name, error: $0) })
+        #if DEBUG
+        try failBrowseActionForUITest("rename")
+        #endif
+        return try decode(VaultSummary.self, from: callReturningText { hisar.renameVault(vaultID, name: name, error: $0) })
     }
 
     func deleteVault(vaultID: String, request: VaultDeletionRequest) throws -> VaultDeletionResult {
@@ -337,7 +389,7 @@ final class HisarKitBackend: VaultBackend {
     }
 
     func listAllItem(vaultID: String) throws -> [ItemDetail] {
-        try decode([ItemDetail]?.self, from: callReturningText { hisar.listAllItem(vaultID, error: $0) }) ?? []
+        return try decode([ItemDetail]?.self, from: callReturningText { hisar.listAllItem(vaultID, error: $0) }) ?? []
     }
 
     func getItem(vaultID: String, itemID: String) throws -> ItemDetail {
@@ -351,6 +403,10 @@ final class HisarKitBackend: VaultBackend {
 
     func deleteItem(vaultID: String, itemID: String) throws {
         try callReturningNothing { try hisar.deleteItem(vaultID, itemID: itemID) }
+    }
+
+    func moveItem(vaultID: String, itemID: String, targetVaultID: String) throws -> ItemDetail {
+        try decode(ItemDetail.self, from: callReturningText { hisar.moveItem(vaultID, itemID: itemID, targetVaultID: targetVaultID, error: $0) })
     }
 
     func deleteUnreadableItem(vaultID: String, itemID: String, revision: String) throws {
@@ -370,6 +426,9 @@ final class HisarKitBackend: VaultBackend {
     }
 
     func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) throws {
+        #if DEBUG
+        try failBrowseActionForUITest("favorite")
+        #endif
         try callReturningNothing { try hisar.setItemFavorite(vaultID, itemID: itemID, isFavorite: isFavorite) }
     }
 
@@ -564,6 +623,12 @@ final class HisarKitBackend: VaultBackend {
 
     func setMacApprovalAllowed(_ isAllowed: Bool) throws {
         try callReturningNothing { try hisar.setMacApprovalAllowed(isAllowed) }
+    }
+
+    func isExactHostMatch() -> Bool { hisar.isExactHostMatch() }
+
+    func setExactHostMatch(_ isExact: Bool) throws {
+        try callReturningNothing { try hisar.setExactHostMatch(isExact) }
     }
 
     func prepareItemIcon(_ image: Data) throws -> Data {

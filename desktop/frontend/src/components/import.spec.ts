@@ -36,6 +36,7 @@ function resetStore(): void {
     status: createStatus("unlocked"),
     allVault: allImportTestVault.map((vault) => ({ ...vault })),
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [],
     selectedItem: null,
     editorMode: "view",
@@ -211,6 +212,56 @@ describe("Import store", () => {
 });
 
 describe("Import panel", () => {
+  it("shows complete explanations for omissions, duplicates and save failures", async () => {
+    const reason = "Bitwarden asked for the master password again before showing this item. Hisar shows and fills it while unlocked.";
+    const duplicateDetail = "This login has a different password. Keep the source until you have checked which password you want to keep.";
+    const wrapper = await openPreview({
+      allSkipped: [{ title: "Long omission", reason }],
+      allDuplicate: [{ title: "Long duplicate", detail: duplicateDetail }],
+    });
+    expect(wrapper.get('[data-testid="import-skipped"] .entry-list span').text()).toBe(reason);
+    expect(wrapper.get('[data-testid="import-duplicates"] .entry-list span').text()).toBe(duplicateDetail);
+    const failure = "This vault's access changed while importing. Keep the source file and preview it again to review who can read these items.";
+    store.store.importProgress = createImportProgress({ isDone: true, allFailed: [{ title: "Failed item", reason: failure }] });
+    store.store.importStep = "done";
+    await flushPromises();
+    expect(wrapper.get('[data-testid="import-failed"] .entry-list span').text()).toBe(failure);
+  });
+
+  it("retains the full completion report until Done, including late omissions and duplicate outcomes", async () => {
+    const parserEntry = { title: "GitHub", reason: "Unsupported passkey extension data was left in the source." };
+    const lateEntry = { title: "GitHub", reason: "The skipped duplicate has a different recovery code that remains only in the source." };
+    const wrapper = await openPreview({
+      allSkipped: [parserEntry], notice: "This export is a cached partial copy.", exportedFrom: "alice@example.com", exportedAt: "2026-10-20T12:00:00Z",
+    });
+    const duplicateOutcomes = [
+      { title: "GitHub", reason: "Added 1 new passkey to the existing login in Hisar." },
+      { title: "Slack", reason: "Identical duplicate already present in Hisar." },
+      { title: "Docker", reason: "Included the duplicate as another item." },
+    ];
+    api.startImport.mockResolvedValue(createImportProgress({
+      isDone: true, savedCount: 2, allSkipped: [parserEntry, lateEntry], allDuplicateOutcomes: duplicateOutcomes,
+      allFailed: [{ title: "Figma", reason: "The destination is no longer writable." }], leftBehindCount: 3, isSourceKept: true,
+    }));
+    await wrapper.get('[data-testid="start-import"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="import-result-skipped"]').text()).toContain(parserEntry.reason);
+    expect(wrapper.get('[data-testid="import-result-skipped"]').text()).toContain(lateEntry.reason);
+    for (const outcome of duplicateOutcomes) expect(wrapper.get('[data-testid="import-result-duplicates"]').text()).toContain(outcome.reason);
+    expect(wrapper.get('[data-testid="import-failed"]').text()).toContain("The destination is no longer writable.");
+    expect(wrapper.get('[data-testid="import-result-reviewed-duplicates"]').text()).toContain("alice · github.com");
+    expect(wrapper.get('[data-testid="import-result-notice"]').text()).toContain("cached partial copy");
+    expect(wrapper.get('[data-testid="import-result-exported-from"]').text()).toContain("alice@example.com");
+    expect(wrapper.find('[data-testid="delete-import-file-offer"]').exists()).toBe(false);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await wrapper.get(".overlay").trigger("click");
+    expect(store.store.importStep).toBe("done");
+    expect(store.store.importPreview).not.toBeNull();
+    await findButton(wrapper, "Done").trigger("click");
+    expect(store.store.importPreview).toBeNull();
+    expect(store.store.importProgress).toBeNull();
+  });
+
   it("offers editable vaults and starts with Personal even when a shared vault is selected", async () => {
     store.store.selectedVaultID = "work";
     await store.openImport();
@@ -227,7 +278,7 @@ describe("Import panel", () => {
     ]);
     expect(wrapper.text()).toContain("From a Hisar export, 1Password, Bitwarden, LastPass, or a CSV file from your browser");
     expect(wrapper.get("#import-title").text()).toBe("Import items");
-    expect(wrapper.find(".how-to").text()).toContain("HisarSettings → Export your data on any device.");
+    expect(wrapper.find(".how-to").text()).toContain("HisarExport from any of your devices (Settings → Import & Export on a Mac, Settings → Account → Export data… on an iPhone or Android phone, or hisar export).");
     expect(wrapper.find(".how-to").text()).toContain("LastPassAccount options → Advanced → Export, then save the file as CSV.");
     expect(wrapper.find(".how-to").text()).toContain("1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.");
     await wrapper.find('[data-testid="import-format"]').setValue("csv");
@@ -252,7 +303,7 @@ describe("Import panel", () => {
     expect(wrapper.find('[data-testid="import-count-ssh-key"]').text()).toContain("1");
     expect(wrapper.find('[data-testid="import-count-ssh-key"]').text()).toContain("SSH key");
     expect(wrapper.findAll('[data-testid^="import-count-"]').map((entry) => entry.text())).toEqual(["9 logins", "2 secure notes", "1 SSH key"]);
-    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("9 logins · 2 secure notes · 1 SSH key");
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("Before skipping duplicates: 12 items. 9 logins · 2 secure notes · 1 SSH key");
     expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("11 items to import into Personal");
     expect(wrapper.find('[data-testid="import-duplicates"]').text()).toContain("Already in Personal · 1");
     expect(wrapper.find('[data-testid="import-duplicates"]').text()).toContain("alice · github.com");
@@ -263,6 +314,7 @@ describe("Import panel", () => {
     await wrapper.find('[data-testid="skip-duplicates"]').setValue(false);
     expect(wrapper.find('[data-testid="start-import"]').text()).toBe("Import 12 items");
     expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("12 items to import into Personal");
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("Before skipping duplicates: 12 items. 9 logins · 2 secure notes · 1 SSH key");
     api.startImport.mockResolvedValue(createImportProgress({ totalCount: 12 }));
     api.continueImport.mockReturnValue(new Promise(() => undefined));
     await wrapper.find('[data-testid="start-import"]').trigger("click");
@@ -277,12 +329,14 @@ describe("Import panel", () => {
     expect(wrapper.find('[data-testid="import-duplicates"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="import-skipped"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="start-import"]').text()).toBe("Import 12 items");
+    expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("12 items to import into Personal");
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("Before skipping duplicates: 12 items. 9 logins · 2 secure notes · 1 SSH key");
   });
 
   it("shows a singular headline and omits empty categories", async () => {
     const wrapper = await openPreview({ itemCount: 1, loginCount: 1, secureNoteCount: 0, sshKeyCount: 0, allDuplicate: [] });
     expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("1 item to import into Personal");
-    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("1 login");
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("Before skipping duplicates: 1 item. 1 login");
     expect(wrapper.find('[data-testid="import-count-secure-note"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="import-count-ssh-key"]').exists()).toBe(false);
   });
@@ -379,7 +433,7 @@ describe("Import panel", () => {
     api.continueImport.mockResolvedValue(createImportProgress({ savedCount: 11, isDone: true }));
     await wrapper.find('[data-testid="start-import"]').trigger("click");
     await flushPromises();
-    await findButton(wrapper, "Keep file").trigger("click");
+    await findButton(wrapper, "Done, keep file").trigger("click");
     expect(api.deleteImportFile).not.toHaveBeenCalled();
     expect(api.cancelImport).toHaveBeenCalled();
     expect(store.store.isImportOpen).toBe(false);

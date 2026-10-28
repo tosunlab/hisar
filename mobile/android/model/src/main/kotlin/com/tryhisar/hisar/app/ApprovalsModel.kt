@@ -29,6 +29,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     private val mutableIsAnsweringApproval = MutableStateFlow(false)
     private val mutableIsApprovalPasswordRequired = MutableStateFlow(false)
     private val mutableApprovalErrorMessage = MutableStateFlow<String?>(null)
+    private val mutableRememberChoices = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     private val allFinishedApprovalID = mutableSetOf<String>()
     private var startedApprovalListCount = 0L
     private var shownApprovalList = 0L
@@ -49,6 +50,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     val isAnsweringApproval: StateFlow<Boolean> = mutableIsAnsweringApproval.asStateFlow()
     val isApprovalPasswordRequired: StateFlow<Boolean> = mutableIsApprovalPasswordRequired.asStateFlow()
     val approvalErrorMessage: StateFlow<String?> = mutableApprovalErrorMessage.asStateFlow()
+    val rememberChoices: StateFlow<Map<String, Boolean>> = mutableRememberChoices.asStateFlow()
 
     private val canList: Boolean
         get() = context.status.value.let { it.isUnlocked && it.updateRequired == null }
@@ -100,6 +102,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
         val date = now()
         removeAllExpiredApproval()
         mutableAllPendingApproval.value = allApproval.filter { it.requestID !in allFinishedApprovalID && !it.isExpired(date) }
+        mutableRememberChoices.update { choices -> choices.filterKeys { id -> mutableAllPendingApproval.value.any { it.requestID == id } } }
         openAnnouncedApproval(approvalList)
         closeSheetOfFinishedApproval()
         startExpiryCheck()
@@ -145,15 +148,22 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
         }
     }
 
+    fun rememberChoice(approval: PhoneApproval): Boolean = approval.resolveRememberChoice(mutableRememberChoices.value[approval.requestID])
+
+    fun setRememberChoice(approval: PhoneApproval, isRemembered: Boolean) {
+        mutableRememberChoices.update { it + (approval.requestID to (approval.isRememberable && isRemembered)) }
+    }
+
     /** Approves the open sheet's request; [isRemembered] is its switch, which counts only for a request that offers it. */
     suspend fun approvePendingApproval(isRemembered: Boolean) {
         val approval = mutablePresentedApproval.value ?: return
         approve(approval, isRemembered)
     }
 
-    suspend fun approvePendingApproval(password: String, isRemembered: Boolean) {
+    suspend fun approvePendingApproval(password: String, isRemembered: Boolean? = null) {
         val approval = mutablePresentedApproval.value ?: return
-        val isApprovalRemembered = approval.isRememberable && isRemembered
+        if (isRemembered != null) setRememberChoice(approval, isRemembered)
+        val isApprovalRemembered = rememberChoice(approval)
         answer(approval, "Approved on your Mac") { it.approveApprovalWithPassword(approval.requestID, password, isApprovalRemembered) }
     }
 
@@ -162,12 +172,14 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
         deny(approval)
     }
 
-    /**
-     * Approve asks for biometrics; when the master password is needed instead, the request's sheet opens and asks for it.
-     * [isRemembered] is the Vaults card's switch; without one, the request is remembered as the Mac's checkbox starts.
-     */
     suspend fun approve(approval: PhoneApproval, isRemembered: Boolean? = null) {
-        val isApprovalRemembered = approval.resolveRememberChoice(isRemembered)
+        if (isRemembered != null) setRememberChoice(approval, isRemembered)
+        val isApprovalRemembered = rememberChoice(approval)
+        if (!context.status.value.biometricAvailable) {
+            present(approval)
+            mutableIsApprovalPasswordRequired.value = true
+            return
+        }
         answer(approval, "Approved on your Mac") { it.approveApproval(approval.requestID, isApprovalRemembered) }
     }
 
@@ -216,7 +228,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
 
     private fun present(approval: PhoneApproval) {
         if (mutablePresentedApproval.value?.requestID != approval.requestID) {
-            mutableIsApprovalPasswordRequired.value = false
+            mutableIsApprovalPasswordRequired.value = !context.status.value.biometricAvailable
             mutableApprovalErrorMessage.value = null
         }
         mutablePresentedApproval.value = approval
@@ -233,6 +245,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
 
     private fun removeApproval(requestID: String) {
         allFinishedApprovalID += requestID
+        mutableRememberChoices.update { it - requestID }
         mutableAllPendingApproval.update { all -> all.filter { it.requestID != requestID } }
         allAnnouncedApproval.removeAll { it.requestID == requestID }
         closeSheetOfFinishedApproval()
@@ -242,6 +255,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     private fun finishAll() {
         allFinishedApprovalID += mutableAllPendingApproval.value.map { it.requestID }
         mutableAllPendingApproval.value = emptyList()
+        mutableRememberChoices.value = emptyMap()
         allAnnouncedApproval.clear()
         shownApprovalList = startedApprovalListCount
         mutablePresentedApproval.value = null
@@ -280,6 +294,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
         expiryJob?.cancel()
         expiryJob = null
         mutableAllPendingApproval.value = emptyList()
+        mutableRememberChoices.value = emptyMap()
         allAnnouncedApproval.clear()
         // A listing still running started before the clear and must not bring the requests back.
         shownApprovalList = startedApprovalListCount

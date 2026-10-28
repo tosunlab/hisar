@@ -87,7 +87,7 @@ class AccountLifecycleTests {
             AccountLifecycleLogic.SIGN_OUT_MESSAGE,
         )
         assertEquals(
-            "${AccountLifecycleLogic.SIGN_OUT_MESSAGE} If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account.",
+            "${AccountLifecycleLogic.SIGN_OUT_MESSAGE} If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit.",
             AccountLifecycleLogic.LOCKED_SIGN_OUT_MESSAGE,
         )
     }
@@ -234,6 +234,27 @@ class AccountLifecycleTests {
     }
 
     @Test
+    fun testPendingRecoverySelectsOneAndPreservesExplicitSelection() = runTest {
+        val harness = AppModelHarness(this)
+        seedPendingRecovery(harness.backend, "delivery-pending")
+        val model = harness.startModel()
+        assertEquals("pending-1", model.pendingRecovery.selectedOperationID.value)
+        harness.backend.allPendingRecovery += harness.backend.allPendingRecovery.first().copy(operationId = "pending-2")
+        model.pendingRecovery.refresh()
+        assertEquals("pending-1", model.pendingRecovery.selectedOperationID.value)
+        assertTrue(model.pendingRecovery.exportKit("pending-1", FakeBackend.PASSWORD))
+        val path = assertNotNull(model.pendingRecovery.export.value).path
+        model.refreshPendingRecovery(operationID = "pending-2")
+        assertEquals("pending-2", model.pendingRecovery.selectedOperationID.value)
+        assertNull(model.pendingRecovery.export.value)
+        assertFalse(File(path).exists())
+        model.pendingRecovery.refresh()
+        assertEquals("pending-2", model.pendingRecovery.selectedOperationID.value)
+        assertEquals(Screen.SignedOut, model.screen.value)
+        assertFalse(harness.backend.allCallName.contains("resumePendingRecovery"))
+    }
+
+    @Test
     fun testPendingRecoverySurvivesModelRestartWithoutSigningIn() = runTest {
         val harness = AppModelHarness(this)
         seedPendingRecovery(harness.backend)
@@ -253,6 +274,8 @@ class AccountLifecycleTests {
         assertEquals(FakeBackend.SECRET_KEY, export.secretKey)
         assertTrue(File(export.path).exists())
         assertEquals(Screen.SignedOut, restarted.screen.value)
+        assertFalse(restarted.pendingRecovery.acknowledge("pending-1", FakeBackend.PASSWORD))
+        assertTrue(restarted.pendingRecovery.recordDelivery(export.exportId, "file"))
         assertTrue(restarted.pendingRecovery.acknowledge("pending-1", FakeBackend.PASSWORD))
         assertTrue(restarted.pendingRecovery.allRecovery.value.isEmpty())
         assertFalse(File(export.path).exists())
@@ -261,17 +284,20 @@ class AccountLifecycleTests {
     @Test
     fun testPendingRecoveryRequiresPasswordAndExplicitKitAcknowledgement() = runTest {
         val harness = AppModelHarness(this)
-        seedPendingRecovery(harness.backend, "delivery-pending")
         val model = harness.startModel()
+        seedPendingRecovery(harness.backend, "delivery-pending")
         assertFalse(model.pendingRecovery.exportKit("pending-1", "wrong"))
         assertNull(model.pendingRecovery.export.value)
         assertFalse(model.pendingRecovery.acknowledge("pending-1", FakeBackend.PASSWORD))
         assertEquals(1, harness.backend.allPendingRecovery.size)
         assertTrue(model.pendingRecovery.exportKit("pending-1", FakeBackend.PASSWORD))
+        val exported = assertNotNull(model.pendingRecovery.export.value)
+        assertTrue(File(exported.path).exists())
         model.pendingRecovery.close()
         assertNull(model.pendingRecovery.export.value)
+        assertFalse(File(exported.path).exists())
         assertEquals(1, harness.backend.allPendingRecovery.size)
-        assertTrue(harness.backend.allPendingRecovery.first().kitSaved)
+        assertFalse(harness.backend.allPendingRecovery.first().kitSaved)
     }
 
     @Test
@@ -390,6 +416,7 @@ class AccountLifecycleTests {
         val first = harness.startModel()
         assertTrue(first.pendingRecovery.exportKit("pending-1", FakeBackend.PASSWORD))
         val kit = assertNotNull(first.pendingRecovery.export.value)
+        assertTrue(first.pendingRecovery.recordDelivery(kit.exportId, "file"))
         assertTrue(first.pendingRecovery.acknowledge("pending-1", FakeBackend.PASSWORD))
         assertEquals("prepared", first.pendingRecovery.allRecovery.value.first().phase)
         harness.backend.isPendingRecoveryFactorAvailable = false

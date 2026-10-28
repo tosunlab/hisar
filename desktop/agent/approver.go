@@ -61,7 +61,7 @@ type Unlocker interface {
 // approval.ErrSealedTooLarge for a request too long for a phone.
 type PhoneApprover interface {
 	IsPhoneApprovalAvailable() bool
-	StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) (finish func(), err error)
+	StartPhoneApproval(description approval.Description, expiresAt time.Time, posted func(isSent bool), decide func(answer approval.AcceptedAnswer)) (finish func(), err error)
 }
 
 // ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app responsible for the request,
@@ -101,13 +101,16 @@ type ApprovalEvent struct {
 	TimeoutMilliseconds    int64          `json:"timeoutMilliseconds"`
 	TerminalName           string         `json:"terminalName"`
 	// Coverage is what approving a command-line or launcher request covers: clisocket's terminal-session, app or
-	// connection. Lifetime is how long a command-line approval of it lasts, "until 10 minutes after …", which the dialog
-	// and the phones show after "Lasts".
-	Coverage         string `json:"coverage"`
-	Lifetime         string `json:"lifetime"`
-	IsUnlockRequired bool   `json:"isUnlockRequired"`
-	IsPasswordUnlock bool   `json:"isPasswordUnlock"`
-	IsPhoneApproval  bool   `json:"isPhoneApproval"`
+	// connection. Allowance is what approving it lets the requester do, which the dialog and the phones show after
+	// "Allows". Lifetime is how long a command-line approval of it lasts, "until 10 minutes after …", which they show
+	// after "Lasts".
+	Coverage           string `json:"coverage"`
+	Allowance          string `json:"allowance,omitempty"`
+	Lifetime           string `json:"lifetime"`
+	IsUnlockRequired   bool   `json:"isUnlockRequired"`
+	IsPasswordUnlock   bool   `json:"isPasswordUnlock"`
+	IsPhoneApproval    bool   `json:"isPhoneApproval"`
+	PhoneApprovalState string `json:"phoneApprovalState"`
 	// IsTooLongForPhone is set instead of IsPhoneApproval when a phone could answer but the request is too long to send.
 	IsTooLongForPhone bool `json:"isTooLongForPhone"`
 	// SecretNames lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
@@ -119,13 +122,15 @@ type ApprovalEvent struct {
 	// HarnessName is the agent harness the request comes from inside, such as omp, and AgentNameSource says how Hisar
 	// knows AgentName (AgentNameSignature, AgentNameProcess or AgentNameGiven). ProjectName is the folder the harness
 	// works in, the last part of ProjectPath.
-	HarnessName           string `json:"harnessName"`
-	AgentNameSource       string `json:"agentNameSource"`
-	ProjectName           string `json:"projectName"`
-	ProjectPath           string `json:"projectPath"`
-	WorkingDirectory      string `json:"workingDirectory"`
-	RememberLabel         string `json:"rememberLabel"`
-	IsRememberedByDefault bool   `json:"isRememberedByDefault"`
+	HarnessName              string `json:"harnessName"`
+	AgentNameSource          string `json:"agentNameSource"`
+	HarnessProgramPath       string `json:"harnessProgramPath"`
+	HarnessProgramEntrypoint string `json:"harnessProgramEntrypoint"`
+	ProjectName              string `json:"projectName"`
+	ProjectPath              string `json:"projectPath"`
+	WorkingDirectory         string `json:"workingDirectory"`
+	RememberLabel            string `json:"rememberLabel"`
+	IsRememberedByDefault    bool   `json:"isRememberedByDefault"`
 	// RememberPeriod says how long a remembered SSH approval lasts, as the checkbox ends: "for 1 hour" or "until Hisar locks".
 	RememberPeriod       string `json:"rememberPeriod"`
 	IsConnectionApproval bool   `json:"isConnectionApproval"`
@@ -136,9 +141,10 @@ type ApprovalEvent struct {
 	// GrantDurations are how long the user may let the agent keep what it asks for (clisocket.AgentGrantDuration),
 	// "once" first, and GrantDuration the one chosen; none for a connection. GrantScope says what a longer choice
 	// covers: exactly what the request names, such as the one field a reveal reads.
-	GrantDurations []string `json:"allGrantDuration"`
-	GrantDuration  string   `json:"grantDuration"`
-	GrantScope     string   `json:"grantScope"`
+	GrantDurations   []string `json:"allGrantDuration"`
+	GrantDuration    string   `json:"grantDuration"`
+	GrantScope       string   `json:"grantScope"`
+	GrantHolderScope string   `json:"grantHolderScope"`
 	// Website and BrowserName are where an agent sign-in goes, as Hisar observed it; Logins are the logins saved for
 	// Website, and LoginIndex the one chosen.
 	Website     string          `json:"website"`

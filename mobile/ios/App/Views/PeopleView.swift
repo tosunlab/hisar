@@ -1,38 +1,63 @@
 import SwiftUI
+import UIKit
 
 struct PeopleView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var allPerson: [Member]?
-    @State private var shareInvitations = ShareInvitations()
+    @State private var people: AppModel.PeopleSnapshot?
+    private var allPerson: [Member]? { people?.allPerson }
+    private var shareInvitations: ShareInvitations { people?.invitations ?? ShareInvitations() }
     @State private var isInviteShown = false
     @State private var invitationToCancel: SentShareInvitation?
+    @State private var actionError: String?
 
     var body: some View {
         List {
-            if let errorMessage = model.errorMessage {
+            if let errorMessage = actionError ?? model.errorMessage {
                 Section {
                     ErrorBanner(message: errorMessage)
                 }
             }
-            if !shareInvitations.allReceived.isEmpty {
-                Section("Invitations for you") {
+            if !shareInvitations.allReceived.isEmpty || !shareInvitations.allWaiting.isEmpty {
+                Section {
                     ForEach(shareInvitations.allReceived) { invitation in
                         ReceivedInvitationRow(invitation: invitation) {
                             Task {
+                                actionError = nil
                                 if await model.acceptShareInvitation(invitationID: invitation.id) {
                                     model.showNotice("Accepted. The vault appears once \(invitation.inviterName)'s Hisar finishes sharing.")
                                     await load()
+                                } else {
+                                    actionError = model.errorMessage
                                 }
                             }
                         } decline: {
                             Task {
+                                actionError = nil
                                 if await model.declineShareInvitation(invitationID: invitation.id) {
                                     model.showNotice("Invitation declined.")
                                     await load()
+                                } else {
+                                    actionError = model.errorMessage
                                 }
                             }
                         }
                     }
+                    ForEach(shareInvitations.allWaiting) { invitation in
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(invitation.describe(now: Date()))
+                                Text(invitation.invitedByEmail).font(.footnote)
+                            }
+                        } icon: {
+                            Image(systemName: "clock")
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(.themeSecondary)
+                        .accessibilityIdentifier("waiting-\(invitation.id)")
+                    }
+                } header: {
+                    Text("Invitations for you")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             Section {
@@ -55,8 +80,10 @@ struct PeopleView: View {
                 }
             } header: {
                 Text("People you share vaults with")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
-                Text("People appear here once you share a vault with them. Compare security codes with them once, in person or over a channel you trust.")
+                Text("People appear here once you share a vault with them. To compare codes, ask each person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match the code you see for them.")
+                    .foregroundStyle(.themeSecondary)
             }
             if !shareInvitations.allSent.isEmpty || !shareInvitations.completionError.isEmpty {
                 Section {
@@ -71,6 +98,7 @@ struct PeopleView: View {
                     }
                 } header: {
                     Text("Invitations you sent")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     if !shareInvitations.completionError.isEmpty {
                         Text("Could not finish sharing: \(shareInvitations.completionError)")
@@ -88,6 +116,7 @@ struct PeopleView: View {
                     .accessibilityIdentifier("invite-person")
                 } footer: {
                     Text("Creates a Hisar account: the server emails them a sign-up link. To give them a vault, share it from Share in the vault's toolbar.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
@@ -98,9 +127,12 @@ struct PeopleView: View {
             Button("Cancel invitation", role: .destructive) {
                 guard let invitation = invitationToCancel else { return }
                 Task {
+                    actionError = nil
                     if await model.cancelShareInvitation(invitationID: invitation.id) {
                         model.showNotice("Invitation to \(invitation.email) cancelled.")
                         await load()
+                    } else {
+                        actionError = model.errorMessage
                     }
                 }
             }
@@ -113,15 +145,13 @@ struct PeopleView: View {
                 .environmentObject(model)
         }
         .task { await load() }
+        .onChange(of: model.remoteChangeCount) { _, _ in
+            Task { await load() }
+        }
     }
 
     private func load() async {
-        model.clearError()
-        allPerson = await model.loadAllPerson() ?? allPerson ?? []
-        if let loadedInvitations = await model.loadShareInvitations() {
-            shareInvitations = loadedInvitations
-        }
-        await model.refreshReceivedInvitationCount()
+        people = await model.loadPeople(previous: people)
     }
 }
 
@@ -149,7 +179,7 @@ struct PersonView: View {
             if person.isKeyChanged {
                 Section {
                     Label {
-                        Text("Their key changed since you last shared with them. Check the security code with them before sharing again.")
+                        Text("Key changed. Hisar stopped sharing with them.")
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.themeWarning)
@@ -171,10 +201,10 @@ struct PersonView: View {
                     }
                 } header: {
                     Text("Security code")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
-                    Text(person.isCurrentUser
-                         ? "This is your security code. Read it to someone who is checking the code they see for you."
-                         : "Compare it with \(person.name) once, in person or over a channel you trust. If it matches what their Hisar shows, vaults you share reach them and nobody else.")
+                    Text(describeSecurityCode(person))
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
@@ -203,6 +233,7 @@ struct ReceivedInvitationRow: View {
     var identifierPrefix = ""
     var accept: () -> Void
     var decline: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -212,35 +243,85 @@ struct ReceivedInvitationRow: View {
 
     private func row(at now: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 2) {
+                Label {
                     Text("\(invitation.inviterName) shared a vault with you as \(describeVaultRole(invitation.role).lowercased())")
-                    Text(invitation.invitedByEmail)
-                        .font(.footnote)
-                        .foregroundStyle(.themeSecondary)
-                    InvitationExpiryText(timestamp: invitation.expiresAt)
+                } icon: {
+                    Image(systemName: "person.2.fill")
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
                 }
-            } icon: {
-                Image(systemName: "person.2.fill")
-                    .foregroundStyle(.tint)
+                InvitationEmailText(email: invitation.invitedByEmail)
+                InvitationExpiryText(timestamp: invitation.expiresAt)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("\(identifierPrefix)invitation-text")
-            HStack(spacing: 10) {
-                Button(action: decline) {
-                    Text("Decline").frame(maxWidth: .infinity)
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 10) {
+                    acceptButton(at: now)
+                    declineButton
                 }
-                .applyGlassButtonStyle(isProminent: false)
-                .accessibilityIdentifier("\(identifierPrefix)decline-invitation")
-                Button(action: accept) {
-                    Text("Accept").frame(maxWidth: .infinity)
+            } else {
+                HStack(spacing: 10) {
+                    declineButton
+                    acceptButton(at: now)
                 }
-                .applyGlassButtonStyle(isProminent: true)
-                .accessibilityIdentifier("\(identifierPrefix)accept-invitation")
-                .disabled(InvitationLifetime(invitation.expiresAt).isExpired(at: now))
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func acceptButton(at now: Date) -> some View {
+        Button(action: accept) {
+            Text("Accept").frame(maxWidth: .infinity)
+        }
+        .applyGlassButtonStyle(isProminent: true)
+        .accessibilityIdentifier("\(identifierPrefix)accept-invitation")
+        .disabled(InvitationLifetime(invitation.expiresAt).isExpired(at: now))
+    }
+
+    private var declineButton: some View {
+        Button(action: decline) {
+            Text("Decline").frame(maxWidth: .infinity)
+        }
+        .applyGlassButtonStyle(isProminent: false)
+        .accessibilityIdentifier("\(identifierPrefix)decline-invitation")
+    }
+}
+
+struct InvitationEmailText: UIViewRepresentable {
+    var email: String
+    @Environment(\.themePalette) private var palette
+    @ScaledMetric(relativeTo: .footnote) private var fontSize = 13.0
+
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.isEditable = false
+        view.isSelectable = true
+        view.isScrollEnabled = false
+        view.backgroundColor = .clear
+        view.textContainerInset = .zero
+        view.textContainer.lineFragmentPadding = 0
+        view.textContainer.lineBreakMode = .byCharWrapping
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return view
+    }
+
+    func updateUIView(_ view: UITextView, context: Context) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byCharWrapping
+        paragraph.hyphenationFactor = 0
+        view.attributedText = NSAttributedString(string: email, attributes: [
+            .font: UIFont.systemFont(ofSize: fontSize),
+            .foregroundColor: palette.secondaryLabel.uiColor,
+            .paragraphStyle: paragraph,
+        ])
+        view.accessibilityLabel = email
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        guard let width = proposal.width else { return nil }
+        return uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
     }
 }
 
@@ -302,19 +383,87 @@ struct SentInvitationRow: View {
             }
             if let resendError { ErrorBanner(message: resendError) }
         }
-        .alert("Give this person access?", isPresented: Binding(get: { reviewed != nil }, set: { if !$0 { reviewed = nil } })) {
-            Button("Cancel", role: .cancel) { reviewed = nil }
-            Button("Give access") {
-                guard let snapshot = reviewed else { return }
-                Task {
-                    if await model.confirmShareRecipient(snapshot) { await onConfirmed() }
+        .sheet(item: $reviewed) { snapshot in
+            ReviewRecipientSheet(invitation: snapshot, onChanged: onConfirmed)
+                .environmentObject(model)
                 }
             }
+}
+
+struct ReviewRecipientSheet: View {
+    var invitation: SentShareInvitation
+    var onChanged: () async -> Void
+
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    LabeledContent("Name", value: invitation.recipientName.flatMap { $0.isEmpty ? nil : $0 } ?? invitation.email)
+                    LabeledContent("Email", value: invitation.email)
+                    LabeledContent("Vault", value: invitation.vaultName)
+                    LabeledContent("Role", value: describeVaultRole(invitation.role))
+                    LabeledContent("Account ID", value: invitation.recipientID ?? "")
+                }
+                .textSelection(.enabled)
+                Section {
+                    Text(invitation.securityCode ?? "")
+                        .font(.title3.monospaced().weight(.medium))
+                        .frame(maxWidth: .infinity)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("review-security-code")
+                } header: {
+                    Text("Security code")
+                        .foregroundStyle(.themeSecondary)
+                } footer: {
+                    Text("To compare codes, ask this person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match this code.")
+                        .foregroundStyle(.themeSecondary)
+                }
+                if let errorMessage {
+                    Section { ErrorBanner(message: errorMessage) }
+                }
+                Section {
+                    Button("Give access") { complete(isMismatch: false) }
             .accessibilityIdentifier("confirm-share-recipient")
-        } message: {
-            if let snapshot = reviewed {
-                Text("\(snapshot.email)\nVault \(snapshot.vaultName) · \(describeVaultRole(snapshot.role))\nAccount \(snapshot.recipientID ?? "")\nSecurity code \(snapshot.securityCode ?? "")\nCompare this code with the recipient over a channel you trust.")
+                    Button("Codes don't match", role: .destructive) { complete(isMismatch: true) }
+                        .accessibilityIdentifier("share-recipient-mismatch")
             }
+                .disabled(isWorking)
+            }
+            .navigationTitle("Review recipient")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(isWorking)
+                }
+                if isWorking {
+                    ToolbarItem(placement: .confirmationAction) { ProgressView() }
+                }
+            }
+        }
+        .interactiveDismissDisabled(isWorking)
+    }
+
+    private func complete(isMismatch: Bool) {
+        guard !isWorking else { return }
+        isWorking = true
+        errorMessage = nil
+        Task {
+            let succeeded = isMismatch
+                ? await model.cancelShareInvitation(invitationID: invitation.id)
+                : await model.confirmShareRecipient(invitation)
+            if succeeded {
+                if isMismatch { model.showNotice("Cancelled the invitation to \(invitation.email).") }
+                await onChanged()
+                dismiss()
+            } else {
+                errorMessage = model.errorMessage
+            }
+            isWorking = false
         }
     }
 }
@@ -347,8 +496,10 @@ struct InvitePersonView: View {
                         .accessibilityIdentifier("invite-email")
                 } header: {
                     Text("Who")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("The server emails them a sign-up link that works once and expires after 7 days. They sign up with this email address.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .navigationTitle("Invite to Hisar")

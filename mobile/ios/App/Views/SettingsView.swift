@@ -25,11 +25,15 @@ struct SettingsView: View {
     @State private var selection: SettingsDestination?
     /// The screens pushed below the selected section, of several value types (organizations and their members push their own).
     @State private var detailPath = NavigationPath()
-    @State private var isSignOutConfirmationShown = false
-    @State private var isAutoFillEnabled = false
 
     static let biometryName = BiometricKeychain(accessGroup: nil).getBiometryName()
     static let biometrySystemImage = biometryName == "Touch ID" ? "touchid" : "faceid"
+    static let biometryConsent: String = {
+        let scope = biometryName == "Touch ID"
+            ? "Any fingerprint set up on this iPhone can unlock Hisar."
+            : "Anyone enrolled in Face ID on this iPhone, including an alternate appearance, can unlock Hisar."
+        return "Unlock Hisar with \(biometryName) instead of typing your master password. \(scope) Hisar still asks for your master password at least every 14 days. Changing \(biometryName) turns off \(biometryName) unlock until you turn it on again with your master password. You can change this later in Settings, Security."
+    }()
 
     private var initials: String {
         let source = model.status.name.isEmpty ? model.status.email : model.status.name
@@ -85,7 +89,7 @@ struct SettingsView: View {
                     }
                     .accessibilityIdentifier("open-mac-approvals")
                     NavigationLink(value: SettingsDestination.notifications) {
-                        Label("Notifications", systemImage: "bell.badge")
+                        NotificationSettingsLabel(notifications: model.notifications)
                     }
                     .accessibilityIdentifier("open-notifications")
                 }
@@ -118,7 +122,7 @@ struct SettingsView: View {
                 Section {
                     NavigationLink(value: SettingsDestination.autoFill) {
                         LabeledContent {
-                            Text(isAutoFillEnabled ? "On" : "Off")
+                            Text(model.isAutoFillEnabled ? "On" : "Off")
                         } label: {
                             Label("AutoFill", systemImage: "key.viewfinder")
                         }
@@ -138,35 +142,19 @@ struct SettingsView: View {
                         Label("About Hisar", systemImage: "info.circle")
                     }
                     .accessibilityIdentifier("open-about")
-                    Button("Sign out", role: .destructive) {
-                        isSignOutConfirmationShown = true
-                    }
-                    .frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("sign-out")
                 }
             }
             .applyThemedListStyle()
             .navigationTitle("Settings")
-            .confirmationDialog(AccountLifecycleLogic.signOutTitle, isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
-                Button("Sign out", role: .destructive) {
-                    Task { await model.signOut() }
-                }
-            } message: {
-                Text(AccountLifecycleLogic.signOutMessage)
-            }
             .task {
-                isAutoFillEnabled = await AutoFillSettings.checkIsEnabled()
+                await model.refreshExternalSetupStatus()
                 await model.refreshReceivedInvitationCount()
             }
             .onReceive(model.$requestedSettingsDestination) { destination in
                 guard let destination else { return }
                 model.requestedSettingsDestination = nil
-                // The new Secret Key is shown only once, so its screen stays until Done. The section opens over whatever
-                // was pushed below the one selected before, also when it is the same section.
-                if !model.isNewSecretKeyShown {
-                    detailPath = NavigationPath()
-                    selection = destination
-                }
+                detailPath = NavigationPath()
+                selection = destination
             }
         } detail: {
             // Beside the list on the open iPhone Duo, pushed over it on any other iPhone. Screens below a section (Account →
@@ -200,7 +188,7 @@ struct SettingsView: View {
         case .people: PeopleView()
         case .organizations: OrganizationsView()
         case .devices: DevicesView()
-        case .autoFill: AutoFillSettingsView(isEnabled: $isAutoFillEnabled)
+        case .autoFill: AutoFillSettingsView()
         case .passwordGenerator: StandalonePasswordGeneratorView()
         case .help: HelpView()
         case .about: AboutView()
@@ -215,6 +203,7 @@ struct AccountView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isExportShown = false
     @State private var isHisarImportShown = false
+    @State private var isSignOutConfirmationShown = false
 
     private static let hisarExportTypes: [UTType] = [.json, UTType(filenameExtension: "hisar") ?? .data]
 
@@ -238,6 +227,7 @@ struct AccountView: View {
                 .accessibilityIdentifier("open-replace-secret-key")
             } footer: {
                 Text("Both sign out your other devices. They need a connection to the Hisar server.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 NavigationLink(value: SettingsDestination.secretKey) {
@@ -246,6 +236,7 @@ struct AccountView: View {
                 .accessibilityIdentifier("open-secret-key")
             } footer: {
                 Text("To sign in on a new device you need your master password and your Secret Key. The Emergency Kit holds your Secret Key and has a space to write your master password.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 Button {
@@ -260,8 +251,18 @@ struct AccountView: View {
                     Label("Import a Hisar export…", systemImage: "square.and.arrow.down.on.square")
                 }
                 .accessibilityIdentifier("open-hisar-export-import")
+                DisclosureGroup {
+                    Text("Start the export in the other password manager and choose Hisar. Hisar will open so you can review the items and choose their vaults.")
+                        .accessibilityIdentifier("other-app-import-guidance")
+                    Text("For example, in 1Password, open Settings → Export → Hisar. Keep the source app until you have reviewed the imported items in Hisar.")
+                        .accessibilityIdentifier("other-app-import-example")
+                } label: {
+                    Label("Import from another app", systemImage: "arrow.down.app")
+                }
+                .accessibilityIdentifier("other-app-import-disclosure")
             } footer: {
                 Text("A copy of every vault you can open, encrypted with a passphrase you choose, or as plain JSON. You can import a Hisar export back into your vaults.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 NavigationLink(value: SettingsDestination.deleteAccount) {
@@ -272,10 +273,29 @@ struct AccountView: View {
                 .accessibilityIdentifier("open-delete-account")
             } footer: {
                 Text("Deletes your account and the vaults only you own from the Hisar server. \(AccountLifecycleLogic.exportAdvice)")
+                    .foregroundStyle(.themeSecondary)
+            }
+            Section {
+                Button("Sign out", role: .destructive) {
+                    isSignOutConfirmationShown = true
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("sign-out")
             }
         }
         .applyThemedListStyle()
         .navigationTitle("Account")
+        .alert(AccountLifecycleLogic.signOutTitle, isPresented: $isSignOutConfirmationShown) {
+            Button("Cancel", role: .cancel) {}
+            if model.status.emergencyKit != nil {
+                Button("Save Emergency Kit") { model.openEmergencyKit() }
+            }
+            Button("Sign out", role: .destructive) {
+                Task { await model.signOut() }
+            }
+        } message: {
+            Text(AccountLifecycleLogic.signOutMessage(isLocked: false, emergencyKit: model.status.emergencyKit))
+        }
         .sheet(isPresented: $isExportShown) {
             ExportDataView()
                 .environmentObject(model)
@@ -292,7 +312,9 @@ struct SecretKeyView: View {
     @EnvironmentObject private var model: AppModel
     @State private var password = ""
     @State private var export: EmergencyKitExport?
-    @FocusState private var isPasswordFocused: Bool
+    @State private var isPasswordFocused = false
+    @State private var qrImage: UIImage?
+    @State private var revealGeneration = 0
 
     var body: some View {
         List {
@@ -310,8 +332,22 @@ struct SecretKeyView: View {
                     .accessibilityIdentifier("copy-secret-key")
                 } header: {
                     Text("Secret Key")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
-                    Text("Hisar keeps it on this iPhone; nobody else has a copy. Anyone with it and your master password can open your vaults.")
+                    Text("Hisar keeps a copy on this iPhone. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults.")
+                        .foregroundStyle(.themeSecondary)
+                }
+                if let image = qrImage {
+                    Section {
+                        Image(uiImage: image)
+                            .interpolation(.none)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: 280)
+                            .accessibilityLabel("Emergency Kit sign-in QR code")
+                            .accessibilityIdentifier("secret-key-qr-code")
+                        Text("Scan this with Hisar on your new device. Anyone with this code and your master password can open your vaults.")
+                    }
                 }
                 Section {
                     ShareLink(item: URL(fileURLWithPath: export.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
@@ -320,19 +356,23 @@ struct SecretKeyView: View {
                     .accessibilityIdentifier("share-emergency-kit")
                 } header: {
                     Text("Emergency Kit")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("A PDF with your server, email and Secret Key, and a space to write your master password. Print it or save it somewhere safe, away from your devices.")
+                        .foregroundStyle(.themeSecondary)
                 }
             } else {
                 Section {
-                    SecureField("Master password", text: $password)
+                    CredentialField("Master password", text: $password)
                         .textContentType(.password)
                         .submitLabel(.go)
                         .focused($isPasswordFocused)
                         .onSubmit(reveal)
                         .accessibilityIdentifier("secret-key-password")
+                        .concealWhen(model.isBusy)
                 } footer: {
                     Text("Enter your master password to see your Secret Key and save your Emergency Kit.")
+                        .foregroundStyle(.themeSecondary)
                 }
                 if let errorMessage = model.errorMessage {
                     Section {
@@ -367,6 +407,8 @@ struct SecretKeyView: View {
             isPasswordFocused = true
         }
         .onDisappear {
+            revealGeneration += 1
+            qrImage = nil
             if let export {
                 model.removeEmergencyKit(export)
             }
@@ -378,8 +420,14 @@ struct SecretKeyView: View {
     private func reveal() {
         guard !password.isEmpty, !model.isBusy else { return }
         let enteredPassword = password
+        let generation = revealGeneration
         Task {
             if let result = await model.exportEmergencyKit(password: enteredPassword) {
+                guard generation == revealGeneration, model.status.isUnlocked else {
+                    model.removeEmergencyKit(result)
+                    return
+                }
+                qrImage = result.qrCode.flatMap { Data(base64Encoded: $0) }.flatMap { UIImage(data: $0) }
                 password = ""
                 export = result
             }
@@ -402,8 +450,9 @@ struct SecurityView: View {
                 .accessibilityIdentifier("biometric-toggle")
             } footer: {
                 Text(model.status.biometricAvailable
-                     ? "Turning on \(SettingsView.biometryName) needs your master password. Hisar still asks for the master password at least every 14 days."
+                     ? SettingsView.biometryConsent
                      : "\(SettingsView.biometryName) is not set up on this iPhone.")
+                    .foregroundStyle(.themeSecondary)
             }
             if let errorMessage = model.errorMessage {
                 Section {
@@ -425,8 +474,10 @@ struct SecurityView: View {
                 .accessibilityIdentifier("auto-lock-picker")
             } header: {
                 Text("Auto-lock after")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 Text("Hisar locks after this long without activity. Copied values are cleared after 90 seconds.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 Button {
@@ -440,17 +491,40 @@ struct SecurityView: View {
         .applyThemedListStyle()
         .navigationTitle("Security")
         .onAppear { model.clearError() }
-        .alert("Turn on \(SettingsView.biometryName)", isPresented: $isBiometricPasswordPromptShown) {
-            SecureField("Master password", text: $biometricPassword)
-                .accessibilityIdentifier("biometric-password")
-            Button("Cancel", role: .cancel) { biometricPassword = "" }
-            Button("Turn on") {
-                let password = biometricPassword
-                biometricPassword = ""
-                Task { await model.setBiometricUnlock(isEnabled: true, password: password) }
+        .sheet(isPresented: $isBiometricPasswordPromptShown, onDismiss: { biometricPassword = "" }) {
+            NavigationStack {
+                Form {
+                    Section {
+                        CredentialField("Master password", text: $biometricPassword)
+                            .textContentType(.password)
+                            .accessibilityIdentifier("biometric-password")
+                            .concealWhen(model.isBusy)
+                    } footer: {
+                        Text(SettingsView.biometryConsent + "\n\nEnter your master password to continue.")
+                            .foregroundStyle(.themeSecondary)
+                    }
+                }
+                .navigationTitle("Turn on \(SettingsView.biometryName)")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel", role: .cancel) {
+                            biometricPassword = ""
+                            isBiometricPasswordPromptShown = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Turn on") {
+                            let password = biometricPassword
+                            biometricPassword = ""
+                            isBiometricPasswordPromptShown = false
+                            Task { await model.setBiometricUnlock(isEnabled: true, password: password) }
+                        }
+                        .disabled(biometricPassword.isEmpty || model.isBusy)
+                    }
+                }
             }
-        } message: {
-            Text("Enter your master password to unlock with \(SettingsView.biometryName).")
+            .presentationDetents([.medium])
         }
     }
 
@@ -640,22 +714,38 @@ struct ColorSwatch: View {
 
 struct MacApprovalsView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var isSaving = false
 
     var body: some View {
         List {
             Section {
                 Toggle(isOn: Binding(get: { model.isMacApprovalAllowed }, set: { isAllowed in
-                    Task { await model.setMacApprovalAllowed(isAllowed) }
+                    Task {
+                        isSaving = true
+                        await model.setMacApprovalAllowed(isAllowed)
+                        isSaving = false
+                    }
                 })) {
                     Label("Approve requests from my Mac", systemImage: "laptopcomputer.and.iphone")
                 }
                 .accessibilityIdentifier("mac-approval-toggle")
+                .disabled(isSaving)
+                if isSaving { ProgressView("Saving…") }
+                if let message = model.macApprovalErrorMessage {
+                    ErrorBanner(message: message)
+                        .accessibilityIdentifier("mac-approval-error")
+                }
             } footer: {
-                Text("Requests to use SSH keys, the command-line tool, coding agents and apps on your Mac appear here while Hisar is open and unlocked on both devices.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Requests to use SSH keys, the command-line tool, coding agents and apps on your Mac appear here while Hisar is open and unlocked on both devices.")
+                    Text("On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device.")
+                }
+                .foregroundStyle(.themeSecondary)
             }
         }
         .applyThemedListStyle()
         .navigationTitle("Mac approvals")
+        .onAppear { model.macApprovalErrorMessage = nil }
     }
 }
 
@@ -712,6 +802,7 @@ struct NotificationSettingsView: View {
                 }
             } footer: {
                 Text(footer)
+                    .foregroundStyle(.themeSecondary)
             }
             if let errorMessage = notifications.errorMessage ?? notifications.settings.errorMessage {
                 Section {
@@ -732,8 +823,19 @@ struct NotificationSettingsView: View {
     }
 }
 
+private struct NotificationSettingsLabel: View {
+    @ObservedObject var notifications: PushNotificationsModel
+
+    var body: some View {
+        LabeledContent {
+            Text(notifications.authorization == .allowed ? "On" : "Off")
+        } label: {
+            Label("Notifications", systemImage: "bell.badge")
+        }
+    }
+}
+
 struct AutoFillSettingsView: View {
-    @Binding var isEnabled: Bool
     @EnvironmentObject private var model: AppModel
 
     private static let isAutoFillIncluded = HisarConfiguration.current.isAppGroupAvailable
@@ -744,15 +846,13 @@ struct AutoFillSettingsView: View {
                 if !Self.isAutoFillIncluded {
                     Label("Not available in this build", systemImage: "key.viewfinder")
                         .foregroundStyle(.themeSecondary)
-                } else if isEnabled {
+                } else if model.isAutoFillEnabled {
                     Label("Hisar fills passwords, passkeys and one-time codes in apps and Safari", systemImage: "checkmark.circle")
                 } else {
                     Button {
                         Task {
-                            isEnabled = await AutoFillSettings.requestToTurnOn()
-                            if isEnabled {
-                                await model.refreshAll()
-                            }
+                            _ = await AutoFillSettings.requestToTurnOn()
+                            await model.refreshExternalSetupStatus()
                         }
                     } label: {
                         Label("Turn on Hisar AutoFill", systemImage: "key.viewfinder")
@@ -762,6 +862,7 @@ struct AutoFillSettingsView: View {
             } footer: {
                 if !Self.isAutoFillIncluded {
                     Text("This build is signed with a free Apple ID, which cannot include the AutoFill extension.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if Self.isAutoFillIncluded {
@@ -773,10 +874,20 @@ struct AutoFillSettingsView: View {
                     }
                 }
             }
+            Section {
+                Toggle("Only fill on the exact host", isOn: Binding(
+                    get: { model.isExactHostMatch },
+                    set: { isExact in Task { await model.setExactHostMatch(isExact) } }
+                ))
+                .accessibilityIdentifier("exact-host-match")
+            } footer: {
+                Text("Off: a login for google.com also fills on accounts.google.com. On: only on the host saved in the item.")
+                    .foregroundStyle(.themeSecondary)
+            }
         }
         .applyThemedListStyle()
         .navigationTitle("AutoFill")
-        .task { isEnabled = await AutoFillSettings.checkIsEnabled() }
+        .task { await model.refreshExternalSetupStatus() }
     }
 }
 
@@ -812,10 +923,24 @@ struct AboutView: View {
     }
 }
 
+@MainActor
+final class SupportContact: ObservableObject {
+    @Published private(set) var isMailUnavailable = false
+
+    func openMessage(using openURL: (URL, @escaping (Bool) -> Void) -> Void) {
+        let url = URL(string: "mailto:\(HelpView.supportEmail)")!
+        openURL(url) { [weak self] accepted in
+            self?.isMailUnavailable = !accepted
+        }
+    }
+}
+
 struct HelpView: View {
     static let supportEmail = "support@tryhisar.com"
 
     @EnvironmentObject private var model: AppModel
+    @Environment(\.openURL) private var openURL
+    @StateObject private var contact = SupportContact()
     @State private var currentDeviceID: String?
 
     static func buildDiagnostics(appVersion: String, systemVersion: String, deviceModel: String, server: String, deviceID: String?) -> String {
@@ -840,6 +965,19 @@ struct HelpView: View {
     var body: some View {
         List {
             Section {
+                Button {
+                    contact.openMessage { url, completion in
+                        openURL(url, completion: completion)
+                    }
+                } label: {
+                    Label("Contact support", systemImage: "envelope")
+                }
+                .accessibilityIdentifier("contact-support")
+                if contact.isMailUnavailable {
+                    Text("No mail app is available. Copy the address and write to us from your mail app or website.")
+                        .foregroundStyle(.themeSecondary)
+                        .accessibilityIdentifier("support-mail-unavailable")
+                }
                 Text(verbatim: Self.supportEmail)
                     .textSelection(.enabled)
                     .accessibilityIdentifier("support-email")
@@ -851,8 +989,10 @@ struct HelpView: View {
                 .accessibilityIdentifier("copy-support-email")
             } header: {
                 Text("Contact support")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
-                Text("Write to us about a problem or an idea. Adding the diagnostics below helps us help you.")
+                Text("Write to us about a problem or an idea. Diagnostics are optional. Copy them below if you want to include them in your message.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 Button {
@@ -862,7 +1002,8 @@ struct HelpView: View {
                 }
                 .accessibilityIdentifier("copy-diagnostics")
             } footer: {
-                Text("The app and iOS versions, the server and this device's ID. Never your items, keys or master password.")
+                Text("The app version and build, iOS version and device model, server and this device's ID. Never your items, keys or master password.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 LabeledContent("Server", value: VaultLogic.describeServer(model.status.server))

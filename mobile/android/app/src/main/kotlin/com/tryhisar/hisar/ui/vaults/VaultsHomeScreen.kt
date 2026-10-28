@@ -1,6 +1,10 @@
 package com.tryhisar.hisar.ui.vaults
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.semantics.heading
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -112,6 +116,7 @@ fun VaultsHomeScreen(model: AppModel) {
     var isPulling by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf<Refusal?>(null) }
     val allItem = data.listAllItemReference()
+    val allTag = VaultLogic.listAllTag(allItem)
     val grouping = OrganizationLogic.groupVaults(data.allVault, data.allOrganization, data.waitingVaultKeys.allWaiting)
 
     fun answerOrganizationInvitation(invitation: OrganizationInvitation, isAccepted: Boolean) {
@@ -150,9 +155,41 @@ fun VaultsHomeScreen(model: AppModel) {
                     isPulling = false
                 }
             },
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).then(
+                if (status.emergencyKit?.isReminderHidden == false) Modifier.padding(bottom = TabBarHeight + NewButtonClearance + 24.dp) else Modifier,
+            ),
         ) {
             LazyColumn(Modifier.fillMaxSize().testTag("vaults-list")) {
+                status.emergencyKit?.takeUnless { it.isReminderHidden }?.let { kit ->
+                    item(key = "emergency-kit") {
+                        val shape = RoundedCornerShape(10.dp)
+                        Column(
+                            Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                                .fillMaxWidth()
+                                .background(HisarTheme.colors.warning.copy(alpha = 0.12f), shape)
+                                .then(if (kit.reminder == "14-days" && kit.savedBy.isEmpty()) Modifier.border(2.dp, HisarTheme.colors.warning, shape) else Modifier)
+                                .testTag("emergency-kit-banner")
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Filled.Warning, contentDescription = null, tint = HisarTheme.colors.warning, modifier = Modifier.size(20.dp))
+                                Text(kit.title, style = HisarType.headline, color = HisarTheme.colors.label, modifier = Modifier.weight(1f).semantics { heading() })
+                            }
+                            Text(kit.reminderBody, style = HisarType.subheadline, color = HisarTheme.colors.label)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PlainButton(
+                                    if (kit.savedBy.isEmpty()) "Save Emergency Kit" else "Continue to confirmation",
+                                    model.signIn::openEmergencyKit, testTag = "emergency-kit-save",
+                                )
+                                PlainButton(
+                                    "Not now", { scope.launch { model.signIn.hideEmergencyKitReminder() } },
+                                    testTag = "emergency-kit-not-now", onClickLabel = "Hide until Hisar locks",
+                                )
+                            }
+                        }
+                    }
+                }
                 item(key = "title") { Box(Modifier.padding(horizontal = ScreenMargin)) { LargeTitle("Vaults", topPadding = 0.dp) } }
                 if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
                 pendingApprovalCardSection(model, allPendingApproval, isAnsweringApproval)
@@ -168,22 +205,21 @@ fun VaultsHomeScreen(model: AppModel) {
                     NoteRow(warning, Icons.Filled.Warning, Modifier.testTag("vault-key-warning"), iconTint = HisarTheme.colors.warning)
                 }
                 cardSection("review-recipients", data.allReviewInvitation, rowKey = { it.id }, header = "Review recipients") { invitation ->
-                    SentInvitationRow(
-                        invitation, isVaultNameShown = true, testTag = "review-invitation-${invitation.id}",
-                        model = model, onResent = { model.invitations.loadShareInvitations() },
-                        onConfirm = { snapshot ->
-                            scope.launch {
-                                if (!model.sharing.confirmShareRecipient(snapshot)) refusal = model.takeRefusal("Give access")
-                            }
-                        },
-                    )
+                    SentInvitationRow(model, invitation, isVaultNameShown = true, testTag = "review-invitation-${invitation.id}", onChanged = { model.invitations.loadShareInvitations() })
                 }
                 cardSection<Any>(
-                    "shared-with-you",
-                    data.allReceivedInvitation + data.allWaitingInvitation,
-                    rowKey = { if (it is ReceivedShareInvitation) "received-${it.id}" else "waiting-${(it as WaitingShareInvitation).id}" },
-                    header = "Shared with you",
-                    dividerStart = { if (it is ReceivedShareInvitation) InvitationRowTextStart else NoteRowTextStart },
+                    "invitations-for-you",
+                    data.allReceivedInvitation + data.allOrganizationInvitation + data.allWaitingInvitation,
+                    rowKey = {
+                        when (it) {
+                            is ReceivedShareInvitation -> "received-${it.id}"
+                            is OrganizationInvitation -> "organization-${it.id}"
+                            else -> "waiting-${(it as WaitingShareInvitation).id}"
+                        }
+                    },
+                    header = "Invitations for you",
+                    headerTestTag = "invitations-for-you",
+                    dividerStart = { if (it is WaitingShareInvitation) NoteRowTextStart else InvitationRowTextStart },
                 ) { invitation ->
                     when (invitation) {
                         is ReceivedShareInvitation -> InvitationRow(
@@ -204,39 +240,35 @@ fun VaultsHomeScreen(model: AppModel) {
                                 }
                             },
                         )
+                        is OrganizationInvitation -> InvitationRow(
+                            text = invitation.message,
+                            email = invitation.invitedByEmail,
+                            expiresAt = invitation.expiresAt,
+                            icon = Icons.Filled.Business,
+                            testTagPrefix = "banner-",
+                            testTagName = "organization-invitation",
+                            onDecline = { answerOrganizationInvitation(invitation, isAccepted = false) },
+                            onAccept = { answerOrganizationInvitation(invitation, isAccepted = true) },
+                        )
                         is WaitingShareInvitation -> NoteRow(invitation.describe(Instant.now()), Icons.Outlined.Schedule, Modifier.testTag("waiting-${invitation.id}"))
                     }
                 }
-                cardSection("invitations-for-you", data.allOrganizationInvitation, rowKey = { it.id }, header = "Invitations for you") { invitation ->
-                    InvitationRow(
-                        text = invitation.message,
-                        email = invitation.invitedByEmail,
-                        expiresAt = invitation.expiresAt,
-                        icon = Icons.Filled.Business,
-                        testTagPrefix = "banner-",
-                        testTagName = "organization-invitation",
-                        onDecline = { answerOrganizationInvitation(invitation, isAccepted = false) },
-                        onAccept = { answerOrganizationInvitation(invitation, isAccepted = true) },
-                    )
-                }
-                if (data.allVault.isNotEmpty()) {
-                    val allFavorite = data.listAllFavoriteReference()
-                    if (allFavorite.isEmpty()) {
-                        cardSection("favorites", listOf(Unit), rowKey = { "empty" }, header = "Favorites") {
-                            NoteRow(
-                                "Star an item to keep it here, on all your devices. Only you see your favorites.",
-                                Icons.Outlined.StarOutline,
-                                Modifier.testTag("favorites-empty"),
-                            )
+                val allFavorite = data.listAllFavoriteReference()
+                if (allFavorite.isNotEmpty()) {
+                    cardSection("favorites", allFavorite.take(3), rowKey = { it.id }, header = "Favorites", dividerStart = { ItemRowTextStart }) { reference ->
+                        FavoriteSwipeRow(model, reference.vaultID, reference.item, isLeading = false) {
+                            ItemRow(model, reference.item, "favorite-${reference.item.title}", vaultID = reference.vaultID, vaultName = reference.vaultName, showsFavorite = false, onClick = {
+                                stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
+                            })
                         }
-                    } else {
-                        cardSection("favorites", allFavorite, rowKey = { it.id }, header = "Favorites", dividerStart = { ItemRowTextStart }) { reference ->
-                            FavoriteSwipeRow(model, reference.vaultID, reference.item, isLeading = false) {
-                                ItemRow(model, reference.item, "favorite-${reference.item.title}", vaultName = reference.vaultName, onClick = {
-                                    stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
-                                })
-                            }
-                        }
+                    }
+                    cardSection("all-favorites", listOf(Unit), rowKey = { "show-all" }) {
+                        NavigationRow(
+                            testTag = "show-all-favorites",
+                            onClick = { stack.push(VaultsDestination.Favorites) },
+                            badge = allFavorite.size,
+                            leading = { RowSymbol(Icons.Outlined.StarOutline) },
+                        ) { Text("Show all favorites", style = HisarType.body, color = HisarTheme.colors.label) }
                     }
                 }
                 vaultSection(data, isRefreshing, grouping.allOtherVault) { stack.push(VaultsDestination.Vault(it.id)) }
@@ -252,13 +284,15 @@ fun VaultsHomeScreen(model: AppModel) {
                         leading = { RowSymbol(category.icon) },
                     ) { Text(category.title, style = HisarType.body, color = HisarTheme.colors.label) }
                 }
-                cardSection("tags", VaultLogic.listAllTag(allItem), rowKey = { it.name }, header = "Tags", dividerStart = { SymbolRowTextStart }) { tag ->
-                    NavigationRow(
-                        testTag = "tag-${tag.name}",
-                        onClick = { stack.push(VaultsDestination.Tag(tag.name)) },
-                        badge = tag.itemCount,
-                        leading = { RowSymbol(Icons.Outlined.Sell) },
-                    ) { Text(tag.name, style = HisarType.body, color = HisarTheme.colors.label) }
+                if (allTag.isNotEmpty()) {
+                    cardSection("tags", listOf(Unit), rowKey = { "tags" }, dividerStart = { SymbolRowTextStart }) {
+                        NavigationRow(
+                            testTag = "tags",
+                            onClick = { stack.push(VaultsDestination.Tags) },
+                            badge = allTag.size,
+                            leading = { RowSymbol(Icons.Outlined.Sell) },
+                        ) { Text("Tags", style = HisarType.body, color = HisarTheme.colors.label) }
+                    }
                 }
                 item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp + NewButtonClearance)) }
             }

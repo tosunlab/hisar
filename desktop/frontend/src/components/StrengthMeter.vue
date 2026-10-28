@@ -26,6 +26,8 @@ const filledSegmentCount = computed(() => segmentCountByLevel[strength.value.lev
 
 .segment {
   width: 28px;
+  flex: 0 1 28px;
+  min-width: 0;
   height: 4px;
   border-radius: 2px;
   background: var(--color-border);
@@ -46,6 +48,8 @@ const filledSegmentCount = computed(() => segmentCountByLevel[strength.value.lev
 
 .label {
   margin-left: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }

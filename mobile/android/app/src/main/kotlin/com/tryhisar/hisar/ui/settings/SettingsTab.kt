@@ -94,7 +94,7 @@ fun SettingsTab(model: AppModel) {
             null -> SettingsRoot(model, push)
             SettingsDestination.ACCOUNT -> AccountScreen(model, push, pop)
             SettingsDestination.SECRET_KEY -> SecretKeyScreen(model, pop)
-            SettingsDestination.SECURITY -> SecurityScreen(model, push, pop)
+            SettingsDestination.SECURITY -> SecurityScreen(model, pop)
             SettingsDestination.APPEARANCE -> AppearanceScreen(model, pop)
             SettingsDestination.MAC_APPROVALS -> MacApprovalsScreen(model, pop)
             SettingsDestination.NOTIFICATIONS -> NotificationsScreen(model, pop)
@@ -105,7 +105,7 @@ fun SettingsTab(model: AppModel) {
             SettingsDestination.REPLACE_SECRET_KEY -> ReplaceSecretKeyScreen(model, pop)
             SettingsDestination.DELETE_ACCOUNT -> DeleteAccountScreen(model, pop)
             SettingsDestination.EXPORT_DATA -> ExportDataScreen(model, pop)
-            SettingsDestination.AUTOFILL -> SettingsScreen("AutoFill", onBack = pop) { AutoFillSettingsSections() }
+            SettingsDestination.AUTOFILL -> SettingsScreen("AutoFill", onBack = pop) { AutoFillSettingsSections(model) }
             SettingsDestination.PASSWORD_GENERATOR -> StandalonePasswordGeneratorScreen(model, pop)
             SettingsDestination.PEOPLE -> PeopleScreen(model, pop)
             SettingsDestination.ORGANIZATIONS -> OrganizationsScreen(model, pop)
@@ -181,13 +181,29 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
     }
 
     if (isSignOutConfirmationShown) {
-        ConfirmationDialog(
-            title = AccountLifecycleLogic.SIGN_OUT_TITLE,
-            message = AccountLifecycleLogic.SIGN_OUT_MESSAGE,
-            confirmLabel = "Sign out",
-            confirmTestTag = "confirm-sign-out",
-            onConfirm = { scope.launch { model.lock.signOut() } },
-            onDismiss = { isSignOutConfirmationShown = false },
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { isSignOutConfirmationShown = false },
+            title = { Text(AccountLifecycleLogic.SIGN_OUT_TITLE) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(AccountLifecycleLogic.signOutMessage(status.emergencyKit, isLocked = false))
+                    if (status.emergencyKit != null) {
+                        com.tryhisar.hisar.ui.components.PlainButton("Save Emergency Kit", {
+                            isSignOutConfirmationShown = false
+                            model.signIn.openEmergencyKit()
+                        }, testTag = "sign-out-save-emergency-kit")
+                    }
+                }
+            },
+            confirmButton = {
+                com.tryhisar.hisar.ui.components.PlainButton("Sign out", {
+                    isSignOutConfirmationShown = false
+                    scope.launch { model.lock.signOut() }
+                }, testTag = "confirm-sign-out", color = HisarTheme.colors.destructiveText)
+            },
+            dismissButton = {
+                com.tryhisar.hisar.ui.components.PlainButton("Cancel", { isSignOutConfirmationShown = false }, testTag = "cancel-sign-out")
+            },
         )
     }
 }

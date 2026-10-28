@@ -163,7 +163,7 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 	}
 	if credentialChange.SecretKey.Encode() != secretKey.Encode() {
 		newSecretKey := credentialChange.SecretKey
-		s.newAccountSecretKey = &newSecretKey
+		s.setKitGrant(pending.OperationID, newSecretKey, nil)
 		result.SecretKey = newSecretKey.Encode()
 		if err := s.config.SecretKeyStore.StoreSecretKey(newSecretKey); err != nil {
 			result.KeychainError = "the new Secret Key could not be saved to the keychain; save its Emergency Kit from pending recovery"
@@ -211,7 +211,6 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 			result.LocalError = fmt.Sprintf("your credentials were changed, but this device could not finish saving the change: %v", err)
 		}
 	}
-	result.Status = s.buildStatus()
 	if pending.OperationID != "" {
 		pending.Phase = "delivery-pending"
 		pending.ManualUnlock = result.KeychainError != ""
@@ -228,7 +227,9 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 			pending.Phase = "needs-finishing"
 		}
 		result.PendingOperationID, result.SetupState, result.Problems = pending.OperationID, pending.Phase, pending.Problems
+		s.removeSupersededRecovery(pending)
 	}
+	result.Status = s.buildStatus()
 	return result, nil
 }
 

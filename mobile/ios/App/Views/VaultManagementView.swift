@@ -97,6 +97,10 @@ struct RecoveryDeletionSheet: View {
 enum ExportLogic {
     static let plainWarning = "Plain JSON is not encrypted. Anyone who gets the file can read every password, one-time code secret and SSH private key in it. Delete it when you are done."
 
+    static func isPasswordRequested(_ error: String?) -> Bool {
+        error?.localizedCaseInsensitiveContains("master password") == true
+    }
+
     // checkInput returns what is missing before an export can start, or nil.
     static func checkInput(format: ExportFormat, passphrase: String, repeatedPassphrase: String, minPassphraseLength: Int) -> String? {
         guard format == .encrypted else { return nil }
@@ -202,8 +206,10 @@ struct VaultDeletionForm: View {
                     }
                 } header: {
                     Text("These people lose access")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("Their Hisar removes the vault on its next sync and tells them it is no longer available.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if itemCount > 0 {
@@ -232,11 +238,16 @@ struct VaultDeletionForm: View {
                     }
                 } header: {
                     Text("Items")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     if isMovePossible && !isDeletingItems {
                         Text("Hisar re-encrypts each item on this iPhone with the other vault's key before it moves. The server never sees them.")
+                            .foregroundStyle(.themeSecondary)
                     } else {
                         Text("Deleted items can't be restored. Export your data first if you may need them.")
+                            .foregroundStyle(.themeSecondary)
+                        Text("Share links contain separate copies of item fields. Deleting this vault doesn't revoke them. Review links you created in Shared links on the Mac, or with hisar share-links.")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
             } else {
@@ -324,16 +335,22 @@ struct RemovedVaultNoticeSection: View {
                             Image(systemName: "xmark")
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(.themeSecondary)
+                                .iconButtonHitArea()
                         }
                         .buttonStyle(.borderless)
-                        .accessibilityLabel("Dismiss")
+                        .accessibilityLabel("Dismiss notice for \(notice.name)")
                         .accessibilityIdentifier("dismiss-removed-vault-\(notice.id)")
                     }
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("removed-vault-\(notice.id)")
                 }
             }
         }
     }
+}
+
+enum ExportAuthentication {
+    case biometric, password
 }
 
 struct ExportDataForm: View {
@@ -347,11 +364,12 @@ struct ExportDataForm: View {
     @State private var passphrase = ""
     @State private var repeatedPassphrase = ""
     @State private var password = ""
+    @State private var authentication = ExportAuthentication.biometric
 
     private var inputProblem: String? {
         ExportLogic.checkInput(format: format, passphrase: passphrase, repeatedPassphrase: repeatedPassphrase, minPassphraseLength: options.minPassphraseLength)
     }
-    private var isPasswordNeeded: Bool { !options.isBiometricAvailable }
+    private var isPasswordNeeded: Bool { authentication == .password || !options.isBiometricAvailable }
     private var canExport: Bool { inputProblem == nil && !isBusy && (!isPasswordNeeded || !password.isEmpty) }
 
     var body: some View {
@@ -361,14 +379,23 @@ struct ExportDataForm: View {
                     if let warning = result.warning, !warning.isEmpty {
                         Text(warning).foregroundStyle(.themeWarning).accessibilityIdentifier("export-provenance")
                     }
+                    if URL(fileURLWithPath: result.path).pathExtension == "json" {
+                        Label(ExportLogic.plainWarning, systemImage: "exclamationmark.triangle")
+                            .accessibilityIdentifier("export-plain-warning")
+                        Text("Delete saved or received Plain JSON files when you are finished.")
+                    }
                     ShareLink(item: URL(fileURLWithPath: result.path), preview: SharePreview(URL(fileURLWithPath: result.path).lastPathComponent, image: Image(systemName: "doc"))) {
                         Label("Save or share export", systemImage: "square.and.arrow.up")
                     }
                     .accessibilityIdentifier("share-export")
                 } header: {
                     Text("Export ready")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
-                    Text("\(result.vaultCount == 1 ? "1 vault" : "\(result.vaultCount) vaults"), \(AppModel.describeItemCount(result.itemCount)). The file is removed from this iPhone when you close this screen.")
+                    Text("\(result.vaultCount == 1 ? "1 vault" : "\(result.vaultCount) vaults"), \(AppModel.describeItemCount(result.itemCount)).")
+                        .foregroundStyle(.themeSecondary)
+                    Text("Hisar deletes its temporary copy when you close this screen. Copies you save or share are not deleted.")
+                        .foregroundStyle(.themeSecondary)
                 }
             } else {
                 Section {
@@ -381,22 +408,28 @@ struct ExportDataForm: View {
                     .accessibilityIdentifier("export-format")
                 } header: {
                     Text("Format")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("Every vault you can open, with logins, notes, one-time code secrets, SSH keys and other fields. hisar import reads both formats.")
+                        .foregroundStyle(.themeSecondary)
                     Text("Offline exports are cached copies. Changes since completed syncs may be absent. The result and file report known omissions.")
+                        .foregroundStyle(.themeSecondary)
                 }
                 if format == .encrypted {
                     Section {
-                        SecureField("Export passphrase", text: $passphrase)
+                        CredentialField("Export passphrase", text: $passphrase, secretName: "export passphrase")
                             .textContentType(.newPassword)
                             .accessibilityIdentifier("export-passphrase")
+                            .concealWhen(isBusy)
                             .validationError(passphrase.count < options.minPassphraseLength && !passphrase.isEmpty ? inputProblem : nil)
-                        SecureField("Repeat export passphrase", text: $repeatedPassphrase)
+                        CredentialField("Repeat export passphrase", text: $repeatedPassphrase, secretName: "repeated export passphrase")
                             .textContentType(.newPassword)
                             .accessibilityIdentifier("export-passphrase-repeat")
+                            .concealWhen(isBusy)
                             .validationError(passphrase.count >= options.minPassphraseLength ? inputProblem : nil)
                     } footer: {
                         Text("At least \(options.minPassphraseLength) characters. You need it to import the file; Hisar can't recover it.")
+                            .foregroundStyle(.themeSecondary)
                     }
                 } else {
                     Section {
@@ -412,9 +445,10 @@ struct ExportDataForm: View {
                 }
                 if isPasswordNeeded {
                     Section {
-                        SecureField("Master password", text: $password)
+                        CredentialField("Master password", text: $password)
                             .textContentType(.password)
                             .accessibilityIdentifier("export-password")
+                            .concealWhen(isBusy)
                     }
                 }
                 if let errorMessage {
@@ -430,7 +464,9 @@ struct ExportDataForm: View {
                 }
                 Section {
                     Button {
-                        export(format, passphrase, password)
+                        let entered = isPasswordNeeded ? password : ""
+                        password = ""
+                        export(format, passphrase, entered)
                     } label: {
                         Group {
                             if isBusy {
@@ -449,8 +485,21 @@ struct ExportDataForm: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
                     .accessibilityIdentifier("export-start")
+                    if options.isBiometricAvailable {
+                        Button(isPasswordNeeded ? "Use \(SettingsView.biometryName) instead" : "Use master password instead") {
+                            authentication = isPasswordNeeded ? .biometric : .password
+                        }
+                        .disabled(isBusy)
+                        .accessibilityIdentifier("export-switch-authentication")
                 }
             }
+        }
+    }
+        .onChange(of: errorMessage) { _, error in
+            if ExportLogic.isPasswordRequested(error) { authentication = .password }
+        }
+        .onChange(of: isBusy) { _, busy in
+            if !busy && ExportLogic.isPasswordRequested(errorMessage) { authentication = .password }
         }
     }
 }
@@ -466,6 +515,11 @@ struct ExportDataView: View {
             ExportDataForm(options: options, isBusy: model.isBusy, errorMessage: model.errorMessage, result: result) { format, passphrase, password in
                 Task {
                     result = await model.exportAllData(format: format, passphrase: passphrase, password: password)
+                    if result == nil {
+                        let error = model.errorMessage
+                        if let refreshed = await model.loadExportOptions() { options = refreshed }
+                        model.errorMessage = error
+                    }
                 }
             }
             .navigationTitle("Export data")

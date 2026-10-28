@@ -49,21 +49,28 @@ final class AppModel: ObservableObject {
     @Published private(set) var isBusy = false
     @Published private(set) var isRefreshing = false
     @Published var errorMessage: String?
+    private(set) var lastErrorCode: String?
     @Published var noticeMessage: String?
     @Published private(set) var allVault: [VaultSummary] = []
     @Published private(set) var allItemByVaultID: [String: [ItemDetail]] = [:]
-    @Published var newSecretKey: String?
-    @Published private(set) var isBiometricOfferShown = false
+    enum OnboardingStep: Equatable { case kit, biometric }
+    @Published private(set) var onboardingStep: OnboardingStep?
+    @Published private(set) var interruptedKitOperationID: String?
     @Published var pendingSignInLink: SignInLink?
     @Published var pendingInviteLink: InviteLink?
     @Published var inviteLinkMessage: String?
     @Published private(set) var isCheckingMinimumVersion = false
     @Published private(set) var lockCount = 0
     @Published private(set) var allPendingApproval: [PhoneApproval] = []
+    enum ApprovalListState { case unchecked, loading, loaded, failed }
+    @Published private(set) var approvalListState = ApprovalListState.unchecked
     @Published private(set) var presentedApproval: PhoneApproval?
     @Published private(set) var isAnsweringApproval = false
     @Published private(set) var isApprovalPasswordRequired = false
+    @Published private(set) var approvalRememberChoices: [String: Bool] = [:]
     @Published var approvalErrorMessage: String?
+    @Published var deviceOperationErrorMessage: String?
+    @Published var macApprovalErrorMessage: String?
     @Published var selectedTab: Tab = .vaults
     /// requestedSettingsDestination is a Settings screen something outside the tab asks it to show, Devices for a tapped
     /// security alert; the Settings tab shows it and clears it.
@@ -73,11 +80,11 @@ final class AppModel: ObservableObject {
     private var settingsAfterUnlock: SettingsDestination?
     /// lastApprovalPushVerifier is what the shared keychain last got, so a status change writes only a new one.
     private var lastApprovalPushVerifier: ApprovalPushVerifier?
-    /// isNewSecretKeyShown is true while Settings shows a replaced Secret Key, which shows only once.
-    private(set) var isNewSecretKeyShown = false
     @Published private(set) var copyCount = 0
     @Published private(set) var isMacApprovalAllowed = true
+    @Published private(set) var isExactHostMatch = false
     @Published private(set) var isWebsiteIconsEnabled = true
+    @Published private(set) var isAutoFillEnabled = false
     /// Website icons by domain for this unlock; nil while one loads or when the website has none.
     @Published private(set) var websiteIconByDomain: [String: Data] = [:]
     /// The domains asked during this unlock, finished or not, so a website without an icon is asked once.
@@ -106,10 +113,14 @@ final class AppModel: ObservableObject {
     @Published private(set) var isHisarExportImport = false
     private var startedRefreshCount: UInt64 = 0
     private var shownRefresh: UInt64 = 0
+    #if DEBUG
+    private var hasFailedManualRefreshForUITest = false
+    #endif
     private var startedApprovalListCount: UInt64 = 0
     private var shownApprovalList: UInt64 = 0
     @Published private(set) var allPendingRecovery: [PendingRecovery] = []
     @Published var isPendingRecoveryShown = false
+    @Published private(set) var selectedPendingRecoveryID: String?
     @Published private(set) var pendingRecoveryExport: PendingRecoveryExport?
     private var lifecycleEpoch: UInt64 = 0
     private var pendingDeliveryGeneration: UInt64 = 0
@@ -168,6 +179,7 @@ final class AppModel: ObservableObject {
     private var allPasskey: [StoredPasskey] = []
     private let credentialIdentityStore: CredentialIdentityUpdating
     private let getCurrentDate: () -> Date
+    private let checkAutoFillEnabled: @MainActor () async -> Bool
     private let receiveExportedCredentials: @MainActor (UUID) async throws -> Data
     private var enteredBackgroundAt: Date?
     private var noticeTask: Task<Void, Never>?
@@ -196,23 +208,33 @@ final class AppModel: ObservableObject {
         credentialIdentityStore: CredentialIdentityUpdating, getCurrentDate: @escaping () -> Date = Date.init,
         receiveExportedCredentials: @escaping @MainActor (UUID) async throws -> Data = { try await AppModel.importExportedCredentials(token: $0) },
         notificationCenter: NotificationScheduling = SystemNotificationCenter(),
-        registerForRemoteNotifications: @escaping @MainActor () -> Void = { UIApplication.shared.registerForRemoteNotifications() }
+        registerForRemoteNotifications: @escaping @MainActor () -> Void = { UIApplication.shared.registerForRemoteNotifications() },
+        checkAutoFillEnabled: @escaping @MainActor () async -> Bool = { await AutoFillSettings.checkIsEnabled() }
     ) {
         self.credentialIdentityStore = credentialIdentityStore
         self.getCurrentDate = getCurrentDate
         self.receiveExportedCredentials = receiveExportedCredentials
         self.notificationCenter = notificationCenter
         self.registerForRemoteNotifications = registerForRemoteNotifications
+        self.checkAutoFillEnabled = checkAutoFillEnabled
+    }
+
+    func beginStartupRetry() -> Bool {
+        guard case .failed = screen, backend == nil else { return false }
+        screen = .starting
+        return true
     }
 
     /// Returns the work start() begins, the first refresh and the version check, or nil when the backend failed. The app
     /// lets it run; a test awaits it, so its own changes come after the first lists.
     @discardableResult
     func start(createBackend: () throws -> VaultBackend) -> Task<Void, Never>? {
+        guard backend == nil else { return nil }
         do {
             let backend = try createBackend()
             self.backend = backend
             isMacApprovalAllowed = backend.isMacApprovalAllowed()
+            isExactHostMatch = backend.isExactHostMatch()
             isWebsiteIconsEnabled = backend.isWebsiteIconsEnabled()
             theme = backend.getTheme()
             applyStatus(backend.getStatus())
@@ -280,11 +302,16 @@ final class AppModel: ObservableObject {
         let wasUnlocked = status.isUnlocked
         let wasSignedIn = status.isSignedIn
         if !newStatus.isSignedIn || status.email != newStatus.email || status.server != newStatus.server {
+            interruptedKitOperationID = nil
+            onboardingStep = nil
             discardEditor()
         }
         if status.state != newStatus.state || status.email != newStatus.email || status.server != newStatus.server {
             lifecycleEpoch += 1
             clearPendingRecoveryExport()
+        }
+        if wasUnlocked && newStatus.state == VaultStatus.stateLocked && onboardingStep == .kit {
+            interruptedKitOperationID = status.emergencyKit?.operationId
         }
         status = newStatus
         if wasSignedIn && !newStatus.isSignedIn {
@@ -315,8 +342,7 @@ final class AppModel: ObservableObject {
             allOrganization = []
             allOrganizationInvitation = []
             waitingVaultKeys = WaitingVaultKeys()
-            newSecretKey = nil
-            isBiometricOfferShown = false
+            onboardingStep = nil
             selectedTab = .vaults
             clearAllApproval()
             forgetWebsiteIcons()
@@ -325,6 +351,10 @@ final class AppModel: ObservableObject {
         }
         if newStatus.state != VaultStatus.stateLocked {
             allShareAwaitingUnlock = []
+        }
+        if !wasUnlocked && newStatus.isUnlocked, let interruptedKitOperationID {
+            if newStatus.emergencyKit?.operationId == interruptedKitOperationID { onboardingStep = .kit }
+            self.interruptedKitOperationID = nil
         }
         if !wasUnlocked && newStatus.isUnlocked, let destination = settingsAfterUnlock {
             settingsAfterUnlock = nil
@@ -373,8 +403,9 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func perform<Value>(isBusyShown: Bool = true, _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
+    private func perform<Value>(isBusyShown: Bool = true, ignoredErrorCodes: Set<String> = [], onFailure: ((String) -> Void)? = nil, _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
         guard let backend else { return nil }
+        lastErrorCode = nil
         if isBusyShown { isBusy = true }
         defer { if isBusyShown { isBusy = false } }
         do {
@@ -382,7 +413,14 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             return value
         } catch {
-            errorMessage = describeError(error)
+            lastErrorCode = (error as? BackendError)?.code
+            if let code = (error as? BackendError)?.code, ignoredErrorCodes.contains(code) {
+                errorMessage = nil
+            } else {
+                let message = describeError(error)
+                errorMessage = message
+                onFailure?(message)
+            }
             return nil
         }
     }
@@ -434,58 +472,129 @@ final class AppModel: ObservableObject {
     }
 
     private func finishSignUp(_ result: SignUpResult) async -> Bool {
-        let isWaitingForKit = AccountLifecycleLogic.isWaitingOnlyForKit(setupState: result.setupState, secretKey: result.secretKey, problems: result.problems)
-        if !result.pendingOperationId.isEmpty && !isWaitingForKit {
+        if !result.pendingOperationId.isEmpty && result.status.emergencyKit == nil {
             refreshStatus()
             // The backend's first sync can report its change before this status arrives, when it is ignored.
             if status.isUnlocked { await refreshAll() }
             await refreshPendingRecovery()
-            if !allPendingRecovery.isEmpty { isPendingRecoveryShown = true }
+            openPendingRecovery(operationID: result.pendingOperationId)
             errorMessage = result.problems.isEmpty ? nil : result.problems.joined(separator: "\n")
             return true
         }
-        newSecretKey = result.secretKey
         applyStatus(result.status)
+        onboardingStep = .kit
         await refreshAll()
         await refreshPendingRecovery(isPresenting: false)
         return true
     }
 
-    func exportNewAccountEmergencyKit() async -> EmergencyKitExport? {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)
-        return await perform(isBusyShown: false) { try $0.exportNewAccountEmergencyKit(directory: directory) }
+    func revealNewAccountSecretKey() async -> String? {
+        let epoch = lifecycleEpoch
+        let revealed = await perform(isBusyShown: false) { try $0.revealNewAccountSecretKey() }
+        guard let revealed, epoch == lifecycleEpoch else { return nil }
+        return revealed.secretKey
     }
 
-    // "I saved my Emergency Kit": ends the sign-up's pending recovery, then offers Face ID.
-    @discardableResult
-    func finishNewSecretKey() async -> Bool {
-        guard await perform({ try $0.acknowledgeNewAccountRecovery() }) != nil else { return false }
-        await refreshPendingRecovery()
-        if status.biometricAvailable && !status.biometricEnabled {
-            isBiometricOfferShown = true
-        } else {
-            dismissNewSecretKey()
+    func exportNewAccountEmergencyKit() async -> EmergencyKitExport? {
+        let epoch = lifecycleEpoch
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)
+        let result = await perform(isBusyShown: false) { try $0.exportNewAccountEmergencyKit(directory: directory) }
+        guard let result, epoch == lifecycleEpoch else {
+            try? FileManager.default.removeItem(at: directory)
+            return nil
         }
+        return result
+    }
+
+    func openEmergencyKit() {
+        guard status.isUnlocked, status.emergencyKit != nil else { return }
+        clearError()
+        onboardingStep = .kit
+    }
+
+    func closeEmergencyKit() {
+        onboardingStep = nil
+        interruptedKitOperationID = nil
+    }
+
+    @discardableResult
+    func authorizeEmergencyKit(password: String? = nil) async -> Bool {
+        let epoch = lifecycleEpoch
+        guard status.isUnlocked, status.emergencyKit != nil else { return false }
+        let authorized = await perform {
+            if let password { try $0.authorizeNewAccountEmergencyKit(password: password) }
+            else { try $0.authorizeNewAccountEmergencyKitWithBiometric() }
+        }
+        guard authorized != nil, epoch == lifecycleEpoch else { return false }
+        refreshStatus()
+        return status.emergencyKit?.isAuthorized == true
+    }
+
+    var emergencyKitDeliveryEpoch: UInt64 { lifecycleEpoch }
+
+    @discardableResult
+    func recordEmergencyKitDelivery(exportID: String, method: String?, epoch: UInt64) async -> Bool {
+        guard let method, epoch == lifecycleEpoch, status.isUnlocked,
+              onboardingStep == .kit, status.emergencyKit?.isAuthorized == true else { return false }
+        guard await perform({ try $0.recordNewAccountEmergencyKitDelivery(exportID: exportID, method: method) }) != nil,
+              epoch == lifecycleEpoch else { return false }
+        refreshStatus()
         return true
     }
 
-    // "Finish later": the sign-up's record stays for the recovery banner and screen, and the retained Secret Key is dropped.
+    @discardableResult
+    func finishNewSecretKey() async -> Bool {
+        let epoch = lifecycleEpoch
+        guard status.emergencyKit?.isAuthorized == true,
+              await perform({ try $0.acknowledgeNewAccountRecovery() }) != nil,
+              epoch == lifecycleEpoch else { return false }
+        refreshStatus()
+        await refreshPendingRecovery(isPresenting: false)
+        finishKitStep()
+        return true
+    }
+
     func postponeNewSecretKey() async {
-        await refreshPendingRecovery()
-        closePendingRecovery()
-        dismissNewSecretKey()
+        let epoch = lifecycleEpoch
+        guard await perform({ try $0.postponeNewAccountEmergencyKit() }) != nil,
+              epoch == lifecycleEpoch else { return }
+        refreshStatus()
+        finishKitStep()
+    }
+
+    private func finishKitStep() {
+        guard status.isUnlocked else { return }
+        if status.biometricOfferAvailable { onboardingStep = .biometric }
+        else { dismissNewSecretKey() }
     }
 
     func dismissNewSecretKey() {
-        newSecretKey = nil
-        isBiometricOfferShown = false
+        onboardingStep = nil
+        interruptedKitOperationID = nil
         guard let backend else { return }
         Task { try? await runInBackground { backend.forgetNewAccountSecretKey() } }
     }
 
+    func hideEmergencyKitReminder() {
+        guard let backend else { return }
+        backend.hideEmergencyKitReminder()
+        refreshStatus()
+    }
+
+    func getSignUpPolicy(server: String) async throws -> SignUpPolicy {
+        guard let backend else { throw BackendError(message: "Hisar is still starting.") }
+        do { return try await runInBackground { try backend.getSignUpPolicy(server: server) } }
+        catch {
+            refreshStatus()
+            throw error
+        }
+    }
+
     @discardableResult
     func turnOnBiometricUnlockFromOffer() async -> Bool {
-        guard let newStatus = await perform({ try $0.enableNewAccountBiometricUnlock() }) else { return false }
+        let epoch = lifecycleEpoch
+        guard let newStatus = await perform({ try $0.enableNewAccountBiometricUnlock() }),
+              epoch == lifecycleEpoch else { return false }
         applyStatus(newStatus)
         dismissNewSecretKey()
         showNotice("\(BiometricKeychain(accessGroup: nil).getBiometryName()) unlock is on")
@@ -504,7 +613,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func unlockWithBiometric() async -> Bool {
-        guard status.biometricReady, let newStatus = await perform({ try $0.unlockWithBiometric() }) else {
+        guard status.biometricReady, let newStatus = await perform(ignoredErrorCodes: [BackendError.biometricCancelled, BackendError.biometricNeedsPassword], { try $0.unlockWithBiometric() }) else {
             refreshStatus()
             return false
         }
@@ -577,8 +686,16 @@ final class AppModel: ObservableObject {
         if kind == .security { requestedSettingsDestination = .devices }
     }
 
+    func refreshExternalSetupStatus() async {
+        let enabled = await checkAutoFillEnabled()
+        let becameEnabled = !isAutoFillEnabled && enabled
+        isAutoFillEnabled = enabled
+        await notifications.refresh()
+        if becameEnabled && status.isUnlocked { await refreshAll() }
+    }
+
     func handleWillEnterForeground() {
-        notifications.clearApprovalReminder()
+        Task { await notifications.clearApprovalReminder() }
         Task { await checkMinimumVersion() }
         isInForeground = true
         defer {
@@ -603,23 +720,23 @@ final class AppModel: ObservableObject {
 
     // A remote change that comes while a refresh lists may be missing from its lists, so that refresh lists again, whoever
     // started it: the first refresh, an unlock or a pull to refresh as much as a remote change.
-    func refreshAll() async {
+    func refreshAll(onFailure: ((String) -> Void)? = nil) async {
         repeat {
             isRefreshRequestedAgain = false
-            await refreshAllOnce()
+            await refreshAllOnce(onFailure: onFailure)
         } while isRefreshRequestedAgain && status.isUnlocked
     }
 
     // Listing the share invitations also completes the shares people accepted, and listing the waiting vault keys gives
     // team members the keys of the organization vaults this user owns, as the Mac's sync does. Both run before the vaults
     // are listed, so a vault rotated meanwhile is listed with its new key.
-    private func refreshAllOnce() async {
+    private func refreshAllOnce(onFailure: ((String) -> Void)? = nil) async {
         guard status.isUnlocked else { return }
         startedRefreshCount += 1
         let refresh = startedRefreshCount
         isRefreshing = true
         defer { isRefreshing = false }
-        guard let result = await perform(isBusyShown: false, { backend -> RefreshResult in
+        guard let result = await perform(isBusyShown: false, onFailure: onFailure, { backend -> RefreshResult in
             let shareInvitations = try? backend.listAllShareInvitation()
             let waitingVaultKeys = try? backend.listAllWaitingVaultKey()
             let organizations = try? backend.listAllOrganization()
@@ -707,8 +824,19 @@ final class AppModel: ObservableObject {
 
     /// Lists one vault again. Its summary takes the healthy count and the records that did not open from this listing,
     /// so a record that stopped opening is disclosed even though the item list hides it.
-    func refreshVault(vaultID: String) async {
-        guard let allItem = await perform(isBusyShown: false, { try $0.listAllItem(vaultID: vaultID) }) else {
+    func refreshVault(vaultID: String, onFailure: ((String) -> Void)? = nil) async {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        let shouldFailForUITest = onFailure != nil && !hasFailedManualRefreshForUITest
+            && arguments.contains("-HisarUITest") && arguments.contains("-HisarBrowseFailure-refresh")
+        if shouldFailForUITest { hasFailedManualRefreshForUITest = true }
+        #endif
+        guard let allItem = await perform(isBusyShown: false, onFailure: onFailure, { backend in
+            #if DEBUG
+            if shouldFailForUITest { throw BackendError(message: "This action couldn't reach the Hisar server. Try again.") }
+            #endif
+            return try backend.listAllItem(vaultID: vaultID)
+        }) else {
             refreshStatus()
             return
         }
@@ -725,6 +853,10 @@ final class AppModel: ObservableObject {
         allVault.first { $0.id == vaultID }
     }
 
+    var readIssueSummary: ReadIssueSummary {
+        ReadIssueSummary(issues: allVault.flatMap(\.readIssues))
+    }
+
     func listAllItemReference(vaultID: String? = nil) -> [VaultItemReference] {
         let allSelectedVault = allVault.filter { vaultID == nil || $0.id == vaultID }
         let allReference = allSelectedVault.flatMap { vault in
@@ -739,8 +871,8 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) async -> Bool {
-        guard await perform(isBusyShown: false, { try $0.setItemFavorite(vaultID: vaultID, itemID: itemID, isFavorite: isFavorite) }) != nil else { return false }
+    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool, onFailure: ((String) -> Void)? = nil) async -> Bool {
+        guard await perform(isBusyShown: false, onFailure: onFailure, { try $0.setItemFavorite(vaultID: vaultID, itemID: itemID, isFavorite: isFavorite) }) != nil else { return false }
         if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
             allItemByVaultID[vaultID]?[index].isFavorite = isFavorite
         }
@@ -792,6 +924,21 @@ final class AppModel: ObservableObject {
 
     func loadAllPerson() async -> [Member]? {
         await perform(isBusyShown: false) { try $0.listAllPerson() }
+    }
+
+    struct PeopleSnapshot {
+        var allPerson: [Member]
+        var invitations: ShareInvitations
+    }
+
+    func loadPeople(previous: PeopleSnapshot?) async -> PeopleSnapshot? {
+        let actionError = errorMessage
+        let loaded = await perform(isBusyShown: false) { backend in
+            PeopleSnapshot(allPerson: try backend.listAllPerson(), invitations: try backend.listAllShareInvitation())
+        }
+        if let loaded { applyShareInvitations(loaded.invitations) }
+        if let actionError { errorMessage = actionError }
+        return loaded ?? previous
     }
 
     @discardableResult
@@ -869,13 +1016,14 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func renameVault(vaultID: String, name: String) async -> Bool {
-        guard let renamed = await perform({ try $0.renameVault(vaultID: vaultID, name: name) }) else { return false }
+    func renameVault(vaultID: String, name: String, onFailure: ((String) -> Void)? = nil) async -> Bool {
+        let oldName = findVault(vaultID: vaultID)?.name ?? ""
+        guard let renamed = await perform(onFailure: onFailure, { try $0.renameVault(vaultID: vaultID, name: name) }) else { return false }
         if let index = allVault.firstIndex(where: { $0.id == vaultID }) {
             allVault[index].name = renamed.name
             allVault.sort { Self.sortVault($0, $1) }
         }
-        showNotice("Renamed the vault to \(renamed.name)")
+        showNotice("Renamed \(oldName) to \(renamed.name). Secret references that use \(oldName) need the new name.")
         return true
     }
 
@@ -1388,14 +1536,30 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    func moveDestinations(vaultID: String) -> [VaultSummary] {
+        guard let source = findVault(vaultID: vaultID), Self.isWritableVault(source) else { return [] }
+        return allVault.filter { $0.id != vaultID && Self.isWritableVault($0) }
+    }
+
+    func moveItem(vaultID: String, itemID: String, targetVaultID: String) async -> ItemDetail? {
+        guard moveDestinations(vaultID: vaultID).contains(where: { $0.id == targetVaultID }) else {
+            errorMessage = "Choose another writable vault."
+            return nil
+        }
+        guard let moved = await perform({ try $0.moveItem(vaultID: vaultID, itemID: itemID, targetVaultID: targetVaultID) }) else { return nil }
+        await refreshAll()
+        showNotice("Item moved.")
+        return moved
+    }
+
     /// The brand, last four digits and warnings for a card being typed; nil when the backend cannot answer.
     func describeCard(number: String, expiry: String) async -> CardDescription? {
         guard let backend else { return nil }
         return try? await runInBackground { try backend.describeCard(number: number, expiry: expiry) }
     }
 
-    func convertToSecureNote(vaultID: String, itemID: String) async -> ItemDetail? {
-        guard let convertedItem = await perform({ try $0.convertToSecureNote(vaultID: vaultID, itemID: itemID) }) else { return nil }
+    func convertToSecureNote(vaultID: String, itemID: String, onFailure: ((String) -> Void)? = nil) async -> ItemDetail? {
+        guard let convertedItem = await perform(onFailure: onFailure, { try $0.convertToSecureNote(vaultID: vaultID, itemID: itemID) }) else { return nil }
         if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
             allItemByVaultID[vaultID]?[index].category = convertedItem.category
             allItemByVaultID[vaultID]?[index].revision = convertedItem.revision
@@ -1405,8 +1569,8 @@ final class AppModel: ObservableObject {
         return convertedItem
     }
 
-    func deletePasskey(vaultID: String, itemID: String, credentialID: String) async -> ItemDetail? {
-        guard let updatedItem = await perform({ try $0.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: credentialID) }) else { return nil }
+    func deletePasskey(vaultID: String, itemID: String, credentialID: String, onFailure: ((String) -> Void)? = nil) async -> ItemDetail? {
+        guard let updatedItem = await perform(onFailure: onFailure, { try $0.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: credentialID) }) else { return nil }
         if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
             allItemByVaultID[vaultID]?[index].allPasskey = updatedItem.allPasskey
         }
@@ -1421,14 +1585,14 @@ final class AppModel: ObservableObject {
         return try? await runInBackground { try backend.getOneTimeCode(vaultID: vaultID, itemID: itemID) }
     }
 
-    func copyField(vaultID: String, itemID: String, fieldName: String, label: String) async {
-        guard await perform(isBusyShown: false, { try $0.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
+    func copyField(vaultID: String, itemID: String, fieldName: String, label: String, onFailure: ((String) -> Void)? = nil) async {
+        guard await perform(isBusyShown: false, onFailure: onFailure, { try $0.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
         copyCount += 1
         showNotice("\(label) copied. It clears in 90 seconds.")
     }
 
-    func copySecretReference(vaultID: String, itemID: String, fieldName: String) async {
-        guard let reference = await perform(isBusyShown: false, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) else { return }
+    func copySecretReference(vaultID: String, itemID: String, fieldName: String, onFailure: ((String) -> Void)? = nil) async {
+        guard let reference = await perform(isBusyShown: false, onFailure: onFailure, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) else { return }
         copyCount += 1
         showNotice("Copied \(reference).")
     }
@@ -1459,14 +1623,26 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func revokeDevice(_ device: Device) async -> Bool {
-        guard await perform({ try $0.revokeDevice(deviceID: device.id) }) != nil else { return false }
+        deviceOperationErrorMessage = nil
+        errorMessage = nil
+        guard await perform({ try $0.revokeDevice(deviceID: device.id) }) != nil else {
+            deviceOperationErrorMessage = errorMessage
+            errorMessage = nil
+            return false
+        }
         showNotice("\(device.name) is signed out.")
         return true
     }
 
     func exportEmergencyKit(password: String) async -> EmergencyKitExport? {
+        let epoch = lifecycleEpoch
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)
-        return await perform { try $0.exportEmergencyKit(password: password, directory: directory) }
+        let result = await perform { try $0.exportEmergencyKit(password: password, directory: directory) }
+        guard let result, epoch == lifecycleEpoch else {
+            try? FileManager.default.removeItem(at: directory)
+            return nil
+        }
+        return result
     }
 
     func removeEmergencyKit(_ export: EmergencyKitExport) {
@@ -1493,7 +1669,7 @@ final class AppModel: ObservableObject {
         if !result.pendingOperationId.isEmpty {
             refreshStatus()
             await refreshPendingRecovery()
-            if !allPendingRecovery.isEmpty { isPendingRecoveryShown = true }
+            openPendingRecovery(operationID: result.pendingOperationId)
             var seen = Set<String>()
             let problems = (result.problems + [result.localError, result.keychainError]).filter { !$0.isEmpty && seen.insert($0).inserted }
             errorMessage = problems.isEmpty ? nil : problems.joined(separator: "\n")
@@ -1514,36 +1690,28 @@ final class AppModel: ObservableObject {
             await refreshPendingRecovery()
             return nil
         }
-        if !result.pendingOperationId.isEmpty && result.isWaitingOnlyForKit && status.isUnlocked {
-            isNewSecretKeyShown = true
+        if result.status.emergencyKit != nil {
+            removeEmergencyKitFile(path: result.emergencyKitPath)
             applyStatus(result.status)
-            await exportPendingRecoveryKit(operationID: result.pendingOperationId, password: password)
-            guard epoch == lifecycleEpoch else {
-                finishSecretKeyReplacement(result)
-                return nil
-            }
+            await refreshPendingRecovery(isPresenting: false)
+            openEmergencyKit()
             return result
         }
         if !result.pendingOperationId.isEmpty {
             removeEmergencyKitFile(path: result.emergencyKitPath)
             refreshStatus()
             await refreshPendingRecovery()
-            if !allPendingRecovery.isEmpty { isPendingRecoveryShown = true }
+            openPendingRecovery(operationID: result.pendingOperationId)
             var seen = Set<String>()
             let problems = (result.problems + [result.localError, result.keychainError]).filter { !$0.isEmpty && seen.insert($0).inserted }
             errorMessage = problems.isEmpty ? nil : problems.joined(separator: "\n")
             return result
         }
-        isNewSecretKeyShown = true
+        removeEmergencyKitFile(path: result.emergencyKitPath)
         applyStatus(result.status)
         return result
     }
 
-    func finishSecretKeyReplacement(_ result: CredentialChangeResult) {
-        isNewSecretKeyShown = false
-        removeEmergencyKitFile(path: result.emergencyKitPath)
-        if !result.pendingOperationId.isEmpty { clearPendingRecoveryExport() }
-    }
 
     func loadAccountDeletionPreview() async -> AccountDeletionPreview? {
         await perform(isBusyShown: false) { try $0.previewAccountDeletion() }
@@ -1557,7 +1725,7 @@ final class AppModel: ObservableObject {
         }
         applyStatus(newStatus)
         await credentialIdentityStore.removeAllIdentity()
-        newSecretKey = nil
+        onboardingStep = nil
         pendingSignInLink = nil
         showNotice("Your Hisar account was deleted.")
         return true
@@ -1579,9 +1747,27 @@ final class AppModel: ObservableObject {
             return
         }
         let hadNone = allPendingRecovery.isEmpty
-        allPendingRecovery = records
-        if records.isEmpty { closePendingRecovery() }
-        else if hadNone && isPresenting && !isNewSecretKeyShown { isPendingRecoveryShown = true }
+        let attention = records.filter { $0.operationId != status.emergencyKit?.operationId }
+        allPendingRecovery = attention
+        let validSelection = selectedPendingRecoveryID.flatMap { id in attention.contains { $0.operationId == id } ? id : nil }
+        selectPendingRecovery(validSelection ?? (attention.count == 1 ? attention[0].operationId : nil))
+        if attention.isEmpty { closePendingRecovery() }
+        else if hadNone && isPresenting && onboardingStep == nil { isPendingRecoveryShown = true }
+    }
+
+    func selectPendingRecovery(_ operationID: String?) {
+        guard selectedPendingRecoveryID != operationID else { return }
+        clearPendingRecoveryExport()
+        selectedPendingRecoveryID = operationID
+    }
+
+    func openPendingRecovery(operationID: String? = nil) {
+        if let operationID, allPendingRecovery.contains(where: { $0.operationId == operationID }) {
+            selectPendingRecovery(operationID)
+        } else if allPendingRecovery.count == 1 {
+            selectPendingRecovery(allPendingRecovery[0].operationId)
+        }
+        isPendingRecoveryShown = !allPendingRecovery.isEmpty
     }
 
     func clearPendingRecoveryExport() {
@@ -1595,7 +1781,8 @@ final class AppModel: ObservableObject {
         isPendingRecoveryShown = false
     }
 
-    func resumePendingRecovery(operationID: String, password: String, secretKey: String = "", priorSecretKey: String = "") async {
+    @discardableResult
+    func resumePendingRecovery(operationID: String, password: String, secretKey: String = "", priorSecretKey: String = "") async -> Bool {
         let epoch = lifecycleEpoch
         let result = await perform {
             if secretKey.isEmpty { return try $0.resumePendingRecovery(operationID: operationID, password: password) }
@@ -1608,21 +1795,27 @@ final class AppModel: ObservableObject {
             let recoveryError = errorMessage
             await refreshPendingRecovery()
             if let recoveryError { errorMessage = recoveryError }
-            return
+            return false
         }
         refreshStatus()
         if status.isUnlocked { await refreshAll() }
         await refreshPendingRecovery()
+        if status.emergencyKit?.operationId == operationID { openEmergencyKit() }
         if !result.problems.isEmpty { errorMessage = result.problems.joined(separator: "\n") }
+        return result.setupState == "delivery-pending"
     }
 
-    func discardPreparedRecovery(operationID: String, password: String) async {
-        guard await perform({ try $0.discardPreparedRecovery(operationID: operationID, password: password) }) != nil else { return }
+    @discardableResult
+    func discardPreparedRecovery(operationID: String, password: String) async -> Bool {
+        guard await perform({ try $0.discardPreparedRecovery(operationID: operationID, password: password) }) != nil else { return false }
         clearPendingRecoveryExport()
         await refreshPendingRecovery()
+        return true
     }
 
-    func exportPendingRecoveryKit(operationID: String, password: String) async {
+    @discardableResult
+    func exportPendingRecoveryKit(operationID: String, password: String) async -> Bool {
+        selectPendingRecovery(operationID)
         clearPendingRecoveryExport()
         let epoch = lifecycleEpoch
         let generation = pendingDeliveryGeneration
@@ -1635,26 +1828,28 @@ final class AppModel: ObservableObject {
             if result != nil && epoch != lifecycleEpoch {
                 errorMessage = "Hisar locked, signed out or switched accounts while it prepared the Emergency Kit. Prepare it again."
             }
-            return
+            return false
         }
         pendingRecoveryExport = result
         await refreshPendingRecovery()
+        return true
+    }
+
+    func recordPendingKitDelivery(method: String?, path: String) async {
+        guard let method, let export = pendingRecoveryExport, export.path == path, let exportID = export.exportId else { return }
+        let epoch = lifecycleEpoch
+        guard await perform({ try $0.recordPendingRecoveryEmergencyKitDelivery(exportID: exportID, method: method) }) != nil,
+              epoch == lifecycleEpoch else { return }
+        await refreshPendingRecovery(isPresenting: false)
     }
 
     @discardableResult
     func acknowledgePendingRecovery(operationID: String, password: String) async -> Bool {
         let epoch = lifecycleEpoch
-        let recovery = allPendingRecovery.first { $0.operationId == operationID }
         guard await perform({ try $0.acknowledgePendingRecovery(operationID: operationID, password: password) }) != nil else { return false }
         guard epoch == lifecycleEpoch else { return false }
         clearPendingRecoveryExport()
         await refreshPendingRecovery()
-        if epoch == lifecycleEpoch, recovery?.kind == "signup", recovery?.phase == "delivery-pending",
-           recovery?.manualUnlock == false, recovery?.email == status.email,
-           recovery?.origin == status.server, status.isUnlocked && status.biometricAvailable && !status.biometricEnabled {
-            newSecretKey = ""
-            isBiometricOfferShown = true
-        }
         return !allPendingRecovery.contains { $0.operationId == operationID }
     }
 
@@ -1706,15 +1901,12 @@ final class AppModel: ObservableObject {
 
     static let unreadablePhotoMessage = "Hisar can't read this photo. Choose another one."
 
-    /// prepareItemIcon turns a chosen photo into the icon image an item keeps, or shows why it can't. Photos come as the
-    /// library keeps them (HEIC from the camera, TIFF, PNG…), which the backend does not all read, so the phone decodes
-    /// and shrinks the photo first and hands it a PNG or JPEG.
-    func prepareItemIcon(_ photo: Data) async -> Data? {
+    func prepareItemIcon(_ photo: Data) async throws -> Data {
         guard let upload = Self.convertPhotoForIcon(photo) else {
-            errorMessage = Self.unreadablePhotoMessage
-            return nil
+            throw BackendError(message: Self.unreadablePhotoMessage)
         }
-        return await perform { try $0.prepareItemIcon(upload) }
+        guard let backend else { throw BackendError(message: "Hisar is not ready. Try again.") }
+        return try await runInBackground { try backend.prepareItemIcon(upload) }
     }
 
     /// convertPhotoForIcon decodes any image UIKit reads, applies its orientation, scales it down to maxSide and encodes
@@ -1735,8 +1927,20 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
+    func setExactHostMatch(_ isExact: Bool) async -> Bool {
+        guard await perform(isBusyShown: false, { try $0.setExactHostMatch(isExact) }) != nil else { return false }
+        isExactHostMatch = isExact
+        return true
+    }
+
     func setMacApprovalAllowed(_ isAllowed: Bool) async -> Bool {
-        guard await perform(isBusyShown: false, { try $0.setMacApprovalAllowed(isAllowed) }) != nil else { return false }
+        macApprovalErrorMessage = nil
+        errorMessage = nil
+        guard await perform(isBusyShown: false, { try $0.setMacApprovalAllowed(isAllowed) }) != nil else {
+            macApprovalErrorMessage = errorMessage
+            errorMessage = nil
+            return false
+        }
         isMacApprovalAllowed = isAllowed
         if isAllowed {
             await refreshPendingApproval()
@@ -1745,6 +1949,8 @@ final class AppModel: ObservableObject {
                 allFinishedApprovalID.insert(approval.requestID)
             }
             allPendingApproval = []
+            approvalListState = .unchecked
+            approvalRememberChoices = [:]
             allAnnouncedApproval = []
             shownApprovalList = startedApprovalListCount
             presentedApproval = nil
@@ -1801,11 +2007,21 @@ final class AppModel: ObservableObject {
         guard status.isUnlocked, isInForeground, isMacApprovalAllowed, let backend else { return }
         startedApprovalListCount += 1
         let approvalList = startedApprovalListCount
-        guard let allApproval = try? await runInBackground({ try backend.listAllPendingApproval() }) else { return }
+        if allPendingApproval.isEmpty, approvalListState != .loaded { approvalListState = .loading }
+        let allApproval: [PhoneApproval]
+        do {
+            allApproval = try await runInBackground { try backend.listAllPendingApproval() }
+        } catch {
+            guard status.isUnlocked, approvalList > shownApprovalList else { return }
+            shownApprovalList = approvalList
+            approvalListState = .failed
+            return
+        }
         // Listings run at once and can finish out of order: a poll that started before a request's own listing must not
         // take that request back off the list and close its sheet.
         guard status.isUnlocked, approvalList > shownApprovalList else { return }
         shownApprovalList = approvalList
+        if approvalListState != .loaded { approvalListState = .loaded }
         let now = getCurrentDate()
         removeAllExpiredApproval()
         let allOpenApproval = allApproval.filter { !allFinishedApprovalID.contains($0.requestID) && !$0.isExpired(at: now) }
@@ -1813,6 +2029,7 @@ final class AppModel: ObservableObject {
         // whose tap ends during that redraw ignores the tap.
         if allOpenApproval != allPendingApproval {
             allPendingApproval = allOpenApproval
+            approvalRememberChoices = approvalRememberChoices.filter { requestID, _ in allOpenApproval.contains { $0.requestID == requestID } }
         }
         openAnnouncedApproval(listedIn: approvalList)
         closeSheetOfFinishedApproval()
@@ -1850,7 +2067,7 @@ final class AppModel: ObservableObject {
 
     private func presentApproval(_ approval: PhoneApproval) {
         if presentedApproval?.requestID != approval.requestID {
-            isApprovalPasswordRequired = false
+            isApprovalPasswordRequired = !status.biometricAvailable
             approvalErrorMessage = nil
         }
         presentedApproval = approval
@@ -1866,6 +2083,7 @@ final class AppModel: ObservableObject {
 
     private func removeApproval(requestID: String) {
         allFinishedApprovalID.insert(requestID)
+        approvalRememberChoices.removeValue(forKey: requestID)
         allPendingApproval.removeAll { $0.requestID == requestID }
         allAnnouncedApproval.removeAll { $0.requestID == requestID }
         closeSheetOfFinishedApproval()
@@ -1917,6 +2135,8 @@ final class AppModel: ObservableObject {
         approvalExpiryTask?.cancel()
         approvalExpiryTask = nil
         allPendingApproval = []
+        approvalListState = .unchecked
+        approvalRememberChoices = [:]
         allAnnouncedApproval = []
         // A listing still running started before the clear and must not bring the requests back.
         shownApprovalList = startedApprovalListCount
@@ -1926,15 +2146,23 @@ final class AppModel: ObservableObject {
         approvalErrorMessage = nil
     }
 
-    // isRemembered is the sheet's switch; it counts only for a request that offers remembering.
+    func rememberChoice(for approval: PhoneApproval) -> Bool {
+        approval.resolveRememberChoice(approvalRememberChoices[approval.requestID])
+    }
+
+    func setRememberChoice(_ isRemembered: Bool, for approval: PhoneApproval) {
+        approvalRememberChoices[approval.requestID] = approval.isRememberable && isRemembered
+    }
+
     func approvePendingApproval(isRemembered: Bool) async {
         guard let approval = presentedApproval else { return }
         await approve(approval, isRemembered: isRemembered)
     }
 
-    func approvePendingApproval(password: String, isRemembered: Bool) async {
+    func approvePendingApproval(password: String, isRemembered: Bool? = nil) async {
         guard let approval = presentedApproval else { return }
-        let isApprovalRemembered = approval.isRememberable && isRemembered
+        if let isRemembered { setRememberChoice(isRemembered, for: approval) }
+        let isApprovalRemembered = rememberChoice(for: approval)
         await answerApproval(approval, successMessage: "Approved on your Mac") { backend, requestID in
             try backend.approveApprovalWithPassword(requestID: requestID, password: password, isRemembered: isApprovalRemembered)
         }
@@ -1945,10 +2173,14 @@ final class AppModel: ObservableObject {
         await deny(approval)
     }
 
-    // Approve asks for Face ID; when the master password is needed instead, the request's sheet opens and asks for it.
-    // Without a choice from the remember switch the request's default applies: remembered when the Mac's checkbox would be.
     func approve(_ approval: PhoneApproval, isRemembered: Bool? = nil) async {
-        let isApprovalRemembered = approval.resolveRememberChoice(isRemembered)
+        if let isRemembered { setRememberChoice(isRemembered, for: approval) }
+        let isApprovalRemembered = rememberChoice(for: approval)
+        if !status.biometricAvailable {
+            presentApproval(approval)
+            isApprovalPasswordRequired = true
+            return
+        }
         await answerApproval(approval, successMessage: "Approved on your Mac") { backend, requestID in
             try backend.approveApproval(requestID: requestID, isRemembered: isApprovalRemembered)
         }

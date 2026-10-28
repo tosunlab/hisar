@@ -122,8 +122,9 @@ type Server struct {
 	alwaysAskKeyIDs  map[string]bool
 	knownHostsPaths  []string
 	// agentSessions holds the live agent sessions this agent saw a connection from, by ID, until they end.
-	agentSessions    map[uint64]*agentSessionState
-	notifyNoAgentKey func(session agentharness.Session)
+	agentSessions           map[uint64]*agentSessionState
+	notifyNoAgentKey        func(session agentharness.Session)
+	missingAgentKeysChanged func()
 }
 
 func NewServer(keySource KeySource, approver Approver, peerResolver PeerResolver) *Server {
@@ -322,8 +323,8 @@ func (connection *connectionAgent) listResolvedKeys() ([]resolvedKey, error) {
 		}
 		resolvedKeys = append(resolvedKeys, resolvedKey{key: key, signer: signer})
 	}
-	if len(resolvedKeys) == 0 && connection.peer.AgentSession != nil {
-		connection.server.notifyNoAgentKeyOnce(connection.peer.AgentSession)
+	if connection.peer.AgentSession != nil {
+		connection.server.updateAgentKeyState(connection.peer.AgentSession, len(resolvedKeys) == 0)
 	}
 	return resolvedKeys, nil
 }

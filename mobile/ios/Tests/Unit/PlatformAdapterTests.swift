@@ -1,6 +1,17 @@
+import AVFoundation
 import UIKit
 import XCTest
 @testable import Hisar
+
+final class EmergencyKitCameraTests: XCTestCase {
+    func testCameraAuthorizationChoosesActionableScannerState() {
+        XCTAssertEqual(EmergencyKitCameraState(hasCamera: false, authorization: .authorized), .unavailable)
+        XCTAssertEqual(EmergencyKitCameraState(hasCamera: true, authorization: .notDetermined), .requesting)
+        XCTAssertEqual(EmergencyKitCameraState(hasCamera: true, authorization: .denied), .denied)
+        XCTAssertEqual(EmergencyKitCameraState(hasCamera: true, authorization: .restricted), .restricted)
+        XCTAssertEqual(EmergencyKitCameraState(hasCamera: true, authorization: .authorized), .authorized)
+    }
+}
 
 final class KeychainSecretKeyStoreTests: XCTestCase {
     private let store = KeychainSecretKeyStore(service: "com.tryhisar.hisar.tests.secret-key", accessGroup: HisarConfiguration.current.keychainAccessGroup)

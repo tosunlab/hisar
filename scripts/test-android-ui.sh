@@ -248,7 +248,7 @@ fi
 # The test orchestrator lists every test first (one logcat file each); a test whose own run never started reports nothing, and
 # Gradle still passes.
 MISSING=$(LC_ALL=C comm -23 \
-  <(find "$RESULTS" -name 'logcat-*.txt' | sed -E 's|.*/logcat-(.*)-(test[^-]*)\.txt$|\1#\2|' | LC_ALL=C sort -u) \
+  <(find "$RESULTS" -name 'logcat-*.txt' | sed -E 's|.*/logcat-(.*)-([^-]*)\.txt$|\1#\2|' | LC_ALL=C sort -u) \
   <(grep -rhoE '<testcase name="[^"]*" classname="[^"]*"' "$RESULTS" | sed -E 's/<testcase name="([^"]*)" classname="([^"]*)"/\2#\1/' | LC_ALL=C sort -u))
 if [ -n "$MISSING" ]; then
   echo "these tests never reported a result:" $MISSING >&2

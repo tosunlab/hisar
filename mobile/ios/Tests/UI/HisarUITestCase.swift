@@ -160,9 +160,10 @@ class HisarUITestCase: XCTestCase {
     // drag stays in the top part of the form: lower down, the keyboard of the field being typed in covers it, and a swipe
     // there does not scroll the form in a sheet.
     func scrollTo(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
-        let list = app.collectionViews.firstMatch
+        let lists = app.collectionViews
+        let list = lists.element(boundBy: max(0, lists.count - 1))
         for _ in 0..<8 {
-            if element.waitForExistence(timeout: 1) && element.isHittable {
+            if element.waitForExistence(timeout: 1) && element.isHittable && isClearOfTabBar(element) {
                 return
             }
             guard list.exists else { break }
@@ -174,6 +175,13 @@ class HisarUITestCase: XCTestCase {
         waitFor(element, file: file, line: line)
     }
 
+    // The tab bar floats over the end of the list. A row partly under it still counts as hittable, but a tap there goes to
+    // the bar: in job 122902965203 the Add member menu under it never opened.
+    private func isClearOfTabBar(_ element: XCUIElement) -> Bool {
+        let tabBar = app.tabBars.firstMatch
+        return !(tabBar.exists && tabBar.isHittable) || element.frame.maxY <= tabBar.frame.minY
+    }
+
     // On a slow simulator the keyboard focus comes a moment after the tap, and typing before it fails, so it waits for the focus
     // and taps again if it does not come. Only a field the form has not created yet is dragged to: tap() scrolls one that exists
     // just into view, while a drag can carry it under the navigation bar, where it still counts as hittable and taps land on
@@ -182,6 +190,16 @@ class HisarUITestCase: XCTestCase {
         if focus(element, file: file, line: line) {
             typeText(text, into: element, normalizedBy: normalize, file: file, line: line)
         }
+    }
+
+    func replaceText(_ text: String, in element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        guard focus(element, file: file, line: line) else { return }
+        var remaining = element.value as? String ?? ""
+        while !remaining.isEmpty {
+            remaining.removeLast()
+            typeText(XCUIKeyboardKey.delete.rawValue, into: element, showing: remaining, file: file, line: line)
+        }
+        typeText(text, into: element, normalizedBy: { $0 }, file: file, line: line)
     }
 
     // A field whose placeholder is the very text to type, as the account deletion's email confirmation, cannot show that the
@@ -225,8 +243,9 @@ class HisarUITestCase: XCTestCase {
             XCTFail("\(element) would show its placeholder \"\(element.placeholderValue ?? "")\" whether or not \"\(text)\" is in; type something else", file: file, line: line)
             return
         }
-        // A formatter rewrites the field after each key, so its update must finish before the next key arrives.
-        if normalize != nil && showing == nil {
+        // Formatting and live search redraw after each key, before the next key can safely arrive. A key typed into a secure
+        // card number while it redraws is lost (job 122902964946 kept 14 of 16 digits).
+        if showing == nil && (normalize != nil || element.elementType == .searchField) {
             var entered = String(typedText.expected.dropLast(text.count))
             for character in text {
                 entered.append(character)
@@ -249,33 +268,95 @@ class HisarUITestCase: XCTestCase {
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
 
-    // With isBiometricOfferExpected, it stops at the Face ID offer after the Secret Key; otherwise it declines any offer.
+    var signInModeControl: XCUIElement {
+        let segmented = app.segmentedControls["sign-in-mode"]
+        return segmented.exists ? segmented : app.otherElements["sign-in-mode"].firstMatch
+    }
+
+    // On a loaded simulator a tap on the mode control can be lost (job 122902965025 stayed in Sign in), so the mode is tapped
+    // until it is selected.
+    func selectSignInMode(_ title: String, file: StaticString = #filePath, line: UInt = #line) {
+        let welcome = app.buttons[title == "Create account" ? "welcome-create-account" : "welcome-sign-in"]
+        if welcome.waitForExistence(timeout: 2) { welcome.tap(); return }
+        for _ in 0..<8 {
+            if signInModeControl.exists && signInModeControl.isHittable { break }
+            guard app.collectionViews.firstMatch.exists else { break }
+            app.collectionViews.firstMatch.swipeDown()
+        }
+        let button = signInModeControl.buttons[title]
+        waitFor(button, file: file, line: line)
+        scrollTo(button, file: file, line: line)
+        for _ in 0..<3 {
+            button.tap()
+            if waitUntil(timeout: 5, { button.isSelected }) {
+                return
+            }
+        }
+        XCTFail("the \(title) mode was not selected", file: file, line: line)
+    }
+
+    func handOffEmergencyKit(shareIdentifier: String) {
+        let share = app.buttons[shareIdentifier]
+        scrollTo(share)
+        share.tap()
+        let saveToFiles = app.cells["Save to Files"].firstMatch
+        waitForHittable(saveToFiles)
+        saveToFiles.tap()
+        let save = app.navigationBars.buttons["Save"].firstMatch
+        waitForHittable(save, timeout: 60)
+        let fileName = app.textFields["DOCPicker.filenameTextField"]
+        waitForHittable(fileName)
+        fileName.tap()
+        let uniqueName = "Hisar Emergency Kit \(UUID().uuidString)"
+        let deletion = String(repeating: XCUIKeyboardKey.delete.rawValue, count: (fileName.value as? String ?? "").count)
+        typeText(deletion + uniqueName, into: fileName, showing: uniqueName)
+        save.tap()
+        if app.buttons["Replace"].waitForExistence(timeout: 2) {
+            app.buttons["Replace"].tap()
+        }
+        XCTAssertTrue(fileName.waitForNonExistence(timeout: 60), "Files did not finish saving the Emergency Kit")
+        scrollTo(share)
+        waitForHittable(share)
+    }
+
+    func prepareCreateAccount(inviteLink: String) {
+        selectSignInMode("Create account")
+        let server = String(inviteLink.components(separatedBy: "/invite/")[0])
+        app.buttons["sign-up-use-different-server"].tap()
+        replaceText(server, in: app.textFields["sign-up-server"])
+        let invitationField = app.textFields["sign-up-invite-link"]
+        guard focus(invitationField, file: #filePath, line: #line) else { return }
+        invitationField.typeText(inviteLink)
+        waitFor(app.textFields["sign-up-name"])
+    }
+
     @discardableResult
-    func signUp(inviteLink: String, email: String, name: String, isBiometricOfferExpected: Bool = false) -> String {
-        waitFor(app.segmentedControls["sign-in-mode"])
-        saveScreenshot("sign-in")
-        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
-        type(inviteLink, into: app.textFields["sign-up-invite-link"])
-        type(email, into: app.textFields["sign-up-email"])
+    func beginSignUp(inviteLink: String, email: String, name: String) -> String {
+        prepareCreateAccount(inviteLink: inviteLink)
         type(name, into: app.textFields["sign-up-name"])
+        type(email, into: app.textFields["sign-up-email"])
         type(Self.masterPassword, into: app.secureTextFields["sign-up-password"])
         type(Self.masterPassword, into: app.secureTextFields["sign-up-repeated-password"])
-        let createAccountNote = app.staticTexts["create-account-note"]
-        scrollTo(createAccountNote)
-        saveScreenshot("create-account")
         scrollTo(app.buttons["sign-in-submit"])
+        saveScreenshot("create-account")
         app.buttons["sign-in-submit"].tap()
         let key = app.staticTexts["new-secret-key"]
         waitFor(key, timeout: 60)
-        let secretKey = key.label
+        return key.label
+    }
+
+    // With isBiometricOfferExpected, it stops at the Face ID offer after the Secret Key; otherwise it declines any offer.
+    @discardableResult
+    func signUp(inviteLink: String, email: String, name: String, isBiometricOfferExpected: Bool = false) -> String {
+        let secretKey = beginSignUp(inviteLink: inviteLink, email: email, name: name)
         // The kit is prepared in the background; the confirm button needs a completed save, print or share of it.
         waitFor(app.buttons["new-secret-key-share-kit"], timeout: 60)
         saveScreenshot("new-secret-key")
         app.buttons["new-secret-key-copy"].tap()
-        XCTAssertFalse(app.buttons["new-secret-key-done"].isEnabled, "a copied Secret Key alone confirmed the kit")
+        XCTAssertFalse(app.buttons["new-secret-key-done"].exists, "a copied Secret Key alone confirmed the kit")
         app.buttons["new-secret-key-share-kit"].tap()
         closeShareSheet()
-        XCTAssertFalse(app.buttons["new-secret-key-done"].isEnabled, "a cancelled share sheet confirmed the kit")
+        XCTAssertFalse(app.buttons["new-secret-key-done"].exists, "a cancelled share sheet confirmed the kit")
         handOffEmergencyKit(shareIdentifier: "new-secret-key-share-kit")
         waitForHittable(app.buttons["new-secret-key-done"])
         XCTAssertTrue(app.buttons["new-secret-key-done"].isEnabled, "saving the Emergency Kit did not enable confirmation")
@@ -293,27 +374,6 @@ class HisarUITestCase: XCTestCase {
         return secretKey
     }
 
-    /// Saves the kit under a unique name because the simulator's Files folder survives between tests.
-    func handOffEmergencyKit(shareIdentifier: String) {
-        let share = app.buttons[shareIdentifier]
-        waitFor(share, timeout: 60)
-        scrollTo(share)
-        share.tap()
-        let saveToFiles = app.cells["Save to Files"].firstMatch
-        waitFor(saveToFiles, timeout: 10)
-        saveToFiles.tap()
-        let save = app.navigationBars.buttons["Save"].firstMatch
-        waitForHittable(save, timeout: 60)
-        let filename = app.textFields["DOCPicker.filenameTextField"]
-        guard focus(filename, file: #filePath, line: #line) else { return }
-        let oldName = filename.value as? String ?? ""
-        let uniqueName = "Hisar Emergency Kit \(UUID().uuidString)"
-        typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldName.count) + uniqueName, into: filename, showing: uniqueName)
-        save.tap()
-        XCTAssertTrue(filename.waitForNonExistence(timeout: 60), "Files did not finish saving the Emergency Kit")
-        waitForHittable(share, timeout: 10)
-    }
-
     /** Closes the share sheet without choosing anything. */
     func closeShareSheet() {
         let close = app.navigationBars.buttons["Close"].firstMatch
@@ -323,67 +383,6 @@ class HisarUITestCase: XCTestCase {
             app.swipeDown(velocity: .fast)
         }
         XCTAssertTrue(app.cells["Save to Files"].firstMatch.waitForNonExistence(timeout: 10), "the cancelled share sheet stayed open")
-    }
-
-    /** Acknowledging needs a handoff of the kit shown now; a restart or a resume clears it, so it is prepared again. */
-    func handOffPendingRecoveryKit(password: String) {
-        if !app.buttons["pending-recovery-share-kit"].exists {
-            type(password, into: app.secureTextFields["pending-recovery-password"])
-            scrollTo(app.buttons["pending-recovery-export"])
-            app.buttons["pending-recovery-export"].tap()
-        }
-        handOffEmergencyKit(shareIdentifier: "pending-recovery-share-kit")
-    }
-
-    @discardableResult
-    func finishPendingRecovery(email: String, password: String, restartAfterPreparingKit: Bool = false) -> String {
-        let account = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pending-recovery-' AND label CONTAINS %@ AND NOT label CONTAINS 'manual-unlock'", email)).firstMatch
-        waitFor(account, timeout: 60)
-        account.tap()
-        let phase = app.staticTexts["pending-recovery-phase"]
-        let isPrecommit = phase.label == "awaiting-kit"
-        let passwordField = app.secureTextFields["pending-recovery-password"]
-        type(password, into: passwordField)
-        scrollTo(app.buttons["pending-recovery-export"])
-        app.buttons["pending-recovery-export"].tap()
-        let key = app.staticTexts["pending-recovery-secret-key"]
-        waitFor(key, timeout: 60)
-        let secretKey = key.label
-        saveScreenshot("pending-recovery-kit")
-        if restartAfterPreparingKit {
-            app.launchArguments.removeAll { $0 == "-HisarResetState" }
-            app.terminate()
-            app.launch()
-            waitFor(account, timeout: 60)
-            account.tap()
-        }
-        handOffPendingRecoveryKit(password: password)
-        type(password, into: passwordField)
-        scrollTo(app.buttons["pending-recovery-acknowledge"])
-        app.buttons["pending-recovery-acknowledge"].tap()
-        if isPrecommit {
-            let prepared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'prepared'"), object: phase)
-            wait(for: [prepared], timeout: 60)
-            type(secretKey, into: app.secureTextFields["pending-recovery-input-secret-key"])
-            type(password, into: passwordField)
-            scrollTo(app.buttons["pending-recovery-resume"])
-            app.buttons["pending-recovery-resume"].tap()
-            let committed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'delivery-pending'"), object: phase)
-            wait(for: [committed], timeout: 60)
-            handOffPendingRecoveryKit(password: password)
-            type(password, into: passwordField)
-            scrollTo(app.buttons["pending-recovery-acknowledge"])
-            app.buttons["pending-recovery-acknowledge"].tap()
-        }
-        // Acknowledging runs while the recovery screen covers the app; the screen closes once the record is gone, or shows
-        // manual-unlock. Until then the screen beneath is there but covered (job 120454298607 tapped its unlock field).
-        let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO OR label == 'manual-unlock'"), object: phase)
-        wait(for: [finished], timeout: 60)
-        if phase.exists {
-            scrollTo(app.buttons["pending-recovery-later"])
-            app.buttons["pending-recovery-later"].tap()
-        }
-        return secretKey
     }
 
     func addLogin(title: String, username: String, password: String, website: String, oneTimePassword: String = "") {

@@ -12,8 +12,10 @@ struct VaultSharingView: View {
     @State private var isSending = false
     @State private var invitationToCancel: SentShareInvitation?
     @State private var memberToRemove: Member?
+    @State private var roleChange: VaultRoleChange?
     @FocusState private var isEmailFocused: Bool
     @State private var presentationDetent = PresentationDetent.large
+    @State private var path: [SharingMemberRoute] = []
 
     private var vaultName: String { sharing?.vault.name ?? model.findVault(vaultID: vaultID)?.name ?? "Vault" }
     private var isOwner: Bool { sharing?.isOwner ?? (model.findVault(vaultID: vaultID)?.role == Member.vaultRoleOwner) }
@@ -21,7 +23,7 @@ struct VaultSharingView: View {
     private var canSend: Bool { trimmedEmail.contains("@") && !isSending }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 if let errorMessage = model.errorMessage {
                     Section {
@@ -43,12 +45,13 @@ struct VaultSharingView: View {
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("share-completion-error")
                     } footer: {
-                        Text("Hisar shares the vault key only with the key it pinned for that person. Compare security codes with them before inviting them again.")
+                        Text("Hisar shares the vault key only with the key it pinned for that person. Contact them over a channel you trust. Comparing security codes does not restore sharing.")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
                 memberSection
                 if isOwner, let allInvitation = sharing?.allInvitation, !allInvitation.isEmpty {
-                    Section("Invited") {
+                    Section {
                         ForEach(allInvitation) { invitation in
                             SentInvitationRow(invitation: invitation, isVaultNameShown: false, identifier: "vault-invitation-\(invitation.email)", onConfirmed: { await load() })
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -58,6 +61,9 @@ struct VaultSharingView: View {
                                     Button("Cancel invitation", systemImage: "xmark.circle", role: .destructive) { invitationToCancel = invitation }
                                 }
                         }
+                    } header: {
+                        Text("Invited")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
             }
@@ -65,9 +71,13 @@ struct VaultSharingView: View {
             .refreshable { await load() }
             .navigationTitle(isOwner ? "Share “\(vaultName)”" : "Members")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: Member.self) { member in
-                VaultMemberView(vaultID: vaultID, vaultName: vaultName, member: member, isOwner: isOwner) {
-                    await load()
+            .navigationDestination(for: SharingMemberRoute.self) { route in
+                if let member = sharing?.allMember.first(where: { $0.accountID == route.accountID }) {
+                    VaultMemberView(vaultID: vaultID, vaultName: vaultName, member: member, isOwner: isOwner, close: { path.removeAll() }) {
+                        await load()
+                    }
+                } else {
+                    SharingMemberUnavailableView()
                 }
             }
             .toolbar {
@@ -95,7 +105,7 @@ struct VaultSharingView: View {
                 Text("Their invitation link stops working. You can invite them again later.")
             }
             .confirmationDialog(
-                "Remove \(memberToRemove?.name ?? "") from “\(vaultName)”?",
+                "Remove \(memberToRemove.map { $0.name.isEmpty ? $0.email : $0.name } ?? "") from “\(vaultName)”?",
                 isPresented: Binding(get: { memberToRemove != nil }, set: { if !$0 { memberToRemove = nil } }),
                 titleVisibility: .visible
             ) {
@@ -108,7 +118,16 @@ struct VaultSharingView: View {
                     }
                 }
             } message: {
-                Text(removalExplanation)
+                Text(describeVaultMemberRemoval(member: memberToRemove, vaultName: vaultName))
+            }
+            .confirmationDialog(roleChange?.title(vaultName: vaultName) ?? "", isPresented: Binding(get: { roleChange != nil }, set: { if !$0 { roleChange = nil } }), titleVisibility: .visible) {
+                Button(roleChange?.role == Member.vaultRoleOwner ? "Make owner" : "Change role", role: .destructive) {
+                    if let change = roleChange { submitRole(of: change.member, to: change.role) }
+                }
+                .accessibilityIdentifier("confirm-role-change")
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(roleChange?.message ?? "")
             }
             .task { await load() }
             .onChange(of: model.remoteChangeCount) { _, _ in
@@ -155,8 +174,10 @@ struct VaultSharingView: View {
             }
         } header: {
             Text("Invite by email")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             Text("\(describeVaultRoleAbility(role)) They accept in Hisar, or create an account from the email first. For a new recipient, review their account after they accept before Hisar shares the vault key.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -164,7 +185,7 @@ struct VaultSharingView: View {
         Section {
             if let sharing {
                 ForEach(sharing.allMember) { member in
-                    NavigationLink(value: member) {
+                    NavigationLink(value: SharingMemberRoute(accountID: member.accountID)) {
                         MemberRow(member: member, roleText: describeVaultRole(member.role))
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -186,18 +207,17 @@ struct VaultSharingView: View {
         } header: {
             if let sharing {
                 Text(sharing.allMember.count == 1 ? "1 member" : "\(sharing.allMember.count) members")
+                    .foregroundStyle(.themeSecondary)
             } else {
                 Text("Members")
+                    .foregroundStyle(.themeSecondary)
             }
         } footer: {
             Text(isOwner
                  ? "Everyone here can open the items in this vault. Tap a person to compare their security code, change their role or remove them."
                  : "Everyone here can open the items in this vault. Only its owners can share it or change who has access.")
+                .foregroundStyle(.themeSecondary)
         }
-    }
-
-    private var removalExplanation: String {
-        "Hisar encrypts the vault again with a new key that only the remaining members get. Copies they already downloaded stay readable to them."
     }
 
     @ViewBuilder
@@ -214,6 +234,14 @@ struct VaultSharingView: View {
 
     private func changeRole(of member: Member, to newRole: String) {
         guard newRole != member.role else { return }
+        if newRole == Member.vaultRoleOwner || member.role == Member.vaultRoleOwner {
+            roleChange = VaultRoleChange(member: member, role: newRole)
+        } else {
+            submitRole(of: member, to: newRole)
+        }
+    }
+
+    private func submitRole(of member: Member, to newRole: String) {
         Task {
             if await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole) {
                 await load()
@@ -279,23 +307,17 @@ struct VaultMemberView: View {
     var vaultName: String
     var member: Member
     var isOwner: Bool
+    /// Returns to the members. The sheet owns the path: once a reload drops this member, the page's own DismissAction may
+    /// belong to a replaced view and close the whole sheet instead.
+    var close: () -> Void
     var reload: () async -> Void
 
     @EnvironmentObject private var model: AppModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var selectedRole: String
-    @State private var savedRole: String
+    @State private var pendingRole: String?
     @State private var isRemoveConfirmationShown = false
+    @State private var roleChange: VaultRoleChange?
 
-    init(vaultID: String, vaultName: String, member: Member, isOwner: Bool, reload: @escaping () async -> Void) {
-        self.vaultID = vaultID
-        self.vaultName = vaultName
-        self.member = member
-        self.isOwner = isOwner
-        self.reload = reload
-        _selectedRole = State(initialValue: member.role)
-        _savedRole = State(initialValue: member.role)
-    }
+    private var selectedRole: String { pendingRole ?? member.role }
 
     private var isManageable: Bool { isOwner && !member.isCurrentUser }
 
@@ -327,7 +349,7 @@ struct VaultMemberView: View {
             if member.isKeyChanged {
                 Section {
                     Label {
-                        Text("\(member.name)'s key changed since you last shared with them. Hisar refuses to share with them until you compare security codes again.")
+                        Text("\(member.name)'s key changed since this iPhone first shared with them, so Hisar stopped sharing with them. Contact them over a channel you trust. Comparing security codes does not restore sharing.")
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.themeWarning)
@@ -349,15 +371,15 @@ struct VaultMemberView: View {
                     }
                 } header: {
                     Text("Security code")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
-                    Text(member.isCurrentUser
-                         ? "People you share with compare this code with the one their Hisar shows for you."
-                         : "Compare it with \(member.name) once, in person or over a channel you trust. If it matches what their Hisar shows, this vault reaches them and nobody else.")
+                    Text(describeSecurityCode(member))
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             Section {
                 if isManageable {
-                    Picker("Role", selection: $selectedRole) {
+                    Picker("Role", selection: Binding(get: { selectedRole }, set: chooseRole)) {
                         ForEach(Member.allVaultRole, id: \.self) { role in
                             Text(describeVaultRole(role)).tag(role)
                         }
@@ -365,10 +387,11 @@ struct VaultMemberView: View {
                     .disabled(model.isBusy)
                     .accessibilityIdentifier("member-role")
                 } else {
-                    LabeledContent("Role", value: describeVaultRole(savedRole))
+                    LabeledContent("Role", value: describeVaultRole(member.role))
                 }
             } footer: {
                 Text(describeVaultRoleAbility(selectedRole))
+                    .foregroundStyle(.themeSecondary)
             }
             if isManageable {
                 Section {
@@ -383,30 +406,65 @@ struct VaultMemberView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(member.name)
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: selectedRole) { _, newRole in
-            guard newRole != savedRole else { return }
-            Task {
-                if await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole) {
-                    savedRole = newRole
-                    await reload()
-                } else {
-                    selectedRole = savedRole
-                }
+        .refreshable { await reload() }
+        .confirmationDialog(roleChange?.title(vaultName: vaultName) ?? "", isPresented: Binding(get: { roleChange != nil }, set: { if !$0 { roleChange = nil } }), titleVisibility: .visible) {
+            Button(roleChange?.role == Member.vaultRoleOwner ? "Make owner" : "Change role", role: .destructive) {
+                if let change = roleChange { submitRole(change.role) }
             }
+            .accessibilityIdentifier("confirm-role-change")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(roleChange?.message ?? "")
         }
-        .confirmationDialog("Remove \(member.name) from “\(vaultName)”?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
+        .confirmationDialog("Remove \(member.name.isEmpty ? member.email : member.name) from “\(vaultName)”?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
                 Task {
                     if await model.removeVaultMember(vaultID: vaultID, accountID: member.accountID) {
+                        close()
                         await reload()
-                        dismiss()
                     }
                 }
             }
             .accessibilityIdentifier("confirm-remove-member")
         } message: {
-            Text("Hisar encrypts the vault again with a new key that only the remaining members get. Copies they already downloaded stay readable to them.")
+            Text(describeVaultMemberRemoval(member: member, vaultName: vaultName))
         }
+    }
+
+    private func chooseRole(_ newRole: String) {
+        guard newRole != member.role, pendingRole == nil else { return }
+        if newRole == Member.vaultRoleOwner || member.role == Member.vaultRoleOwner {
+            roleChange = VaultRoleChange(member: member, role: newRole)
+        } else {
+            submitRole(newRole)
+        }
+    }
+
+    private func submitRole(_ newRole: String) {
+        guard pendingRole == nil else { return }
+        pendingRole = newRole
+        Task {
+            _ = await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole)
+            let error = model.errorMessage
+            await reload()
+            if let error { model.errorMessage = error }
+            pendingRole = nil
+        }
+    }
+}
+
+struct VaultRoleChange {
+    var member: Member
+    var role: String
+
+    func title(vaultName: String) -> String {
+        role == Member.vaultRoleOwner ? "Make \(member.name) an owner of \(vaultName)?" : "Change \(member.name)'s role from Owner to \(describeVaultRole(role))?"
+    }
+
+    var message: String {
+        role == Member.vaultRoleOwner
+            ? "Owners can share, rename and delete this vault, change roles and remove other owners, including you."
+            : "They lose the ability to share, rename and delete this vault, change roles and remove owners."
     }
 }
 
@@ -421,9 +479,9 @@ func describeVaultRole(_ role: String) -> String {
 
 func describeVaultRoleAbility(_ role: String) -> String {
     switch role {
-    case Member.vaultRoleOwner: return "Owners open and change items, share the vault, change roles and remove people."
-    case Member.vaultRoleEditor: return "Editors open and change items."
-    case Member.vaultRoleReader: return "Readers open items but cannot change them."
+    case Member.vaultRoleOwner: return "Owners view and change items, share, rename and delete the vault, change roles and remove people."
+    case Member.vaultRoleEditor: return "Editors view and change items."
+    case Member.vaultRoleReader: return "Readers view items but can't change them."
     default: return ""
     }
 }
@@ -445,7 +503,7 @@ struct MemberRow: View {
                     .font(.caption)
                     .foregroundStyle(.themeSecondary)
                 if member.isKeyChanged {
-                    Label("Their key changed since you last shared with them. Check the security code with them before sharing again.", systemImage: "exclamationmark.triangle.fill")
+                    Label("Key changed. Hisar stopped sharing with them.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.themeWarning)
                 }
@@ -457,5 +515,35 @@ struct MemberRow: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
+    }
+}
+
+func describeVaultMemberRemoval(member: Member?, vaultName: String) -> String {
+    let name = member.map { $0.name.isEmpty ? $0.email : $0.name } ?? ""
+    return "\(name) is removed from “\(vaultName)”, and Hisar encrypts the vault again with a new key for the people who remain. \(name) can still read copies their devices already downloaded. Change any password or secret they should no longer know."
+}
+
+func describeSecurityCode(_ member: Member) -> String {
+    if member.isCurrentUser {
+        return "This is your security code. Read it to someone who is checking the code they see for you."
+    }
+    let name = member.name.isEmpty ? member.email : member.name
+    return "Ask \(name) for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code."
+}
+
+struct SharingMemberRoute: Hashable {
+    var accountID: String
+}
+
+struct SharingMemberUnavailableView: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ProgressView()
+            .task {
+                model.showNotice("This person is no longer a member.")
+                dismiss()
+            }
     }
 }

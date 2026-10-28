@@ -72,6 +72,38 @@ class SettingsModelTests {
     }
 
     @Test
+    fun testFailedDeviceSignOutStaysVisibleAndCanBeRetried() = runTest {
+        val harness = AppModelHarness(this)
+        val device = Device("mac", "MacBook", "darwin/desktop")
+        harness.backend.allDevice = mutableListOf(device)
+        val model = harness.startUnlockedModel()
+        harness.backend.revokeDeviceErrorMessage = "Could not reach the Hisar server."
+        assertFalse(model.settings.revokeDevice(device))
+        assertEquals("Could not reach the Hisar server.", model.settings.deviceOperationErrorMessage.value)
+        assertEquals(listOf("mac"), harness.backend.allDevice.map { it.id })
+        assertNull(model.notice.value)
+        harness.backend.revokeDeviceErrorMessage = null
+        assertTrue(model.settings.revokeDevice(device))
+        assertNull(model.settings.deviceOperationErrorMessage.value)
+        assertEquals("MacBook is signed out.", model.notice.value?.message)
+    }
+
+    @Test
+    fun testFailedMacApprovalChangeKeepsTheActualStateAndCanBeRetried() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        val previous = model.isMacApprovalAllowed.value
+        harness.backend.macApprovalErrorMessage = "Could not save Mac approvals."
+        assertFalse(model.settings.setMacApprovalAllowed(!previous))
+        assertEquals(previous, model.isMacApprovalAllowed.value)
+        assertEquals("Could not save Mac approvals.", model.settings.macApprovalErrorMessage.value)
+        harness.backend.macApprovalErrorMessage = null
+        assertTrue(model.settings.setMacApprovalAllowed(!previous))
+        assertNull(model.settings.macApprovalErrorMessage.value)
+        assertEquals(!previous, model.isMacApprovalAllowed.value)
+    }
+
+    @Test
     fun testDeviceDescribesItsPlatform() {
         val device = backendJson.decodeFromString<Device>(
             """{"id":"1","name":"build","platform":"linux/cli","lastSeenAt":"2027-01-15T08:00:00Z","isCurrent":false}""",
@@ -139,6 +171,17 @@ class SettingsModelTests {
         assertEquals(emptyList(), model.approvals.allPendingApproval.value, "no polling while turned off")
         assertTrue(model.settings.setMacApprovalAllowed(true))
         assertTrue(model.isMacApprovalAllowed.value)
+    }
+
+    @Test
+    fun testExactHostPreferenceStartsFromTheBackendAndIsSaved() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.isExactHostMatchValue = true
+        val model = harness.startUnlockedModel()
+        assertEquals(true, model.settings.isExactHostMatch())
+        assertTrue(model.settings.setExactHostMatch(false))
+        assertEquals(false, model.settings.isExactHostMatch())
+        assertFalse(harness.backend.isExactHostMatchValue)
     }
 
     @Test

@@ -38,6 +38,8 @@ deploy/.env
 /.dmgbuild/
 /desktop/build/sparkle/
 /desktop/build/sparkle.tar.xz
+/desktop/frontend/test-results/
+/desktop/frontend/playwright-report/
 /admin/wasm/
 /admin/test-results/
 /admin/playwright-report/

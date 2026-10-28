@@ -1,4 +1,4 @@
-import { nextTick, reactive } from "vue";
+import { nextTick, reactive, watch } from "vue";
 import {
   type AccountDeletionPreview,
   type AgentGrant,
@@ -57,7 +57,7 @@ import {
   type WaitingVaultKeys,
 } from "./api";
 import { isSettingsSectionID, saveSelectedSectionID } from "./settingsSections";
-import { allAddressKey, describeAgentSession, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress } from "./util";
+import { allAddressKey, describeAgentSession, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress, isApplicationCommand } from "./util";
 import { forgetWebsiteIcons } from "./websiteicons";
 
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
@@ -100,8 +100,13 @@ export type VaultDialogMode = "rename" | "delete" | "leave" | "blocked";
 // VaultDialog: blockedReason explains why the chosen action is not possible, in the "blocked" mode.
 export interface VaultDialog {
   mode: VaultDialogMode;
+  requestedAction: Exclude<VaultDialogMode, "blocked">;
   actions: VaultActions;
   blockedReason: string;
+}
+
+export interface ItemReference extends FavoriteItem {
+  vaultRole: VaultSummary["role"];
 }
 
 // OrganizationAlert: title names the refused action, message is the server's sentence.
@@ -124,25 +129,34 @@ export const store = reactive({
     updateRequired: null,
   } as Status,
   allVault: [] as VaultSummary[],
+  listVaultID: "",
   selectedVaultID: "",
   allItem: [] as ItemDetail[],
   selectedItem: null as ItemDetail | null,
+  isCommitSigningSetupOpen: false,
+  commitSigningItemID: "",
   // allFavorite holds the user's starred items of every vault; isFavoritesSelected shows them in the list instead of a vault.
   allFavorite: [] as FavoriteItem[],
   isFavoritesSelected: false,
+  allItemReference: [] as ItemReference[],
+  isAllItemsSelected: false,
+  allItemsError: "",
+  isLoadingAllItems: false,
   editorMode: "view" as EditorMode,
   editorDraft: null as EditorDraft | null,
   discardDraftPrompt: null as DiscardDraftPrompt | null,
   searchQuery: "",
   // selectedTag narrows the list to the items carrying it; "" shows every item.
   selectedTag: "",
-  pendingSecretKey: "",
-  isTouchIDOfferShown: false,
+  onboardingStep: "" as "" | "kit" | "biometric",
+  interruptedKitOperationID: "",
+  biometricResetReminder: null as { server: string; email: string } | null,
   pendingRecovery: [] as PendingRecoverySummary[],
   isRecoveryOpen: false,
   recoveryEpoch: 0,
+  recoveryPasswordRejected: false,
   recoveryFactor: null as { operationId: string; secretKey: string } | null,
-  pendingInvite: "",
+  pendingInvite: null as InviteLink | null,
   errorMessage: "",
   noticeMessage: "",
   // noticeKind is "error" for a failed copy, whose sentence shows where the copy was asked for.
@@ -171,8 +185,8 @@ export const store = reactive({
   allAgentHost: [] as AgentHost[],
   allAgentGrant: [] as AgentGrant[],
   agentSignIn: { isAvailable: false, isEnabled: false, hasAccessibility: false } as AgentSignIn,
+  agentErrors: { vaults: "", signIn: "", grants: "", sessions: "", hosts: "", alwaysWhileLocked: "" },
   alwaysAgentAccessWhileLocked: { isAvailable: false, isEnabled: false },
-  agentErrorMessage: "",
   isImportOpen: false,
   importStep: "choose" as ImportStep,
   allImportFormat: [] as ImportFormat[],
@@ -245,16 +259,20 @@ function describeCopy(label: string): string {
 async function runAction<Result>(action: () => Promise<Result>, sharingErrorKey = ""): Promise<Result | undefined> {
   store.isBusy = true;
   store.errorMessage = "";
+  store.recoveryPasswordRejected = false;
   const isSharingAction = store.isSharingOpen && sharingErrorKey !== "";
   if (isSharingAction) delete store.sharingErrors[sharingErrorKey];
   try {
     return await action();
   } catch (error) {
     const message = getErrorMessage(error);
+    const passwordErrorPrefix = "pending-recovery-password: ";
+    store.recoveryPasswordRejected = message.startsWith(passwordErrorPrefix);
+    const shownMessage = store.recoveryPasswordRejected ? message.slice(passwordErrorPrefix.length) : message;
     if (isSharingAction) {
-      if (store.isSharingOpen) store.sharingErrors[sharingErrorKey] = message;
+      if (store.isSharingOpen) store.sharingErrors[sharingErrorKey] = shownMessage;
     } else {
-      store.errorMessage = message;
+      store.errorMessage = shownMessage;
     }
     const rawMessage = error instanceof Error ? error.message : typeof error === "string" ? error : "";
     if (rawMessage === "Hisar is locked") {
@@ -274,7 +292,7 @@ function clearAllVaultData(): void {
   if (store.browserStatus) store.browserStatus.pendingPairing = null;
   resetImport();
   forgetWebsiteIcons();
-  store.isTouchIDOfferShown = false;
+  store.onboardingStep = "";
   store.isSettingsOpen = false;
   store.isSharingOpen = false;
   store.sharingErrors = {};
@@ -298,10 +316,17 @@ function clearAllVaultData(): void {
   store.organizationAlert = null;
   store.allVault = [];
   store.selectedVaultID = "";
+  store.listVaultID = "";
   store.allItem = [];
   store.selectedItem = null;
+  store.isCommitSigningSetupOpen = false;
+  store.commitSigningItemID = "";
   store.allFavorite = [];
   store.isFavoritesSelected = false;
+  store.allItemReference = [];
+  store.isAllItemsSelected = false;
+  store.allItemsError = "";
+  store.isLoadingAllItems = false;
   store.editorMode = "view";
   store.editorDraft = null;
   store.discardDraftPrompt?.answer(false);
@@ -316,22 +341,34 @@ let browserPairingGeneration = 0;
 let draftKeptForUnlock: EditorDraft | null = null;
 let draftToRestore: EditorDraft | null = null;
 
-// clearLockedVaultData also hides a new Secret Key not yet confirmed: the session that made it ended.
 function clearLockedVaultData(): void {
+  if (store.onboardingStep === "kit") store.interruptedKitOperationID = store.status.emergencyKit?.operationId ?? "";
   if (store.editorDraft) {
     draftKeptForUnlock = store.editorDraft;
   }
   sessionGeneration++;
   store.recoveryEpoch++;
   store.recoveryFactor = null;
-  store.pendingSecretKey = "";
-  store.isTouchIDOfferShown = false;
+  store.onboardingStep = "";
   clearAllVaultData();
 }
 
 async function applyStatus(status: Status): Promise<void> {
+  const previous = store.status;
+  if (status.state !== "unlocked") clearLockedVaultData();
+  if (previous.server !== status.server || previous.email !== status.email || status.state === "signed-out") {
+    store.interruptedKitOperationID = "";
+  }
+  const reminder = store.biometricResetReminder;
+  if (status.state === "signed-out" || (reminder && (reminder.server !== status.server || reminder.email !== status.email)) || status.biometricEnabled) {
+    store.biometricResetReminder = null;
+  }
   store.status = status;
   if (status.state === "unlocked" && !status.updateRequired) {
+    if (store.interruptedKitOperationID) {
+      if (store.interruptedKitOperationID === status.emergencyKit?.operationId) store.onboardingStep = "kit";
+      store.interruptedKitOperationID = "";
+    }
     await loadAllVault();
     await restoreKeptDraft();
     if (settingsSectionAfterUnlock) {
@@ -340,7 +377,6 @@ async function applyStatus(status: Status): Promise<void> {
       await openSettings(sectionID);
     }
   } else if (status.state !== "unlocked") {
-    clearLockedVaultData();
     if (status.state === "signed-out") {
       draftKeptForUnlock = null;
       draftToRestore = null;
@@ -360,15 +396,16 @@ export async function loadStatus(): Promise<void> {
   await loadPendingRecovery();
 }
 
-// loadPendingRecovery opens the recovery screen when operations appear where there were none, as at launch, and keeps
-// Finish later for the operations already listed, as the iPhone and Android apps do. It never covers the Secret Key
-// screen, which acknowledges the new account's own record, and the sign-up's own refreshes pass isOpening false.
+export function needsAttentionRecovery(): PendingRecoverySummary[] {
+  return store.pendingRecovery.filter((record) => record.operationId !== store.status.emergencyKit?.operationId);
+}
+
 export async function loadPendingRecovery(isOpening = true): Promise<void> {
   try {
-    const hadNone = store.pendingRecovery.length === 0;
+    const hadNone = needsAttentionRecovery().length === 0;
     store.pendingRecovery = await api.listPendingRecovery();
-    if (store.pendingRecovery.length === 0) store.isRecoveryOpen = false;
-    else if (isOpening && hadNone && !store.pendingSecretKey) store.isRecoveryOpen = true;
+    if (needsAttentionRecovery().length === 0) store.isRecoveryOpen = false;
+    else if (isOpening && hadNone && !store.onboardingStep) store.isRecoveryOpen = true;
   } catch (error) {
     store.errorMessage = getErrorMessage(error);
   }
@@ -383,6 +420,10 @@ export async function resumePendingRecovery(operationID: string, password: strin
       await applyStatus(result.status);
     }
     if (generation !== sessionGeneration) return false;
+    if (result.status.emergencyKit && result.status.state === "unlocked") {
+      store.isRecoveryOpen = false;
+      store.onboardingStep = "kit";
+    }
     const warnings = [store.errorMessage, ...(result.problems ?? [])].filter(Boolean);
     await loadPendingRecovery();
     if (generation !== sessionGeneration) return false;
@@ -405,21 +446,21 @@ export async function acknowledgePendingRecovery(operationID: string, password: 
     await api.acknowledgePendingRecovery(operationID, password);
     return true;
   });
+  if (generation !== sessionGeneration) return false;
   if (result) {
     await loadPendingRecovery();
     if (operation?.phase === "delivery-pending") store.isRecoveryOpen = false;
-    if (generation === sessionGeneration && operation?.kind === "signup" && operation.phase === "delivery-pending" && store.status.state === "unlocked"
-      && store.status.email === operation.email && store.status.server === operation.origin
-      && store.status.biometricAvailable && !store.status.biometricEnabled) {
-      store.isTouchIDOfferShown = true;
-    }
   }
   return result === true;
 }
 
-export async function discardPreparedRecovery(operationID: string, password: string): Promise<void> {
-  await runAction(() => api.discardPreparedRecovery(operationID, password));
-  await loadPendingRecovery();
+export async function discardPreparedRecovery(operationID: string, password: string): Promise<boolean> {
+  const result = await runAction(async () => {
+    await api.discardPreparedRecovery(operationID, password);
+    return true;
+  });
+  if (result) await loadPendingRecovery();
+  return result === true;
 }
 
 export function showUpdateRequired(requirement: UpdateRequirement): void {
@@ -460,7 +501,7 @@ export function openInviteLink(link: InviteLink | null): void {
     return;
   }
   if (store.status.state === "signed-out") {
-    store.pendingInvite = link.invite;
+    store.pendingInvite = link;
     return;
   }
   if (!link.invitation) {
@@ -511,10 +552,8 @@ export function signUpWithoutInvite(server: string, email: string, name: string,
   return finishSignUp(() => api.signUpWithoutInvite(server, email, name, password));
 }
 
-// isWaitingOnlyForKit is a sign-up that finished and waits only for its Emergency Kit: the Secret Key screen saves and
-// acknowledges it, as on the iPhone and Android. Every other pending result opens recovery.
 function isWaitingOnlyForKit(result: SignUpResult): boolean {
-  return result.setupState === "delivery-pending" && result.secretKey !== "" && (result.problems ?? []).length === 0;
+  return !!result.status.emergencyKit;
 }
 
 async function finishSignUp(request: () => Promise<SignUpResult>): Promise<boolean> {
@@ -534,7 +573,7 @@ async function finishSignUp(request: () => Promise<SignUpResult>): Promise<boole
       store.errorMessage = [store.errorMessage, ...(result.problems ?? [])].filter(Boolean).join(" ");
       return true;
     }
-    store.pendingSecretKey = result.secretKey;
+    store.onboardingStep = result.status.emergencyKit ? "kit" : "";
     store.isRecoveryOpen = false;
     await applyStatus(result.status);
     if (generation !== sessionGeneration) return false;
@@ -552,28 +591,67 @@ export async function confirmSecretKeySaved(): Promise<boolean> {
     return true;
   });
   if (!isAcknowledged || generation !== sessionGeneration) return false;
+  const status = await api.getStatus();
+  if (generation !== sessionGeneration) return false;
+  store.status = status;
   await loadPendingRecovery(false);
   if (generation !== sessionGeneration) return false;
-  store.pendingSecretKey = "";
-  if (store.status.biometricAvailable && !store.status.biometricEnabled) {
-    store.isTouchIDOfferShown = true;
-    return true;
-  }
-  api.forgetNewAccountSecretKey().catch(() => undefined);
+  finishKitScreen();
   return true;
 }
 
-// postponeSecretKey is Finish later: the sign-up's record stays for the recovery reminder, which then needs the master
-// password, and the retained Secret Key is dropped.
 export async function postponeSecretKey(): Promise<void> {
-  store.pendingSecretKey = "";
+  const generation = sessionGeneration;
+  const postponed = await runAction(async () => {
+    await api.postponeNewAccountEmergencyKit();
+    return await api.getStatus();
+  });
+  if (!postponed || generation !== sessionGeneration) return;
+  store.status = postponed;
+  finishKitScreen();
+}
+
+function finishKitScreen(): void {
+  store.interruptedKitOperationID = "";
+  store.onboardingStep = store.status.biometricOfferAvailable ? "biometric" : "";
+  if (!store.onboardingStep) void api.forgetNewAccountSecretKey().catch(() => undefined);
+}
+
+export function openEmergencyKit(): void {
+  if (store.status.state !== "unlocked" || !store.status.emergencyKit) return;
   store.errorMessage = "";
-  await api.forgetNewAccountSecretKey().catch(() => undefined);
-  await loadPendingRecovery(false);
+  store.isRecoveryOpen = false;
+  store.isSettingsOpen = false;
+  store.onboardingStep = "kit";
+}
+
+export function closeEmergencyKit(): void {
+  store.onboardingStep = "";
+  store.interruptedKitOperationID = "";
+  store.errorMessage = "";
+}
+
+export async function hideEmergencyKitReminder(): Promise<void> {
+  const generation = sessionGeneration;
+  await api.hideEmergencyKitReminder();
+  const status = await api.getStatus();
+  if (generation === sessionGeneration) store.status = status;
+}
+
+export async function authorizeEmergencyKit(password?: string): Promise<boolean> {
+  const generation = sessionGeneration;
+  const status = await runAction(async () => {
+    if (password === undefined) await api.authorizeNewAccountEmergencyKitWithBiometric();
+    else await api.authorizeNewAccountEmergencyKit(password);
+    return await api.getStatus();
+  });
+  if (!status || generation !== sessionGeneration) return false;
+  store.status = status;
+  return !!status.emergencyKit?.isAuthorized;
 }
 
 function finishTouchIDOffer(): void {
-  store.isTouchIDOfferShown = false;
+  store.onboardingStep = "";
   store.errorMessage = "";
   api.forgetNewAccountSecretKey().catch(() => undefined);
 }
@@ -612,7 +690,13 @@ function showSavedNotice(savedPath: string | undefined): boolean {
 }
 
 export async function saveNewAccountEmergencyKit(): Promise<boolean> {
-  return showSavedNotice(await runAction(() => api.saveNewAccountEmergencyKit()));
+  const generation = sessionGeneration;
+  const path = await runAction(() => api.saveNewAccountEmergencyKit());
+  if (generation !== sessionGeneration) return false;
+  const status = await api.getStatus();
+  if (generation !== sessionGeneration) return false;
+  store.status = status;
+  return showSavedNotice(path);
 }
 
 export async function saveEmergencyKit(password: string): Promise<boolean> {
@@ -636,6 +720,8 @@ export function isCancelledTouchID(message: string): boolean {
 // unlockWithBiometric does not use runAction: the prompt can wait long, and cancelling is not an error.
 export async function unlockWithBiometric(): Promise<boolean> {
   const generation = ++sessionGeneration;
+  const account = { server: store.status.server, email: store.status.email };
+  const wasEnabled = store.status.biometricEnabled;
   try {
     const status = await api.unlockWithBiometric();
     if (generation !== sessionGeneration) return false;
@@ -651,6 +737,9 @@ export async function unlockWithBiometric(): Promise<boolean> {
     const status = await api.getStatus().catch(() => undefined);
     if (generation !== sessionGeneration) return false;
     if (status) {
+      if (wasEnabled && !status.biometricEnabled && status.state === "locked" && status.server === account.server && status.email === account.email) {
+        store.biometricResetReminder = account;
+      }
       store.status = status;
     }
     return false;
@@ -663,6 +752,7 @@ export async function enableBiometricUnlock(password: string): Promise<boolean> 
   if (generation !== sessionGeneration) return false;
   if (status) {
     store.status = status;
+    store.biometricResetReminder = null;
     if (!status.biometricSetupError) showNotice("Touch ID unlock is on");
   }
   return status !== undefined;
@@ -689,7 +779,7 @@ export async function lock(): Promise<void> {
 // lockOnShortcut locks Hisar on ⌘L in any window, over every panel and dialog: it is the shortcut that protects the vault.
 // It reports whether the key was that shortcut.
 export function lockOnShortcut(event: KeyboardEvent): boolean {
-  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "l") {
+  if (!isApplicationCommand(event) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "l") {
     return false;
   }
   event.preventDefault();
@@ -715,6 +805,7 @@ export async function handleLocked(): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
+  store.biometricResetReminder = null;
   clearLockedVaultData();
   const status = await runAction(() => api.signOut());
   // A sign-out that reports an error still ended the session on this device.
@@ -741,6 +832,16 @@ export async function replaceSecretKey(password: string): Promise<CredentialChan
     return undefined;
   }
   if (result) {
+    if (result.status.emergencyKit) {
+      store.status = result.status;
+      store.errorMessage = [result.keychainError, result.localError].filter(Boolean).join(" ");
+      if (isSettingsWindow) {
+        await openFromSettings("recovery");
+      } else {
+        store.onboardingStep = "kit";
+      }
+      return result;
+    }
     if (result.pendingOperationId) {
       // Pending recovery covers the main window, which owns it: the Settings window hands it there and closes, so its
       // dialog never shows this change as finished.
@@ -762,9 +863,6 @@ export async function replaceSecretKey(password: string): Promise<CredentialChan
   return result;
 }
 
-export async function finishSecretKeyReplacement(): Promise<void> {
-  await api.forgetNewAccountSecretKey().catch(() => undefined);
-}
 
 export async function loadAccountDeletionPreview(): Promise<AccountDeletionPreview | undefined> {
   return runAction(() => api.previewAccountDeletion());
@@ -793,14 +891,23 @@ export async function dismissSignedOutReason(): Promise<void> {
   }
 }
 
+function clearUnavailableItemVault(): void {
+  if (store.selectedVaultID && !store.allVault.some((vault) => vault.id === store.selectedVaultID)) {
+    store.selectedVaultID = store.listVaultID;
+    store.selectedItem = null;
+    store.editorMode = "view";
+  }
+}
+
 export async function loadAllVault(): Promise<void> {
   const allVault = await runAction(() => api.listAllVault());
   if (!allVault) {
     return;
   }
   store.allVault = allVault;
+  clearUnavailableItemVault();
   await loadRemovedVaultNoticeQuietly();
-  const stillExists = allVault.some((vault) => vault.id === store.selectedVaultID);
+  const stillExists = allVault.some((vault) => vault.id === store.listVaultID);
   if (!stillExists && allVault.length > 0) {
     // Opening the default vault must not supersede a launcher request waiting for this unlock.
     await loadVaultItems(findPersonalVaultID(allVault), navigationVersion);
@@ -897,7 +1004,7 @@ export async function openVaultDialog(vaultID: string, mode: Exclude<VaultDialog
   } else if (mode === "rename" && !actions.canRename) {
     blockedReason = "Only an owner of this vault can rename it.";
   }
-  store.vaultDialog = { mode: blockedReason ? "blocked" : mode, actions, blockedReason };
+  store.vaultDialog = { mode: blockedReason ? "blocked" : mode, requestedAction: mode, actions, blockedReason };
 }
 
 export function closeVaultDialog(): void {
@@ -907,13 +1014,14 @@ export function closeVaultDialog(): void {
 
 export async function renameVault(name: string): Promise<boolean> {
   const vaultID = store.vaultDialog?.actions.vault.id ?? "";
+  const oldName = store.vaultDialog?.actions.vault.name ?? "";
   const renamed = await runAction(() => api.renameVault(vaultID, name));
   if (!renamed) {
     return false;
   }
   store.vaultDialog = null;
   store.allVault = store.allVault.map((vault) => (vault.id === vaultID ? { ...vault, name: renamed.name } : vault));
-  showNotice(`Renamed the vault to ${renamed.name}`);
+  showNotice(`Renamed ${oldName} to ${renamed.name}. Secret references that use ${oldName} need the new name.`);
   return true;
 }
 
@@ -997,6 +1105,8 @@ export async function syncInBackground(): Promise<void> {
   if (store.status.state !== "unlocked" || store.isBusy || store.editorMode !== "view") {
     return;
   }
+  const version = navigationVersion;
+  const listVaultID = store.listVaultID;
   try {
     const allVault = await api.listAllVault();
     const status = await api.getStatus();
@@ -1004,27 +1114,37 @@ export async function syncInBackground(): Promise<void> {
       return;
     }
     store.allVault = allVault;
+    clearUnavailableItemVault();
     store.status = status;
     await loadRemovedVaultNoticeQuietly();
     await loadShareInvitationsQuietly();
     await loadAllShareLinkQuietly();
     await loadAllFavoriteQuietly();
     await refreshOrganizationsQuietly();
-    if (!allVault.some((vault) => vault.id === store.selectedVaultID)) {
+    if (store.isAllItemsSelected) {
+      await loadAllItemReferences();
+      return;
+    }
+    if (!allVault.some((vault) => vault.id === listVaultID)) {
       if (allVault.length > 0) {
         await selectVault(findPersonalVaultID(allVault));
       }
       return;
     }
-    const allItem = sortAllItem(await api.listAllItem(store.selectedVaultID));
-    if (store.editorMode !== "view") {
+    const allItem = sortAllItem(await api.listAllItem(listVaultID));
+    if (store.editorMode !== "view" || version !== navigationVersion || store.listVaultID !== listVaultID) {
       return;
     }
     store.allItem = allItem;
     updateSelectedVaultSummary();
     const selectedItemID = store.selectedItem?.id;
     if (selectedItemID) {
-      store.selectedItem = allItem.some((vaultItem) => vaultItem.id === selectedItemID) ? await api.getItem(store.selectedVaultID, selectedItemID) : null;
+      const vaultID = store.selectedVaultID;
+      const isAvailable = vaultID !== listVaultID || allItem.some((vaultItem) => vaultItem.id === selectedItemID);
+      const detail = isAvailable ? await api.getItem(vaultID, selectedItemID) : null;
+      if (version === navigationVersion && store.editorMode === "view" && store.selectedVaultID === vaultID && store.selectedItem?.id === selectedItemID) {
+        store.selectedItem = detail && isItemInCurrentResults(vaultID, selectedItemID) ? detail : null;
+      }
     }
   } catch {
     return;
@@ -1044,6 +1164,7 @@ export async function loadSettingsWindow(): Promise<void> {
     const allVault = await api.listAllVault();
     if (store.status.state === "unlocked") {
       store.allVault = allVault;
+      clearUnavailableItemVault();
     }
   } catch {
     return;
@@ -1058,13 +1179,15 @@ export function selectVault(vaultID: string): Promise<void> {
 
 async function loadVaultItems(vaultID: string, version: number): Promise<void> {
   store.isFavoritesSelected = false;
+  store.isAllItemsSelected = false;
+  if (store.listVaultID !== vaultID) store.allItem = [];
+  store.listVaultID = vaultID;
   store.selectedVaultID = vaultID;
   store.selectedItem = null;
   store.editorMode = "view";
-  store.searchQuery = "";
   store.selectedTag = "";
   const allItem = await runAction(() => api.listAllItem(vaultID));
-  if (version !== navigationVersion || store.selectedVaultID !== vaultID) {
+  if (version !== navigationVersion || store.listVaultID !== vaultID) {
     return;
   }
   store.allItem = allItem ? sortAllItem(allItem) : [];
@@ -1105,9 +1228,10 @@ export function selectFavorites(): Promise<void> {
   return afterDiscardingDraft(async () => {
     navigationVersion++;
     store.isFavoritesSelected = true;
+    store.isAllItemsSelected = false;
+    store.selectedTag = "";
     store.selectedItem = null;
     store.editorMode = "view";
-    store.searchQuery = "";
     const allFavorite = await runAction(() => api.listAllFavoriteItem());
     if (allFavorite) {
       store.allFavorite = allFavorite;
@@ -1119,7 +1243,7 @@ export function selectFavoriteItem(favorite: FavoriteItem): Promise<void> {
   return afterDiscardingDraft(async () => {
     const version = ++navigationVersion;
     const detail = await runAction(() => api.getItem(favorite.vaultId, favorite.item.id));
-    if (detail && version === navigationVersion) {
+    if (detail && version === navigationVersion && isItemInCurrentResults(favorite.vaultId, favorite.item.id)) {
       store.selectedVaultID = favorite.vaultId;
       store.selectedItem = detail;
       store.editorMode = "view";
@@ -1127,12 +1251,51 @@ export function selectFavoriteItem(favorite: FavoriteItem): Promise<void> {
   });
 }
 
-export function filterAllFavorite(allFavorite: FavoriteItem[], query: string): FavoriteItem[] {
+export function filterAllFavorite(allFavorite: FavoriteItem[], query: string, tag = "", category = ""): FavoriteItem[] {
   const allVisibleItem = filterAllItem(
     allFavorite.map((favorite) => favorite.item),
     query,
+    tag,
+    category,
   );
   return allFavorite.filter((favorite) => allVisibleItem.includes(favorite.item));
+}
+
+export function selectAllItems(): Promise<void> {
+  return afterDiscardingDraft(async () => {
+    navigationVersion++;
+    store.isAllItemsSelected = true;
+    store.isFavoritesSelected = false;
+    store.selectedItem = null;
+    store.editorMode = "view";
+    store.selectedTag = "";
+    await loadAllItemReferences();
+  });
+}
+
+let allItemsLoadVersion = 0;
+async function loadAllItemReferences(): Promise<void> {
+  const generation = sessionGeneration;
+  const version = ++allItemsLoadVersion;
+  store.isLoadingAllItems = true;
+  store.allItemsError = "";
+  try {
+    const acquisitions = await Promise.all(store.allVault.map(async (vault) => ({ vault, items: await api.listAllItem(vault.id) })));
+    if (generation !== sessionGeneration || version !== allItemsLoadVersion || !store.isAllItemsSelected) return;
+    const references: ItemReference[] = [];
+    for (const { vault, items } of acquisitions) {
+      vault.readIssues = [...(vault.readIssues ?? []).filter((issue) => !issue.itemId), ...items.flatMap((item) => item.readIssue ? [item.readIssue] : [])];
+      vault.itemCount = items.filter((item) => !item.readIssue).length;
+      for (const item of items) {
+        if (!item.readIssue) references.push({ vaultId: vault.id, vaultName: vault.name, vaultType: vault.type, vaultRole: vault.role, item });
+      }
+    }
+    store.allItemReference = references.sort((a, b) => a.item.title.localeCompare(b.item.title, undefined, { sensitivity: "base" }));
+  } catch (cause) {
+    if (generation === sessionGeneration && version === allItemsLoadVersion && store.isAllItemsSelected) store.allItemsError = `Some vaults could not be loaded. ${getErrorMessage(cause)}`;
+  } finally {
+    if (generation === sessionGeneration && version === allItemsLoadVersion) store.isLoadingAllItems = false;
+  }
 }
 
 // setItemFavorite stars or unstars an item of vaultID for this user; the people they share the vault with don't see it.
@@ -1144,12 +1307,13 @@ export async function setItemFavorite(vaultID: string, itemID: string, isFavorit
   if (!isSaved) {
     return;
   }
-  if (store.selectedItem?.id === itemID) {
+  if (vaultID === store.selectedVaultID && store.selectedItem?.id === itemID) {
     store.selectedItem = { ...store.selectedItem, isFavorite };
   }
-  if (vaultID === store.selectedVaultID) {
+  if (vaultID === store.listVaultID) {
     store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === itemID ? { ...vaultItem, isFavorite } : vaultItem));
   }
+  store.allItemReference = store.allItemReference.map((reference) => reference.vaultId === vaultID && reference.item.id === itemID ? { ...reference, item: { ...reference.item, isFavorite } } : reference);
   await loadAllFavoriteQuietly();
   showNotice(isFavorite ? "Added to Favorites" : "Removed from Favorites");
 }
@@ -1166,7 +1330,7 @@ export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
 
 // filterAllItem keeps the items matching the search in their title, username, websites, tags, identity, API credential,
 // address, software license, server or database summary, and carrying tag when one is selected.
-export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): ItemDetail[] {
+export function filterAllItem(allItem: ItemDetail[], query: string, tag = "", category = ""): ItemDetail[] {
   const normalizedQuery = query.trim().toLowerCase();
   return allItem.filter((vaultItem) => {
     const allTag = vaultItem.tags ?? [];
@@ -1189,6 +1353,7 @@ export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): I
     const database = vaultItem.database;
     const databaseText = database ? [database.engineName, formatDatabaseLocation(database), database.host, database.port, database.name] : [];
     return (
+      (category === "" || (vaultItem.category || "login") === category) &&
       (tag === "" || allTag.includes(tag)) &&
       (normalizedQuery === "" ||
         [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText, ...credentialText, ...addressText, ...licenseText, ...serverText, ...databaseText].some((text) =>
@@ -1197,6 +1362,24 @@ export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): I
     );
   });
 }
+
+function isItemInCurrentResults(vaultID: string, itemID: string): boolean {
+  if (store.isFavoritesSelected || store.isAllItemsSelected) {
+    const allReference = store.isAllItemsSelected ? store.allItemReference : store.allFavorite;
+    return filterAllFavorite(allReference, store.searchQuery, store.selectedTag).some((reference) => reference.vaultId === vaultID && reference.item.id === itemID);
+  }
+  return vaultID === store.listVaultID && filterAllItem(store.allItem.filter((item) => !item.readIssue), store.searchQuery, store.selectedTag).some((item) => item.id === itemID);
+}
+
+watch(
+  () => [store.searchQuery, store.selectedTag, store.editorMode],
+  () => {
+    if (store.editorMode === "view" && store.selectedItem && !isItemInCurrentResults(store.selectedVaultID, store.selectedItem.id)) {
+      store.selectedItem = null;
+    }
+  },
+  { flush: "sync" },
+);
 
 export interface TagSummary {
   name: string;
@@ -1223,19 +1406,20 @@ export function selectTag(tag: string): Promise<void> {
     store.selectedTag = nextTag;
     return Promise.resolve();
   }
-  // The filter narrows the selected vault's list, so choosing a tag from Favorites returns to that list.
+  // Sidebar tags belong to the loaded list, even while another vault's favorite is open.
   return afterDiscardingDraft(() => {
     store.selectedTag = nextTag;
     store.isFavoritesSelected = false;
+    store.selectedVaultID = store.listVaultID;
     store.selectedItem = null;
     store.editorMode = "view";
   });
 }
 
-// updateSelectedVaultSummary makes the selected vault's summary describe store.allItem, its latest acquisition: the
+// updateSelectedVaultSummary makes the loaded list's vault summary describe store.allItem, its latest acquisition: the
 // healthy items it counts and every record that did not open, so a record the list hides is still disclosed.
 function updateSelectedVaultSummary(): void {
-  const vault = store.allVault.find((candidate) => candidate.id === store.selectedVaultID);
+  const vault = store.allVault.find((candidate) => candidate.id === store.listVaultID);
   if (vault) {
     vault.itemCount = store.allItem.filter((vaultItem) => !vaultItem.readIssue).length;
     vault.readIssues = [...(vault.readIssues ?? []).filter((issue) => !issue.itemId), ...store.allItem.flatMap((vaultItem) => (vaultItem.readIssue ? [vaultItem.readIssue] : []))];
@@ -1247,9 +1431,10 @@ export function selectItem(itemID: string): Promise<void> {
 }
 
 async function loadSelectedItem(itemID: string, version: number): Promise<void> {
-  const vaultID = store.selectedVaultID;
+  const vaultID = store.listVaultID;
   const detail = await runAction(() => api.getItem(vaultID, itemID));
-  if (detail && version === navigationVersion && store.selectedVaultID === vaultID) {
+  if (detail && version === navigationVersion && store.listVaultID === vaultID && isItemInCurrentResults(vaultID, itemID)) {
+    store.selectedVaultID = vaultID;
     store.selectedItem = detail;
     store.editorMode = "view";
   }
@@ -1278,14 +1463,16 @@ export async function openSettings(sectionID = ""): Promise<void> {
 
 // openPendingRecovery shows the recovery a Secret Key replacement left, such as one made in the Settings window.
 async function openPendingRecovery(): Promise<void> {
-  await loadPendingRecovery();
-  store.isRecoveryOpen = store.pendingRecovery.length > 0;
+  await loadStatus();
+  if (store.status.emergencyKit) openEmergencyKit();
+  else store.isRecoveryOpen = needsAttentionRecovery().length > 0;
 }
 
 const mainWindowActions: Record<MainWindowAction, () => Promise<void>> = {
   import: openImport,
   sharing: shareSelectedVault,
   recovery: openPendingRecovery,
+  "commit-signing": async () => { store.isCommitSigningSetupOpen = true; },
 };
 
 export function isMainWindowAction(action: unknown): action is MainWindowAction {
@@ -1350,6 +1537,7 @@ async function openShownItem(location: ItemLocation): Promise<void> {
 
 function startCreating(mode: EditorMode): Promise<void> {
   return afterDiscardingDraft(() => {
+    store.selectedVaultID = store.listVaultID;
     store.selectedItem = null;
     store.editorMode = mode;
   });
@@ -1396,7 +1584,7 @@ export function startCreatingSSHKey(): Promise<void> {
 }
 
 async function showCreatedItem(created: ItemDetail): Promise<void> {
-  const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
+  const allItem = await runAction(() => api.listAllItem(store.listVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
     updateSelectedVaultSummary();
@@ -1442,12 +1630,13 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
   if (!saved) {
     return false;
   }
-  const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
+  const allItem = await runAction(() => api.listAllItem(store.listVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
     updateSelectedVaultSummary();
     dropMissingTagFilter();
   }
+  if (store.isAllItemsSelected) await loadAllItemReferences();
   store.selectedItem = saved;
   store.editorMode = "view";
   if (saved.isFavorite) {
@@ -1473,7 +1662,9 @@ export async function convertToSecureNote(): Promise<void> {
   if (!converted) {
     return;
   }
-  store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === converted.id ? { ...vaultItem, category: converted.category, revision: converted.revision, canConvertToSecureNote: false } : vaultItem));
+  if (store.selectedVaultID === store.listVaultID) {
+    store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === converted.id ? { ...vaultItem, category: converted.category, revision: converted.revision, canConvertToSecureNote: false } : vaultItem));
+  }
   if (store.selectedItem?.id === converted.id) {
     store.selectedItem = converted;
   }
@@ -1492,10 +1683,8 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
   if (!deleted) {
     return false;
   }
-  store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
-  // Opening a favorite makes its vault the selected one but leaves allItem as the vault last listed, so allItem counts the
-  // selected vault only outside Favorites.
-  if (vaultID === store.selectedVaultID && !store.isFavoritesSelected) {
+  if (vaultID === store.listVaultID) {
+    store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
     updateSelectedVaultSummary();
     dropMissingTagFilter();
   } else {
@@ -1505,7 +1694,8 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
     }
   }
   store.allFavorite = store.allFavorite.filter((favorite) => !(favorite.item.id === itemID && favorite.vaultId === vaultID));
-  if (store.selectedItem?.id === itemID) {
+  store.allItemReference = store.allItemReference.filter((reference) => !(reference.item.id === itemID && reference.vaultId === vaultID));
+  if (vaultID === store.selectedVaultID && store.selectedItem?.id === itemID) {
     store.selectedItem = null;
     store.editorMode = "view";
   }
@@ -1515,7 +1705,11 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
 
 // reloadSelectedVaultItems lists the vault on screen again, as summaries without secrets.
 async function reloadSelectedVaultItems(): Promise<void> {
-  const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
+  if (store.isAllItemsSelected) {
+    await loadAllItemReferences();
+    return;
+  }
+  const allItem = await runAction(() => api.listAllItem(store.listVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
     updateSelectedVaultSummary();
@@ -1525,7 +1719,11 @@ async function reloadSelectedVaultItems(): Promise<void> {
 // retryReads reads every vault and the one on screen again, after a recovery action or when the user retries.
 export async function retryReads(): Promise<void> {
   await loadAllVault();
-  if (!store.isFavoritesSelected && store.allVault.some((vault) => vault.id === store.selectedVaultID)) {
+  if (store.isAllItemsSelected) {
+    await loadAllItemReferences();
+    return;
+  }
+  if (store.allVault.some((vault) => vault.id === store.listVaultID)) {
     await reloadSelectedVaultItems();
   }
 }
@@ -1536,10 +1734,10 @@ export async function moveItem(vaultID: string, itemID: string, targetVaultID: s
   if (!moved) {
     return false;
   }
-  if (vaultID === store.selectedVaultID) {
+  if (vaultID === store.listVaultID) {
     store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
     dropMissingTagFilter();
-  } else if (targetVaultID === store.selectedVaultID) {
+  } else if (targetVaultID === store.listVaultID) {
     await reloadSelectedVaultItems();
   }
   for (const vault of store.allVault) {
@@ -1549,11 +1747,12 @@ export async function moveItem(vaultID: string, itemID: string, targetVaultID: s
       vault.itemCount += 1;
     }
   }
-  if (store.selectedItem?.id === itemID) {
+  if (vaultID === store.selectedVaultID && store.selectedItem?.id === itemID) {
     store.selectedItem = null;
     store.editorMode = "view";
   }
   await loadAllFavoriteQuietly();
+  if (store.isAllItemsSelected) await loadAllItemReferences();
   const targetName = store.allVault.find((vault) => vault.id === targetVaultID)?.name ?? "the vault";
   showNotice(`Moved ${moved.title} to ${targetName}`);
   return true;
@@ -1569,28 +1768,33 @@ export async function duplicateItem(vaultID: string, itemID: string): Promise<bo
   if (vault) {
     vault.itemCount += 1;
   }
-  if (vaultID === store.selectedVaultID && !store.isFavoritesSelected) {
+  if (vaultID === store.listVaultID && !store.isFavoritesSelected) {
+    store.selectedVaultID = vaultID;
     await reloadSelectedVaultItems();
     store.selectedItem = copied;
     store.editorMode = "view";
   }
+  if (store.isAllItemsSelected) await loadAllItemReferences();
   showNotice(`Duplicated as ${copied.title}`);
   return true;
 }
 
-export async function deletePasskey(credentialID: string): Promise<void> {
+export async function deletePasskey(credentialID: string): Promise<boolean> {
   if (!store.selectedItem) {
-    return;
+    return false;
   }
   const itemID = store.selectedItem.id;
   const updated = await runAction(() => api.deletePasskey(store.selectedVaultID, itemID, credentialID));
   if (updated) {
+    if (store.selectedVaultID === store.listVaultID) {
     store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === itemID ? { ...vaultItem, passkeys: updated.passkeys } : vaultItem));
+    }
     if (store.selectedItem?.id === itemID) {
       store.selectedItem = updated;
     }
     showNotice("Passkey deleted");
   }
+  return !!updated;
 }
 
 export async function copyField(fieldName: string, label: string): Promise<void> {
@@ -1747,8 +1951,10 @@ export async function confirmShareRecipient(invitation: SentShareInvitation): Pr
     await api.confirmShareRecipient(invitation.id, invitation.reviewToken);
     return true;
   }, invitation.id);
+  const confirmationError = store.errorMessage;
   await loadSharing();
   await loadShareInvitationsQuietly();
+  if (!confirmed) store.errorMessage = confirmationError;
   if (confirmed) showNotice(`Shared ${invitation.vaultName} with ${invitation.email}`);
   return confirmed === true;
 }
@@ -1759,7 +1965,9 @@ export async function changeVaultMemberRole(member: VaultMember, role: VaultRole
     await api.changeVaultMemberRole(vaultID, member.accountId, role);
     return true;
   }, member.accountId);
+  const refusal = store.errorMessage;
   await loadSharing();
+  if (!changed) store.errorMessage = refusal;
   if (changed) {
     showNotice(`${getFirstName(member)} is now ${role === "owner" ? "an owner" : `a ${role}`}`);
   }
@@ -1778,7 +1986,7 @@ export async function removeVaultMember(member: VaultMember): Promise<boolean> {
   }
   await loadSharing();
   const allItem = await runAction(() => api.listAllItem(vaultID), member.accountId);
-  if (allItem && vaultID === store.selectedVaultID) {
+  if (allItem && vaultID === store.listVaultID) {
     store.allItem = sortAllItem(allItem);
     store.selectedItem = null;
     store.editorMode = "view";
@@ -1790,10 +1998,15 @@ export async function removeVaultMember(member: VaultMember): Promise<boolean> {
 // Organizations load quietly for the vault list and its banners; Settings → Organizations says why its list could not
 // load, like the SSH agent section. A refused change shows the server's sentence in an alert named after the action.
 
+export function getOrganizationName(organizationID: string): string {
+  return store.organizations.organizations.find((organization) => organization.id === organizationID)?.name
+    || `Organization ${organizationID.slice(0, 8)}`;
+}
+
 function applyOrganizations(organizations: Organizations): void {
   store.organizations = organizations;
   const allOrganizationID = new Set(organizations.organizations.map((organization) => organization.id));
-  store.organizationByID = Object.fromEntries(Object.entries(store.organizationByID).filter(([organizationID]) => allOrganizationID.has(organizationID)));
+  store.organizationByID = organizations.isCached ? {} : Object.fromEntries(Object.entries(store.organizationByID).filter(([organizationID]) => allOrganizationID.has(organizationID)));
   if (!allOrganizationID.has(store.selectedOrganizationID)) {
     store.selectedOrganizationID = "";
   }
@@ -1855,18 +2068,27 @@ export async function loadOrganizations(): Promise<void> {
 }
 
 // loadAllOrganizationQuietly loads every organization with its teams, for the new-vault form's Where.
-export async function loadAllOrganizationQuietly(): Promise<void> {
+export async function loadAllOrganizationQuietly(): Promise<string> {
   try {
     const organizations = await api.listAllOrganization();
     if (store.status.state !== "unlocked") {
-      return;
+      return "Hisar is locked.";
+    }
+    if (organizations.isCached) {
+      applyOrganizations(organizations);
+      return "Connect to the Hisar server to load teams.";
+    }
+    const allOrganization = await Promise.all(organizations.organizations.map((organization) => api.getOrganization(organization.id)));
+    if (store.status.state !== "unlocked") {
+      return "Hisar is locked.";
     }
     applyOrganizations(organizations);
-  } catch {
-    return;
-  }
-  for (const organization of store.organizations.organizations) {
-    await loadOrganizationQuietly(organization.id);
+    for (const organization of allOrganization) {
+      store.organizationByID = { ...store.organizationByID, [organization.id]: organization };
+    }
+    return "";
+  } catch (error) {
+    return getErrorMessage(error);
   }
 }
 
@@ -1885,7 +2107,8 @@ async function reloadAllVaultQuietly(): Promise<void> {
       return;
     }
     store.allVault = allVault;
-    if (allVault.length > 0 && !allVault.some((vault) => vault.id === store.selectedVaultID)) {
+    clearUnavailableItemVault();
+    if (allVault.length > 0 && !allVault.some((vault) => vault.id === store.listVaultID)) {
       await selectVault(findPersonalVaultID(allVault));
     }
   } catch {
@@ -2270,9 +2493,9 @@ export async function revokeLauncherApp(launcherApp: LauncherApp): Promise<void>
 export async function loadAgentVaults(): Promise<void> {
   try {
     store.allAgentVaultID = await api.listAllAgentVaultID();
-    store.agentErrorMessage = "";
+    store.agentErrors.vaults = "";
   } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.vaults = getErrorMessage(error);
   }
 }
 
@@ -2280,33 +2503,42 @@ export async function setVaultAvailableToAgents(vault: VaultSummary, isAvailable
   store.isBusy = true;
   try {
     store.allAgentVaultID = await api.setVaultAvailableToAgents(vault.id, isAvailable);
-    store.agentErrorMessage = "";
+    store.agentErrors.vaults = "";
     showNotice(isAvailable ? `Coding agents can use ${vault.name} after you approve` : `${vault.name} is invisible to coding agents now`);
   } catch (error) {
     const message = getErrorMessage(error);
     await loadAgentVaults();
-    store.agentErrorMessage = message;
+    store.agentErrors.vaults = message;
   } finally {
     store.isBusy = false;
   }
 }
 
 export async function loadAgentSessions(): Promise<void> {
-  try {
-    [store.allAgentSession, store.allAgentHost, store.allAgentGrant] = await Promise.all([api.listAllAgentSession(), api.listAllAgentHost(), api.listAllAgentGrant()]);
-  } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
-  }
+  await Promise.all([
+    api.listAllAgentSession().then(
+      (sessions) => { store.allAgentSession = sessions; store.agentErrors.sessions = ""; },
+      (error) => { store.agentErrors.sessions = getErrorMessage(error); },
+    ),
+    api.listAllAgentHost().then(
+      (hosts) => { store.allAgentHost = hosts; store.agentErrors.hosts = ""; },
+      (error) => { store.agentErrors.hosts = getErrorMessage(error); },
+    ),
+    api.listAllAgentGrant().then(
+      (grants) => { store.allAgentGrant = grants; store.agentErrors.grants = ""; },
+      (error) => { store.agentErrors.grants = getErrorMessage(error); },
+    ),
+  ]);
 }
 
 export async function revokeAgentGrant(grant: AgentGrant): Promise<void> {
   store.isBusy = true;
   try {
     store.allAgentGrant = await api.revokeAgentGrant(grant.id);
-    store.agentErrorMessage = "";
+    store.agentErrors.grants = "";
     showNotice(`${grant.harnessName} asks again the next time it needs ${grant.name}`);
   } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.grants = getErrorMessage(error);
   } finally {
     store.isBusy = false;
   }
@@ -2315,16 +2547,18 @@ export async function revokeAgentGrant(grant: AgentGrant): Promise<void> {
 export async function loadAgentSignIn(): Promise<void> {
   try {
     store.agentSignIn = await api.getAgentSignIn();
+    store.agentErrors.signIn = "";
   } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.signIn = getErrorMessage(error);
   }
 }
 
 export async function loadAlwaysAgentAccessWhileLocked(): Promise<void> {
   try {
     store.alwaysAgentAccessWhileLocked = await api.getAlwaysAgentAccessWhileLocked();
+    store.agentErrors.alwaysWhileLocked = "";
   } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.alwaysWhileLocked = getErrorMessage(error);
   }
 }
 
@@ -2332,10 +2566,10 @@ export async function setAlwaysAgentAccessWhileLocked(isEnabled: boolean): Promi
   store.isBusy = true;
   try {
     store.alwaysAgentAccessWhileLocked = await api.setAlwaysAgentAccessWhileLocked(isEnabled);
-    store.agentErrorMessage = "";
+    store.agentErrors.alwaysWhileLocked = "";
   } catch (error) {
     await loadAlwaysAgentAccessWhileLocked();
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.alwaysWhileLocked = getErrorMessage(error);
   } finally {
     store.isBusy = false;
   }
@@ -2345,12 +2579,12 @@ export async function setAgentSignInEnabled(isEnabled: boolean): Promise<void> {
   store.isBusy = true;
   try {
     store.agentSignIn = await api.setAgentSignInEnabled(isEnabled);
-    store.agentErrorMessage = "";
+    store.agentErrors.signIn = "";
     showNotice(isEnabled ? "Coding agents can ask Hisar to sign in to websites" : "Coding agents can no longer ask Hisar to sign in");
   } catch (error) {
     const message = getErrorMessage(error);
     await loadAgentSignIn();
-    store.agentErrorMessage = message;
+    store.agentErrors.signIn = message;
   } finally {
     store.isBusy = false;
   }
@@ -2360,10 +2594,10 @@ export async function revokeAgentSession(session: AgentSession): Promise<void> {
   store.isBusy = true;
   try {
     store.allAgentSession = await api.revokeAgentSession(session.pid, session.startTime);
-    store.agentErrorMessage = "";
+    store.agentErrors.sessions = "";
     showNotice(`${describeAgentSession(session)} asks again the next time it uses a secret`);
   } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.sessions = getErrorMessage(error);
   } finally {
     store.isBusy = false;
   }
@@ -2373,10 +2607,10 @@ export async function forgetAgentHost(host: AgentHost): Promise<void> {
   store.isBusy = true;
   try {
     store.allAgentHost = await api.forgetAgentHost(host.path, host.teamID);
-    store.agentErrorMessage = "";
+    store.agentErrors.hosts = "";
     showNotice(`${host.name} shares one approval for its command-line requests again`);
   } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.hosts = getErrorMessage(error);
   } finally {
     store.isBusy = false;
   }
@@ -2531,11 +2765,12 @@ async function finishImport(progress: ImportProgress): Promise<void> {
   const allVault = await runAction(() => api.listAllVault());
   if (allVault) {
     store.allVault = allVault;
+    clearUnavailableItemVault();
   }
   // A mixed import reports no single vault; the reviewed groups name every destination.
   const allDestinationID = [progress.vaultId, ...(store.importPreview?.groups ?? []).map((group) => group.vaultId)];
-  if (store.selectedVaultID && allDestinationID.includes(store.selectedVaultID)) {
-    const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
+  if (store.listVaultID && allDestinationID.includes(store.listVaultID)) {
+    const allItem = await runAction(() => api.listAllItem(store.listVaultID));
     if (allItem) {
       store.allItem = sortAllItem(allItem);
     }

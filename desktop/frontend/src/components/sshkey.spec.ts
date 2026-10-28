@@ -37,15 +37,20 @@ function resetStore(): void {
     status: createStatus("unlocked"),
     allVault: allTestVault.map((vault) => ({ ...vault })),
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [],
     selectedItem: null,
     editorMode: "view",
     searchQuery: "",
-    pendingSecretKey: "",
+    onboardingStep: "",
     errorMessage: "",
     noticeMessage: "",
     isBusy: false,
+    editorDraft: null,
+    discardDraftPrompt: null,
     isSettingsOpen: false,
+    isCommitSigningSetupOpen: false,
+    commitSigningItemID: "",
     sshAgentStatus: null,
     sshAgentErrorMessage: "",
     allPendingApproval: [],
@@ -169,7 +174,7 @@ describe("SSHKeyForm", () => {
     await wrapper.find('input[name="title"]').setValue("Laptop");
     expect(submitButton().attributes("disabled")).toBeUndefined();
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
-    expect(submitButton().text()).toBe("Import key");
+    expect(submitButton().text()).toContain("Import key");
     expect(submitButton().attributes("disabled")).toBeDefined();
     await findButton(wrapper, "Cancel").trigger("click");
     expect(store.editorMode).toBe("create-ssh-key");
@@ -177,6 +182,71 @@ describe("SSHKeyForm", () => {
     store.discardDraftPrompt?.answer(true);
     await flushPromises();
     expect(store.editorMode).toBe("view");
+  });
+
+  it.each(["generate", "import"])("submits %s with Command-S and Command-Return", async (mode) => {
+    for (const key of ["s", "Enter"]) {
+      store.editorMode = "create-ssh-key";
+      const created = createSSHKeyItem();
+      api.generateSSHKey.mockResolvedValue(created);
+      api.importSSHKey.mockResolvedValue(created);
+      api.listAllItem.mockResolvedValue([created]);
+      const wrapper = mount(SSHKeyForm, { attachTo: document.body });
+      await wrapper.get('input[name="title"]').setValue("Deploy");
+      if (mode === "import") {
+        await wrapper.findAll('[role="tab"]')[1].trigger("click");
+        await wrapper.get('textarea[name="privateKey"]').setValue("private-key");
+      }
+      const target = wrapper.get(mode === "import" ? "textarea" : 'input[name="title"]');
+      const event = new KeyboardEvent("keydown", { key, metaKey: true, bubbles: true, cancelable: true });
+      target.element.dispatchEvent(event);
+      await flushPromises();
+      expect(event.defaultPrevented).toBe(true);
+      expect(mode === "import" ? api.importSSHKey : api.generateSSHKey).toHaveBeenCalled();
+      expect(store.editorMode).toBe("view");
+      wrapper.unmount();
+    }
+  });
+
+  it("validates shortcuts and ignores saving or cancellation while busy", async () => {
+    store.editorMode = "create-ssh-key";
+    const wrapper = mount(SSHKeyForm, { attachTo: document.body });
+    const press = async (key: string, metaKey = true) => {
+      wrapper.get('input[name="title"]').element.dispatchEvent(new KeyboardEvent("keydown", { key, metaKey, bubbles: true, cancelable: true }));
+      await flushPromises();
+    };
+    await press("s");
+    expect(api.generateSSHKey).not.toHaveBeenCalled();
+    await wrapper.get('input[name="title"]').setValue("Deploy");
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await press("Enter");
+    expect(api.importSSHKey).not.toHaveBeenCalled();
+    await wrapper.get("textarea").setValue("key");
+    store.isBusy = true;
+    await press("s");
+    await press("Escape", false);
+    expect(api.importSSHKey).not.toHaveBeenCalled();
+    expect(store.editorMode).toBe("create-ssh-key");
+    wrapper.unmount();
+  });
+
+  it("routes Escape through the shared dirty-draft confirmation", async () => {
+    store.editorMode = "create-ssh-key";
+    const wrapper = mount(SSHKeyForm, { attachTo: document.body });
+    await wrapper.get('input[name="title"]').setValue("Deploy");
+    store.editorDraft = { mode: "create-ssh-key", vaultID: "personal", itemID: "", item: createItem({ title: "Deploy" }), urlText: "", isDirty: true };
+    wrapper.get('input[name="title"]').element.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await flushPromises();
+    expect(store.discardDraftPrompt?.title).toBe("Deploy");
+    store.discardDraftPrompt?.answer(false);
+    await flushPromises();
+    expect(store.editorMode).toBe("create-ssh-key");
+    wrapper.get('input[name="title"]').element.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    await flushPromises();
+    store.discardDraftPrompt?.answer(true);
+    await flushPromises();
+    expect(store.editorMode).toBe("view");
+    wrapper.unmount();
   });
 });
 
@@ -382,5 +452,38 @@ describe("Settings SSH agent section", () => {
     await wrapper.find('[data-testid="configure-ssh-config"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="ssh-agent-section"] [role="alert"]').text()).toBe("permission denied");
+  });
+
+  it("opens an existing key and expands its signing commands from Settings", async () => {
+    const key = createSSHKeyItem();
+    api.listAllItem.mockResolvedValue([key]);
+    api.getItem.mockResolvedValue(key);
+    store.isSettingsOpen = true;
+    const wrapper = mount(MainView);
+    await wrapper.get('[data-testid="open-commit-signing"]').trigger("click");
+    await flushPromises();
+    expect(store.isSettingsOpen).toBe(false);
+    expect(wrapper.get('[data-testid="signing-choose-key"]').text()).toContain(key.title);
+    await wrapper.get('[data-testid="signing-choose-key"]').trigger("click");
+    await flushPromises();
+    expect(store.selectedItem?.id).toBe(key.id);
+    expect(wrapper.get('[data-testid="commit-signing-steps"]').text()).toContain("Hisar does not change your Git config");
+    expect(store.isCommitSigningSetupOpen).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("offers the existing New SSH key flow when there are no keys", async () => {
+    api.listAllItem.mockResolvedValue([]);
+    store.isSettingsOpen = true;
+    const wrapper = mount(MainView);
+    await wrapper.get('[data-testid="open-commit-signing"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("You need an SSH key to sign commits.");
+    await wrapper.get('[data-testid="signing-new-ssh-key"]').trigger("click");
+    await flushPromises();
+    expect(store.editorMode).toBe("create-ssh-key");
+    expect(wrapper.find('input[name="keyType"]').exists()).toBe(true);
+    expect(store.isCommitSigningSetupOpen).toBe(false);
+    wrapper.unmount();
   });
 });

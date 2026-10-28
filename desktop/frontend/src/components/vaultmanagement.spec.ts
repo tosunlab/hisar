@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import type { VaultSummary } from "../api";
 import { createApiMock, createItem, createStatus, createVaultActions, createVaultMember, testBob } from "../testing";
 import ReadIssuesPanel from "./ReadIssuesPanel.vue";
+import ConfirmDeleteDialog from "./ConfirmDeleteDialog.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -18,7 +19,7 @@ vi.mock("../api", async () => {
 
 vi.mock("@wailsio/runtime", () => ({ Events: { On: () => () => undefined } }));
 
-const { store, loadAllVault, selectVault, syncInBackground } = await import("../store");
+const { store, loadAllVault, openVaultDialog, selectVault, syncInBackground } = await import("../store");
 const MainView = (await import("./MainView.vue")).default;
 const api = apiMock.current;
 
@@ -33,6 +34,7 @@ function resetStore(workRole = "owner"): void {
     status: createStatus("unlocked"),
     allVault: [personalVault, createWorkVault(workRole)],
     selectedVaultID: "work",
+    listVaultID: "work",
     allItem: [createItem()],
     selectedItem: null,
     editorMode: "view",
@@ -95,20 +97,86 @@ describe("vault menu", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="vault-blocked-reason"]').text()).toBe("Only an owner of this vault can delete it. You can leave it instead.");
     expect(api.deleteVault).not.toHaveBeenCalled();
+    expect(wrapper.get("h2#vault-dialog-title").text()).toBe("You can't delete “Work”");
+    await wrapper.get('[data-testid="vault-blocked-leave"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="vault-dialog-leave"]').text()).toContain("Leave “Work”?");
+    expect(api.leaveVault).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it("explains that the Personal vault can't be deleted", async () => {
     store.selectedVaultID = "personal";
+    store.listVaultID = "personal";
     const reason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there.";
     api.getVaultActions.mockResolvedValue(createVaultActions({ vault: personalVault, canDelete: false, deleteBlockedReason: reason, canLeave: false, targetVaults: [] }));
     const wrapper = mount(MainView, { attachTo: document.body });
     await chooseFromMenu(wrapper, "delete");
     expect(api.getVaultActions).toHaveBeenCalledWith("personal");
     expect(wrapper.find('[data-testid="vault-dialog-blocked"]').text()).toContain(reason);
+    expect(wrapper.find('[data-testid="vault-blocked-leave"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="vault-blocked-sharing"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it.each(["rename", "delete", "leave"] as const)("retains the refused %s action and the authoritative explanation", async (action) => {
+    const vault = { ...createWorkVault("reader"), type: "organization", organizationId: "acme" };
+    api.getVaultActions.mockResolvedValue(createVaultActions({ vault, canRename: false, canDelete: false, canLeave: false, deleteBlockedReason: "Deletion refused.", leaveBlockedReason: "Access comes through teams." }));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await openVaultDialog(vault.id, action);
+    await flushPromises();
+    expect(wrapper.get("#vault-dialog-title").text()).toBe(`You can't ${action} “Work”`);
+    expect(wrapper.find('[data-testid="vault-blocked-leave"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="vault-blocked-sharing"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("opens sharing for the same vault when its sole owner cannot leave", async () => {
+    api.getVaultActions.mockResolvedValue(createVaultActions({ vault: createWorkVault(), canLeave: false, leaveBlockedReason: "Another owner is needed." }));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await openVaultDialog("work", "leave");
+    await flushPromises();
+    expect(wrapper.get("#vault-dialog-title").text()).toBe("You can't leave “Work”");
+    expect(document.activeElement?.textContent).toBe("OK");
+    await wrapper.get('[data-testid="vault-blocked-sharing"]').trigger("click");
+    await flushPromises();
+    expect(store.selectedVaultID).toBe("work");
+    expect(store.vaultDialog).toBeNull();
+    expect(store.isSharingOpen).toBe(true);
+    expect(api.leaveVault).not.toHaveBeenCalled();
+    store.isSharingOpen = false;
+    wrapper.unmount();
   });
 });
 
 describe("delete vault dialog", () => {
+  it("reviews shared links from item deletion without deleting the item", async () => {
+    api.listAllShareLink.mockResolvedValue([]);
+    const wrapper = mount(ConfirmDeleteDialog, { props: { vaultID: "work", itemID: "item-1", title: "GitHub" } });
+    await wrapper.find('[data-testid="item-review-shared-links"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.emitted("close")).toHaveLength(1);
+    expect(api.deleteItem).not.toHaveBeenCalled();
+    expect(store.isShareLinksOpen).toBe(true);
+    store.isShareLinksOpen = false;
+    wrapper.unmount();
+  });
+
+  it("reviews shared links without submitting the deletion", async () => {
+    api.listAllShareLink.mockResolvedValue([]);
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await chooseFromMenu(wrapper, "delete");
+    await wrapper.find('[data-testid="vault-delete-items"]').setValue(true);
+    expect(wrapper.find('[data-testid="vault-dialog-delete"]').text()).toContain("Deleting this vault doesn't revoke them.");
+    await wrapper.find('[data-testid="vault-review-shared-links"]').trigger("click");
+    await flushPromises();
+    expect(api.deleteVault).not.toHaveBeenCalled();
+    expect(store.vaultDialog).toBeNull();
+    expect(store.isShareLinksOpen).toBe(true);
+    store.isShareLinksOpen = false;
+    wrapper.unmount();
+  });
+
   it("lists who loses access and moves the items to the first writable vault by default", async () => {
     api.getVaultActions.mockResolvedValue(createVaultActions({ membersLosingAccess: [createVaultMember({ ...testBob, role: "editor", isCurrentUser: false })] }));
     api.deleteVault.mockResolvedValue({ movedCount: 12, targetVaultName: "Personal" });
@@ -180,12 +248,14 @@ describe("rename and leave", () => {
     await chooseFromMenu(wrapper, "rename");
     const input = wrapper.find('[data-testid="vault-rename-input"]');
     expect((input.element as HTMLInputElement).value).toBe("Work");
+    expect(wrapper.find('[data-testid="vault-dialog-rename"]').text()).toContain("Secret references that use Work need the new name after you rename this vault.");
     expect(wrapper.find('[data-testid="vault-rename-save"]').attributes("disabled")).toBeDefined();
     await input.setValue("  Work 2026 ");
     await wrapper.find('[data-testid="vault-rename-save"]').trigger("click");
     await flushPromises();
     expect(api.renameVault).toHaveBeenCalledWith("work", "Work 2026");
     expect(store.allVault.find((vault) => vault.id === "work")?.name).toBe("Work 2026");
+    expect(store.noticeMessage).toBe("Renamed Work to Work 2026. Secret references that use Work need the new name.");
   });
 
   it("leaves a vault shared with the user", async () => {
@@ -233,12 +303,56 @@ describe("removed vault notice", () => {
 });
 
 describe("unreadable recovery", () => {
+  it.each([1, 5])("keeps search and healthy item actions available while %i recovery records are expanded", async (count) => {
+    store.allVault = [{
+      ...personalVault,
+      readIssues: Array.from({ length: count }, (_, index) => ({
+        vaultId: "personal", itemId: count === 1 ? undefined : `bad-${index}`, revision: `r-${index}`,
+        kind: count === 1 ? "vault-name" : "item", canRename: count === 1, canDelete: true,
+      })),
+    }];
+    store.listVaultID = "personal";
+    store.selectedVaultID = "personal";
+    store.allItem = [createItem({ id: "healthy", title: "Still available" })];
+    api.getItem.mockResolvedValue(createItem({ id: "healthy", title: "Still available", password: "healthy-secret" }));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.get('[data-testid="read-issues"] summary').trigger("click");
+    await wrapper.get('input[name="search"]').setValue("Still available");
+    expect(wrapper.findAll(".list .item-title").map((row) => row.text())).toEqual(["Still available"]);
+    await wrapper.get(".list .item").trigger("contextmenu");
+    await flushPromises();
+    await wrapper.get('[data-testid="context-menu-copy-password"]').trigger("click");
+    await flushPromises();
+    expect(api.copyField).toHaveBeenCalledWith("personal", "healthy", "password");
+    expect(store.noticeMessage).toBe("Password copied. It clears in 90 seconds.");
+    wrapper.unmount();
+  });
+
+  it("explains each failure scope with known counts and only allowed actions", () => {
+    store.allVault = [
+      { ...personalVault, readIssues: [
+        { vaultId: "personal", itemId: "one", kind: "item", canRename: false, canDelete: true },
+        { vaultId: "personal", itemId: "two", kind: "item", canRename: false, canDelete: false },
+        { vaultId: "personal", kind: "vault-name", canRename: true, canDelete: false },
+      ] },
+      { ...createWorkVault(), readIssues: [{ vaultId: "work", kind: "vault-key", canRename: false, canDelete: false }] },
+    ];
+    const wrapper = mount(ReadIssuesPanel);
+    expect(wrapper.text()).toContain("2 known unreadable items in 2 affected vaults.");
+    expect(wrapper.text()).toContain("Items behind unopened vault keys are not counted.");
+    expect(wrapper.text()).toContain("Vault name could not be opened. Its readable items remain available.");
+    expect(wrapper.text()).toContain("Vault key could not be opened. Items in this vault cannot be displayed.");
+    expect(wrapper.text()).toContain("Item could not be opened. It remains saved.");
+    expect(wrapper.findAll("button").filter((button) => button.text() === "Retry reads")).toHaveLength(1);
+    expect(wrapper.findAll("button").filter((button) => button.text() === "Delete unreadable data…")).toHaveLength(1);
+    expect(wrapper.findAll("button").filter((button) => button.text() === "Repair vault name")).toHaveLength(1);
+  });
   it("keeps healthy data visible and deletes only the reviewed unreadable revision", async () => {
     store.allVault = [{ ...personalVault, readIssues: [{ vaultId: "personal", itemId: "bad", revision: "bad-r1", kind: "item", canRename: false, canDelete: true }] }];
     store.allItem = [createItem({ id: "healthy", title: "Still available" })];
     api.deleteUnreadableItem.mockResolvedValue(undefined);
     const wrapper = mount(ReadIssuesPanel, { attachTo: document.body });
-    expect(wrapper.text()).toContain("1 unreadable vault or item records");
+    expect(wrapper.text()).toContain("1 known unreadable item in 1 affected vault.");
     expect(store.allItem[0].id).toBe("healthy");
     await wrapper.findAll("button").find((button) => button.text() === "Delete unreadable data…")!.trigger("click");
     expect(api.deleteUnreadableItem).not.toHaveBeenCalled();
@@ -263,7 +377,7 @@ describe("unreadable recovery", () => {
     const personal = store.allVault.find((vault) => vault.id === "personal");
     expect(personal?.itemCount).toBe(1);
     expect(personal?.readIssues).toEqual([issue]);
-    expect(wrapper.find('[data-testid="read-issues"]').text()).toContain("1 unreadable vault or item records");
+    expect(wrapper.find('[data-testid="read-issues"]').text()).toContain("1 known unreadable item in 1 affected vault.");
     expect(wrapper.findAll("button.item").map((button) => button.text()).join()).not.toContain("Unreadable item late-bad");
     wrapper.unmount();
   });
@@ -274,7 +388,7 @@ describe("unreadable recovery", () => {
     api.repairVaultName.mockRejectedValue(new Error("that unreadable record changed; retry and review it again"));
     api.deleteUnreadableVault.mockResolvedValue(undefined);
     const wrapper = mount(ReadIssuesPanel, { attachTo: document.body });
-    await wrapper.find('input[aria-label="Repaired vault name"]').setValue("Work");
+    await wrapper.find('input[aria-label="New name for work"]').setValue("Work");
     await wrapper.findAll("button").find((button) => button.text() === "Repair vault name")!.trigger("click");
     await flushPromises();
     expect(api.repairVaultName).toHaveBeenCalledWith("work", "work-review-1", "Work");

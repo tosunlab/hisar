@@ -20,6 +20,8 @@ import { startThemeSync } from "../theme";
 import { getThisDeviceName } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
+import ApprovalQueue from "./ApprovalQueue.vue";
+import CredentialField from "./CredentialField.vue";
 
 const allCompactAction: Record<string, string> = {
   push: "Push",
@@ -49,6 +51,7 @@ const isAlwaysAgentAccessWhileLockedEnabled = ref(false);
 const promptSlot = ref<HTMLElement | null>(null);
 const passwordInput = ref<HTMLInputElement | null>(null);
 const denyButton = ref<HTMLButtonElement | null>(null);
+const fullHeading = ref<HTMLHeadingElement | null>(null);
 const contentElement = ref<HTMLElement | null>(null);
 const dialogBody = ref<HTMLElement | null>(null);
 const approval = computed(() => approvalStore.allApproval[0]);
@@ -61,6 +64,12 @@ const expiryText = computed(() =>
     ? `No answer in ${Math.ceil((approval.value?.timeoutMilliseconds ?? 0) / 1000)} seconds.`
     : `Expires in ${secondsLeft.value} ${secondsLeft.value === 1 ? "second" : "seconds"}`,
 );
+const queuedApprovals = computed(() => approvalStore.allApproval.slice(1).map((pending) => ({
+  requestID: pending.requestID,
+  requester: pending.isForwarded ? pending.forwardedFromHost || "Another computer" : pending.agentName || pending.appName,
+  purpose: [pending.action || "use Hisar", pending.kind === "ssh-key" ? pending.target : ""].filter(Boolean).join(" "),
+  seconds: Math.max(0, Math.ceil((Date.parse(pending.timeoutAt) - now.value) / 1000)),
+})));
 let countdownTimer: ReturnType<typeof setInterval> | undefined;
 const isCommandLine = computed(() => approval.value?.kind === "command-line");
 const isAgent = computed(() => approval.value?.kind === "agent");
@@ -77,11 +86,27 @@ const isPasswordShown = computed(() => approval.value?.isPasswordUnlock === true
 const isSignIn = computed(() => isAgent.value && approval.value?.purpose === "sign-in");
 const allLogin = computed(() => approval.value?.allLogin ?? []);
 const allGrantDuration = computed(() => (isAgent.value ? (approval.value?.allGrantDuration ?? []) : []));
-const isHarnessGrantOffered = computed(() => allGrantDuration.value.includes("day") && harnessName.value !== "");
+const agentGrantLifetime = computed(() => {
+  if (approvalStore.grantDuration === "once") return "";
+  const duration = approvalStore.grantDuration === "day" ? "1 day" : "1 hour";
+  const revoke = "Revoke in Settings → Developer tools → Coding agents → Allowed without asking, or sign out.";
+  switch (approval.value?.grantHolderScope) {
+    case "harness":
+      return `Saved for ${harnessName.value} across sessions and Hisar restarts. ${approvalStore.grantDuration === "always" ? "Until you revoke it or sign out." : `Locking pauses access but does not remove this grant. Ends in ${duration}.`} ${revoke}`;
+    case "session":
+      return `Ends in ${duration} or when this agent session ends. Locking pauses access. ${revoke}`;
+    case "connection":
+      return `Ends in ${duration} or when this connection ends. Locking pauses access. ${revoke}`;
+    default:
+      return "";
+  }
+});
 const isTouchIDUsed = computed(() => approval.value?.isTouchIDApproval === true && !isPasswordShown.value);
 const isWaitingForTouchID = computed(() => approvalStore.isAuthorizing && isTouchIDUsed.value);
 const canChoosePassword = computed(() => approval.value?.isTouchIDApproval === true && !isPasswordShown.value);
 const phoneNote = computed(() => {
+  if (approval.value?.phoneApprovalState === "pending") return "Sending to your smart device…";
+  if (approval.value?.phoneApprovalState === "failed") return "Could not send this request to your smart device. Approve or deny on this Mac.";
   if (approval.value?.isPhoneApproval) return "or approve on your smart device";
   return approval.value?.isTooLongForPhone ? "This request is too long to approve on your phone." : "";
 });
@@ -156,6 +181,9 @@ const subtitle = computed(() => {
   if (current.kind === "launcher") {
     return isLauncherShare.value ? "for this link only" : "until Hisar locks";
   }
+  if (current.kind === "passkey") {
+    return "Confirm it is you to continue in your browser.";
+  }
   return current.keyTitle ? `with your SSH key “${current.keyTitle}”` : "Unlock Hisar to use your SSH keys";
 });
 
@@ -196,8 +224,17 @@ const allSecretName = computed(() => approval.value?.allSecretName ?? []);
 const rememberLabel = computed(
   () =>
     approval.value?.rememberLabel ||
-    `Don’t ask again for ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} ${approval.value?.rememberPeriod || "for 1 hour"}`,
+    `Approve SSH requests from ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} with this key ${approval.value?.rememberPeriod === "until Hisar locks" ? "until Hisar locks" : `for up to ${(approval.value?.rememberPeriod || "for 1 hour").replace(/^for /, "")}`}`,
 );
+const rememberNote = computed(() => {
+  const current = approval.value;
+  if (current?.kind !== "ssh-key" || current.agentName || isSigning.value || current.isForwarded) return "";
+  return current.rememberPeriod === "until Hisar locks" ? "Any host." : "Any host. Ends when Hisar locks.";
+});
+const commandLineAllowance = computed(() => {
+  const lines = approval.value?.allowance?.split("\n") ?? [];
+  return { permissions: lines.slice(0, -1), note: lines.at(-1) };
+});
 
 // commandLineApproved is who approving a command-line request approves, by ApprovalEvent.coverage.
 const commandLineApproved = computed(() => {
@@ -329,8 +366,10 @@ function deny(): void {
   }
 }
 
-function expandCompact(): void {
+async function expandCompact(): Promise<void> {
   approvalStore.isExpanded = true;
+  await nextTick();
+  fullHeading.value?.focus();
 }
 
 watch(
@@ -384,8 +423,8 @@ function handleKey(event: KeyboardEvent): void {
     deny();
     return;
   }
-  // Focused buttons and the password form answer Return themselves.
-  if (event.key !== "Enter" || event.target instanceof HTMLButtonElement || event.target instanceof HTMLInputElement) {
+  const isInteractive = event.target instanceof Element && event.target.closest("button, input, select, textarea, a[href], summary, [contenteditable]:not([contenteditable='false']), [role='button'], [role='combobox']");
+  if (event.key !== "Enter" || isInteractive) {
     return;
   }
   event.preventDefault();
@@ -460,6 +499,7 @@ onBeforeUnmount(() => {
             <p v-if="phoneNote" class="compact-subtitle phone-note" data-testid="approval-phone">{{ phoneNote }}</p>
             <p v-if="approvalStore.failureMessage" class="failure" role="alert">{{ approvalStore.failureMessage }}</p>
             <div class="compact-actions">
+              <button class="link" aria-expanded="false" data-testid="show-approval-details" @click.stop="expandCompact">Show details</button>
               <div v-if="isWaitingForTouchID" class="compact-touch-id" data-testid="approval-touch-id">
                 <div ref="promptSlot" class="prompt-slot small">
                   <AppIcon v-if="!api.hasNativeTouchIDView" name="fingerprint" :size="20" />
@@ -469,6 +509,7 @@ onBeforeUnmount(() => {
               <button v-else class="link" data-testid="authorize-approval" @click.stop="startAuthorizing">Try Touch ID again</button>
               <button class="compact-deny" data-testid="deny-approval" @click.stop="deny">Deny</button>
             </div>
+            <ApprovalQueue :requests="queuedApprovals" @deny="denyApproval" @resize="fitWindow" />
           </div>
         </section>
 
@@ -493,7 +534,7 @@ onBeforeUnmount(() => {
                 <span v-if="isSigning" class="signing-badge" data-testid="approval-signing-badge">
                   <AppIcon name="edit" :size="12" /> {{ approval.purpose === "sign-tag" ? "Sign a tag" : "Sign a commit" }}
                 </span>
-                <h1 id="approval-title">
+                <h1 id="approval-title" ref="fullHeading" tabindex="-1">
                   <span v-if="harnessName" data-testid="approval-app">
                     {{ harnessName
                     }}<span v-if="isHarnessSigned" class="checked-name" :title="signedHarnessText" :aria-label="signedHarnessText" data-testid="approval-harness-checked"
@@ -511,10 +552,26 @@ onBeforeUnmount(() => {
                 <p v-else-if="isAgentNameGiven" class="agent-line" data-testid="approval-agent-name-given">
                   <AppIcon name="tag" :size="12" /> <span class="agent-line-text">“{{ approval.agentName }}” is the name the agent gave</span>
                 </p>
+                <p v-if="isHarnessSigned" class="agent-line" data-testid="approval-agent-verification">{{ harnessName }} verified by signature.</p>
+                <template v-else-if="approval.agentNameSource === 'process'">
+                  <p class="agent-line" data-testid="approval-agent-verification">Agent identified by its program name or path, not a verified signature.</p>
+                  <details class="agent-program" data-testid="approval-agent-program" @toggle="fitWindow">
+                    <summary>Agent program details</summary>
+                    <template v-if="approval.harnessProgramPath">
+                      <p>Kernel-reported executable</p>
+                      <code>{{ approval.harnessProgramPath }}</code>
+                      <template v-if="approval.harnessProgramEntrypoint">
+                        <p>Script or entry point</p>
+                        <code>{{ approval.harnessProgramEntrypoint }}</code>
+                      </template>
+                    </template>
+                    <p v-else>The matched agent program details are unavailable. The hisar client path does not identify the agent program.</p>
+                  </details>
+                </template>
                 <p v-if="chainText || appSigner" class="requester-line" data-testid="approval-requester">
                   <span v-if="chainText" class="chain" :title="chainTitle" data-testid="approval-chain">{{ chainText }}</span>
                   <span v-if="appSigner" class="signer" :class="{ 'is-unverified': appWarning }" :title="approval.appPath" data-testid="approval-signer">
-                    <AppIcon :name="appWarning ? 'warning' : 'shield'" :size="11" /> {{ appSigner }}
+                    <AppIcon :name="appWarning ? 'warning' : 'shield'" :size="11" /> {{ isAgent ? "Host app · " : "" }}{{ appSigner }}
                   </span>
                 </p>
               </div>
@@ -534,6 +591,14 @@ onBeforeUnmount(() => {
                 :title="line"
                 >{{ line }}</code
               >
+            </div>
+
+            <div v-if="isCommandLine && commandLineAllowance.permissions.length" class="launcher-allowance" data-testid="approval-command-line-allowance">
+              <ul>
+                <li v-for="permission in commandLineAllowance.permissions" :key="permission"><AppIcon name="check" :size="14" /> {{ permission }}</li>
+              </ul>
+              <p class="muted">{{ commandLineAllowance.note }}</p>
+              <p v-if="durationNote" class="muted note" data-testid="approval-duration">{{ durationNote }}</p>
             </div>
 
             <div v-if="isLauncher && !isLauncherShare" class="launcher-allowance" data-testid="approval-launcher-note">
@@ -572,7 +637,7 @@ onBeforeUnmount(() => {
                   <span class="login-text">
                     <span v-if="login.username" class="login-username">{{ login.username }}</span>
                     <span class="login-item">{{ login.vaultName }} › {{ login.title }}</span>
-                  </span>
+                    </span>
                 </label>
               </div>
               <p class="muted sign-in-note" data-testid="approval-sign-in-note">{{ signInNote }}</p>
@@ -590,7 +655,7 @@ onBeforeUnmount(() => {
                 :checked="approvalStore.isRemembered"
                 @change="setRemembered(approval.requestID, ($event.target as HTMLInputElement).checked)"
               />
-              {{ rememberLabel }}
+              <span>{{ rememberLabel }}<small v-if="rememberNote" class="muted" data-testid="approval-remember-note">{{ ` ${rememberNote}` }}</small></span>
             </label>
 
             <div v-if="allGrantDuration.length > 0" class="grant-duration" data-testid="approval-grant-duration">
@@ -607,9 +672,7 @@ onBeforeUnmount(() => {
                 </select>
               </label>
               <p v-if="approval.grantScope" class="muted" data-testid="approval-grant-scope">{{ approval.grantScope }}</p>
-              <p v-if="isHarnessGrantOffered" class="muted" data-testid="approval-grant-note">
-                Longer choices cover {{ harnessName }} in every session until they expire, you revoke them in Settings → Coding agents, or you sign out.
-              </p>
+              <p v-if="agentGrantLifetime" class="muted" data-testid="approval-grant-note">{{ agentGrantLifetime }}</p>
               <p v-if="approvalStore.grantDuration === 'always'" class="muted" data-testid="approval-always-lock-note">
                 {{ isAlwaysAgentAccessWhileLockedEnabled
                   ? "Agents can use this permission while Hisar is locked, until Hisar quits."
@@ -625,6 +688,7 @@ onBeforeUnmount(() => {
           <p v-if="approvalStore.failureMessage" class="failure" role="alert">{{ approvalStore.failureMessage }}</p>
 
           <form v-if="isPasswordShown" class="password-row" @submit.prevent="submitPassword">
+            <CredentialField>
             <input
               ref="passwordInput"
               v-model="password"
@@ -635,10 +699,11 @@ onBeforeUnmount(() => {
               autocomplete="current-password"
               data-testid="approval-password"
             />
+            </CredentialField>
             <button type="submit" class="primary" data-testid="submit-password" :disabled="approvalStore.isAuthorizing || !password">{{ passwordButtonLabel }}</button>
           </form>
 
-          <p v-if="durationNote" class="muted note" data-testid="approval-duration">{{ durationNote }}</p>
+          <p v-if="durationNote && !isCommandLine" class="muted note" data-testid="approval-duration">{{ durationNote }}</p>
           <p v-if="agentNote" class="muted note" data-testid="approval-agent-note">{{ agentNote }}</p>
 
           <footer class="footer-bar">
@@ -664,10 +729,11 @@ onBeforeUnmount(() => {
               <button v-if="canChoosePassword" class="link" data-testid="use-password" @click="usePassword">or use your master password</button>
             </div>
             <span v-else class="footer-spacer"></span>
-            <span v-if="approvalStore.allApproval.length > 1" class="muted waiting">{{ approvalStore.allApproval.length - 1 }} more waiting</span>
             <button ref="denyButton" :class="{ primary: isForwarded }" data-testid="deny-approval" @click="deny">Deny</button>
           </footer>
+          <ApprovalQueue :requests="queuedApprovals" @deny="denyApproval" @resize="fitWindow" />
         </section>
+        <ApprovalQueue v-if="isExpired" :requests="queuedApprovals" @deny="denyApproval" @resize="fitWindow" />
       </template>
       <p v-else class="muted no-request">No requests waiting.</p>
     </div>
@@ -675,6 +741,15 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.agent-program {
+  margin-top: 8px;
+  font-size: var(--font-size-12);
+}
+
+.agent-program code {
+  overflow-wrap: anywhere;
+}
+
 .expiry {
   margin: 6px 0 0;
   color: var(--color-text-secondary);
@@ -1246,10 +1321,6 @@ h1 {
 
 .request-text > .phone-note {
   margin: 6px 0 0;
-}
-
-.waiting {
-  font-size: var(--font-size-12);
 }
 
 .compact-card {

@@ -18,9 +18,13 @@ sealed interface VaultsDestination {
 
     data class Vault(val vaultID: String) : VaultsDestination
 
+    data object Favorites : VaultsDestination
+
     data class Category(val category: ItemCategory) : VaultsDestination
 
     data class Tag(val tag: String) : VaultsDestination
+
+    data object Tags : VaultsDestination
 
     data class Item(val vaultID: String, val itemID: String) : VaultsDestination
 

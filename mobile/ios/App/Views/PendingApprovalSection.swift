@@ -4,6 +4,8 @@ import SwiftUI
 struct PendingApprovalCardSection: View {
     var allApproval: [PhoneApproval]
     var isBusy: Bool
+    var isBiometricAvailable = true
+    var rememberChoice: (PhoneApproval) -> Binding<Bool>
     var review: (PhoneApproval) -> Void
     var approve: (PhoneApproval, _ isRemembered: Bool) -> Void
     var deny: (PhoneApproval) -> Void
@@ -12,7 +14,7 @@ struct PendingApprovalCardSection: View {
     var body: some View {
         if let approval = allApproval.first {
             Section {
-                PendingApprovalCard(approval: approval, isBusy: isBusy, review: review, approve: approve, deny: deny)
+                PendingApprovalCard(approval: approval, isBusy: isBusy, isBiometricAvailable: isBiometricAvailable, isRemembered: rememberChoice(approval), review: review, approve: approve, deny: deny)
                     .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
                 if allApproval.count > 1 {
                     Button(action: showAll) {
@@ -33,11 +35,12 @@ struct PendingApprovalCardSection: View {
 struct PendingApprovalCard: View {
     var approval: PhoneApproval
     var isBusy: Bool
+    var isBiometricAvailable = true
+    @Binding var isRemembered: Bool
     var review: (PhoneApproval) -> Void
     var approve: (PhoneApproval, _ isRemembered: Bool) -> Void
     var deny: (PhoneApproval) -> Void
 
-    @State private var chosenRemember: Bool?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -64,7 +67,7 @@ struct PendingApprovalCard: View {
                 .accessibilityIdentifier("pending-approval-warning-\(approval.requestID)")
             }
             if approval.isRememberable {
-                Toggle(approval.rememberLabel, isOn: Binding(get: { approval.resolveRememberChoice(chosenRemember) }, set: { chosenRemember = $0 }))
+                Toggle(approval.rememberLabel, isOn: $isRemembered)
                     .font(.subheadline)
                     .disabled(isBusy)
                     .accessibilityIdentifier("pending-approval-remember-\(approval.requestID)")
@@ -79,9 +82,15 @@ struct PendingApprovalCard: View {
                 .buttonStyle(.glass)
                 .accessibilityIdentifier("pending-approval-deny-\(approval.requestID)")
                 Button {
-                    approve(approval, approval.resolveRememberChoice(chosenRemember))
+                    approve(approval, isRemembered)
                 } label: {
-                    Label("Approve", systemImage: SettingsView.biometrySystemImage)
+                    Group {
+                        if isBiometricAvailable {
+                            Label("Approve", systemImage: SettingsView.biometrySystemImage)
+                        } else {
+                            Text("Approve")
+                        }
+                    }
                         .frame(maxWidth: .infinity)
                 }
                 .applyProminentGlassStyle()
@@ -91,9 +100,6 @@ struct PendingApprovalCard: View {
             .disabled(isBusy)
         }
         .padding(.vertical, 6)
-        .onChange(of: approval.requestID) {
-            chosenRemember = nil
-        }
     }
 }
 

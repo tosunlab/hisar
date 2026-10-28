@@ -40,8 +40,16 @@ class AppViewModel(private val provider: BackendProvider, notificationPlatform: 
     }
 
     init {
-        viewModelScope.launch { model.start { provider.backend } }
+        retryStartup()
         ProcessLifecycleOwner.get().lifecycle.addObserver(processObserver)
+    }
+
+    fun retryStartup() {
+        viewModelScope.launch { model.start { provider.backend } }
+    }
+
+    fun copyStartupDetails(message: String) {
+        provider.copyPlain(message)
     }
 
     fun copySecret(text: String): Boolean = provider.copySecret(text)

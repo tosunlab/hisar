@@ -6,10 +6,13 @@ import "github.com/wailsapp/wails/v3/pkg/application"
 // closes the window and leaves Hisar running in the menu bar with its SSH agent and sockets. Only the menu bar item's
 // Quit Hisar Completely quits. Wails' own Quit sends terminate:, which Sparkle's relaunch and logging out also send, so
 // those still quit; this item never sends it.
-func createApplicationMenu(closeWindow func()) *application.Menu {
+func createApplicationMenu(closeWindow, showSettings func()) *application.Menu {
 	menu := application.NewMenu()
 	hisarMenu := menu.AddSubmenu("Hisar")
 	hisarMenu.AddRole(application.About)
+	hisarMenu.Add("Settings…").SetAccelerator("CmdOrCtrl+,").OnClick(func(*application.Context) {
+		application.InvokeAsync(showSettings)
+	})
 	hisarMenu.AddSeparator()
 	hisarMenu.AddRole(application.ServicesMenu)
 	hisarMenu.AddSeparator()
@@ -26,4 +29,11 @@ func createApplicationMenu(closeWindow func()) *application.Menu {
 	menu.AddRole(application.WindowMenu)
 	menu.AddRole(application.HelpMenu)
 	return menu
+}
+
+func openSettingsFromMenu(showSettings func(string) bool, isUnlocked bool, showMainWindow func()) {
+	showSettings("")
+	if !isUnlocked {
+		showMainWindow()
+	}
 }

@@ -52,8 +52,19 @@ final class HisarUITests: HisarUITestCase {
 
         app.buttons["lock-now"].tap()
         type("wrong password", into: app.secureTextFields["unlock-password"])
+        let reveal = app.buttons["unlock-password-reveal"]
+        reveal.tap()
+        XCTAssertEqual(reveal.label, "Hide master password")
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        waitFor(app.secureTextFields["unlock-password"])
+        XCTAssertEqual(reveal.label, "Show master password", "leaving Hisar conceals the revealed password")
+        reveal.tap()
+        XCTAssertEqual(reveal.label, "Hide master password")
         app.buttons["unlock-submit"].tap()
         waitFor(app.otherElements["error-message"].exists ? app.otherElements["error-message"] : app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'incorrect'")).firstMatch)
+        XCTAssertEqual(reveal.label, "Show master password", "a failed unlock conceals the revealed password")
+        XCTAssertTrue(app.secureTextFields["unlock-password"].exists)
         saveScreenshot("lock")
         app.secureTextFields["unlock-password"].tap()
         typeText(Self.masterPassword, into: app.secureTextFields["unlock-password"])
@@ -61,11 +72,17 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.buttons["vault-Personal"])
 
         openTab("Settings")
+        XCTAssertFalse(app.buttons["sign-out"].exists, "Settings keeps sign-out under Account")
+        for _ in 0..<5 where !app.buttons["open-account"].isHittable {
+            app.swipeDown()
+        }
+        app.buttons["open-account"].tap()
         for _ in 0..<5 where !app.buttons["sign-out"].isHittable {
             app.swipeUp()
         }
         saveScreenshot("settings")
         app.buttons["sign-out"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Secret Key", "master password")).firstMatch.waitForExistence(timeout: 5))
         confirm("Sign out", excludingIdentifier: "sign-out")
         waitFor(app.textFields["sign-in-email"])
 
@@ -85,12 +102,12 @@ final class HisarUITests: HisarUITestCase {
 
     func testPrivacyCoverHidesContentInTheBackground() throws {
         app.launch()
-        waitFor(app.segmentedControls["sign-in-mode"])
+        waitFor(app.buttons["welcome-create-account"])
         for _ in 0..<2 {
             XCUIDevice.shared.press(.home)
             XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended, timeout: 10))
             app.activate()
-            waitFor(app.segmentedControls["sign-in-mode"])
+            waitFor(app.buttons["welcome-create-account"])
             XCTAssertTrue(app.otherElements["privacy-cover"].waitForNonExistence(timeout: 5), "the cover goes away once the app is active")
         }
     }

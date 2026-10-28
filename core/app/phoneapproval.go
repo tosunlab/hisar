@@ -180,7 +180,7 @@ func (relay *phoneApprovalRelay) getDeviceAvailability(now time.Time) (isAvailab
 // StartPhoneApproval seals the dialog's request to the account and posts it; it stays answerable until the dialog's
 // deadline (at most approval.MaximumLifetime), and decide runs at most once, with a verified answer. It sends nothing
 // and fails when phone approval is not available, and with approval.ErrSealedTooLarge when the request does not fit.
-func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) (func(), error) {
+func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Description, expiresAt time.Time, posted func(isSent bool), decide func(answer approval.AcceptedAnswer)) (func(), error) {
 	s := phoneApprover.service
 	s.mutex.Lock()
 	relay := s.phoneApprovals
@@ -223,6 +223,9 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 			s.forgetPhoneApproval(request.RequestID)
 		}
 		postedChannel <- isPosted
+		if posted != nil {
+			posted(isPosted)
+		}
 	}()
 	var finishOnce sync.Once
 	return func() {

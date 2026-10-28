@@ -418,14 +418,15 @@ func FindUnsavedDuplicates(imported, existing []item.Item, matches map[int]int) 
 		if !isDuplicate {
 			continue
 		}
-		if !containsImportedContent(vaultItem, existing[existingIndex]) {
+		if !ContainsImportedContent(vaultItem, existing[existingIndex]) {
 			skipped = append(skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: "the skipped duplicate has different content from the item in Hisar"})
 		}
 	}
 	return skipped
 }
 
-func containsImportedContent(imported, stored item.Item) bool {
+// ContainsImportedContent compares a source item with Hisar's post-merge copy, ignoring account favorites.
+func ContainsImportedContent(imported, stored item.Item) bool {
 	imported.Overview.Category, stored.Overview.Category = imported.Category(), stored.Category()
 	if imported.IsCategory(item.CategorySSHKey) && stored.IsCategory(item.CategorySSHKey) &&
 		imported.Details.PrivateKey != "" && stored.Details.PrivateKey != "" {

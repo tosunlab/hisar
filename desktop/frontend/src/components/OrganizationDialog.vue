@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { Organization, OrganizationMember, Team, TeamVault, VaultRole } from "../api";
+import type { Organization, OrganizationMember, OrganizationRole, Team, TeamMember, TeamVault, VaultRole } from "../api";
 import {
   createTeam,
   deleteOrganization,
@@ -10,18 +10,26 @@ import {
   leaveOrganization,
   listAllOrganizationVault,
   removeOrganizationMember,
+  removeTeamMember,
   renameOrganization,
   renameTeam,
   store,
+  setOrganizationMemberRole,
+  takeVaultFromTeam,
 } from "../store";
 import { formatRole, vaultRoleDescription } from "../util";
+import { describeOrganizationAccessChange, vaultRoleChangeMessage, vaultRoleChangeTitle } from "../organizationAccess";
 import AccountDialog from "./AccountDialog.vue";
 import type { IconName } from "./AppIcon.vue";
 
 export type OrganizationDialogRequest =
   | { kind: "rename-organization" | "delete-organization" | "leave" | "new-team" }
   | { kind: "remove-member"; member: OrganizationMember }
-  | { kind: "rename-team" | "delete-team" | "give-vault"; team: Team };
+  | { kind: "remove-team-member"; team: Team; member: TeamMember }
+  | { kind: "change-member-role"; member: OrganizationMember; role: OrganizationRole }
+  | { kind: "rename-team" | "delete-team" | "give-vault"; team: Team }
+  | { kind: "take-vault"; team: Team; teamVault: TeamVault }
+  | { kind: "change-team-role"; team: Team; teamVault: TeamVault; role: VaultRole };
 
 interface DialogText {
   title: string;
@@ -59,6 +67,24 @@ const text = computed<DialogText>(() => {
   const organizationName = props.organization.name;
   const request = props.request;
   switch (request.kind) {
+    case "take-vault":
+      return { title: `Take ${describeTeamVault(request.teamVault)} back from ${request.team.name}?`, subtitle: "Review who loses access or has a reduced role through the remaining teams.", icon: "vault", isDanger: true, confirmLabel: "Take back" };
+    case "remove-team-member":
+      return { title: `Remove ${request.member.name || request.member.email} from ${request.team.name}?`, subtitle: request.member.isCurrentUser ? "You lose access to vaults this team alone gives you." : "Their vault access changes only where no other team gives the same role.", icon: "trash", isDanger: true, confirmLabel: `Remove from ${request.team.name}` };
+    case "change-member-role": {
+      const name = request.member.name || request.member.email;
+      const isSelf = request.member.isCurrentUser;
+      const isPromotion = request.role === "admin";
+      return {
+        title: isPromotion ? `Make ${name} an admin of ${organizationName}?` : isSelf ? `Make yourself a member of ${organizationName}?` : `Make ${name} a member of ${organizationName}?`,
+        subtitle: isPromotion ? "Admins manage members, teams and which teams have which vaults. Being an admin gives no vault by itself."
+          : isSelf ? "You can no longer manage members, teams or which teams have which vaults. Another admin can make you an admin again."
+          : `${name} can no longer manage members, teams or which teams have which vaults. Another admin can make them an admin again.`,
+        icon: "user", isDanger: !isPromotion, confirmLabel: isPromotion ? "Make admin" : isSelf ? "Make me a member" : "Make member",
+      };
+    }
+    case "change-team-role":
+      return { title: vaultRoleChangeTitle(request.team.name, describeTeamVault(request.teamVault), request.role), subtitle: vaultRoleChangeMessage(request.role), icon: "users", isDanger: true, confirmLabel: request.role === "owner" ? "Make owner" : "Change role" };
     case "rename-organization":
       return { title: `Rename “${organizationName}”`, subtitle: `Everyone in ${organizationName} sees the new name.`, icon: "edit", isDanger: false, confirmLabel: "Save" };
     case "delete-organization":
@@ -105,25 +131,28 @@ const text = computed<DialogText>(() => {
   return { title: "", subtitle: "", icon: "building", isDanger: false, confirmLabel: "" };
 });
 
-// allLostVaultLine names what goes: the vaults the teams in question have, unopened ones counted together.
 const allLostVaultLine = computed(() => {
   const request = props.request;
-  let allTeam: Team[] = [];
+  if (request.kind === "take-vault") {
+    return describeOrganizationAccessChange(props.organization, { kind: "take-vault", teamID: request.team.id, vaultID: request.teamVault.vaultId });
+  }
+  if (request.kind === "remove-team-member") {
+    return describeOrganizationAccessChange(props.organization, { kind: "remove-team-member", teamID: request.team.id, accountID: request.member.accountId });
+  }
+  if (request.kind === "change-team-role") {
+    return describeOrganizationAccessChange(props.organization, { kind: "team-role", teamID: request.team.id, vaultID: request.teamVault.vaultId, role: request.role });
+  }
+  if (request.kind === "delete-team") {
+    return describeOrganizationAccessChange(props.organization, { kind: "remove-team", teamID: request.team.id });
+  }
+  if (request.kind === "remove-member") {
+    return describeOrganizationAccessChange(props.organization, { kind: "remove-member", accountID: request.member.accountId });
+  }
   if (request.kind === "leave") {
-    allTeam = props.organization.teams.filter((team) => team.members.some((member) => member.isCurrentUser));
-  } else if (request.kind === "remove-member") {
-    allTeam = props.organization.teams.filter((team) => team.members.some((member) => member.accountId === request.member.accountId));
-  } else if (request.kind === "delete-team") {
-    allTeam = [request.team];
+    const member = props.organization.members.find((member) => member.isCurrentUser);
+    return member ? describeOrganizationAccessChange(props.organization, { kind: "remove-member", accountID: member.accountId }) : [];
   }
-  const vaultByID = new Map<string, TeamVault>(allTeam.flatMap((team) => team.vaults.map((teamVault) => [teamVault.vaultId, teamVault] as const)));
-  const allTeamVault = [...vaultByID.values()];
-  const allLine = allTeamVault.filter((teamVault) => teamVault.canOpen).map(describeTeamVault);
-  const unopenedCount = allTeamVault.length - allLine.length;
-  if (unopenedCount > 0) {
-    allLine.push(unopenedCount === 1 ? "A vault you can't open" : `${unopenedCount} vaults you can't open`);
-  }
-  return allLine;
+  return [];
 });
 
 const canSubmit = computed(() => {
@@ -139,6 +168,14 @@ const canSubmit = computed(() => {
 async function runRequest(): Promise<boolean> {
   const request = props.request;
   switch (request.kind) {
+    case "take-vault":
+      return takeVaultFromTeam(props.organization, request.team, request.teamVault);
+    case "remove-team-member":
+      return removeTeamMember(props.organization, request.team, request.member);
+    case "change-member-role":
+      return setOrganizationMemberRole(props.organization, request.member, request.role);
+    case "change-team-role":
+      return giveVaultToTeam(props.organization, request.team, request.teamVault.vaultId, request.role);
     case "rename-organization":
       return renameOrganization(props.organization, name.value.trim());
     case "delete-organization":
@@ -193,10 +230,11 @@ async function submit(): Promise<void> {
         </label>
         <label>
           <span>Role</span>
-          <select v-model="role" name="organizationDialogRole" :title="vaultRoleDescription" data-testid="organization-dialog-role">
+          <select v-model="role" name="organizationDialogRole" aria-describedby="give-vault-role-legend" data-testid="organization-dialog-role">
             <option v-for="vaultRole in allVaultRole" :key="vaultRole" :value="vaultRole">{{ formatRole(vaultRole) }}</option>
           </select>
         </label>
+        <p id="give-vault-role-legend" class="muted hint">{{ vaultRoleDescription }}</p>
       </template>
       <ul v-if="allLostVaultLine.length > 0" class="consequences warning" data-testid="organization-dialog-vaults">
         <li v-for="line in allLostVaultLine" :key="line">{{ line }}</li>

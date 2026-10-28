@@ -158,6 +158,8 @@ func (s *Service) startImportGroups(vaultID string, skipping bool) (ImportProgre
 	queuedVaultIDs := []string{}
 	scopes := map[string]string{}
 	skipped := append([]importer.SkippedEntry{}, pending.skipped...)
+	var duplicateOutcomes []ImportSkippedEntry
+	var queuedDuplicateOutcomes [][]ImportSkippedEntry
 	for _, group := range pending.groups {
 		_, scope, err := s.importMembers(ctx, group.vaultID)
 		if err != nil {
@@ -176,9 +178,12 @@ func (s *Service) startImportGroups(vaultID string, skipping bool) (ImportProgre
 		}
 		scopes[group.vaultID] = scope
 		skipped = append(skipped, local.skipped...)
+		duplicateOutcomes = append(duplicateOutcomes, local.duplicateOutcomes...)
+		queuedDuplicateOutcomes = append(queuedDuplicateOutcomes, local.queuedDuplicateOutcomes...)
 	}
 	pending.queuedItems, pending.queuedVaultIDs, pending.scopes = queued, queuedVaultIDs, scopes
 	pending.isStarted, pending.vaultID, pending.items, pending.skipped = true, expectedID, nil, skipped
+	pending.duplicateOutcomes, pending.queuedDuplicateOutcomes = duplicateOutcomes, queuedDuplicateOutcomes
 	pending.failed = []ImportSkippedEntry{}
 	return s.buildImportProgress(), nil
 }

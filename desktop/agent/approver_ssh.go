@@ -139,6 +139,13 @@ func (approver *Approver) buildSSHPhoneDescription(event ApprovalEvent, signingR
 	if event.IsRememberable {
 		description.IsRememberedByDefault = event.IsRememberedByDefault
 		description.RememberLabel = fmt.Sprintf("Also allows %s %s", describeRememberedRequester(event), event.RememberPeriod)
+		if event.AgentName == "" && event.Purpose != PurposeSignCommit && event.Purpose != PurposeSignTag {
+			if event.RememberPeriod == "until Hisar locks" {
+				description.RememberLabel = fmt.Sprintf("Approve SSH requests from %s with this key until Hisar locks. Any host.", describeRememberedRequester(event))
+			} else {
+				description.RememberLabel = fmt.Sprintf("Approve SSH requests from %s with this key for up to %s. Any host. Ends when Hisar locks.", describeRememberedRequester(event), strings.TrimPrefix(event.RememberPeriod, "for "))
+			}
+		}
 		if event.Purpose == PurposeSignCommit {
 			description.RememberLabel = fmt.Sprintf("Also allows %s to sign commits in %s for %s", event.AppName, event.RepositoryPath, formatRememberDuration(signingRememberDuration))
 		}

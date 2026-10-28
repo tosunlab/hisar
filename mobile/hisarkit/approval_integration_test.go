@@ -86,7 +86,8 @@ func (store *macSecretKeyStore) DeleteSecretKey(accountID string) error {
 }
 
 type macDialog struct {
-	events chan agent.ApprovalEvent
+	events    chan agent.ApprovalEvent
+	requestID string
 }
 
 func (dialog *macDialog) emit(eventName string, data any) {
@@ -97,12 +98,20 @@ func (dialog *macDialog) emit(eventName string, data any) {
 
 func (dialog *macDialog) waitForEvent(t *testing.T) agent.ApprovalEvent {
 	t.Helper()
-	select {
-	case event := <-dialog.events:
-		return event
-	case <-time.After(15 * time.Second):
-		t.Fatal("the Mac never showed the approval dialog")
-		return agent.ApprovalEvent{}
+	timer := time.NewTimer(15 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case event := <-dialog.events:
+			if event.RequestID == dialog.requestID {
+				continue
+			}
+			dialog.requestID = event.RequestID
+			return event
+		case <-timer.C:
+			t.Fatal("the Mac never showed the approval dialog")
+			return agent.ApprovalEvent{}
+		}
 	}
 }
 

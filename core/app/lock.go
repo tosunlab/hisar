@@ -122,7 +122,7 @@ func (s *Service) lockWhenIdle() {
 }
 
 func (s *Service) lockSession() {
-	s.forgetNewAccountSecrets()
+	s.endKitGrant()
 	s.recoveryMutex.Lock()
 	clear(s.pendingRecoveryFactors)
 	s.recoveryMutex.Unlock()

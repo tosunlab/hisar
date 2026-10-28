@@ -333,9 +333,14 @@ jobs:
             docs/package-lock.json
             extension/package-lock.json
             raycast/package-lock.json
-      - name: Desktop frontend typecheck, tests and bundle check
+      - name: Desktop frontend typecheck, tests, Chromium layout and bundle check
         if: ${{ !cancelled() && env.IS_DESKTOP_CHANGED == 'true' }}
-        run: make test-desktop-frontend
+        run: |
+          cd desktop/frontend
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          cd ../..
+          make test-desktop-frontend
       - name: Docs site typecheck
         if: ${{ !cancelled() && env.IS_DOCS_CHANGED == 'true' }}
         run: cd docs && npm ci --no-audit --no-fund && npm run typecheck

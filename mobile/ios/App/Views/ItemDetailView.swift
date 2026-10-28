@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ItemDetailView: View {
-    var vaultID: String
+    @State var vaultID: String
     var itemID: String
 
     @EnvironmentObject private var model: AppModel
@@ -12,6 +12,8 @@ struct ItemDetailView: View {
     @State private var allRevealedCustomIndex = Set<Int>()
     @State private var isEditorShown = false
     @State private var passkeyToDelete: ItemPasskey?
+    @State private var actionErrorMessage: String?
+    @State private var isMoveShown = false
 
     private var vault: VaultSummary? { model.findVault(vaultID: vaultID) }
 
@@ -55,6 +57,12 @@ struct ItemDetailView: View {
                         .accessibilityIdentifier("edit-item")
                 }
             }
+            if item != nil, !model.moveDestinations(vaultID: vaultID).isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Move to vault…") { model.clearError(); isMoveShown = true }
+                        .accessibilityIdentifier("move-item")
+                }
+            }
         }
         .sheet(isPresented: $isEditorShown) {
             if let item {
@@ -64,6 +72,16 @@ struct ItemDetailView: View {
                     } else {
                         dismiss()
                     }
+                }
+                .environmentObject(model)
+            }
+        }
+        .sheet(isPresented: $isMoveShown) {
+            if let item {
+                MoveItemSheet(sourceVaultID: vaultID, item: item) { moved, destinationID in
+                    self.vaultID = destinationID
+                    self.item = moved
+                    isMoveShown = false
                 }
                 .environmentObject(model)
             }
@@ -79,7 +97,15 @@ struct ItemDetailView: View {
             }
             .accessibilityIdentifier("confirm-delete-passkey")
         } message: { passkey in
-            Text("You can no longer sign in to \(passkey.relyingPartyID) as \(passkey.userName) with it.")
+            Text(passkey.deletionMessage(vault: vault))
+        }
+        .alert("Could not complete the action", isPresented: Binding(
+            get: { actionErrorMessage != nil },
+            set: { if !$0 { actionErrorMessage = nil } }
+        )) {
+            Button("OK") { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
         }
         .onChange(of: item?.revision) { _, _ in
             isPasswordRevealed = false
@@ -94,7 +120,7 @@ struct ItemDetailView: View {
     }
 
     private func toggleFavorite(_ shownItem: ItemDetail) async {
-        if await model.setItemFavorite(vaultID: vaultID, itemID: shownItem.id, isFavorite: !shownItem.isFavorite) {
+        if await model.setItemFavorite(vaultID: vaultID, itemID: shownItem.id, isFavorite: !shownItem.isFavorite, onFailure: { actionErrorMessage = $0 }) {
             item?.isFavorite = !shownItem.isFavorite
         }
     }
@@ -107,16 +133,7 @@ struct ItemDetailView: View {
     private func buildContent(item: ItemDetail) -> some View {
         List {
             Section {
-                HStack(spacing: 14) {
-                    AppItemIcon(item: item, size: 56)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title)
-                            .font(.title2.weight(.bold))
-                        Text("\(vault?.name ?? "") · \(describeCategory(item: item))")
-                            .font(.subheadline)
-                            .foregroundStyle(.themeSecondary)
-                    }
-                }
+                ItemDetailHeader(item: item, subtitle: "\(vault?.name ?? "") · \(describeCategory(item: item))")
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
                 if !item.allTag.isEmpty {
@@ -167,7 +184,7 @@ struct ItemDetailView: View {
                 }
             }
             if !item.allField.isEmpty {
-                Section("Other fields") {
+                Section {
                     ForEach(Array(item.allField.enumerated()), id: \.offset) { index, field in
                         SecretFieldRow(
                             label: field.name, isCustomField: true, value: field.value, isConcealed: field.concealed,
@@ -179,10 +196,13 @@ struct ItemDetailView: View {
                             copyReference: { copyReference(fieldName: field.name) }
                         )
                     }
+                } header: {
+                    Text("Other fields")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.allURL.isEmpty {
-                Section(item.isServer ? "Admin console" : item.allURL.count == 1 ? "Website" : "Websites") {
+                Section {
                     ForEach(Array(item.allURL.enumerated()), id: \.offset) { _, url in
                         HStack(spacing: 0) {
                             CopyFieldButton(label: "website", value: url, copy: { model.copyText(url, label: "Website") }) {
@@ -215,6 +235,9 @@ struct ItemDetailView: View {
                             }
                         }
                     }
+                } header: {
+                    Text(item.isServer ? "Admin console" : item.allURL.count == 1 ? "Website" : "Websites")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.allAndroidApp.isEmpty {
@@ -224,15 +247,20 @@ struct ItemDetailView: View {
                     }
                 } header: {
                     Text(item.allAndroidApp.count == 1 ? "Android app" : "Android apps")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("Linked on an Android phone. AutoFill there offers this login in these apps.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.allPasskey.isEmpty {
-                Section("Passkeys") {
+                Section {
                     ForEach(item.allPasskey) { passkey in
                         buildPasskeyRow(passkey)
                     }
+                } header: {
+                    Text("Passkeys")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.notes.isEmpty && !item.isSecureNote {
@@ -254,6 +282,7 @@ struct ItemDetailView: View {
                     }
                 } header: {
                     Text("Notes")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if isWritable && item.canConvertToSecureNote {
@@ -267,6 +296,7 @@ struct ItemDetailView: View {
                     .accessibilityIdentifier("convert-to-secure-note")
                 } footer: {
                     Text("This login has no username, password or website. As a secure note, it opens straight to its notes and fields.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if let referenceField = getReferenceField(item: item) {
@@ -280,6 +310,7 @@ struct ItemDetailView: View {
                     .accessibilityIdentifier("copy-secret-reference")
                 } footer: {
                     Text("For hisar run and hisar read on your Mac.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
@@ -291,10 +322,10 @@ struct ItemDetailView: View {
     @ViewBuilder
     private func buildServerSection(server: ItemServer) -> some View {
         if !server.host.isEmpty || !server.port.isEmpty || !server.sshKeyID.isEmpty {
-            Section("Server") {
+            Section {
                 if !server.host.isEmpty {
                     SecretFieldRow(
-                        label: ServerFieldName.host, value: server.address, isConcealed: false, isRevealed: true, toggleReveal: nil,
+                        label: ServerFieldName.host, value: server.host, isConcealed: false, isRevealed: true, toggleReveal: nil,
                         copy: { copy(fieldName: ServerFieldName.host, label: ServerFieldName.host) },
                         copyReference: { copyReference(fieldName: ServerFieldName.host) }
                     )
@@ -327,6 +358,9 @@ struct ItemDetailView: View {
                         .accessibilityIdentifier("server-ssh-key")
                     }
                 }
+            } header: {
+                Text("Server")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
@@ -349,6 +383,7 @@ struct ItemDetailView: View {
                         copy: { copy(fieldName: "password", label: "Password") },
                         copyReference: { copyReference(fieldName: "password") }
                     )
+                    ItemPasswordStrengthMeter(password: item.password)
                 }
                 if item.hasOneTimePassword {
                     OneTimeCodeRow(vaultID: vaultID, itemID: item.id) {
@@ -396,6 +431,7 @@ struct ItemDetailView: View {
             )
         } footer: {
             Text("Built from the fields above, so it always has the current password.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -509,6 +545,7 @@ struct ItemDetailView: View {
             }
         } header: {
             Text(title)
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -537,17 +574,18 @@ struct ItemDetailView: View {
             }
         } header: {
             Text("Note")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
     private func convertToSecureNote() async {
-        guard let item, let convertedItem = await model.convertToSecureNote(vaultID: vaultID, itemID: item.id) else { return }
+        guard let item, let convertedItem = await model.convertToSecureNote(vaultID: vaultID, itemID: item.id, onFailure: { actionErrorMessage = $0 }) else { return }
         self.item = convertedItem
     }
 
     @ViewBuilder
     private func buildSSHKeySection(item: ItemDetail) -> some View {
-        Section("SSH key") {
+        Section {
             LabeledContent("Key type", value: item.keyType)
             SecretFieldRow(
                 label: "Fingerprint", value: item.fingerprint, isConcealed: false, isRevealed: true, toggleReveal: nil,
@@ -559,6 +597,9 @@ struct ItemDetailView: View {
                 copy: { copy(fieldName: "public key", label: "Public key") },
                 copyReference: { copyReference(fieldName: "public key") }
             )
+        } header: {
+            Text("SSH key")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -629,17 +670,21 @@ struct ItemDetailView: View {
 
     private func deletePasskey(_ passkey: ItemPasskey) async {
         passkeyToDelete = nil
-        if let updatedItem = await model.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: passkey.credentialID) {
+        if let updatedItem = await model.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: passkey.credentialID, onFailure: { actionErrorMessage = $0 }) {
             item = updatedItem
         }
     }
 
     private func copy(fieldName: String, label: String) {
-        Task { await model.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName, label: label) }
+        Task {
+            await model.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName, label: label, onFailure: { actionErrorMessage = "Could not copy \(label). \($0)" })
+        }
     }
 
     private func copyReference(fieldName: String) {
-        Task { await model.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }
+        Task {
+            await model.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName, onFailure: { actionErrorMessage = "Could not copy the secret reference. \($0)" })
+        }
     }
 }
 
@@ -675,7 +720,7 @@ struct SecretFieldRow: View {
                     if !warning.isEmpty {
                         Text(warning)
                             .font(.footnote)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.themeWarning)
                             .accessibilityIdentifier("card-warning-\(label)")
                     }
                 }
@@ -759,5 +804,102 @@ extension View {
     /// An icon-only button's 44-point hit area, on its label: a borderless button takes taps only on its label.
     func iconButtonHitArea() -> some View {
         frame(minWidth: 44, minHeight: 44).contentShape(.rect)
+    }
+}
+
+private struct MoveItemSheet: View {
+    var sourceVaultID: String
+    var item: ItemDetail
+    var finish: (ItemDetail, String) -> Void
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var targetVaultID = ""
+
+    private var groups: [VaultDestinationGroup] {
+        OrganizationLogic.destinationGroups(model.moveDestinations(vaultID: sourceVaultID), organizations: model.allOrganization)
+    }
+    private var selected: VaultChoice? { groups.flatMap(\.destinations).first { $0.id == targetVaultID } }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Move “\(item.title)” from \(model.findVault(vaultID: sourceVaultID)?.name ?? "this vault").")
+                }
+                if let error = model.errorMessage {
+                    Section { ErrorBanner(message: error) }
+                }
+                Picker("Move to", selection: $targetVaultID) {
+                    Text("Choose a vault").tag("")
+                    ForEach(groups) { group in
+                        Section(group.name) {
+                            ForEach(group.destinations) { destination in
+                                Text(destination.label).tag(destination.id)
+                            }
+                        }
+                    }
+                }
+                .accessibilityIdentifier("move-item-target")
+                if let selected {
+                    Section {
+                        Text(selected.context)
+                        Text("Everyone with access to the destination gains access to this item. People with source access but no destination access lose it on their next sync. Copies they retained independently cannot be revoked.")
+                        Text("hisar:// secret references that use the source vault's name need the new vault name.")
+                        if item.isServer, item.server?.sshKeyID.isEmpty == false {
+                            Text("The linked SSH key must exist in the destination vault or be selected again after moving.")
+                        }
+                    } header: {
+                        Text("Who has access")
+                            .foregroundStyle(.themeSecondary)
+                    }
+                    .accessibilityIdentifier("move-item-context")
+                }
+            }
+            .navigationTitle("Move to vault")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(model.isBusy)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Move") {
+                        Task {
+                            if let moved = await model.moveItem(vaultID: sourceVaultID, itemID: item.id, targetVaultID: targetVaultID) {
+                                finish(moved, targetVaultID)
+                            }
+                        }
+                    }
+                    .disabled(selected == nil || model.isBusy)
+                    .accessibilityIdentifier("move-item-confirm")
+                }
+            }
+        }
+        .interactiveDismissDisabled(model.isBusy)
+    }
+}
+
+struct ItemDetailHeader: View {
+    var item: ItemDetail
+    var subtitle: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
+            : AnyLayout(HStackLayout(spacing: 14))
+        layout {
+            AppItemIcon(item: item, size: 56, maxSize: 56)
+                .dynamicTypeSize(.large)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(.title2.weight(.bold))
+                    .accessibilityIdentifier("item-detail-title")
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.themeSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.tryhisar.hisar.ui.vaults
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.AnchoredDraggableState
 import androidx.compose.foundation.gestures.DraggableAnchors
 import androidx.compose.foundation.gestures.Orientation
@@ -28,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Cancel
@@ -54,9 +56,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -146,6 +150,7 @@ fun NavigationRow(
     modifier: Modifier = Modifier,
     badge: Int = 0,
     leading: (@Composable () -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     Row(
@@ -153,7 +158,7 @@ fun NavigationRow(
             .fillMaxWidth()
             .heightIn(min = 52.dp)
             .background(HisarTheme.colors.cellBackground)
-            .clickable(role = Role.Button, onClick = onClick)
+            .combinedClickable(role = Role.Button, onClick = onClick, onLongClick = onLongClick, onLongClickLabel = if (onLongClick != null) "Item actions" else null)
             .testTag(testTag)
             .padding(horizontal = RowInset, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -218,18 +223,20 @@ fun OfflineNote() {
 
 /** The search field under a list's large title, as SwiftUI's searchable. */
 @Composable
-fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: String, testTag: String, modifier: Modifier = Modifier) {
+fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: String, testTag: String, modifier: Modifier = Modifier, label: String = placeholder) {
     val colors = HisarTheme.colors
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         textStyle = HisarType.body.copy(color = colors.label),
         cursorBrush = SolidColor(colors.tint),
         modifier = modifier
             .padding(horizontal = ScreenMargin)
             .fillMaxWidth()
-            .testTag(testTag),
+            .testTag(testTag)
+            .semantics { contentDescription = label },
         decorationBox = { innerTextField ->
             Row(
                 Modifier
@@ -342,7 +349,7 @@ fun HisarMenuItem(
     isDestructive: Boolean = false,
     detail: String? = null,
 ) {
-    val color = if (isDestructive) HisarTheme.colors.destructive else HisarTheme.colors.label
+    val color = if (isDestructive) HisarTheme.colors.destructiveText else HisarTheme.colors.label
     DropdownMenuItem(
         text = {
             Column {
