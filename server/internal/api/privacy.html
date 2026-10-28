@@ -35,7 +35,7 @@
 </ul>
 
 <h2>Who runs Hisar</h2>
-<p>The hosted service is operated by Alper Berber ("we", "us"), based in the Netherlands. We are the controller of the personal data described here. Questions and requests: <a href="mailto:support@tryhisar.com">support@tryhisar.com</a>. Product help is available at <a href="https://tryhisar.com/contact">Contact and support</a>.</p>
+<p>The hosted service is operated by <a href="https://tosunlab.com">tosunlab</a> ("we", "us"), based in the Netherlands. Questions and requests: <a href="mailto:support@tryhisar.com">support@tryhisar.com</a>. Product help is available at <a href="https://tryhisar.com/contact">Contact and support</a>.</p>
 
 <h2>What we cannot see</h2>
 <p>During normal use, your apps encrypt vault contents before sending them to the server, and do not send your master password or Secret Key. A copy of the database does not provide the keys needed to decrypt your vaults. These protections cover the information below; the section “Security, and its limits” explains the different risks of compromised devices, sharing and server-served web pages:</p>
@@ -83,12 +83,14 @@
 <p>If you email support, we receive your address, message and attachments and use them to answer your request or investigate a problem. Our email providers process correspondence to deliver and store it. We keep it only as needed to handle the request, security issues or legal obligations. Account deletion does not automatically erase support correspondence; you can ask us to delete it. Never send your master password, Secret Key, Emergency Kit or vault contents.</p>
 
 <h2 id="notifications">Notifications</h2>
+<p>If you use Hisar's own server at <code>eu.tryhisar.com</code>, we handle the registrations described below and use our relay at <code>push.tryhisar.com</code> for iPhones. A self-hosted account server handles its own registrations and can select another iPhone relay, but uses Hisar's relay by default. If it uses our relay, the relay disclosures below still apply.</p>
 <p>When you enable notifications, your account server stores each phone's relay handle (iPhone) or Web Push endpoint and subscription keys (Android), and the notification types it wants: approval, security and sharing. Turning off all notification types in Hisar removes the phone's notification registration from the server once the change reaches it. This does not itself revoke Apple's push token or unregister your Android UnifiedPush distributor.</p>
 <ul>
   <li><strong>iPhone:</strong> your app registers its Apple push token with Hisar's relay at <code>push.tryhisar.com</code>. The account server receives a relay handle, not the Apple token. The relay processes the token, notification type and delivery time, and Apple sees the type and timing for that token. Notifications may include additional details encrypted to your phone, such as the sender of a sharing invitation; the relay and Apple cannot read those encrypted details. Push notifications do not contain vault contents or the contents of approval requests. Approval requests are fetched separately through your server, end-to-end encrypted.</li>
   <li><strong>Android:</strong> your account server sends encrypted Web Push messages directly to your chosen UnifiedPush provider, not through Hisar's iPhone relay or Firebase. The provider can see arrival times, message sizes and the notification type in the HTTP <code>Topic</code> header, but cannot decrypt the message body.</li>
 </ul>
 <p>The relay and its network proxy also process connection information, including IP addresses. A relay handle is not a promise of anonymity.</p>
+<p>Self-hosting an iPhone relay with your own Apple push credentials requires an iPhone app you build and sign yourself. Android users can choose a self-hosted UnifiedPush provider reachable over public HTTPS. See the <a href="https://github.com/tosunlab/hisar/blob/main/docs/docs/self-hosting.md#push-notifications">self-hosting instructions</a>.</p>
 
 <h2>Who else receives data</h2>
 <ul>
@@ -104,7 +106,7 @@
 
 <h2 id="transfers">International transfers</h2>
 <p>AWS, Cloudflare and Apple are US-based providers. Storing our database and backups in the EU does not mean all personal-data processing remains there. Cloudflare routes requests through its global edge network and may process them at data centers outside the EU. Our proxy is not restricted to EU locations.</p>
-<p>For transfers covered by their certifications, AWS and Cloudflare rely on the EU–US Data Privacy Framework and its UK extension where applicable. Their data processing terms provide Standard Contractual Clauses as a fallback when the Framework does not cover a transfer, with the UK Addendum where required. See <a href="https://aws.amazon.com/compliance/eu-data-protection/">AWS's data protection information</a> and <a href="https://www.cloudflare.com/cloudflare-customer-dpa/">Cloudflare's Data Processing Addendum</a>. <a href="https://www.apple.com/legal/privacy/en-ww/">Apple's privacy policy</a> describes Standard Contractual Clauses for transfers of European and UK personal data. Contact <a href="mailto:support@tryhisar.com">support@tryhisar.com</a> to request information about applicable transfer safeguards or a copy of them.</p>
+<p>For transfers covered by their certifications, AWS and Cloudflare rely on the EU–US Data Privacy Framework. Their data processing terms provide Standard Contractual Clauses as a fallback when the Framework does not cover a transfer. See <a href="https://aws.amazon.com/compliance/eu-data-protection/">AWS's data protection information</a> and <a href="https://www.cloudflare.com/cloudflare-customer-dpa/">Cloudflare's Data Processing Addendum</a>. Contact <a href="mailto:support@tryhisar.com">support@tryhisar.com</a> to request information about applicable transfer safeguards or a copy of them.</p>
 
 <h2>The apps</h2>
 <ul>
@@ -128,19 +130,17 @@
 <p>If we learn of a breach that affects your personal data, we will tell you and the relevant authorities as the law requires.</p>
 
 <h2>Legal bases</h2>
-<p>Under the EU GDPR and, where applicable, UK GDPR we rely on:</p>
+<p>Under the EU GDPR we rely on:</p>
 <ul>
   <li><strong>Contract</strong> (Art. 6(1)(b)): account, device, vault, sharing, organization, preferences, enabled notifications and share-link data, and emails about your account, to provide the service you signed up for.</li>
   <li><strong>Legitimate interests</strong> (Art. 6(1)(f)): security logs, rate limits and access logs to protect the service; support correspondence to answer requests and investigate problems; and invitation emails to people who do not yet have an account, sent because a user asked us to.</li>
 </ul>
 
-<h2>Your choices and rights</h2>
+<h2>Your choices</h2>
 <ul>
   <li>You can see and change your vaults, devices, sharing and organizations in the apps at any time, and sign out any device.</li>
   <li>You can delete your account in the Hisar apps (Settings → Account → Delete account) or with <code>hisar account delete</code>, after reviewing the consequences and confirming your master password and email address. You can also email <a href="mailto:support@tryhisar.com">support@tryhisar.com</a> from the account's address for help, and a server admin can delete it from the admin dashboard. Deletion removes your devices, sessions, notification registrations, share links, affected invitations and vault access. Vaults for which you are the only owner, including their items, are deleted and people you shared them with lose access. Vaults with another owner remain. Your organization and team memberships are removed; remaining organizations can appoint a successor admin, and organizations left with no members are deleted. Retained shared records may still contain your account ID. We email you a confirmation. Security logs and backups follow their retention schedules above; copies other people already downloaded cannot be erased. Uninstalling an app does not delete the account on the server.</li>
-  <li>Under applicable EU or UK data protection law, you have rights to access your personal data, to have it corrected (rectification) or erased, to restrict its processing, to receive it in a portable format, and to object to processing based on legitimate interests. Write to <a href="mailto:support@tryhisar.com">support@tryhisar.com</a>. We respond within one month; if a lawful extension is needed for a complex request, we explain it within that month. We may verify your identity, but will not ask for your master password or Secret Key.</li>
-  <li>You may also lodge a complaint with a data protection supervisory authority. We are based in the Netherlands, so the lead authority is the Dutch Autoriteit Persoonsgegevens (<a href="https://autoriteitpersoonsgegevens.nl">autoriteitpersoonsgegevens.nl</a>); you can also complain to the authority in the EU country where you live or work.</li>
-  <li>In the United Kingdom, you can complain to the <a href="https://ico.org.uk/make-a-complaint/">Information Commissioner's Office (ICO)</a>, the UK supervisory authority.</li>
+  <li>For privacy questions or requests, write to <a href="mailto:support@tryhisar.com">support@tryhisar.com</a>. We may verify your identity, but will not ask for your master password or Secret Key.</li>
 </ul>
 
 <h2>Children</h2>
