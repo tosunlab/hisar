@@ -9,22 +9,36 @@
 #   WideLayoutUITests: one run on a Mac's iPhone 17 Pro simulator on 2026-10-27 (118 s), until CI has run it.
 # - Android (ubuntu-latest, API 36 emulator): the testcase times in the JUnit XML of 69 android-reports-<part> artifacts of
 #   48 CI runs from 2026-10-22 and 2026-10-23, passing tests only, the median per test added up per class. Classes under
-#   half a second, and those only API 37 runs, are left out.
-# Measure again when a part grows well past the others.
+#   half a second, and those only API 37 runs, are left out. Classes added or grown since, measured on 2026-10-28: the
+#   test times of CI run 40641727162 where it reached them (ui.BrowseRowTests, ui.BrowseStateTests,
+#   ui.BusyButtonSemanticsTests, ui.CredentialImportUITests, ui.CredentialRevealTests, ui.ExportCopyUITests,
+#   ui.HeadingSemanticsTests, passkey.PasskeyLayoutTests), otherwise twice their time on a Mac's API 36 emulator.
+# Measure again when a part grows well past the others. An Android part is also bounded by the runner's memory: the
+# emulator's host process grows by about 85 MB with each test, and run 40641727162 ran its 16 GB runner out of memory
+# after 80 tests.
 IOS_UI_TEST_SECONDS=(
   HisarUITests=417 OrganizationUITests=226 FavoritesUITests=176 SharingUITests=173 AccountLifecycleUITests=143
   AutoFillUITests=132 WideLayoutUITests=118 PasskeyUITests=109 PhoneApprovalUITests=107 OneTimeCodeUITests=95 FaceIDUITests=83
 )
 # Classes of the package com.tryhisar.hisar.
 ANDROID_UI_TEST_SECONDS=(
-  PhoneApprovalUITests=121 AccountItemFlowUITests=118 autofill.AutofillServiceUITests=110 OrganizationUITests=91
-  passkey.PasskeyUITests=81 ui.VaultsScreenUITests=79 SharingUITests=78 ui.item.ItemEditorUITests=78
-  ui.AccountLifecycleUITests=48 platform.ClipboardAdapterTests=46 CrossDeviceSyncUITests=44 autofill.OneTimeCodeUITests=43
-  ui.RootScreenUITests=43 FavoritesUITests=42 ui.EditorFieldHygieneTests=41 ui.item.ItemDetailScreenTests=35
-  ui.item.ItemDetailUITests=34 ui.CredentialImportUITests=26 autofill.AutoFillUITests=21 ui.signin.QrScannerTests=20
-  ui.DeepLinkUITests=16 ui.InvitationMenuUITests=16 autofill.AutoFillSettingsUITests=12 backend.HisarKitBackendTests=12
-  ProviderScreenshotTests=10 ui.DevicesUITests=8 ui.signin.SignInStateTests=7 HarnessServerTests=5
-  platform.TrustedCertificatesTests=3 passkey.CredentialCompletionTests=1
+  AutoLockUITests=141 ui.VaultsScreenUITests=138 PhoneApprovalUITests=121 AccountItemFlowUITests=118
+  autofill.AutofillServiceUITests=110 FileHandoffUITests=109 OrganizationUITests=91 passkey.PasskeyUITests=81
+  SharingUITests=78 ui.item.ItemEditorUITests=78 VaultManagementUITests=50 ui.AccountLifecycleUITests=48
+  platform.ClipboardAdapterTests=46 CrossDeviceSyncUITests=44 autofill.OneTimeCodeUITests=43 ui.RootScreenUITests=43
+  FavoritesUITests=42 PrivacyUITests=41 ui.EditorFieldHygieneTests=41 ui.CredentialImportUITests=39
+  ui.item.ItemDetailScreenTests=35 ui.item.ItemDetailUITests=34 ui.item.PasswordGeneratorSheetUITests=34
+  ui.settings.CredentialImportCancellationUITests=30 autofill.AutoFillUITests=21 ui.signin.QrScannerTests=20
+  SharingRefreshTests=17 ui.DeepLinkUITests=16 ui.InvitationMenuUITests=16 ui.item.ItemDetailClipboardTests=14
+  ui.CredentialRevealTests=13 autofill.AutoFillSettingsUITests=12 backend.HisarKitBackendTests=12
+  ui.item.ItemDetailFailureTests=11 ui.item.ItemDetailOverflowTests=11 ProviderScreenshotTests=10 ui.BrowseStateTests=9
+  ui.HeadingSemanticsTests=9 ui.DevicesUITests=8 ui.settings.ChoiceGroupScreenTests=8 ui.ExportCopyUITests=7
+  ui.signin.SignInStateTests=7 HarnessServerTests=5 ui.item.EditorSaveFeedbackTests=4
+  ui.settings.NavigationRowLayoutTests=4 passkey.PasskeyLayoutTests=3 platform.TrustedCertificatesTests=3
+  ui.item.IconPickerSemanticsTests=3 ui.root.MainTabsTests=3 ui.settings.CredentialImportPreviewTests=3
+  ui.settings.PendingRecoveryStateTests=3 ui.BrowseRowTests=2 ui.BusyButtonSemanticsTests=2
+  ui.item.OtherFieldEditorTests=2 ui.lock.UnlockPanelFocusTests=2 ui.settings.ChoiceSemanticsTests=2
+  ui.settings.ImportFileNameLayoutTests=2 passkey.CredentialCompletionTests=1 ui.approvals.ApprovalDetailTests=1
 )
 
 # ui_test_part PART COUNT CLASS=SECONDS... sets UI_TEST_PART_CLASSES. For a part below COUNT, these are the classes it runs;

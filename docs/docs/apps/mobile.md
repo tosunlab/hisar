@@ -102,7 +102,8 @@ test under its Swift name and delete its line from
 `android/model/src/test/resources/ios-test-parity-expected-missing.txt`, which lists the tests not ported yet.
 
 CI's `android-build` job (`.github/workflows/ci.yml`) builds and lints the app and runs its JVM tests.
-The `android` job runs the instrumented tests in two parts on x86_64 API 36 emulators with Postgres.
+The `android` job runs the instrumented tests in three parts on x86_64 API 36 emulators with Postgres.
+The emulator's host process grows by about 85 MB with each test, so one 16 GB runner holds about 80 tests.
 These headless emulators use SwiftShader OpenGL ES with Vulkan disabled: the Vulkan context can be lost during
 the tests, hanging QEMU and leaving the device offline.
 
