@@ -450,7 +450,7 @@ jobs:
     timeout-minutes: 90
     # Each part runs about a third of the instrumented tests on its own emulator (ANDROID_UI_TEST_PART in
     # scripts/test-android-ui.sh) and builds only HisarKit.aar and the debug and test APKs they need. The emulator's host
-    # memory grows with every test, so a runner holds about 80 tests (scripts/ui-test-parts.sh).
+    # memory grows with every test, so a runner holds about 90 tests (scripts/ui-test-parts.sh).
     strategy:
       fail-fast: false
       matrix:

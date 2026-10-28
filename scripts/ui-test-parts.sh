@@ -14,8 +14,8 @@
 #   ui.BusyButtonSemanticsTests, ui.CredentialImportUITests, ui.CredentialRevealTests, ui.ExportCopyUITests,
 #   ui.HeadingSemanticsTests, passkey.PasskeyLayoutTests), otherwise twice their time on a Mac's API 36 emulator.
 # Measure again when a part grows well past the others. An Android part is also bounded by the runner's memory: the
-# emulator's host process grows by about 85 MB with each test, and run 40641727162 ran its 16 GB runner out of memory
-# after 80 tests.
+# emulator's host process grows by 80 to 115 MB with each test (run 40652671828), and a 16 GB runner holds about 90 tests
+# once no Gradle or Kotlin daemon keeps the build's memory (scripts/test-android-ui.sh).
 IOS_UI_TEST_SECONDS=(
   HisarUITests=417 OrganizationUITests=226 FavoritesUITests=176 SharingUITests=173 AccountLifecycleUITests=143
   AutoFillUITests=132 WideLayoutUITests=118 PasskeyUITests=109 PhoneApprovalUITests=107 OneTimeCodeUITests=95 FaceIDUITests=83

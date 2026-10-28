@@ -327,4 +327,5 @@ check cache repair, concurrent reuse and Python failures.
   data cleared. `ANDROID_UI_TESTS=<class or test names>` or `ANDROID_UI_TESTS=smoke` runs a subset.
 - CI runs the iPhone UI tests and the Android instrumented tests in three jobs each, split by the test classes' measured
   run times in `scripts/ui-test-parts.sh` (`IOS_UI_TEST_PART`, `ANDROID_UI_TEST_PART`); a class missing from its table runs
-  in the last part. An Android part also stays under about 80 tests: the emulator's host memory grows with each test.
+  in the last part. An Android part also stays under about 90 tests: the emulator's host memory grows with each test, so
+  `scripts/test-android-ui.sh` runs Gradle without a daemon and compiles Kotlin in that process, leaving no build JVM alive.
