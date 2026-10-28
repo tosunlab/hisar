@@ -66,6 +66,13 @@ they prefill Create account.
 Full-screen setup, biometric onboarding, recovery and credential import hide the underlying screen from accessibility.
 Their touch barrier consumes unused pointer events while preserving the tabs' navigation state.
 
+On Android, **Save Emergency Kit** counts only after the system file creator writes the PDF successfully.
+**Share Emergency Kit** counts a non-null target selection from that PDF's chooser, not opening the chooser.
+**Print Emergency Kit** stays available, but Android's print callback cannot distinguish a saved PDF from a cancelled
+preview, so printing does not confirm delivery. Hisar explains when it cannot tell and asks for a file save.
+Back on the kit screen performs **Save later**, never confirmation. Back from its authorization gate returns to the
+vault. Save later stays above the keyboard, and file actions clear field focus before opening a system sheet.
+
 Vaults hides Favorites until an item is starred. Its Tags row shows the number of tags and opens a separate list with each tag's item count.
 
 ### Build and test

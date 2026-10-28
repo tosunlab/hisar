@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.StateRestorationTester
@@ -54,12 +54,12 @@ class SignInStateTests {
         composeRule.onNodeWithText("Create account").performClick()
         composeRule.onNodeWithTag("sign-up-password").performScrollTo().performTextReplacement("a long master password")
         composeRule.onNodeWithTag("sign-up-repeated-password").performScrollTo().performClick().performTextReplacement("a long")
-        composeRule.onNodeWithText("The passwords do not match.").assertDoesNotExist()
-        composeRule.onNodeWithTag("sign-in-submit").assertIsNotEnabled()
+        composeRule.onNodeWithText("The master passwords don't match.").assertDoesNotExist()
+        composeRule.onNodeWithTag("sign-in-submit").assertIsEnabled()
         composeRule.onNodeWithTag("sign-up-password").performScrollTo().performClick()
-        composeRule.onNodeWithText("The passwords do not match.").assertExists()
+        composeRule.onNodeWithText("The master passwords don't match.").assertExists()
         composeRule.onNodeWithTag("sign-up-repeated-password").performScrollTo().performClick().performTextReplacement("a long master password")
-        composeRule.onNodeWithText("The passwords do not match.").assertDoesNotExist()
+        composeRule.onNodeWithText("The master passwords don't match.").assertDoesNotExist()
     }
 
     @Test

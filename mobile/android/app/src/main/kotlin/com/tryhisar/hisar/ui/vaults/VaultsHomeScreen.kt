@@ -1,6 +1,10 @@
 package com.tryhisar.hisar.ui.vaults
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.semantics.heading
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -151,9 +155,41 @@ fun VaultsHomeScreen(model: AppModel) {
                     isPulling = false
                 }
             },
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).then(
+                if (status.emergencyKit?.isReminderHidden == false) Modifier.padding(bottom = TabBarHeight + NewButtonClearance + 24.dp) else Modifier,
+            ),
         ) {
             LazyColumn(Modifier.fillMaxSize().testTag("vaults-list")) {
+                status.emergencyKit?.takeUnless { it.isReminderHidden }?.let { kit ->
+                    item(key = "emergency-kit") {
+                        val shape = RoundedCornerShape(10.dp)
+                        Column(
+                            Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                                .fillMaxWidth()
+                                .background(HisarTheme.colors.warning.copy(alpha = 0.12f), shape)
+                                .then(if (kit.reminder == "14-days" && kit.savedBy.isEmpty()) Modifier.border(2.dp, HisarTheme.colors.warning, shape) else Modifier)
+                                .testTag("emergency-kit-banner")
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Filled.Warning, contentDescription = null, tint = HisarTheme.colors.warning, modifier = Modifier.size(20.dp))
+                                Text(kit.title, style = HisarType.headline, color = HisarTheme.colors.label, modifier = Modifier.weight(1f).semantics { heading() })
+                            }
+                            Text(kit.reminderBody, style = HisarType.subheadline, color = HisarTheme.colors.label)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PlainButton(
+                                    if (kit.savedBy.isEmpty()) "Save Emergency Kit" else "Continue to confirmation",
+                                    model.signIn::openEmergencyKit, testTag = "emergency-kit-save",
+                                )
+                                PlainButton(
+                                    "Not now", { scope.launch { model.signIn.hideEmergencyKitReminder() } },
+                                    testTag = "emergency-kit-not-now", onClickLabel = "Hide until Hisar locks",
+                                )
+                            }
+                        }
+                    }
+                }
                 item(key = "title") { Box(Modifier.padding(horizontal = ScreenMargin)) { LargeTitle("Vaults", topPadding = 0.dp) } }
                 if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
                 pendingApprovalCardSection(model, allPendingApproval, isAnsweringApproval)
