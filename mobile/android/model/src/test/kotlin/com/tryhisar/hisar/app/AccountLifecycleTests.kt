@@ -282,15 +282,18 @@ class AccountLifecycleTests {
     @Test
     fun testPendingRecoveryRequiresPasswordAndExplicitKitAcknowledgement() = runTest {
         val harness = AppModelHarness(this)
-        seedPendingRecovery(harness.backend, "delivery-pending")
         val model = harness.startModel()
+        seedPendingRecovery(harness.backend, "delivery-pending")
         assertFalse(model.pendingRecovery.exportKit("pending-1", "wrong"))
         assertNull(model.pendingRecovery.export.value)
         assertFalse(model.pendingRecovery.acknowledge("pending-1", FakeBackend.PASSWORD))
         assertEquals(1, harness.backend.allPendingRecovery.size)
         assertTrue(model.pendingRecovery.exportKit("pending-1", FakeBackend.PASSWORD))
+        val exported = assertNotNull(model.pendingRecovery.export.value)
+        assertTrue(File(exported.path).exists())
         model.pendingRecovery.close()
         assertNull(model.pendingRecovery.export.value)
+        assertFalse(File(exported.path).exists())
         assertEquals(1, harness.backend.allPendingRecovery.size)
         assertTrue(harness.backend.allPendingRecovery.first().kitSaved)
     }

@@ -248,6 +248,7 @@ final class AccountLifecycleTests: XCTestCase {
             pendingOperationId: "pending-1", setupState: "delivery-pending"
         )
         backend.pendingRecoverySecretKey = "H1-NEW-SECRET"
+        XCTAssertNil(model.selectedPendingRecoveryID)
         let replaced = await model.replaceSecretKey(password: FakeBackend.password)
         let result = try XCTUnwrap(replaced)
         XCTAssertTrue(result.isWaitingOnlyForKit)

@@ -119,6 +119,7 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
     }
 
     suspend fun exportKit(operationID: String, password: String): Boolean = context.runInModel {
+        select(operationID)
         clearExport()
         val startedEpoch = epoch
         val generation = exportGeneration

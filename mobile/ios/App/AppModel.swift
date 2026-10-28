@@ -1743,6 +1743,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func exportPendingRecoveryKit(operationID: String, password: String) async -> Bool {
+        selectPendingRecovery(operationID)
         clearPendingRecoveryExport()
         let epoch = lifecycleEpoch
         let generation = pendingDeliveryGeneration
