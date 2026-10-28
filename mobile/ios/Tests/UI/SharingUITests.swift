@@ -73,8 +73,10 @@ final class SharingUITests: HisarUITestCase {
         XCTAssertTrue(partnerRow.label.contains("Reader"), partnerRow.label)
         XCTAssertFalse(partnerRow.label.contains("Security code"), partnerRow.label)
         let unknownInvitation = findElement("vault-invitation-\(unknownEmail)")
+        let sendAgain = app.buttons["resend-invitation-\(unknownEmail)"]
         saveLightAndDarkScreenshot("sharing-members")
 
+        scrollTo(sendAgain)
         revealSwipeActions(of: unknownInvitation, .left)
         let cancelAction = app.buttons["Cancel"].firstMatch
         waitForHittable(cancelAction)
@@ -86,6 +88,7 @@ final class SharingUITests: HisarUITestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
         XCTAssertTrue(confirmation.waitForNonExistence(timeout: 5))
         XCTAssertTrue(unknownInvitation.exists, "dismissing the confirmation keeps the invitation")
+        scrollTo(sendAgain)
         revealSwipeActions(of: unknownInvitation, .left)
         waitForHittable(cancelAction)
         cancelAction.tap()
