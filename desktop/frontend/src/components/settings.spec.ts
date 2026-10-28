@@ -62,7 +62,7 @@ beforeEach(() => {
     allDevice: [],
     shareInvitations: { received: [], sent: [], completionError: "" },
   });
-  store.agentErrors = { vaults: "", signIn: "", grants: "", sessions: "", hosts: "" };
+  store.agentErrors = { vaults: "", signIn: "", grants: "", sessions: "", hosts: "", alwaysWhileLocked: "" };
   api.listAllAgentGrant.mockResolvedValue([]);
   api.listAllAgentSession.mockResolvedValue([]);
   api.listAllAgentHost.mockResolvedValue([]);
