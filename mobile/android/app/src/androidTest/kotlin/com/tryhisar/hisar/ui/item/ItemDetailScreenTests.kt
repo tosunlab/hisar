@@ -130,6 +130,13 @@ class ItemDetailScreenTests {
         val application = targetContext.applicationContext as HisarTestApplication
         val clipboardManager = targetContext.getSystemService(ClipboardManager::class.java)
         val secret = "0123456789abcdef".repeat(160) + "COMPLETE-END"
+        val backend = object : FakeBackend() {
+            override fun copyField(vaultID: String, itemID: String, fieldName: String) {
+                super.copyField(vaultID, itemID, fieldName)
+                assertEquals("password", fieldName)
+                assertTrue(application.copySecret(getItem(vaultID, itemID).password))
+            }
+        }.apply { seedSignedIn() }
         backend.saveItem("personal", backend.getItem("personal", "github").copy(password = secret))
         host = ItemDetailHost(backend, application).also { it.show("personal", "github") }
         composeRule.waitForTag("reveal-password")
