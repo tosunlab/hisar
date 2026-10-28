@@ -656,6 +656,49 @@ func TestReplacementKitUsesSameGrant(t *testing.T) {
 	}
 }
 
+func TestReplacementSupersedesPostponedSignUpKit(t *testing.T) {
+	service, signUp, _ := signUpOwingEmergencyKit(t)
+	signUpKit, err := ExportNewAccountEmergencyKitToDirectory(service, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.PostponeNewAccountEmergencyKit(); err != nil {
+		t.Fatal(err)
+	}
+	key, err := crypt.GenerateSecretKey(service.state.AccountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement, err := service.changeCredentials(owedKitPassword, func(_ context.Context, _ *session.Session, _ []byte, current crypt.SecretKey, stage session.StagePendingFactor) (*session.CredentialChange, error) {
+		if err := stage(session.PendingFactor{Kind: "replace-secret-key", SecretKey: key.Encode(), PriorSecretKey: current.Encode()}); err != nil {
+			return nil, err
+		}
+		return &session.CredentialChange{SecretKey: key}, nil
+	})
+	if err != nil || replacement.SetupState != "delivery-pending" {
+		t.Fatalf("replacement: %+v %v", replacement, err)
+	}
+	if owed := requireOwedKit(t, service); owed.Kind != "replace-secret-key" || owed.OperationID != replacement.PendingOperationID {
+		t.Fatalf("the replacement's kit is not the owed one: %+v", owed)
+	}
+	entries, err := service.ListPendingRecovery()
+	if err != nil || len(entries) != 1 || entries[0].OperationID != replacement.PendingOperationID {
+		t.Fatalf("recovery records besides the replacement's: %+v %v", entries, err)
+	}
+	if err := service.RecordNewAccountEmergencyKitDelivery(signUpKit.ExportID, EmergencyKitSavedByFile); err == nil {
+		t.Fatal("the superseded sign-up kit's export was recorded as delivered")
+	}
+	if kit, err := ExportPendingRecoveryEmergencyKitToDirectory(service, signUp.PendingOperationID, owedKitPassword, t.TempDir()); err == nil {
+		t.Fatalf("the superseded sign-up kit was exported again: %+v", kit)
+	}
+	if err := service.AcknowledgePendingRecovery(signUp.PendingOperationID, owedKitPassword); err == nil {
+		t.Fatal("the superseded sign-up kit was confirmed")
+	}
+	if revealed, err := service.RevealNewAccountSecretKey(); err != nil || revealed.SecretKey != key.Encode() {
+		t.Fatalf("the replacement's kit is not authorized: %v", err)
+	}
+}
+
 func TestGetSignUpPolicy(t *testing.T) {
 	answer := `{"mode":"open"}`
 	status := http.StatusOK

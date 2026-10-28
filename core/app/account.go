@@ -227,6 +227,7 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 			pending.Phase = "needs-finishing"
 		}
 		result.PendingOperationID, result.SetupState, result.Problems = pending.OperationID, pending.Phase, pending.Problems
+		s.removeSupersededRecovery(pending)
 	}
 	result.Status = s.buildStatus()
 	return result, nil

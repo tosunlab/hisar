@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -405,6 +406,7 @@ func (s *Service) installRecoveredAccount(ctx context.Context, entry *PendingRec
 		entry.Problems = append(entry.Problems, "Recovery progress could not be saved. The original protected record remains available.")
 		entry.Phase = "needs-finishing"
 	}
+	s.removeSupersededRecovery(entry)
 	result.Status, result.SecretKey, result.SetupState, result.Problems = s.buildStatus(), key.Encode(), entry.Phase, entry.Problems
 	return result, nil
 }
@@ -579,6 +581,31 @@ func (s *Service) removePendingRecovery(entry *PendingRecoverySummary) error {
 		return store.DeleteRecoveryKey(entry.OperationID)
 	}
 	return nil
+}
+
+// removeSupersededRecovery needs the mutex. Once a Secret Key replacement committed, the account's other sign-up and
+// replacement records hold Secret Keys that no longer sign in, so their kits must never be saved or confirmed again.
+func (s *Service) removeSupersededRecovery(replacement *PendingRecoverySummary) {
+	if replacement.Kind != "replace-secret-key" {
+		return
+	}
+	entries, err := s.ListPendingRecovery()
+	if err != nil {
+		log.Printf("removing superseded recovery records: %v", err)
+		return
+	}
+	for _, listed := range entries {
+		if listed.OperationID == replacement.OperationID || listed.Origin != replacement.Origin || listed.AccountID != replacement.AccountID {
+			continue
+		}
+		entry, _, err := s.loadPendingRecoveryRecord(listed.OperationID)
+		if err == nil {
+			err = s.removePendingRecovery(entry)
+		}
+		if err != nil {
+			log.Printf("removing superseded recovery record %s: %v", listed.OperationID, err)
+		}
+	}
 }
 
 // OpenPendingRecoveryForDelivery verifies a user-held kit key without committing or installing an account.

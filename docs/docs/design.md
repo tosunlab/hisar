@@ -499,6 +499,8 @@ Settings → Security on the Mac and the iPhone has **Change master password…*
 
 If the cached account cannot be replaced after a committed credential change, the app detaches and deletes that cache before attempting verified attachment. Local warnings remain in the successful structured result and pending setup, never an error containing a Secret Key. The old journal and staged factor survive lock or restart until exact reconciliation and explicit delivery acknowledgment. A local failure cannot roll back a committed remote change.
 
+A committed replacement, sent directly or resumed, removes this device's other sign-up and replacement records for the account, with their protected keys. Their Secret Keys no longer sign in, so a postponed sign-up kit is never shown, exported or confirmed again, and only the replacement's kit is owed.
+
 HisarKit preserves existing public method names and signatures and adds explicit pending-recovery methods and JSON result fields. Current mobile clients export the chosen operation's actual kit and acknowledge delivery; they do not depend on an ignored automatic temporary export. Pending kit export opens only the explicitly selected operation using its verified password and, without OS protection after restart, the user-held kit key. Installing an account additionally requires the captured current epoch: delivering an old operation's kit does not change the current account.
 
 Preparing a pending Emergency Kit selects its operation before writing the file. Refreshing the recovery records keeps that selection and its prepared kit until the user closes it, chooses another operation, or ends the session.
