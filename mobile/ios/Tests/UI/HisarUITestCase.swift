@@ -298,6 +298,7 @@ class HisarUITestCase: XCTestCase {
             app.buttons["Replace"].tap()
         }
         XCTAssertTrue(fileName.waitForNonExistence(timeout: 60), "Files did not finish saving the Emergency Kit")
+        scrollTo(share)
         waitForHittable(share)
     }
 

@@ -6,7 +6,9 @@ final class OnboardingUITests: HisarUITestCase {
         let email = try readEnvironment("HISAR_UI_TEST_\(prefix)_EMAIL")
         app.launch()
         beginSignUp(inviteLink: invite, email: email, name: "Onboarding")
+        dismissSavePasswordPrompt()
         scrollTo(app.buttons["new-secret-key-later"])
+        waitForHittable(app.buttons["new-secret-key-later"])
         app.buttons["new-secret-key-later"].tap()
         let notNow = app.buttons["biometric-offer-not-now"]
         if notNow.waitForExistence(timeout: 3) { notNow.tap() }
@@ -97,9 +99,11 @@ final class OnboardingUITests: HisarUITestCase {
             }
         }
         saveScreenshot("onboarding-banner-\(name)")
-        let before = notNow.frame.minY
+        XCTAssertTrue(list.otherElements["emergency-kit-banner"].exists, "The reminder must be part of the Vaults list")
+        let personal = app.buttons["vault-Personal"]
+        let offset = notNow.frame.minY - personal.frame.minY
         list.swipeUp()
-        XCTAssertTrue(!notNow.isHittable || notNow.frame.minY < before, "The reminder must scroll with Vaults")
+        XCTAssertEqual(notNow.frame.minY - personal.frame.minY, offset, accuracy: 1, "The reminder must scroll with Vaults")
         scrollTo(app.buttons["vault-Personal"])
         waitForHittable(app.buttons["vault-Personal"])
     }
