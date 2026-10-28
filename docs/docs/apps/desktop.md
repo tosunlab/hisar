@@ -377,10 +377,12 @@ An Approve button alone would let an agent that controls the screen approve itse
   A grant is kept in `desktop.json` (`sealedAgentGrants`), sealed with the account's key and a random head that every change
   replaces. Hisar also keeps the head in a login keychain item, "Hisar agent grants". The item's default access list trusts
   the Hisar that created it. Reading it from another program prompts for Keychain access. Another program can overwrite or
-  delete the head without asking, which only drops grants.
-  A restart keeps grants whose sealed head matches the Keychain head. Grants written into the file by another program,
+  delete the head without asking, which only drops grants. On Linux the item is in the Secret Service (GNOME Keyring,
+  KWallet), which any program of the user reads without a prompt.
+  A restart keeps grants whose sealed head matches the stored head. Grants written into the file by another program,
   an older copy restored over it, or a missing or unreadable head drop all saved grants. When the head store is unavailable,
-  including on Linux, only the first two choices appear, and **For 1 hour** ends with the session or connection.
+  such as Linux without a Secret Service, only the first two choices appear, and **For 1 hour** ends with the session or
+  connection.
   The phone cannot choose a duration, so its approval is for this time only.
 - Settings → Developer tools → Coding agents → **Allowed without asking** lists every grant with who holds it (a harness, "this
   session" or "while connected"), its expiry and **Revoke**. Signing out ends them all. Session-scoped and connection-scoped
