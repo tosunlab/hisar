@@ -144,6 +144,8 @@ The icon picker keeps the last completed icon while a photo is preparing. **Done
 **Cancel preparation**, selecting another icon, or dismissing the sheet cancels the pending photo.
 An older photo or its error cannot replace a newer choice.
 
+`FaceIDUITests` first launches `com.apple.LocalAuthenticationUIService`, waits for it to reach the foreground, and returns Home. A cold service can start after `coreauthd`'s five-second UI activation deadline on a CI runner. Warming it before the real account flow avoids that startup condition without retrying a failed authentication or changing the app.
+
 `FaceIDUITests` posts matching-face notifications every 500 ms on a background timer, starting before the action that requests authentication. Slow XCTest permission and accessibility queries must not delay the simulated face. The timer stops when that step finishes, and authentication errors still fail the test.
 
 UI tests wait for the Files picker's **Save** button to become tappable before renaming an Emergency Kit.
