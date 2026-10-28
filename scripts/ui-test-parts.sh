@@ -13,28 +13,31 @@
 #   40645082873, 40645263609 and 40665680491 (2026-10-27 and 28). ui.AccountLifecycleUITests, ui.BiometricUITests,
 #   ui.item.ItemEditorFieldNameTests and platform.BiometricEnrollmentTests are estimates from classes like them, until CI
 #   has measured them.
+# Retained-class estimates account for the tests and steps removed on 2026-10-28. HisarUITests and AccountLifecycleUITests
+# scale the audited reductions to the older iOS weights; PhoneApprovalUITests uses its 102.4 s local after measurement.
+# Android reductions include each deleted test's audited body time and the 2.3 s transition, or two transitions for the modal merge.
 # Measure again when a part grows well past the others.
 IOS_UI_TEST_SECONDS=(
-  HisarUITests=417 OrganizationUITests=226 FavoritesUITests=176 SharingUITests=173 AccountLifecycleUITests=143
-  AutoFillUITests=132 WideLayoutUITests=118 PasskeyUITests=109 PhoneApprovalUITests=107 OneTimeCodeUITests=95 FaceIDUITests=83
+  HisarUITests=390 OrganizationUITests=226 FavoritesUITests=176 SharingUITests=173 AccountLifecycleUITests=133
+  WideLayoutUITests=118 PasskeyUITests=109 PhoneApprovalUITests=102 OneTimeCodeUITests=95 FaceIDUITests=83
 )
 # Classes of the package com.tryhisar.hisar.
 ANDROID_UI_TEST_SECONDS=(
   autofill.AutofillServiceUITests=260 passkey.PasskeyUITests=221 ui.VaultsScreenUITests=176
-  AccountItemFlowUITests=136 PhoneApprovalUITests=129 FileHandoffUITests=115 SharingUITests=100
-  ui.item.ItemDetailScreenTests=99 OrganizationUITests=96 AutoLockUITests=93 ui.item.ItemEditorUITests=86
-  platform.ClipboardAdapterTests=66 ui.CredentialImportUITests=58 CrossDeviceSyncUITests=54
-  VaultManagementUITests=52 ui.RootScreenUITests=52 FavoritesUITests=50 autofill.OneTimeCodeUITests=50
+  AccountItemFlowUITests=136 PhoneApprovalUITests=94 FileHandoffUITests=115 SharingUITests=100
+  ui.item.ItemDetailScreenTests=92 OrganizationUITests=96 AutoLockUITests=93 ui.item.ItemEditorUITests=86
+  platform.ClipboardAdapterTests=66 ui.CredentialImportUITests=49 CrossDeviceSyncUITests=54
+  VaultManagementUITests=52 ui.RootScreenUITests=37 FavoritesUITests=50 autofill.OneTimeCodeUITests=50
   ui.AccountLifecycleUITests=50 ui.signin.QrScannerTests=47 ui.EditorFieldHygieneTests=46
   ui.item.ItemDetailUITests=46 PrivacyUITests=40 ui.BiometricUITests=40
-  ui.item.PasswordGeneratorSheetUITests=38 ui.item.ItemDetailClipboardTests=36
+  ui.item.PasswordGeneratorSheetUITests=38
   ui.settings.CredentialImportCancellationUITests=31 ui.DevicesUITests=30 ui.FieldAccessibilityTests=24
-  autofill.AutoFillUITests=21 ui.DeepLinkUITests=21 ui.signin.SignInStateTests=21 ui.InvitationMenuUITests=19
+  ui.DeepLinkUITests=21 ui.signin.SignInStateTests=21 ui.InvitationMenuUITests=19
   autofill.AutoFillSettingsUITests=18 ProviderScreenshotTests=16 backend.HisarKitBackendTests=16
-  ui.sharing.ModalSheetBarTests=16 passkey.CredentialCompletionTests=15
+  ui.sharing.ModalSheetBarTests=11 passkey.CredentialCompletionTests=15
   ui.item.PasswordGeneratorControlTests=14 ui.UpdateRequiredScreenTests=9 platform.BiometricEnrollmentTests=8
   ui.item.ItemEditorFieldNameTests=7 ui.settings.PendingRecoveryStateTests=7 ui.approvals.ApprovalDetailTests=5
-  HarnessServerTests=4 platform.TrustedCertificatesTests=4 platform.KeystoreSecretKeyStoreTests=3
+  platform.TrustedCertificatesTests=4 platform.KeystoreSecretKeyStoreTests=3
   platform.BiometricKeystoreTests=2 platform.StateDirectoryTests=2 ui.item.IconPhotoConverterTests=2
   autofill.DatasetsTests=1 passkey.CredentialEntriesTests=1 ui.settings.PasswordCharacterRuntimeTests=1
 )

@@ -27,7 +27,7 @@ if [ "${1:-}" = --build-apks ]; then
   build_apks
   exit
 fi
-SMOKE_TESTS=HisarKitBackendTests,KeystoreSecretKeyStoreTests,BiometricKeystoreTests,ClipboardAdapterTests,testAccountItemLockAndSignInFlow,testBiometricUnlockAfterTurningItOn,AutofillServiceUITests#testWebViewFormFillsAfterUnlock,testRegisterPasskeyThenSignInWithIt,HarnessServerTests,testAppSwitcherHidesAnOpenSheet
+SMOKE_TESTS=HisarKitBackendTests,KeystoreSecretKeyStoreTests,BiometricKeystoreTests,ClipboardAdapterTests,testAccountItemLockAndSignInFlow,testBiometricUnlockAfterTurningItOn,AutofillServiceUITests#testWebViewFormFillsAfterUnlock,testRegisterPasskeyThenSignInWithIt,testAppSwitcherHidesAnOpenSheet
 # The runner matches tests_regex against package.Class#test: parts 1 and 2 name their classes, and part 3 leaves out theirs.
 source "$ROOT/scripts/ui-test-parts.sh"
 TESTS_REGEX=
@@ -85,7 +85,6 @@ save_device_log() {
 UI_TEST_PLATFORM_NAME=Android
 UI_TEST_PORT=${ANDROID_UI_TEST_PORT:-18084}
 source "$ROOT/scripts/ui-test-partner.sh"
-ui_test_add_account SIGN_IN_AGAIN_ "android-sign-in-again-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PLATFORM_BACKEND_ "android-platform-backend-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PLATFORM_BIOMETRIC_ "android-platform-biometric-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PLATFORM_TIME_ZONE_ "android-platform-time-zone-$(date +%s)-$RANDOM@example.com"

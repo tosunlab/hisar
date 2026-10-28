@@ -29,13 +29,22 @@ three more, split by the test classes' measured run times in `scripts/ui-test-pa
 `core/`, `go.work` or the workflow, and not while the pull request has the label `skip-android`, for changes whose Android build
 and tests already passed locally with `make build-android-aar build-android test-android test-android-ui`; add the label before
 pushing). One job runs the small checks, each when its app changes: the desktop frontend (typecheck, tests, bundle check), the docs
-site (typecheck, build, and its image built and served once), the extension's Firefox end-to-end tests on Firefox 140 and 153, the
+site (host typecheck, then its image built and served once), the extension's Firefox end-to-end tests on Firefox 140 and 153, the
 omp plugin and the Raycast extension. A change to the Makefile or to the workflow runs every job.
 
 `.github/workflows/caches.yml` runs on every push to `main`: it compiles every Go test and builds the Android app and both
 `HisarKit` builds, so main's caches hold what pull requests restore; a pull request saves a cache only when main has none for its
 key. It also deletes a closed pull request's caches, which otherwise count against the repository's 10 GB and evict main's.
 Gradle's configuration cache is saved only with the repository secret `GRADLE_ENCRYPTION_KEY` (`openssl rand -base64 16`).
+
+The extension job installs dependencies once. Its Chromium tests build the Chrome and Firefox outputs, then the job lints
+the Firefox output and packages both without rebuilding. The Chrome ZIP contains the output used by those browser tests.
+The standalone `make test-extension`, `make test-extension-end-to-end` and `make build-extension` commands still install
+their own dependencies.
+
+The docs job typechecks on the host and builds the site only inside `docs/Dockerfile`. It boots that image and checks the
+home page and CLI page. Local `make test-docs` still typechecks and builds; `make build-docs` and the docs release workflow
+also keep their builds.
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
 (HisarKit, Xcode project check, unit tests, then UI tests against a local server in three parts, split by the test classes'

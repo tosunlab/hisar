@@ -256,6 +256,9 @@ func TestToolsAreListedWithSchemasForModels(t *testing.T) {
 			t.Errorf("%s has no output schema or description", name)
 		}
 	}
+	if !strings.Contains(toolsByName["sign_in"].Description, "Never type a password yourself") {
+		t.Error("sign_in does not tell the model to leave passwords to Hisar")
+	}
 	runSchema, _ := json.Marshal(toolsByName["run_with_secrets"].InputSchema)
 	for _, property := range []string{`"command"`, `"shell"`, `"env"`, `"envFiles"`, `"stdin"`, `"workingDirectory"`, `"timeoutSeconds"`, `hisar://vault/item/field`, `at most 3600`} {
 		if !strings.Contains(string(runSchema), property) {

@@ -131,8 +131,6 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: admin/package-lock.json
-      - name: Build server and CLI
-        run: make build
       - name: Build CLI for every release platform
         run: make build-cli-all
       - name: End-to-end test of the built server and CLI
@@ -292,11 +290,11 @@ jobs:
           cache: npm
           cache-dependency-path: extension/package-lock.json
       - if: env.IS_EXTENSION_CHANGED == 'true'
-        run: make test-extension
+        run: cd extension && npm ci --no-audit --no-fund && npm run typecheck && npm test
       - if: ${{ !cancelled() && env.IS_EXTENSION_CHANGED == 'true' }}
-        run: make test-extension-end-to-end
+        run: cd extension && npm run test:end-to-end
       - if: ${{ !cancelled() && env.IS_EXTENSION_CHANGED == 'true' }}
-        run: make build-extension
+        run: cd extension && npm run lint:firefox && npm run package
       - if: ${{ !cancelled() && env.IS_EXTENSION_CHANGED == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -338,9 +336,9 @@ jobs:
       - name: Desktop frontend typecheck, tests and bundle check
         if: ${{ !cancelled() && env.IS_DESKTOP_CHANGED == 'true' }}
         run: make test-desktop-frontend
-      - name: Docs site typecheck and build
+      - name: Docs site typecheck
         if: ${{ !cancelled() && env.IS_DOCS_CHANGED == 'true' }}
-        run: make test-docs
+        run: cd docs && npm ci --no-audit --no-fund && npm run typecheck
       - name: Build the docs image and check that it serves the site
         if: ${{ !cancelled() && env.IS_DOCS_CHANGED == 'true' }}
         run: |

@@ -23,14 +23,17 @@ type eventStream struct {
 	cancel   context.CancelFunc
 }
 
-func openEventStream(t *testing.T, apiClient *apiclient.Client) *eventStream {
+func openEventStream(t *testing.T, server *Server, apiClient *apiclient.Client, accountID string) *eventStream {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	stream := &eventStream{events: make(chan apiclient.Event, 16), finished: make(chan error, 1), cancel: cancel}
 	go func() {
 		stream.finished <- apiClient.StreamEvents(ctx, nil, func(event apiclient.Event) { stream.events <- event })
 	}()
-	t.Cleanup(cancel)
+	t.Cleanup(func() {
+		cancel()
+		server.events.EndStreams(accountID, nil)
+	})
 	return stream
 }
 
@@ -87,13 +90,13 @@ func TestEventStream(t *testing.T) {
 	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
 	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", apitypes.RoleMember)
 
-	bobStream := openEventStream(t, bob.Client)
-	carolStream := openEventStream(t, carol.Client)
+	bobStream := openEventStream(t, server, bob.Client, bob.AccountID)
+	carolStream := openEventStream(t, server, carol.Client, carol.AccountID)
 	waitForSubscriber(t, server, bob.AccountID, 1)
 	waitForSubscriber(t, server, carol.AccountID, 1)
 
 	family := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Family", apitypes.VaultShared))
-	aliceStream := openEventStream(t, alice.Client)
+	aliceStream := openEventStream(t, server, alice.Client, alice.AccountID)
 	waitForSubscriber(t, server, alice.AccountID, 1)
 	if err := alice.InviteToVault(ctx, family, "bob@example.com", apitypes.VaultEditor); err != nil {
 		t.Fatal(err)
@@ -124,7 +127,7 @@ func TestEventStream(t *testing.T) {
 
 	streams := []*eventStream{}
 	for range realtime.MaxStreamsPerAccount - 1 {
-		streams = append(streams, openEventStream(t, carol.Client))
+		streams = append(streams, openEventStream(t, server, carol.Client, carol.AccountID))
 	}
 	waitForSubscriber(t, server, carol.AccountID, realtime.MaxStreamsPerAccount)
 	if err := carol.Client.StreamEvents(ctx, nil, func(apiclient.Event) {}); !apiclient.IsStatus(err, http.StatusTooManyRequests) {
@@ -165,7 +168,7 @@ func TestEventStreamOutlivesWriteTimeout(t *testing.T) {
 	baseURL := "http://" + listener.Addr().String()
 	ctx := context.Background()
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
-	stream := openEventStream(t, alice.Client)
+	stream := openEventStream(t, server, alice.Client, alice.AccountID)
 	waitForSubscriber(t, server, alice.AccountID, 1)
 	time.Sleep(3 * time.Second)
 	select {

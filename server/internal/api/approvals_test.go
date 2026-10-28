@@ -88,9 +88,9 @@ func TestApprovalRelayFlow(t *testing.T) {
 	server, accounts := setupApprovalAccounts(t)
 	ctx := context.Background()
 	macDeviceID, phoneDeviceID := findOwnDeviceID(t, accounts.mac), findOwnDeviceID(t, accounts.phone)
-	macStream := openEventStream(t, accounts.mac.Client)
-	phoneStream := openEventStream(t, accounts.phone.Client)
-	otherStream := openEventStream(t, accounts.other.Client)
+	macStream := openEventStream(t, server, accounts.mac.Client, accounts.mac.AccountID)
+	phoneStream := openEventStream(t, server, accounts.phone.Client, accounts.phone.AccountID)
+	otherStream := openEventStream(t, server, accounts.other.Client, accounts.other.AccountID)
 	waitForSubscriber(t, server, accounts.mac.AccountID, 2)
 	waitForSubscriber(t, server, accounts.other.AccountID, 1)
 

@@ -30,8 +30,8 @@ func TestAccountPreferencesEndpoints(t *testing.T) {
 		t.Fatalf("before the first favorite: %+v %v", record, err)
 	}
 
-	aliceStream := openEventStream(t, alice.Client)
-	bobStream := openEventStream(t, bob.Client)
+	aliceStream := openEventStream(t, server, alice.Client, alice.AccountID)
+	bobStream := openEventStream(t, server, bob.Client, bob.AccountID)
 	waitForSubscriber(t, server, alice.AccountID, 1)
 	waitForSubscriber(t, server, bob.AccountID, 1)
 	saved, err := alice.UpdateFavorites(ctx, nil, session.FavoriteChange{AddItemIDs: []string{githubItem.ID}})
