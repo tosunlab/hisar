@@ -134,7 +134,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	if err := s.resetAccount(); err != nil {
 		log.Printf("sign-in could not delete the previous account's offline copy: %v", err)
 	}
-	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, loggedIn.Email, loggedIn.AccountID, loggedIn.Client.Token
+	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token, s.state.DeviceID = server, loggedIn.Email, loggedIn.AccountID, loggedIn.Client.Token, loggedIn.DeviceID
 	s.state.LastServer = server
 	if err := s.state.Save(); err != nil {
 		loggedIn.Lock()
@@ -405,6 +405,6 @@ func (s *Service) resetAccount() error {
 func OpenUnlockedSession(s *Service, server, token string, unlockedSession *session.Session) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, unlockedSession.Email, unlockedSession.AccountID, token
+	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token, s.state.DeviceID = server, unlockedSession.Email, unlockedSession.AccountID, token, unlockedSession.DeviceID
 	s.openSession(unlockedSession)
 }

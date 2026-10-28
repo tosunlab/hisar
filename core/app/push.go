@@ -149,6 +149,7 @@ func (s *Service) listEnabledPushKinds() []string {
 // the signed-in account. An iPhone asks the relay for a handle only when the token or the relay changed; an Android
 // phone's Web Push subscription goes to the server as it is. Without either, or without a session, it does nothing.
 func (s *Service) registerPush() error {
+	s.learnDeviceID()
 	s.mutex.Lock()
 	if !s.state.IsLoggedIn() || !s.hasPushTarget() {
 		s.mutex.Unlock()
@@ -239,17 +240,27 @@ func (s *Service) getPushMessageKey() (p256dh, auth string) {
 	return "", ""
 }
 
-// signPushKey returns the account's signature over this phone's message key, base64url, and the key it signed; empty
-// while Hisar is locked, when only the unlock can sign. It needs the mutex.
+// signPushKey returns the account's signature over this phone's message key and device ID, base64url, and the key it
+// signed; empty while Hisar is locked, when only the unlock can sign, and while the device ID is unknown. It needs the
+// mutex.
 func (s *Service) signPushKey() (signedKey, keySignature string) {
 	p256dh, auth := s.getPushMessageKey()
 	publicKey, publicKeyErr := decodeBase64URL(p256dh)
 	authSecret, authErr := decodeBase64URL(auth)
-	if !s.isUnlocked() || p256dh == "" || publicKeyErr != nil || authErr != nil {
+	if !s.isUnlocked() || s.state.DeviceID == "" || p256dh == "" || publicKeyErr != nil || authErr != nil {
 		return "", ""
 	}
 	signature := s.unlockedSession.Keyset.SignPushKey(s.state.AccountID, s.state.DeviceID, publicKey, authSecret)
 	return p256dh, base64.RawURLEncoding.EncodeToString(signature)
+}
+
+// learnDeviceID asks the server for this device's ID while Hisar is unlocked and the state has none: the apps up to
+// iPhone 0.1.16 never stored it, and the push key is signed over it. Without it the key goes to the server unsigned, and
+// the next unlock signs it again.
+func (s *Service) learnDeviceID() {
+	if apiClient, err := s.getUnlockedClient(); err == nil {
+		s.getOwnDeviceID(apiClient)
+	}
 }
 
 // recordSignedPushKey remembers the key this phone registered while it could sign it (a server older than key

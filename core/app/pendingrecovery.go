@@ -369,7 +369,7 @@ func (s *Service) installRecoveredAccount(ctx context.Context, entry *PendingRec
 	} else if s.unlockedSession != nil {
 		s.lockSession()
 	}
-	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = entry.Origin, entry.Email, entry.AccountID, unlocked.Client.Token
+	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token, s.state.DeviceID = entry.Origin, entry.Email, entry.AccountID, unlocked.Client.Token, unlocked.DeviceID
 	s.state.LastServer = entry.Origin
 	s.state.RecoveryOperationID = entry.OperationID
 	entry.ManualUnlock = s.config.SecretKeyStore.StoreSecretKey(key) != nil
