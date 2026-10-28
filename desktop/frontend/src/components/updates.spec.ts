@@ -123,4 +123,31 @@ describe("UpdatesSection on Linux and Windows", () => {
     expect(wrapper.find('[data-testid="update-explanation"]').text()).toBe("Hisar is up to date.");
     expect(wrapper.find('[data-testid="download-update"]').exists()).toBe(false);
   });
+
+  it("installs a newer version in a copy from a Linux package", async () => {
+    const available = createUpdateStatus({ isNotifyOnly: true, hasChecked: true, availableVersion: "0.3.0", installKind: "deb" });
+    api.getUpdateStatus.mockResolvedValue(available);
+    api.installUpdate.mockResolvedValue(available);
+    const wrapper = mount(UpdatesSection);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="update-explanation"]').text()).toContain("opens it in your software installer");
+    expect(wrapper.find('[data-testid="download-update"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="install-update"]').trigger("click");
+    await flushPromises();
+    expect(api.installUpdate).toHaveBeenCalled();
+    expect(api.openURL).not.toHaveBeenCalled();
+    expect(store.noticeMessage).toBe("Hisar 0.3.0 is verified. Install it in your software installer, then open Hisar again.");
+  });
+
+  it("replaces an AppImage and relaunches it", async () => {
+    api.getUpdateStatus.mockResolvedValue(createUpdateStatus({ isNotifyOnly: true, hasChecked: true, availableVersion: "0.3.0", installKind: "appimage" }));
+    api.installUpdate.mockRejectedValue(new Error("the downloaded update is not signed by Hisar; it was not installed"));
+    const wrapper = mount(UpdatesSection);
+    await flushPromises();
+    const installButton = wrapper.find('[data-testid="install-update"]');
+    expect(installButton.text()).toBe("Install and Relaunch");
+    await installButton.trigger("click");
+    await flushPromises();
+    expect(store.errorMessage).toContain("not signed by Hisar");
+  });
 });

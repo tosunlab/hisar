@@ -2,6 +2,7 @@ package updater
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -32,19 +33,65 @@ var stampedVersion string
 func GetStampedVersion() string { return stampedVersion }
 
 // Notifier checks the signed-in server's update feed, the same appcast Sparkle reads on the Mac, and finds a newer
-// version for the user to download from its GitHub release; it never installs anything.
+// version on its GitHub release. A copy installed from a Linux package also installs it (Installation); any other copy
+// leaves the download to the user.
 type Notifier struct {
 	currentVersion string
+	installation   Installation
 	client         *http.Client
+	packages       packageSource
 	mutex          sync.Mutex
 	feedURL        string
 	authorization  string
 	available      app.AvailableUpdate
 	stopAutomatic  context.CancelFunc
+	isInstalling   bool
 }
 
-func NewNotifier(currentVersion string) *Notifier {
-	return &Notifier{currentVersion: currentVersion, client: &http.Client{Timeout: feedRequestTimeout, CheckRedirect: apiclient.CheckRedirect}}
+func NewNotifier(currentVersion string, installation Installation) *Notifier {
+	publicKey, _ := base64.StdEncoding.DecodeString(updatePublicKey)
+	return &Notifier{
+		currentVersion: currentVersion,
+		installation:   installation,
+		client:         &http.Client{Timeout: feedRequestTimeout, CheckRedirect: apiclient.CheckRedirect},
+		packages:       newPackageSource(publicKey),
+	}
+}
+
+// GetInstallKind is how this copy installs the update it finds; empty when the user downloads it.
+func (notifier *Notifier) GetInstallKind() string {
+	if !notifier.IsAvailable() {
+		return string(InstallNone)
+	}
+	return string(notifier.installation.Kind)
+}
+
+var errNoUpdateToInstall = errors.New("there is no newer version to install; check for updates first")
+
+// InstallUpdate downloads the newer version CheckForUpdates found, checks the release's signature, and installs it:
+// an AppImage is replaced and starts again, a package or a Flatpak bundle opens in the system's software installer.
+func (notifier *Notifier) InstallUpdate() error {
+	notifier.mutex.Lock()
+	version := notifier.available.Version
+	if notifier.isInstalling {
+		notifier.mutex.Unlock()
+		return errors.New("the update is already being installed")
+	}
+	if version == "" {
+		notifier.mutex.Unlock()
+		return errNoUpdateToInstall
+	}
+	notifier.isInstalling = true
+	notifier.mutex.Unlock()
+	defer func() {
+		notifier.mutex.Lock()
+		notifier.isInstalling = false
+		notifier.mutex.Unlock()
+	}()
+	if notifier.GetInstallKind() == string(InstallNone) {
+		return errors.New("this copy of Hisar cannot install updates; download the new version from its release")
+	}
+	return notifier.installation.install(notifier.packages, version)
 }
 
 // IsAvailable is false in a development build, which has no release version to compare.

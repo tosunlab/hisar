@@ -119,6 +119,8 @@ class ReleaseEvidenceTests(unittest.TestCase):
                 names.extend(f"Hisar-{version}-linux-{arch}.{kind}" for kind in ("deb", "rpm", "AppImage", "flatpak"))
             if "-" not in version:
                 names.append("update-unpublished.json")
+                for arch in ("amd64", "arm64"):
+                    names.extend(f"Hisar-{version}-linux-{arch}.{kind}.sig" for kind in ("deb", "rpm", "AppImage", "flatpak"))
                 with zipfile.ZipFile(self.directory / f"Hisar-{version}.zip", "w") as archive:
                     for name in ("package.json", "mcp.json", "bin/run-hisar"):
                         info = zipfile.ZipInfo("Hisar.app/Contents/Resources/omp-plugin/" + name)

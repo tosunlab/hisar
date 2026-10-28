@@ -1,9 +1,16 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/tryhisar/hisar/core/crypt"
 )
 
 func TestGetPublicKey(t *testing.T) {
@@ -21,5 +28,28 @@ func TestGetPublicKey(t *testing.T) {
 		if _, err := getPublicKey(encodedPrivateKey); err == nil {
 			t.Errorf("%q accepted", encodedPrivateKey)
 		}
+	}
+}
+
+// sign writes a .sig beside each file that the Linux app's check accepts for that file name and content.
+func TestSignWritesASignatureTheAppAccepts(t *testing.T) {
+	seed, _ := hex.DecodeString("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+	directory := t.TempDir()
+	keyFile := filepath.Join(directory, "key")
+	os.WriteFile(keyFile, []byte(base64.StdEncoding.EncodeToString(seed)), 0o600)
+	packagePath := filepath.Join(directory, "Hisar-1.2.3-linux-amd64.deb")
+	os.WriteFile(packagePath, []byte("package"), 0o644)
+	if err := run([]string{"sign", keyFile, packagePath}); err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := os.ReadFile(packagePath + ".sig")
+	signature, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(encoded)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey, _ := readPrivateKey(base64.StdEncoding.EncodeToString(seed))
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+	if err := crypt.VerifyDesktopPackage(publicKey, "Hisar-1.2.3-linux-amd64.deb", sha256.Sum256([]byte("package")), signature); err != nil {
+		t.Fatal(err)
 	}
 }

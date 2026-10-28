@@ -1351,9 +1351,11 @@ const previewBrowserStatus: BrowserStatus = {
 };
 
 // updates=development: a build without Sparkle; updates=signed-out: no session to check with; updates=notify: a Linux
-// build that has not checked yet; updates=available: one that found a newer version.
+// build that has not checked yet; updates=available: one that found a newer version to download; updates=appimage and
+// updates=deb: one that found it and installs it.
 const previewUpdateMode = previewParameter.get("updates") ?? "";
-const isPreviewNotifyOnly = previewUpdateMode === "notify" || previewUpdateMode === "available";
+const isPreviewNotifyOnly = ["notify", "available", "appimage", "deb"].includes(previewUpdateMode);
+const isPreviewUpdateFound = ["available", "appimage", "deb"].includes(previewUpdateMode);
 const previewUpdateStatus: UpdateStatus = {
   version: previewUpdateMode === "development" ? "development" : "0.2.1",
   buildNumber: previewUpdateMode === "development" || isPreviewNotifyOnly ? "" : "2001",
@@ -1362,9 +1364,10 @@ const previewUpdateStatus: UpdateStatus = {
   isSignedIn: previewUpdateMode !== "signed-out",
   isAutomaticCheckEnabled: true,
   isNotifyOnly: isPreviewNotifyOnly,
-  hasChecked: previewUpdateMode === "available",
-  availableVersion: previewUpdateMode === "available" ? "0.3.0" : "",
-  downloadURL: previewUpdateMode === "available" ? "https://github.com/tosunlab/hisar/releases/tag/desktop-0.3.0" : "",
+  hasChecked: isPreviewUpdateFound,
+  availableVersion: isPreviewUpdateFound ? "0.3.0" : "",
+  downloadURL: isPreviewUpdateFound ? "https://github.com/tosunlab/hisar/releases/tag/desktop-0.3.0" : "",
+  installKind: previewUpdateMode === "appimage" || previewUpdateMode === "deb" ? previewUpdateMode : "",
 };
 
 // loginItem=requires-approval | not-registered | off | development
@@ -2296,6 +2299,12 @@ export const previewApi = {
   checkForUpdates: () => {
     if (!previewUpdateStatus.isSignedIn) {
       return Promise.reject(new Error("sign in to check for updates"));
+    }
+    return resolveAfterDelay({ ...previewUpdateStatus });
+  },
+  installUpdate: () => {
+    if (previewUpdateStatus.installKind === "appimage") {
+      window.location.reload();
     }
     return resolveAfterDelay({ ...previewUpdateStatus });
   },

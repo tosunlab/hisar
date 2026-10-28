@@ -40,7 +40,7 @@ func TestNotifierReadsTheSignedInFeed(t *testing.T) {
 		writer.Write([]byte(testAppcast))
 	}))
 	defer server.Close()
-	notifier := NewNotifier("0.3.0")
+	notifier := NewNotifier("0.3.0", Installation{})
 	if !notifier.IsAvailable() {
 		t.Fatal("a release build is not available")
 	}
@@ -60,11 +60,14 @@ func TestNotifierReadsTheSignedInFeed(t *testing.T) {
 }
 
 func TestNotifierInADevelopmentBuild(t *testing.T) {
-	notifier := NewNotifier("")
+	notifier := NewNotifier("", Installation{Kind: InstallAppImage})
 	if notifier.IsAvailable() {
 		t.Error("a development build is available")
 	}
 	if version, _ := notifier.GetVersion(); version != developmentVersion {
 		t.Errorf("version = %q", version)
+	}
+	if kind := notifier.GetInstallKind(); kind != "" {
+		t.Errorf("a development build installs updates as %q", kind)
 	}
 }
