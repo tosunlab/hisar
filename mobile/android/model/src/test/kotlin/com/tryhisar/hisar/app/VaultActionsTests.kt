@@ -7,6 +7,8 @@ import com.tryhisar.hisar.model.VaultActions
 import com.tryhisar.hisar.model.VaultDeletionLogic
 import com.tryhisar.hisar.model.VaultDeletionRequest
 import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.model.ReadIssue
+import com.tryhisar.hisar.model.RecoveryDeletionReview
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -137,5 +139,34 @@ class VaultActionsTests {
         assertTrue(model.unlockedData.value.allRemovedVaultNotice.isEmpty())
         model.refreshAll()
         assertTrue(model.unlockedData.value.allRemovedVaultNotice.isEmpty())
+    }
+
+    @Test
+    fun testRecoveryDeletionRequiresReviewedTargetConfirmation() {
+        val id = "12345678-1234-5678-1234-567812345678"
+        val nameIssue = ReadIssue(vaultId = id, revision = "review-1", kind = "vault-name", canRename = true, canDelete = true)
+        val vault = VaultSummary(id = id, name = "Unreadable vault $id", type = "shared", role = "owner", itemCount = 2, readIssues = listOf(nameIssue))
+        val review = RecoveryDeletionReview(vault, nameIssue)
+        assertFalse(review.canDelete(""))
+        assertFalse(review.canDelete(vault.name))
+        assertFalse(review.canDelete(id))
+        assertTrue(review.canDelete("12345678"))
+        assertTrue(review.message.contains("2 items, including the readable ones"))
+        val repaired = vault.copy(name = "Repaired elsewhere", readIssues = emptyList())
+        assertEquals("Unreadable vault $id", review.vault.name)
+        assertEquals("review-1", review.issue.revision)
+        val opened = RecoveryDeletionReview(repaired, nameIssue)
+        assertFalse(opened.canDelete("12345678"))
+        assertTrue(opened.canDelete("Repaired elsewhere"))
+        val keyIssue = nameIssue.copy(kind = "vault-key")
+        val unknown = RecoveryDeletionReview(vault.copy(readIssues = listOf(keyIssue)), keyIssue)
+        assertTrue(unknown.message.contains("all its items"))
+        assertFalse(unknown.message.contains("2 items"))
+        assertTrue(unknown.canDelete("12345678"))
+        val item = ReadIssue(vaultId = id, itemId = "bad-item", revision = "item-r1", kind = "item", canDelete = true)
+        val itemReview = RecoveryDeletionReview(vault, item)
+        assertTrue(itemReview.canDelete(""))
+        assertTrue(itemReview.message.contains("bad-item"))
+        assertTrue(itemReview.message.contains(vault.name))
     }
 }

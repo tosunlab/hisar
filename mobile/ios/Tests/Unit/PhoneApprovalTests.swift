@@ -94,6 +94,24 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(approval.allDetailRow[2].value, "Personal › GitHub › password\nWork › AWS › access key\nand 3 more")
     }
 
+    func testCommandLineRequestSaysHowLongItsApprovalLasts() throws {
+        let json = """
+        [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
+          "kind":"cli","appName":"hisar in Terminal","purpose":"use Hisar","commandLine":"/Applications/Hisar.app/Contents/Helpers/hisar","terminalName":"ttys003",
+          "lifetime":"until 10 minutes after this terminal’s last command, or until Hisar locks"}]
+        """
+        let approval = try XCTUnwrap(try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8)).first)
+        XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Program", "Terminal", "Lasts"])
+        XCTAssertEqual(approval.lifetime, "Until 10 minutes after this terminal’s last command, or until Hisar locks")
+        XCTAssertEqual(approval.detailLine, approval.lifetime, "the card says how long approving lasts")
+        XCTAssertEqual(approval.approvalNote, "Approving also lets hisar in Terminal use Hisar without asking until then. It does not unlock Hisar on your Mac.")
+
+        var fromAnOlderMac = approval
+        fromAnOlderMac.commandLineLifetime = ""
+        XCTAssertEqual(fromAnOlderMac.allDetailRow.map(\.label), ["App", "Program", "Terminal"])
+        XCTAssertEqual(fromAnOlderMac.approvalNote, "Approving lets this one request continue; it does not unlock Hisar on your Mac.")
+    }
+
     func testCodingAgentRequestShowsItsProject() throws {
         let json = """
         [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",

@@ -755,6 +755,26 @@ function exportPreviewData(request: ExportRequest): Promise<ExportResult> {
 
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 
+// signUpPreview answers as core does after a clean sign-up: the account is open and its pending record waits for the kit.
+function signUpPreview(): Promise<SignUpResult> {
+  previewState = "unlocked";
+  previewRecovery = [...previewRecovery.filter((entry) => entry.operationId !== "preview-signup"), {
+    operationId: "preview-signup",
+    kind: "signup",
+    origin: "https://eu.tryhisar.com",
+    accountId: "preview-account",
+    email: "alper@tryhisar.com",
+    name: "Alper",
+    phase: "delivery-pending",
+    kitSaved: false,
+    manualUnlock: false,
+    problems: [],
+    keychainProtected: true,
+    revision: 1,
+  }];
+  return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "preview-signup", setupState: "delivery-pending", problems: [] });
+}
+
 function createPreviewTerminalRequester(): Pick<
   ApprovalEvent,
   "requesterKind" | "appName" | "appIconURL" | "appPath" | "appSignature" | "appSigner" | "appWarning" | "allChainProcess"
@@ -939,6 +959,7 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     terminalName: coverage === "terminal-session" ? "ttys003" : "",
     coverage,
     allowance: "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time.",
+    lifetime: "",
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("cliPassword") === "1",
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
@@ -960,6 +981,22 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
   };
 }
 
+// applyPreviewLifetime words a command-line request's lifetime as describeCommandLineLifetime in desktop/agent does,
+// once &app= has named the app.
+function applyPreviewLifetime(event: ApprovalEvent): ApprovalEvent {
+  if (event.kind !== "command-line") {
+    return event;
+  }
+  switch (event.coverage) {
+    case "app":
+      return { ...event, lifetime: `until 10 minutes after the last request from ${event.appName}, or until Hisar locks` };
+    case "connection":
+      return { ...event, lifetime: "for this connection only, at most until 10 minutes after its last request or until Hisar locks" };
+    default:
+      return { ...event, lifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks" };
+  }
+}
+
 // createPreviewSSHApproval is "Terminal wants to push to git.tryhisar.com"; the parameters below change it.
 function createPreviewSSHApproval(): ApprovalEvent {
   const isLocked = previewParameter.get("approvalLocked") === "1" || previewParameter.get("approvalPassword") === "1";
@@ -970,6 +1007,7 @@ function createPreviewSSHApproval(): ApprovalEvent {
     kind: "ssh-key",
     terminalName: "",
     coverage: "",
+    lifetime: "",
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("approvalPassword") === "1",
     ...createPreviewTerminalRequester(),
@@ -1049,7 +1087,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
       allSecretName: ["Work › Postgres staging › password", "Work › Stripe › api key"],
       allGrantDuration,
       grantDuration: "once",
-      grantScope: "A longer choice covers only these secrets.",
+      grantScope: "A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again.",
       isConnectionApproval: false,
     };
   }
@@ -1127,17 +1165,22 @@ function createPreviewHarnessApproval(kind: string): ApprovalEvent {
     workingDirectory: "~/Chore/hisarapp-core",
     allSecretName: ["Agents › Deploy token › password"],
     allGrantDuration: ["once", "hour", "day", "always"],
-    grantScope: "A longer choice covers only this secret.",
+    grantScope: "A longer choice lets omp in Tern run any command with this secret, in any folder, without asking again.",
   };
 }
 
 // createPreviewSignInApproval: &approval=sign-in (Hermes signs in to tosunlab.com in Google Chrome with one login), &logins=2 (the user
-// picks one), &agentLocked=1 (Hisar unlocks first, before it lists logins), &noTouchID=1 (the master password approves).
+// picks one; any larger number lists that many), &agentLocked=1 (Hisar unlocks first, before it lists logins), &noTouchID=1 (the master
+// password approves).
 function createPreviewSignInApproval(): ApprovalEvent {
   const isLocked = previewParameter.get("agentLocked") === "1";
   const allLogin = [{ vaultName: "Agents", title: "Tosun Lab", username: "user@example.com" }];
-  if (previewParameter.get("logins") === "2") {
+  const loginCount = Number(previewParameter.get("logins") ?? "1");
+  if (loginCount >= 2) {
     allLogin.push({ vaultName: "Agents", title: "Tosun Lab admin", username: "ops@example.com" });
+  }
+  for (let index = 3; index <= loginCount; index++) {
+    allLogin.push({ vaultName: "Agents", title: `Tosun Lab ${index}`, username: `user${index}@example.com` });
   }
   return {
     ...createPreviewHarnessApproval("run"),
@@ -1175,7 +1218,7 @@ function createPreviewSignInApproval(): ApprovalEvent {
 // plus &approvalLocked=1 (Touch ID unlocks), &approvalPassword=1 (master password unlocks), &compact=1, &forwarded=1, &noTouchID=1,
 // &phone=1 (the account's smart device can approve too).
 function listAllPreviewApproval(): ApprovalEvent[] {
-  return listAllPreviewApprovalWithoutApp().map(applyPreviewApp);
+  return listAllPreviewApprovalWithoutApp().map(applyPreviewApp).map(applyPreviewLifetime);
 }
 
 function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {
@@ -1552,14 +1595,8 @@ export const previewApi = {
     previewState = "unlocked";
     return resolveAfterDelay(previewStatus());
   },
-  signUp: (): Promise<SignUpResult> => {
-    previewState = "unlocked";
-    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "", setupState: "", problems: [] });
-  },
-  signUpWithoutInvite: (): Promise<SignUpResult> => {
-    previewState = "unlocked";
-    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "", setupState: "", problems: [] });
-  },
+  signUp: signUpPreview,
+  signUpWithoutInvite: signUpPreview,
   unlock: () => {
     previewState = "unlocked";
     return resolveAfterDelay(previewStatus());
@@ -2112,13 +2149,23 @@ export const previewApi = {
   cancelApprovalTouchID: () => Promise.resolve(),
   cancelTouchIDPrompt: () => Promise.resolve(),
   hasNativeTouchIDView: false,
-  saveNewAccountEmergencyKit: () => resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
+  saveNewAccountEmergencyKit: () => {
+    previewRecovery = previewRecovery.map((entry) => entry.operationId === "preview-signup" ? { ...entry, kitSaved: true } : entry);
+    return resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf");
+  },
   saveEmergencyKit: (password: string) =>
     password.length < 4 ? Promise.reject(new Error("incorrect email, master password or Secret Key")) : resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
   revealSecretKey: (password: string) => password.length < 4
     ? Promise.reject(new Error("incorrect email, master password or Secret Key"))
     : resolveAfterDelay({"qrCode":"iVBORw0KGgoAAAANSUhEUgAAAUAAAAFAAQMAAAD3XjfpAAAABlBMVEX///8AAABVwtN+AAAEG0lEQVR42uyaQW7srBKFP8sDhiyBnZiNWWlHvTF7JyyBIQPL56kK5yb3zt7gl5pWyIx8aglTVJ06wO/4Hb/jPxtBkg4ddWGqs7b01Jmg5ZbbwmT/rW8IFgh7UF3iFZ8ybC5BQW0JqlOFeSRQCju5TrogqqycqDRa1lGn+tBzMPDQHo/6EVVJz3ImFe0NlngMCUqXbWElSVJLYW+Ei+ltQQhHmyRtEJ/aOAmlZV0O/h3hrw56SmmL7/Wzrr7XBgaf/Df3vDYIwNSmmusHa5SvGqRmk/wzXhwMhRzUptpnV4/HoDsas1Tn+n4gtNwmzz2PunpdkEB7m3TFHaLGAYNaDhdg8yePMuuE1DwAtH//3hBg0c6ko2Z91pU1bUDzT2Fw/V71ACBg2SNL+qywQiKpBOnwTfz8g70XaLttkkTSZoFb5gIeACYpLbuOA6awh8tElz5lVeHkTCTQ0YjX9ykcAQwKe5taVs8eD19zKF3X10kb8zggKSgcMgX5Kd9AfU024qGNlfcDQ5G1Lnv0nHlXBYkcrnD5Xm/jgH7g5GJ4iyezNlQa0CYdUh0KNPHR++NKPOOGJxSv16ZIvFSMA/qKvT3bmCWLx9Qc9fbzU+cbgiRTjy3XXgBmPQXyaKYn0oHAIO3BwvbwAqeyJmj2NzXiUSeNBBa4Q9djNJ3prgq558c4FOgqSvU+iUk6aelWI3KF/I5gEJYzD5vrLWlS/zxL3HnUdRzQq8Khi+wFwMwCqSVwhewd2zhgX7VtY/2AuKWNk4Z3NNiqtY0EGuSn8IobD0lnMkzqEfm96ncCFdTAciZgLanb3LffM3WHdRyw5XDLf9kpPJPU0l0VLh71MRJIJrtY9KrAmkC9nwEgPkcCwx4OS/bRwaQiqZD15ZGevB9IcifOnQFt0fTj3G1F9QYgbuOAlkjNLIhWmmX2FV6vMZub6WenOQIIbWFx3fusD0l3P2Pt5/FXc/by4H0XZBcQk82mExKY3NduKUXnm4JtAQ/cp9up9L226YUfTtzrg6G0+0KsPqwusKa5tAT0VX98B+7rg9DwWWtdTD+enL3TzHaxpM+vEjcEmMjhIltCkSrMApV+S6aLj+/++q1AiaWbbqzxWUhz8YOZGz+fcowABgXpCjsAcJ9C6FWBHy3AACCpQa8KH1H9kQ2to14VWAcCcSV1RXOvt3j23I/va3cBzrcE78wj86niaS1pain0VwQ7H39uKgYA70dfO0uU3FYsBjbuJzo/+pkBwK9HX93o7u9S3CpYwFc9FKj7FsgTfY9HU8hAlnT9vBp6L3APh9/4AWYWKBi8M9Xl78umMUAWsmRPOcpcvswCj2jVRx0IBF8g1jbHM7lDivaWG+S//fCXB/88+tKFv3X1dQeRG/Fbo7wX+Dt+x+/4P8b/BgDJaaF9o90vAgAAAABJRU5ErkJggg==","qrPayload":"HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL3ByZXZpZXcuaGlzYXIudGVzdCIsImVtYWlsIjoicHJldmlld0BleGFtcGxlLmNvbSIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ","secretKey":"H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"}),
   forgetNewAccountSecretKey: () => Promise.resolve(),
+  acknowledgeNewAccountRecovery: () => {
+    if (!previewRecovery.some((entry) => entry.operationId === "preview-signup" && entry.kitSaved)) {
+      return Promise.reject(new Error("finish setup and save the Emergency Kit before acknowledging delivery"));
+    }
+    previewRecovery = previewRecovery.filter((entry) => entry.operationId !== "preview-signup");
+    return resolveAfterDelay(undefined);
+  },
   listPendingRecovery: () => resolveAfterDelay(previewRecovery.map((entry) => ({ ...entry }))),
   resumePendingRecovery: (_operationID: string, password: string): Promise<SignUpResult> => {
     if (password.length < 4) return Promise.reject(new Error("The password could not open this preview recovery operation."));

@@ -29,12 +29,12 @@ struct LockView: View {
             }
         }
         .task { await model.refreshShareAwaitingUnlock() }
-        .confirmationDialog("Sign out of Hisar on this iPhone?", isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
+        .confirmationDialog(AccountLifecycleLogic.signOutTitle, isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) {
                 Task { await model.signOut() }
             }
         } message: {
-            Text("You will need your Secret Key and master password to sign in again.")
+            Text(AccountLifecycleLogic.lockedSignOutMessage)
         }
     }
 }

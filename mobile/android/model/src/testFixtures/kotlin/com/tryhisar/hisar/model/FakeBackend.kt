@@ -87,6 +87,8 @@ open class FakeBackend : VaultBackend {
     var pendingRecoverySecretKey = SECRET_KEY
     var isPendingRecoveryFactorAvailable = true
     var pendingSignUpResult: SignUpResult? = null
+    /** Whether the backend still keeps the new account's Secret Key, the proof Save your Secret Key acts on. */
+    var isNewAccountSecretKeyKept = false
     /** The server signUpWithoutInvite was last asked to create an account on; null until it is called. */
     var signUpWithoutInviteServer: String? = null
     /** While set, signUpWithoutInvite fails with this sentence: the server's admin has not opened registration. */
@@ -357,7 +359,7 @@ open class FakeBackend : VaultBackend {
         seedSignedIn()
         allItemByVaultID = mutableMapOf("personal" to mutableListOf(), "family" to mutableListOf())
         status = status.copy(email = email, name = name)
-        return SignUpResult(status, SECRET_KEY)
+        return startNewAccount()
     }
 
     override fun signUpWithoutInvite(server: String, email: String, name: String, password: String): SignUpResult {
@@ -368,7 +370,17 @@ open class FakeBackend : VaultBackend {
         seedSignedIn()
         allItemByVaultID = mutableMapOf("personal" to mutableListOf(), "family" to mutableListOf())
         status = status.copy(server = server, email = email, name = name)
-        return SignUpResult(status, SECRET_KEY)
+        return startNewAccount()
+    }
+
+    /** As the backend answers a sign-up that finished: its pending record waits for the kit, and the Secret Key is kept. */
+    private fun startNewAccount(): SignUpResult {
+        allPendingRecovery += PendingRecovery(
+            operationId = NEW_ACCOUNT_OPERATION_ID, kind = "signup", origin = status.server, accountId = "new-account",
+            email = status.email, name = status.name, phase = "delivery-pending", keychainProtected = true,
+        )
+        isNewAccountSecretKeyKept = true
+        return SignUpResult(status, SECRET_KEY, NEW_ACCOUNT_OPERATION_ID, "delivery-pending")
     }
 
     override fun unlock(password: String): VaultStatus {
@@ -405,6 +417,30 @@ open class FakeBackend : VaultBackend {
 
     override fun forgetNewAccountSecretKey() {
         record("forgetNewAccountSecretKey")
+        isNewAccountSecretKeyKept = false
+    }
+
+    private fun findNewAccountRecovery(): Int {
+        requireUnlocked()
+        if (!isNewAccountSecretKeyKept) throw BackendError("the new account's Secret Key is no longer in memory; save the Emergency Kit from Settings")
+        val index = allPendingRecovery.indexOfFirst { it.operationId == NEW_ACCOUNT_OPERATION_ID }
+        if (index < 0) throw BackendError("this account's setup needs finishing from the account recovery screen")
+        return index
+    }
+
+    override fun exportNewAccountEmergencyKit(directory: File): EmergencyKitExport {
+        record("exportNewAccountEmergencyKit")
+        val index = findNewAccountRecovery()
+        val kit = writeEmergencyKit(directory)
+        allPendingRecovery[index] = allPendingRecovery[index].copy(kitSaved = true)
+        return EmergencyKitExport(SECRET_KEY, kit.path)
+    }
+
+    override fun acknowledgeNewAccountRecovery() {
+        record("acknowledgeNewAccountRecovery")
+        val index = findNewAccountRecovery()
+        if (!allPendingRecovery[index].kitSaved) throw BackendError("finish setup and save the Emergency Kit before acknowledging delivery")
+        allPendingRecovery.removeAt(index)
     }
 
     override fun disableBiometricUnlock(): VaultStatus {
@@ -416,6 +452,7 @@ open class FakeBackend : VaultBackend {
     override fun lock(): VaultStatus {
         record("lock")
         if (status.isSignedIn) status = status.copy(state = VaultStatus.STATE_LOCKED)
+        isNewAccountSecretKeyKept = false
         return status
     }
 
@@ -424,6 +461,7 @@ open class FakeBackend : VaultBackend {
         // As the backend does, signing out keeps only the server, so the sign-in form opens on it. Offline it still signs
         // out on this device, then reports that the server was not told.
         status = VaultStatus.signedOut.copy(server = status.server)
+        isNewAccountSecretKeyKept = false
         if (isOffline) throw BackendError(SIGN_OUT_OFFLINE_MESSAGE)
         return status
     }
@@ -1545,6 +1583,7 @@ open class FakeBackend : VaultBackend {
         const val PASSWORD = "correct horse battery"
         const val HISAR_EXPORT_PASSPHRASE = "orange cactus harbor"
         const val SECRET_KEY = "H1-ABC123-AAAAA-BBBBB-CCCCC-DDDDD-EEEEEE"
+        const val NEW_ACCOUNT_OPERATION_ID = "new-account-signup"
         const val ONE_TIME_PASSWORD = "otpauth://totp/GitHub:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" // gitleaks:allow, the RFC 6238 test secret
         const val SIGN_OUT_OFFLINE_MESSAGE = "Signed out on this device, but the server could not be reached to end the session"
         const val CACHE_REMOVAL_MESSAGE = "The account was deleted, but this device's copy of the vaults could not be removed"

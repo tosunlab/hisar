@@ -70,6 +70,9 @@ type Description struct {
 	// RememberLabel is set when approving can also be remembered: the sentence for the phone's switch.
 	RememberLabel         string `json:"rememberLabel,omitempty"`
 	IsRememberedByDefault bool   `json:"isRememberedByDefault,omitempty"`
+	// Lifetime is set when approving also lets the requester use Hisar without asking for a while: "until 10 minutes
+	// after this terminal’s last command, or until Hisar locks". A phone older than it says the request is approved once.
+	Lifetime string `json:"lifetime,omitempty"`
 }
 
 type Request struct {

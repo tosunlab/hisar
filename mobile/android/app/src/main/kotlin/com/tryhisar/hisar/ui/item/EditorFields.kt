@@ -80,6 +80,7 @@ import androidx.compose.ui.unit.dp
 import com.tryhisar.hisar.model.CalendarDate
 import com.tryhisar.hisar.ui.components.ScreenMargin
 import com.tryhisar.hisar.ui.components.SecretInput
+import com.tryhisar.hisar.ui.components.fieldAccessibility
 import com.tryhisar.hisar.ui.components.secretInput
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
@@ -223,6 +224,9 @@ fun EditorField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     testTag: String,
+    label: String,
+    errorMessage: String? = null,
+    announceErrorOnBlur: Boolean = true,
     modifier: Modifier = Modifier,
     kind: FieldKind = FieldKind.TEXT,
     isSecret: Boolean = false,
@@ -261,6 +265,7 @@ fun EditorField(
                     .weight(1f)
                     .padding(vertical = 14.dp)
                     .secretInput(isSecretInput)
+                    .then(fieldAccessibility(label, errorMessage, announceErrorOnBlur))
                     .testTag(testTag),
                 decorationBox = { innerTextField ->
                     Box(contentAlignment = Alignment.CenterStart) {
@@ -397,7 +402,7 @@ fun DateRow(title: String, value: String, onValueChange: (String) -> Unit, testT
     val date = CalendarDate.parse(value)
     when {
         value.isEmpty() -> EditorButtonRow("Add ${title.lowercase()}", Icons.Outlined.CalendarMonth, onClick = { onValueChange(CalendarDate.formatToday()) }, testTag = "$testTag-add")
-        date == null -> EditorField(value, onValueChange, title, testTag)
+        date == null -> EditorField(value, onValueChange, title, testTag, label = title)
         else -> {
             var isPickerShown by remember { mutableStateOf(false) }
             Row(

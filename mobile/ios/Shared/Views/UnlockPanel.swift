@@ -71,6 +71,7 @@ struct UnlockPanel: View {
                     .onSubmit(submit)
                     .accessibilityIdentifier("unlock-password")
                     .concealWhen(isBusy)
+                    .accessibilityHint(errorMessage ?? "")
             } footer: {
                 if isBiometricEnabled && !isBiometricReady {
                     Text(isBiometricAvailable

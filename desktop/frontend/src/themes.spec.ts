@@ -6,6 +6,7 @@ import generatedSwift from "../../../mobile/ios/Shared/Views/ThemePalettes.swift
 import generatedKotlin from "../../../mobile/android/model/src/main/kotlin/com/tryhisar/hisar/model/theme/ThemePalettes.kt?raw";
 import detailSource from "./components/ItemDetailPanel.vue?raw";
 import codeSource from "./components/OneTimeCodeField.vue?raw";
+import androidColors from "../../../mobile/android/app/src/main/kotlin/com/tryhisar/hisar/ui/theme/HisarTheme.kt?raw";
 import { computeContrastRatio, renderThemeCSS, renderThemeKotlin, renderThemeSwift, resolveAllTheme, type ThemeSource } from "../../../scripts/themes/render";
 
 const source = themeSource as ThemeSource;
@@ -34,6 +35,7 @@ const allRule: ContrastRule[] = [
   { allForeground: ["warning", "warningText"], allBackground: ["warningBackground"], minimum: textMinimum },
   { allForeground: ["danger"], allBackground: ["dangerBackground"], minimum: interfaceMinimum },
   { allForeground: ["focus", "primary"], allBackground: ["background", "sidebar", "panel", "surface"], minimum: interfaceMinimum },
+  { allForeground: ["controlBorder"], allBackground: ["surface", "panel"], minimum: interfaceMinimum },
   ...allTileIndex.map((index) => ({ allForeground: [`tile${index}Text`], allBackground: [`tile${index}`], minimum: textMinimum })),
   { allForeground: ["iosTint", "iosSecondaryLabel", "iosWarning"], allBackground: ["iosGroupedBackground", "iosCellBackground"], minimum: textMinimum },
   { allForeground: ["dangerText"], allBackground: ["iosGroupedBackground", "iosCellBackground"], minimum: textMinimum },
@@ -83,6 +85,23 @@ describe("themes", () => {
     expect(Number(getComputedStyle(actions).opacity || "1")).toBe(1);
     row.remove();
     style.remove();
+  });
+
+  it.each(allTheme.map((theme) => [theme.color, theme.appearance, theme.tokens] as const))("%s %s keeps Android prompts readable on cells, dialogs and search", (_color, appearance, tokens) => {
+    const colorPair = (role: string): number[] => {
+      const match = androidColors.match(new RegExp(`${role} = pick\\(0x([A-Fa-f0-9]{8}), 0x([A-Fa-f0-9]{8})\\)`));
+      expect(match, role).not.toBeNull();
+      const value = parseInt(match![appearance === "dark" ? 2 : 1], 16);
+      return [(value >>> 16) & 255, (value >>> 8) & 255, value & 255, (value >>> 24) / 255];
+    };
+    const composite = (foreground: number[], background: number[]) => foreground.slice(0, 3).map((channel, index) => channel * foreground[3] + background[index] * (1 - foreground[3]));
+    const cell = colorPair("cellBackground");
+    const fill = colorPair("fill");
+    const grouped = [1, 3, 5].map((start) => parseInt(tokens.iosGroupedBackground.slice(start, start + 2), 16));
+    for (const backdrop of [cell, composite(fill, cell), composite(fill, grouped)]) {
+      const hex = "#" + backdrop.slice(0, 3).map((value) => Math.round(value).toString(16).padStart(2, "0")).join("");
+      expect(computeContrastRatio(tokens.androidPlaceholder, hex)).toBeGreaterThanOrEqual(textMinimum);
+    }
   });
 
   it("computes the WCAG ratio", () => {

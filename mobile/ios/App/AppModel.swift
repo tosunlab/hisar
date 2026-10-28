@@ -3,6 +3,29 @@ import Foundation
 import SwiftUI
 import UIKit
 
+struct ItemEditorAccount: Equatable {
+    let server: String
+    let email: String
+
+    init(_ status: VaultStatus) {
+        server = status.server
+        email = status.email
+    }
+}
+
+struct ItemEditorSession {
+    var account: ItemEditorAccount
+    var sourceVaultID: String
+    var originalItem: ItemDetail?
+    var item: ItemDetail
+    var allURLText: [String]
+    var chosenVaultID: String
+    var newTagText = ""
+    var loadedItem: ItemDetail
+    var isOldAddressShown = false
+    var numberBrand = ""
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     enum Screen: Equatable {
@@ -70,6 +93,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var theme = VaultTheme.standard
     @Published private(set) var allReceivedInvitation: [ReceivedShareInvitation] = []
     @Published private(set) var allWaitingInvitation: [WaitingShareInvitation] = []
+    @Published private(set) var allReviewInvitation: [SentShareInvitation] = []
     @Published private(set) var allShareAwaitingUnlock: [ShareAwaitingUnlock] = []
     @Published private(set) var remoteChangeCount = 0
     @Published private(set) var allRemovedVaultNotice: [RemovedVaultNotice] = []
@@ -101,8 +125,53 @@ final class AppModel: ObservableObject {
     @Published private(set) var pendingRecoveryExport: PendingRecoveryExport?
     private var lifecycleEpoch: UInt64 = 0
     private var pendingDeliveryGeneration: UInt64 = 0
+    @Published private(set) var retainedEditor: ItemEditorSession?
+    @Published var isRestoredEditorShown = false
+    @Published private(set) var editorRecoveryMessage: String?
+    private var editorNeedsRestoration = false
+
+    func retainEditor(_ draft: ItemEditorSession) {
+        guard status.isSignedIn, draft.account == ItemEditorAccount(status),
+              status.isUnlocked || retainedEditor != nil else { return }
+        retainedEditor = draft
+    }
+
+    func discardEditor() {
+        retainedEditor = nil
+        editorNeedsRestoration = false
+        isRestoredEditorShown = false
+        editorRecoveryMessage = nil
+    }
+
+    private func restoreEditorAfterUnlock() {
+        guard editorNeedsRestoration, let draft = retainedEditor else { return }
+        editorNeedsRestoration = false
+        let source = allVault.first { $0.id == draft.sourceVaultID }
+        let destination = allVault.first { $0.id == draft.chosenVaultID }
+        let current = allItemByVaultID[draft.sourceVaultID]?.first { $0.id == draft.originalItem?.id }
+        if !(source.map(Self.isWritableVault) ?? false) || !(destination.map(Self.isWritableVault) ?? false)
+            || (draft.originalItem != nil && (current?.revision != draft.originalItem?.revision || current?.readIssue != nil)) {
+            editorRecoveryMessage = "The original item or your access changed. Your unsaved changes are still here."
+        } else {
+            isRestoredEditorShown = true
+        }
+    }
+
+    func recoverEditorCopy() {
+        guard var draft = retainedEditor, let vault = Self.chooseCredentialImportVault(allVault.filter(Self.isWritableVault)) else { return }
+        draft.sourceVaultID = vault.id
+        draft.chosenVaultID = vault.id
+        draft.originalItem = nil
+        draft.item.id = ""
+        draft.item.revision = ""
+        draft.item.allPasskey = []
+        retainedEditor = draft
+        editorRecoveryMessage = nil
+        isRestoredEditorShown = true
+    }
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
+    var peopleInvitationCount: Int { receivedInvitationCount + allReviewInvitation.count }
     var organizationInvitationCount: Int { allOrganizationInvitation.count }
 
     var autoLockInterval: TimeInterval { TimeInterval(status.autoLockSeconds) }
@@ -233,6 +302,9 @@ final class AppModel: ObservableObject {
     private func applyStatus(_ newStatus: VaultStatus) {
         let wasUnlocked = status.isUnlocked
         let wasSignedIn = status.isSignedIn
+        if !newStatus.isSignedIn || status.email != newStatus.email || status.server != newStatus.server {
+            discardEditor()
+        }
         if status.state != newStatus.state || status.email != newStatus.email || status.server != newStatus.server {
             lifecycleEpoch += 1
             clearPendingRecoveryExport()
@@ -252,12 +324,16 @@ final class AppModel: ObservableObject {
             clearAllApproval()
         }
         if wasUnlocked && !newStatus.isUnlocked {
+            editorNeedsRestoration = retainedEditor != nil
+            isRestoredEditorShown = false
+            editorRecoveryMessage = nil
             allVault = []
             allItemByVaultID = [:]
             allPasskey = []
             lockCount += 1
             allReceivedInvitation = []
             allWaitingInvitation = []
+            allReviewInvitation = []
             allRemovedVaultNotice = []
             allOrganization = []
             allOrganizationInvitation = []
@@ -300,8 +376,10 @@ final class AppModel: ObservableObject {
     }
 
     private func applyShareInvitations(_ shareInvitations: ShareInvitations) {
+        guard status.isUnlocked else { return }
         allReceivedInvitation = shareInvitations.allReceived
         allWaitingInvitation = shareInvitations.allWaiting
+        allReviewInvitation = shareInvitations.allRequiringReview
     }
 
     private func applyOrganizations(_ organizations: Organizations) {
@@ -387,7 +465,7 @@ final class AppModel: ObservableObject {
     }
 
     private func finishSignUp(_ result: SignUpResult) async -> Bool {
-        let isWaitingForKit = result.setupState == "delivery-pending" && !result.secretKey.isEmpty && result.problems.isEmpty
+        let isWaitingForKit = AccountLifecycleLogic.isWaitingOnlyForKit(setupState: result.setupState, secretKey: result.secretKey, problems: result.problems)
         if !result.pendingOperationId.isEmpty && !isWaitingForKit {
             refreshStatus()
             // The backend's first sync can report its change before this status arrives, when it is ignored.
@@ -400,6 +478,7 @@ final class AppModel: ObservableObject {
         newSecretKey = result.secretKey
         applyStatus(result.status)
         await refreshAll()
+        await refreshPendingRecovery(isPresenting: false)
         return true
     }
 
@@ -452,9 +531,11 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func unlock(password: String) async -> Bool {
+        clearError()
         guard let newStatus = await perform({ try $0.unlock(password: password) }) else { return false }
         applyStatus(newStatus)
         await refreshAll()
+        await refreshPendingRecovery(isPresenting: false)
         return true
     }
 
@@ -466,6 +547,7 @@ final class AppModel: ObservableObject {
         }
         applyStatus(newStatus)
         await refreshAll()
+        await refreshPendingRecovery(isPresenting: false)
         return true
     }
 
@@ -611,6 +693,7 @@ final class AppModel: ObservableObject {
             shownRefresh = refresh
             allVault = result.allVault.sorted { Self.sortVault($0, $1) }
             allItemByVaultID = result.allItemByVaultID
+            restoreEditorAfterUnlock()
             if let passkeys = result.allPasskey { allPasskey = passkeys }
             if let shareInvitations = result.shareInvitations {
                 applyShareInvitations(shareInvitations)
@@ -740,7 +823,8 @@ final class AppModel: ObservableObject {
     }
 
     /// Deletes the unreadable record the user reviewed, named by its revision; a changed record is refused.
-    func deleteUnreadableRecord(_ issue: ReadIssue) async {
+    @discardableResult
+    func deleteUnreadableRecord(_ issue: ReadIssue) async -> Bool {
         let deleted: Void? = await perform { backend in
             if let itemID = issue.itemId {
                 try backend.deleteUnreadableItem(vaultID: issue.vaultId, itemID: itemID, revision: issue.revision ?? "")
@@ -748,7 +832,9 @@ final class AppModel: ObservableObject {
                 try backend.deleteUnreadableVault(vaultID: issue.vaultId, revision: issue.revision ?? "")
             }
         }
-        if deleted != nil { await refreshAll() }
+        guard deleted != nil else { return false }
+        await refreshAll()
+        return true
     }
 
     /// Names a vault whose name did not open, only while its record is still the one the user reviewed.
@@ -816,12 +902,18 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func cancelShareInvitation(invitationID: String) async -> Bool {
-        await perform({ try $0.cancelShareInvitation(invitationID: invitationID) }) != nil
+        guard await perform({ try $0.cancelShareInvitation(invitationID: invitationID) }) != nil else { return false }
+        allReviewInvitation.removeAll { $0.id == invitationID }
+        _ = await loadShareInvitations()
+        return true
     }
 
     @discardableResult
     func confirmShareRecipient(_ invitation: SentShareInvitation) async -> Bool {
-        await perform({ try $0.confirmShareRecipient(invitationID: invitation.id, reviewToken: invitation.reviewToken ?? "") }) != nil
+        guard await perform({ try $0.confirmShareRecipient(invitationID: invitation.id, reviewToken: invitation.reviewToken ?? "") }) != nil else { return false }
+        allReviewInvitation.removeAll { $0.id == invitation.id }
+        _ = await loadShareInvitations()
+        return true
     }
 
     func loadAllVaultMember(vaultID: String) async -> [Member]? {
@@ -1359,6 +1451,7 @@ final class AppModel: ObservableObject {
         }
         allItemByVaultID[vaultID] = allItem
         await publishAllCredentialIdentity()
+        discardEditor()
         return savedItem
     }
 
@@ -1511,8 +1604,24 @@ final class AppModel: ObservableObject {
     }
 
     func replaceSecretKey(password: String) async -> CredentialChangeResult? {
+        let epoch = lifecycleEpoch
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)
         guard let result = await perform({ try $0.replaceSecretKey(password: password, directory: directory) }) else { return nil }
+        guard epoch == lifecycleEpoch else {
+            removeEmergencyKitFile(path: result.emergencyKitPath)
+            await refreshPendingRecovery()
+            return nil
+        }
+        if !result.pendingOperationId.isEmpty && result.isWaitingOnlyForKit && status.isUnlocked {
+            isNewSecretKeyShown = true
+            applyStatus(result.status)
+            await exportPendingRecoveryKit(operationID: result.pendingOperationId, password: password)
+            guard epoch == lifecycleEpoch else {
+                finishSecretKeyReplacement(result)
+                return nil
+            }
+            return result
+        }
         if !result.pendingOperationId.isEmpty {
             removeEmergencyKitFile(path: result.emergencyKitPath)
             refreshStatus()
@@ -1531,8 +1640,7 @@ final class AppModel: ObservableObject {
     func finishSecretKeyReplacement(_ result: CredentialChangeResult) {
         isNewSecretKeyShown = false
         removeEmergencyKitFile(path: result.emergencyKitPath)
-        guard let backend else { return }
-        Task { try? await runInBackground { backend.forgetNewAccountSecretKey() } }
+        if !result.pendingOperationId.isEmpty { clearPendingRecoveryExport() }
     }
 
     func loadAccountDeletionPreview() async -> AccountDeletionPreview? {
@@ -1558,7 +1666,8 @@ final class AppModel: ObservableObject {
         applyStatus(backend.dismissSignedOutReason())
     }
 
-    func refreshPendingRecovery() async {
+    // isPresenting false reloads the records for the recovery bar without covering the screen, as for a clean sign-up.
+    func refreshPendingRecovery(isPresenting: Bool = true) async {
         guard let backend else { return }
         let records: [PendingRecovery]
         do {
@@ -1572,7 +1681,7 @@ final class AppModel: ObservableObject {
         let validSelection = selectedPendingRecoveryID.flatMap { id in records.contains { $0.operationId == id } ? id : nil }
         selectPendingRecovery(validSelection ?? (records.count == 1 ? records[0].operationId : nil))
         if records.isEmpty { closePendingRecovery() }
-        else if hadNone { isPendingRecoveryShown = true }
+        else if hadNone && isPresenting && !isNewSecretKeyShown { isPendingRecoveryShown = true }
     }
 
     func selectPendingRecovery(_ operationID: String?) {
@@ -1667,7 +1776,7 @@ final class AppModel: ObservableObject {
             newSecretKey = ""
             isBiometricOfferShown = true
         }
-        return true
+        return !allPendingRecovery.contains { $0.operationId == operationID }
     }
 
     // setTheme shows the theme at once and goes back to the one in use when it cannot be saved.

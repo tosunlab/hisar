@@ -13,6 +13,8 @@ const currentPassword = ref("");
 const newPassword = ref("");
 const repeatedPassword = ref("");
 const signedOutDeviceCount = ref<number | null>(null);
+const validationAnnouncement = ref("");
+const sameAsCurrentMessage = "The new master password is the same as the current one.";
 
 const { value: passwordFeedback, isCurrent: isPasswordFeedbackCurrent } = useMasterPasswordFeedback(() => newPassword.value);
 const isMismatched = computed(() => repeatedPassword.value !== "" && newPassword.value !== repeatedPassword.value);
@@ -77,18 +79,31 @@ function close(): void {
       </label>
       <label>
         <span>New master password</span>
-        <CredentialField secret-name="new master password"><input v-model="newPassword" name="newPassword" type="password" autocomplete="new-password" /></CredentialField>
-        <StrengthMeter :password="newPassword" />
-        <p class="hint" :class="passwordFeedback.isBlocking && newPassword ? 'warning-text' : 'muted'" data-testid="new-password-feedback">
-          {{ passwordFeedback.message }}
-        </p>
-        <p v-if="isSameAsCurrent" class="hint warning-text" data-testid="new-password-same">The new master password is the same as the current one.</p>
+        <CredentialField secret-name="new master password">
+          <input
+            v-model="newPassword"
+            name="newPassword"
+            type="password"
+            autocomplete="new-password"
+            :aria-describedby="isSameAsCurrent ? 'change-password-feedback change-password-same' : 'change-password-feedback'"
+            :aria-invalid="(passwordFeedback.isBlocking && !!newPassword) || isSameAsCurrent"
+            @blur="validationAnnouncement = isSameAsCurrent ? sameAsCurrentMessage : passwordFeedback.isBlocking && newPassword ? passwordFeedback.message : ''"
+          />
+        </CredentialField>
       </label>
+      <StrengthMeter :password="newPassword" />
+      <p id="change-password-feedback" class="hint" :class="passwordFeedback.isBlocking && newPassword ? 'warning-text' : 'muted'" data-testid="new-password-feedback">
+        {{ passwordFeedback.message }}
+      </p>
+      <p v-if="isSameAsCurrent" id="change-password-same" class="hint warning-text" data-testid="new-password-same">{{ sameAsCurrentMessage }}</p>
       <label>
         <span>Repeat new master password</span>
-        <CredentialField secret-name="repeated new master password"><input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" /></CredentialField>
-        <p v-if="isMismatched" class="hint warning-text" data-testid="new-password-mismatch">The passwords don't match.</p>
+        <CredentialField secret-name="repeated new master password"
+          ><input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" :aria-invalid="isMismatched" :aria-describedby="isMismatched ? 'change-password-mismatch' : undefined" @blur="validationAnnouncement = isMismatched ? `The passwords don't match.` : ''"
+        /></CredentialField>
       </label>
+      <p v-if="isMismatched" id="change-password-mismatch" class="hint warning-text" data-testid="new-password-mismatch">The passwords don't match.</p>
+      <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ validationAnnouncement }}</p>
       <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
       <div class="row actions">
         <button type="button" class="ghost" :disabled="store.isBusy" @click="close">Cancel</button>

@@ -20,6 +20,7 @@ import {
   apiCredentialCategory,
   creditCardCategory,
   databaseCategory,
+  customFieldNameWarning,
   describeAPICredentialExpiry,
   describeServerPort,
   getDefaultIconPreset,
@@ -148,6 +149,7 @@ function toggleCustomField(index: number): void {
   if (revealedCustomFields.value.has(index)) revealedCustomFields.value.delete(index);
   else revealedCustomFields.value.add(index);
 }
+const isSetupKeyVisible = ref(false);
 const isGeneratorOpen = ref(store.editorMode === "create");
 const isIconPickerOpen = ref(false);
 // websiteIconURL is the website whose icon Automatic shows, from the URLs as typed.
@@ -681,16 +683,23 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
       </label>
       <label v-if="!isDatabase" class="last">
         <span>One-time code setup key</span>
-        <input
-          v-model="draft.oneTimePassword"
-          name="oneTimePassword"
-          class="monospace"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Setup key or otpauth:// link"
-          :aria-invalid="!!oneTimeCodeError"
-          :aria-describedby="oneTimeCodeError ? 'editor-one-time-code-error' : undefined"
-        />
+        <span class="row">
+          <input
+            v-model="draft.oneTimePassword"
+            name="oneTimePassword"
+            aria-label="One-time code setup key"
+            class="monospace"
+            :type="isSetupKeyVisible ? 'text' : 'password'"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Setup key or otpauth:// link"
+            :aria-invalid="!!oneTimeCodeError"
+            :aria-describedby="oneTimeCodeError ? 'editor-one-time-code-error' : undefined"
+          />
+          <button type="button" class="icon-button" :aria-label="isSetupKeyVisible ? 'Hide setup key' : 'Show setup key'" @click="isSetupKeyVisible = !isSetupKeyVisible">
+            <AppIcon :name="isSetupKeyVisible ? 'eyeOff' : 'eye'" />
+          </button>
+        </span>
         <small v-if="oneTimeCodeError" id="editor-one-time-code-error" class="error">{{ oneTimeCodeError }}</small>
       </label>
     </section>
@@ -716,6 +725,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           <input v-model="field.concealed" type="checkbox" :aria-label="`Keep ${field.name.trim() ? field.name : `Field ${index + 1}`} secret`" /> <span>Secret</span>
         </label>
         <button type="button" class="ghost icon-button" :aria-label="`Remove ${field.name.trim() ? field.name : `Field ${index + 1}`}`" @click="removeField(index)"><AppIcon name="close" /></button>
+        <small v-if="customFieldNameWarning(draft.fields, index)" class="field-warning" :data-testid="`field-name-warning-${index}`">{{ customFieldNameWarning(draft.fields, index) }}</small>
       </div>
       <button type="button" class="ghost add-field" @click="addField"><AppIcon name="plus" /> Add field</button>
     </section>
@@ -892,6 +902,11 @@ button.active {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.custom-field .field-warning {
+  grid-column: 1 / -1;
+  color: var(--color-warning);
 }
 
 .concealed {

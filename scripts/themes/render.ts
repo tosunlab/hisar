@@ -35,7 +35,7 @@ export function convertToKebabCase(name: string): string {
 function renderDeclarationBlock(allSelector: string[], theme: ResolvedTheme, indent: string): string {
   const allDeclaration = [`color-scheme: ${theme.appearance};`];
   for (const [name, value] of Object.entries(theme.tokens)) {
-    if (!name.startsWith(iosTokenPrefix)) {
+    if (!name.startsWith(iosTokenPrefix) && !name.startsWith("android")) {
       allDeclaration.push(`--color-${convertToKebabCase(name)}: ${value};`);
     }
   }
@@ -112,6 +112,7 @@ export function renderThemeSwift(source: ThemeSource): string {
 // Opaque ARGB values, so the model module stays free of Android and Compose.
 export function renderThemeKotlin(source: ThemeSource): string {
   let kotlin = `// ${generatedNotice}\n\npackage com.tryhisar.hisar.model.theme\n\nimport com.tryhisar.hisar.model.ThemeColorName\n\nobject ThemePalettes {\n`;
+  kotlin += `    val placeholder = ThemeColor(light = 0xFF${convertToRGB(source.base.light.androidPlaceholder)}, dark = 0xFF${convertToRGB(source.base.dark.androidPlaceholder)})\n\n`;
   for (const color of source.allColor) {
     const { light, dark } = findPhoneTokens(source, color);
     const allArgument = allPhoneToken.map(

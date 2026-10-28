@@ -62,7 +62,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        SavedLoginInbox.open(viewModel.model, lifecycleScope)
+        SavedLoginInbox.open(viewModel.model)
     }
 
     // A link answers differently signed in and signed out, so it waits until the backend has told which.

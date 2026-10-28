@@ -74,7 +74,7 @@ const val SHARED_FOLDER_NAME = "shared"
 /**
  * Sends a file Hisar wrote to another app through the system's share sheet, as the iPhone's ShareLink. Only a copy in
  * the folder Hisar's FileProvider serves goes out, made for the share; it is deleted when the screen leaves, as the
- * iPhone deletes its file. [onFailure] runs when the copy cannot be made.
+ * iPhone deletes its file. [onFailure] runs when the copy cannot be made, [onShared] once the share sheet opened.
  */
 @Composable
 fun rememberFileSharer(mimeType: String, onShared: () -> Unit = {}, onFailure: () -> Unit): (File) -> Unit {

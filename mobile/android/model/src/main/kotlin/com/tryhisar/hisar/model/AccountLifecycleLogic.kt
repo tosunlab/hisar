@@ -19,6 +19,9 @@ object AccountLifecycleLogic {
     const val SECRET_KEY_REPLACEMENT_WARNING =
         "Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit. Your old Emergency Kit stops working."
     const val EXPORT_ADVICE = "Export your items first in Settings → Account → Export data."
+    const val SIGN_OUT_TITLE = "Sign out of Hisar on this device?"
+    const val SIGN_OUT_MESSAGE = "Hisar removes this device's saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device."
+    const val LOCKED_SIGN_OUT_MESSAGE = "$SIGN_OUT_MESSAGE If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account."
 
     /**
      * The sentence that refuses a new master password: fewer than 10 characters, counted as the user sees them, or core's
@@ -53,6 +56,13 @@ object AccountLifecycleLogic {
         val trimmedEmail = typedEmail.trimmingWhitespacesAndNewlines()
         return trimmedEmail.isNotEmpty() && trimmedEmail.equals(accountEmail, ignoreCase = true)
     }
+
+    /**
+     * A sign-up that finished and waits only for its Emergency Kit, as the iPhone decides: Save your Secret Key saves and
+     * acknowledges it. Every other pending result opens account recovery.
+     */
+    fun isWaitingOnlyForKit(setupState: String, secretKey: String, problems: List<String>): Boolean =
+        setupState == "delivery-pending" && secretKey.isNotEmpty() && problems.isEmpty()
 
     fun describeSignedOutDevices(count: Int): String = when (count) {
         in Int.MIN_VALUE..-1 -> "Any other devices were signed out; their count could not be recovered."

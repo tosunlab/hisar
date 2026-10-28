@@ -21,6 +21,10 @@ interface VaultBackend {
     fun enableBiometricUnlock(password: String): VaultStatus
     fun enableNewAccountBiometricUnlock(): VaultStatus
     fun forgetNewAccountSecretKey()
+    /** The Emergency Kit of the account just created, written into [directory] and recorded as saved, without the password. */
+    fun exportNewAccountEmergencyKit(directory: File): EmergencyKitExport
+    /** Ends the sign-up's pending record once its kit was saved, for "I saved my Emergency Kit". */
+    fun acknowledgeNewAccountRecovery()
     fun disableBiometricUnlock(): VaultStatus
     fun lock(): VaultStatus
     fun signOut(): VaultStatus

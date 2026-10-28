@@ -66,6 +66,7 @@ defineProps<{ canEdit: boolean; vaultName: string; vaultType: string }>();
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const isPasswordRevealed = ref(false);
 const allRevealedFieldName = ref<string[]>([]);
+const allRevealedCustomIndex = ref<number[]>([]);
 // itemMenu is the header's ⋯ menu, opened below its button.
 const itemMenu = ref<{ x: number; y: number; trigger: HTMLButtonElement } | null>(null);
 const isSSHKey = computed(() => store.selectedItem?.category === sshKeyCategory);
@@ -197,11 +198,12 @@ const isShareable = computed(() => store.selectedItem !== null && hasShareableFi
 const allItemShareLink = computed(() => (store.selectedItem ? getAllShareLinkForItem(store.selectedVaultID, store.selectedItem.id) : []));
 
 watch(
-  () => store.selectedItem?.id,
+  [() => store.selectedItem?.id, () => store.selectedItem?.revision],
   () => {
     isPasswordRevealed.value = false;
     isConnectionStringRevealed.value = false;
     allRevealedFieldName.value = [];
+    allRevealedCustomIndex.value = [];
     itemMenu.value = null;
     store.itemDetailDialog = null;
     fieldMenu.value = null;
@@ -214,6 +216,12 @@ function toggleFieldReveal(fieldName: string): void {
   allRevealedFieldName.value = allRevealedFieldName.value.includes(fieldName)
     ? allRevealedFieldName.value.filter((name) => name !== fieldName)
     : [...allRevealedFieldName.value, fieldName];
+}
+
+function toggleCustomReveal(index: number): void {
+  allRevealedCustomIndex.value = allRevealedCustomIndex.value.includes(index)
+    ? allRevealedCustomIndex.value.filter((other) => other !== index)
+    : [...allRevealedCustomIndex.value, index];
 }
 
 // buildItemMenuActions lists what the ⋯ menu offers, as the item's right-click menu in the list does: Duplicate (not for an
@@ -441,23 +449,23 @@ function maskSecret(secret: string): string {
           <SecretReferenceButton v-if="row.concealed" :field-name="row.name" :label="row.name" />
         </span>
       </div>
-      <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
+      <div v-for="(field, index) in store.selectedItem.fields" :key="index" class="field" :data-custom-index="index" :data-reference-field="field.name" v-bind="bindCopyRow(() => copyText(field.value, field.name))">
         <div class="field-copy-target" v-bind="bindCopyTarget()">
         <span class="copy-prefix">Copy </span><span class="field-label">{{ field.name }}</span>
         <span class="field-value" :class="{ monospace: field.concealed }">
-          {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
+          {{ field.concealed && !allRevealedCustomIndex.includes(index) ? maskSecret(field.value) : field.value }}
         </span>
         </div>
         <span class="field-actions">
           <button
             v-if="field.concealed"
             class="ghost icon-button"
-            :aria-label="`${allRevealedFieldName.includes(field.name) ? 'Hide' : 'Reveal'} ${field.name}`"
-            @click="toggleFieldReveal(field.name)"
+            :aria-label="`${allRevealedCustomIndex.includes(index) ? 'Hide' : 'Reveal'} ${field.name}`"
+            @click="toggleCustomReveal(index)"
           >
-            <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
+            <AppIcon :name="allRevealedCustomIndex.includes(index) ? 'eyeOff' : 'eye'" />
           </button>
-          <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
+          <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyText(field.value, field.name)"><AppIcon name="copy" /></button>
           <SecretReferenceButton v-if="field.concealed" :field-name="field.name" :label="field.name" />
         </span>
       </div>
@@ -484,23 +492,23 @@ function maskSecret(secret: string): string {
         </div>
       </section>
       <section v-if="store.selectedItem.fields.length > 0" class="card field-card note-fields">
-        <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
+        <div v-for="(field, index) in store.selectedItem.fields" :key="index" class="field" :data-custom-index="index" :data-reference-field="field.name" v-bind="bindCopyRow(() => copyText(field.value, field.name))">
           <div class="field-copy-target" v-bind="bindCopyTarget()">
           <span class="copy-prefix">Copy </span><span class="field-label">{{ field.name }}</span>
           <span class="field-value" :class="{ monospace: field.concealed }">
-            {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
+            {{ field.concealed && !allRevealedCustomIndex.includes(index) ? maskSecret(field.value) : field.value }}
           </span>
           </div>
           <span class="field-actions">
             <button
               v-if="field.concealed"
               class="ghost icon-button"
-              :aria-label="`${allRevealedFieldName.includes(field.name) ? 'Hide' : 'Reveal'} ${field.name}`"
-              @click="toggleFieldReveal(field.name)"
+              :aria-label="`${allRevealedCustomIndex.includes(index) ? 'Hide' : 'Reveal'} ${field.name}`"
+              @click="toggleCustomReveal(index)"
             >
-              <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
+              <AppIcon :name="allRevealedCustomIndex.includes(index) ? 'eyeOff' : 'eye'" />
             </button>
-            <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
+            <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyText(field.value, field.name)"><AppIcon name="copy" /></button>
             <SecretReferenceButton v-if="field.concealed" :field-name="field.name" :label="field.name" />
           </span>
         </div>
@@ -657,23 +665,23 @@ function maskSecret(secret: string): string {
         </span>
       </div>
 
-      <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
+      <div v-for="(field, index) in store.selectedItem.fields" :key="index" class="field" :data-custom-index="index" :data-reference-field="field.name" v-bind="bindCopyRow(() => copyText(field.value, field.name))">
         <div class="field-copy-target" v-bind="bindCopyTarget()">
         <span class="copy-prefix">Copy </span><span class="field-label">{{ field.name }}</span>
         <span class="field-value" :class="{ monospace: field.concealed }">
-          {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
+          {{ field.concealed && !allRevealedCustomIndex.includes(index) ? maskSecret(field.value) : field.value }}
         </span>
         </div>
         <span class="field-actions">
           <button
             v-if="field.concealed"
             class="ghost icon-button"
-            :aria-label="`${allRevealedFieldName.includes(field.name) ? 'Hide' : 'Reveal'} ${field.name}`"
-            @click="toggleFieldReveal(field.name)"
+            :aria-label="`${allRevealedCustomIndex.includes(index) ? 'Hide' : 'Reveal'} ${field.name}`"
+            @click="toggleCustomReveal(index)"
           >
-            <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
+            <AppIcon :name="allRevealedCustomIndex.includes(index) ? 'eyeOff' : 'eye'" />
           </button>
-          <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
+          <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyText(field.value, field.name)"><AppIcon name="copy" /></button>
           <SecretReferenceButton v-if="field.concealed" :field-name="field.name" :label="field.name" />
         </span>
       </div>

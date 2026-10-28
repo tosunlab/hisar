@@ -63,6 +63,14 @@ import { forgetWebsiteIcons } from "./websiteicons";
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
 export type ImportStep = "choose" | "passphrase" | "preview" | "saving" | "done";
 
+export interface SSHCreationDraft {
+  mode: "generate" | "import";
+  title: string;
+  keyType: SSHKeyType;
+  privateKeyText: string;
+  passphrase: string;
+}
+
 // EditorDraft is what the item editor holds so far: kept across a lock, and compared with the item it started from.
 export interface EditorDraft {
   mode: EditorMode;
@@ -71,6 +79,7 @@ export interface EditorDraft {
   item: ItemDetail;
   urlText: string;
   isDirty: boolean;
+  sshKey?: SSHCreationDraft;
 }
 
 export interface DiscardDraftPrompt {
@@ -352,6 +361,7 @@ async function applyStatus(status: Status): Promise<void> {
     clearLockedVaultData();
     if (status.state === "signed-out") {
       draftKeptForUnlock = null;
+      draftToRestore = null;
       settingsSectionAfterUnlock = "";
     }
   } else {
@@ -369,13 +379,14 @@ export async function loadStatus(): Promise<void> {
 }
 
 // loadPendingRecovery opens the recovery screen when operations appear where there were none, as at launch, and keeps
-// Finish later for the operations already listed, as the iPhone and Android apps do.
-export async function loadPendingRecovery(): Promise<void> {
+// Finish later for the operations already listed, as the iPhone and Android apps do. It never covers the Secret Key
+// screen, which acknowledges the new account's own record, and the sign-up's own refreshes pass isOpening false.
+export async function loadPendingRecovery(isOpening = true): Promise<void> {
   try {
     const hadNone = store.pendingRecovery.length === 0;
     store.pendingRecovery = await api.listPendingRecovery();
     if (store.pendingRecovery.length === 0) store.isRecoveryOpen = false;
-    else if (hadNone) store.isRecoveryOpen = true;
+    else if (isOpening && hadNone && !store.pendingSecretKey) store.isRecoveryOpen = true;
   } catch (error) {
     store.errorMessage = getErrorMessage(error);
   }
@@ -522,6 +533,12 @@ export function signUpWithoutInvite(server: string, email: string, name: string,
   return finishSignUp(() => api.signUpWithoutInvite(server, email, name, password));
 }
 
+// isWaitingOnlyForKit is a sign-up that finished and waits only for its Emergency Kit: the Secret Key screen saves and
+// acknowledges it, as on the iPhone and Android. Every other pending result opens recovery.
+function isWaitingOnlyForKit(result: SignUpResult): boolean {
+  return result.setupState === "delivery-pending" && result.secretKey !== "" && (result.problems ?? []).length === 0;
+}
+
 async function finishSignUp(request: () => Promise<SignUpResult>): Promise<boolean> {
   const generation = ++sessionGeneration;
   const result = await runAction(request);
@@ -529,7 +546,7 @@ async function finishSignUp(request: () => Promise<SignUpResult>): Promise<boole
     return false;
   }
   if (result) {
-    if (result.pendingOperationId) {
+    if (result.pendingOperationId && !isWaitingOnlyForKit(result)) {
       await loadPendingRecovery();
       if (generation !== sessionGeneration) return false;
       store.recoveryFactor = result.secretKey ? { operationId: result.pendingOperationId, secretKey: result.secretKey } : null;
@@ -540,18 +557,41 @@ async function finishSignUp(request: () => Promise<SignUpResult>): Promise<boole
       return true;
     }
     store.pendingSecretKey = result.secretKey;
+    store.isRecoveryOpen = false;
     await applyStatus(result.status);
+    if (generation !== sessionGeneration) return false;
+    await loadPendingRecovery(false);
   }
   return result !== undefined;
 }
 
-export function confirmSecretKeySaved(): void {
+// confirmSecretKeySaved ends the sign-up's pending record once its kit was saved, then offers Touch ID; on an error the
+// Secret Key screen stays with it.
+export async function confirmSecretKeySaved(): Promise<boolean> {
+  const generation = sessionGeneration;
+  const isAcknowledged = await runAction(async () => {
+    await api.acknowledgeNewAccountRecovery();
+    return true;
+  });
+  if (!isAcknowledged || generation !== sessionGeneration) return false;
+  await loadPendingRecovery(false);
+  if (generation !== sessionGeneration) return false;
   store.pendingSecretKey = "";
   if (store.status.biometricAvailable && !store.status.biometricEnabled) {
     store.isTouchIDOfferShown = true;
-    return;
+    return true;
   }
   api.forgetNewAccountSecretKey().catch(() => undefined);
+  return true;
+}
+
+// postponeSecretKey is Finish later: the sign-up's record stays for the recovery reminder, which then needs the master
+// password, and the retained Secret Key is dropped.
+export async function postponeSecretKey(): Promise<void> {
+  store.pendingSecretKey = "";
+  store.errorMessage = "";
+  await api.forgetNewAccountSecretKey().catch(() => undefined);
+  await loadPendingRecovery(false);
 }
 
 function finishTouchIDOffer(): void {

@@ -175,7 +175,7 @@ struct VaultSharingView: View {
             Text("Invite by email")
                 .foregroundStyle(.themeSecondary)
         } footer: {
-            Text("\(describeVaultRoleAbility(role)) They accept in Hisar, or create an account from the email first; your Hisar then shares the vault key with them.")
+            Text("\(describeVaultRoleAbility(role)) They accept in Hisar, or create an account from the email first. For a new recipient, review their account after they accept before Hisar shares the vault key.")
                 .foregroundStyle(.themeSecondary)
         }
     }

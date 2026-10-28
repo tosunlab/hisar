@@ -104,7 +104,8 @@ func TestAgentRunDialogShowsTheCommandAndSecrets(t *testing.T) {
 	event := waitForApprovalEvent(t, emitter)
 	if event.Action != "run a command with 5 secrets" || event.CommandLine != `/usr/local/bin/npm run deploy -- --message 'it'\''s live'` || event.WorkingDirectory != "~/src/app" ||
 		!slices.Equal(event.SecretNames, request.SecretNames[:4]) || event.MoreSecretCount != 1 || event.IsRememberable || event.RememberLabel != "" ||
-		!slices.Equal(event.GrantDurations, []string{"once", "hour"}) || event.GrantDuration != "once" || event.GrantScope != "A longer choice covers only these secrets." {
+		!slices.Equal(event.GrantDurations, []string{"once", "hour"}) || event.GrantDuration != "once" ||
+		event.GrantScope != "A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again." {
 		t.Errorf("event = %+v", event)
 	}
 	approver.SetAgentGrantDuration(event.RequestID, "always")
@@ -269,6 +270,7 @@ func TestAgentDialogGoesToThePhoneWithTheAgentName(t *testing.T) {
 	want := approval.Description{
 		Kind: approval.KindCommandLine, AppName: "Claude Code (via hisar mcp) in Terminal", Purpose: "run a command with 1 secret",
 		CommandLine: "npm test", RepositoryPath: "~/src/app", TerminalName: "ttys003", Secrets: []string{"Work › Stripe › api key"},
+		Lifetime: "until 10 minutes after the last request from Claude Code, or until Hisar locks",
 	}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("phone request = %+v", description)
@@ -278,6 +280,21 @@ func TestAgentDialogGoesToThePhoneWithTheAgentName(t *testing.T) {
 	if result := waitForAgentResult(t, resultChannel); result.err != nil || result.result.Duration != clisocket.AgentGrantOnce {
 		t.Errorf("phone approval = %+v", result)
 	}
+}
+
+func TestAgentPhoneRequestSaysHowLongOnlyAConnectionApprovalLasts(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, nil)
+	request := createAgentRequest(clisocket.AgentRequestRun)
+	request.CommandLine, request.SecretNames, request.IsConnectionApproval = []string{"npm", "test"}, []string{"Work › Stripe › api key"}, false
+	resultChannel := startAgentApproval(approver, request)
+	waitForApprovalEvent(t, emitter)
+	if description := phone.waitForStart(t); description.Lifetime != "" {
+		t.Errorf("a secret request of an approved agent is answered once: %q", description.Lifetime)
+	}
+	phone.answer(false)
+	waitForAgentResult(t, resultChannel)
 }
 
 func TestAgentDialogLeavesOutTheAppWhenItIsTheAgent(t *testing.T) {
@@ -304,7 +321,8 @@ func TestAgentDialogNamesTheHarnessAndItsHost(t *testing.T) {
 	request.CommandLine, request.SecretNames = []string{"true"}, []string{"Agents › Deploy token › password"}
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
-	if event.AgentName != "omp in Terminal" || event.Action != "use 1 secret" || event.ClientName != "hisar" || event.AppName != "Terminal" {
+	if event.AgentName != "omp in Terminal" || event.Action != "use 1 secret" || event.ClientName != "hisar" || event.AppName != "Terminal" ||
+		event.GrantScope != "A longer choice lets omp in Terminal run any command with this secret, in any folder, without asking again." {
 		t.Errorf("event = %+v", event)
 	}
 	if description := phone.waitForStart(t); description.AppName != "omp in Terminal (via hisar)" || description.Purpose != "use 1 secret" {

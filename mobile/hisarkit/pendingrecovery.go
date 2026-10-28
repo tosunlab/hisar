@@ -67,5 +67,5 @@ func (hisar *Hisar) ExportNewAccountEmergencyKit(directory string) (string, erro
 
 // AcknowledgeNewAccountRecovery ends the pending sign-up operation once its kit was saved, for "I saved my Emergency Kit".
 func (hisar *Hisar) AcknowledgeNewAccountRecovery() error {
-	return app.AcknowledgeNewAccountRecovery(hisar.service)
+	return hisar.service.AcknowledgeNewAccountRecovery()
 }

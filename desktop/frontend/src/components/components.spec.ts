@@ -382,28 +382,61 @@ describe("SecretKeyView", () => {
     expect(wrapper.text()).not.toMatch(/admin/i);
   });
 
-  it("only continues after the user confirms saving the Secret Key", async () => {
+  it("only continues after the Emergency Kit was saved and the user confirms it", async () => {
     store.pendingSecretKey = "H1-ABC123-SECRET";
+    api.saveNewAccountEmergencyKit.mockResolvedValue("/Users/alice/Hisar Emergency Kit.pdf");
     const wrapper = mount(SecretKeyView);
     expect(wrapper.find('[data-testid="secret-key"]').attributes("aria-label")).toBe("H1-ABC123-SECRET");
-    const continueButton = wrapper.findAll("button").find((button) => button.text() === "Continue to Hisar")!;
+    const continueButton = wrapper.get('[data-testid="secret-key-continue"]');
     expect(continueButton.attributes("disabled")).toBeDefined();
-    await wrapper.find('input[name="hasSaved"]').setValue(true);
+    expect(wrapper.get('input[name="hasSaved"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.get('[data-testid="save-kit-hint"]').text()).toBe("Save the Emergency Kit to continue.");
+    await wrapper.get('[data-testid="save-emergency-kit"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="save-kit-hint"]').exists()).toBe(false);
+    expect(continueButton.attributes("disabled")).toBeDefined();
+    await wrapper.get('input[name="hasSaved"]').setValue(true);
     await continueButton.trigger("click");
+    await flushPromises();
+    expect(api.acknowledgeNewAccountRecovery).toHaveBeenCalled();
     expect(store.pendingSecretKey).toBe("");
     expect(store.isTouchIDOfferShown).toBe(false);
     expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
   });
 
+  it("stays unconfirmable when the save dialog is cancelled", async () => {
+    store.pendingSecretKey = "H1-ABC123-SECRET";
+    api.saveNewAccountEmergencyKit.mockResolvedValue("");
+    const wrapper = mount(SecretKeyView);
+    await wrapper.get('[data-testid="save-emergency-kit"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('input[name="hasSaved"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.get('[data-testid="secret-key-continue"]').attributes("disabled")).toBeDefined();
+  });
+
   it("offers Touch ID after the Secret Key when the Mac has it", async () => {
     store.pendingSecretKey = "H1-ABC123-SECRET";
     store.status = { ...createStatus("unlocked"), biometricAvailable: true };
+    api.saveNewAccountEmergencyKit.mockResolvedValue("/Users/alice/Hisar Emergency Kit.pdf");
     const wrapper = mount(SecretKeyView);
-    await wrapper.find('input[name="hasSaved"]').setValue(true);
-    await wrapper.findAll("button").find((button) => button.text() === "Continue to Hisar")!.trigger("click");
+    await wrapper.get('[data-testid="save-emergency-kit"]').trigger("click");
+    await flushPromises();
+    await wrapper.get('input[name="hasSaved"]').setValue(true);
+    await wrapper.get('[data-testid="secret-key-continue"]').trigger("click");
+    await flushPromises();
     expect(store.pendingSecretKey).toBe("");
     expect(store.isTouchIDOfferShown).toBe(true);
     expect(api.forgetNewAccountSecretKey).not.toHaveBeenCalled();
+  });
+
+  it("finishes later without acknowledging the sign-up", async () => {
+    store.pendingSecretKey = "H1-ABC123-SECRET";
+    const wrapper = mount(SecretKeyView);
+    await wrapper.get('[data-testid="secret-key-later"]').trigger("click");
+    await flushPromises();
+    expect(store.pendingSecretKey).toBe("");
+    expect(api.acknowledgeNewAccountRecovery).not.toHaveBeenCalled();
+    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
   });
 });
 

@@ -73,6 +73,7 @@ import com.tryhisar.hisar.ui.components.ProminentButton
 import com.tryhisar.hisar.ui.components.ScreenMargin
 import com.tryhisar.hisar.ui.components.ToolbarIconButton
 import com.tryhisar.hisar.ui.root.TabBarHeight
+import com.tryhisar.hisar.ui.sharing.SentInvitationRow
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import java.time.Instant
@@ -163,6 +164,16 @@ fun VaultsHomeScreen(model: AppModel) {
                     footer = "Hisar gives vault keys only to the keys it pinned for each person. Compare security codes in Settings → Organizations.",
                 ) { warning ->
                     NoteRow(warning, Icons.Filled.Warning, Modifier.testTag("vault-key-warning"), iconTint = HisarTheme.colors.warning)
+                }
+                cardSection("review-recipients", data.allReviewInvitation, rowKey = { it.id }, header = "Review recipients") { invitation ->
+                    SentInvitationRow(
+                        invitation, isVaultNameShown = true, testTag = "review-invitation-${invitation.id}",
+                        onConfirm = { snapshot ->
+                            scope.launch {
+                                if (!model.sharing.confirmShareRecipient(snapshot)) refusal = model.takeRefusal("Give access")
+                            }
+                        },
+                    )
                 }
                 cardSection<Any>(
                     "invitations-for-you",

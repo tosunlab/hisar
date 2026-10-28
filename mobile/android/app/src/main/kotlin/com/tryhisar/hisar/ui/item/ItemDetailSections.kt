@@ -119,8 +119,19 @@ internal fun ItemDetailContent(
     }
     if (item.allField.isNotEmpty()) {
         RowsSection(header = "Other fields") {
-            item.allField.forEach { field ->
-                row { FieldRow(actions, field.name, field.name, field.value, field.concealed, isCustom = true) }
+            item.allField.forEachIndexed { index, field ->
+                row {
+                    SecretFieldRow(
+                        label = field.name,
+                        value = field.value,
+                        isConcealed = field.concealed,
+                        isRevealed = actions.isCustomRevealed(index),
+                        toggleReveal = { actions.toggleCustomReveal(index) },
+                        copy = { actions.copyText(field.value, field.name) },
+                        copyReference = { actions.copyReference(field.name) },
+                        actionLabel = field.name,
+                    )
+                }
             }
         }
     }

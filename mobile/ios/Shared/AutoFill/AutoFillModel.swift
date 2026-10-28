@@ -442,6 +442,7 @@ final class AutoFillModel: ObservableObject {
 
     @discardableResult
     func unlock(password: String) async -> Bool {
+        errorMessage = nil
         guard let newStatus = await perform({ try $0.unlock(password: password) }) else { return false }
         await handleUnlocked(newStatus)
         return true

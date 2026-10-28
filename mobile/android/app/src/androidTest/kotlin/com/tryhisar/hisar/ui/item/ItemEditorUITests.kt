@@ -344,11 +344,11 @@ class ItemEditorUITests {
 
         val allLinked = mutableListOf<ItemDetail>()
         val typedLogin = ItemDetail(title = "example.com", username = "ada", password = "typed-in-a-form", allURL = listOf("https://example.com"))
-        open(EditorRequest.New(vaultID, typedLogin, onSaved = { allLinked += it }))
+        open(EditorRequest.New(vaultID, typedLogin, onSaved = { _, item -> allLinked += item }))
         assertTrue("AutoFill's typed login opens as it was typed", exists("editor-title") && composeRule.onAllNodes(hasTestTag("editor-website-0") and hasText("https://example.com")).fetchSemanticsNodes().isNotEmpty())
         saveScreenshot("editor-autofill-draft")
         assertEquals("an untouched draft closes without asking", null, finishAfterTapping("editor-cancel"))
-        open(EditorRequest.New(vaultID, typedLogin, onSaved = { allLinked += it }))
+        open(EditorRequest.New(vaultID, typedLogin, onSaved = { _, item -> allLinked += item }))
         val typedLoginID = checkNotNull(finishAfterTapping("editor-save"))
         assertEquals(listOf(typedLoginID), allLinked.map { it.id })
         val savedLogin = backend.getItem(vaultID, typedLoginID)

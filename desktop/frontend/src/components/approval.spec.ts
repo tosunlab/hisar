@@ -532,7 +532,14 @@ describe("SSHApprovalWindow", () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent(
       "ssh-approval",
-      createCommandLineApprovalEvent({ appName: "Visual Studio Code", appPath: "/Applications/Visual Studio Code.app", terminalName: "", coverage: "app", isUnlockRequired: true }),
+      createCommandLineApprovalEvent({
+        appName: "Visual Studio Code",
+        appPath: "/Applications/Visual Studio Code.app",
+        terminalName: "",
+        coverage: "app",
+        lifetime: "until 10 minutes after the last request from Visual Studio Code, or until Hisar locks",
+        isUnlockRequired: true,
+      }),
     );
     await flushPromises();
     expect(wrapper.find("#approval-title").text()).toBe("hisar in Visual Studio Code wants to use Hisar");
@@ -555,13 +562,16 @@ describe("SSHApprovalWindow", () => {
         appSigner: "",
         terminalName: "",
         coverage: "connection",
+        lifetime: "for this connection only, at most until 10 minutes after its last request or until Hisar locks",
         isUnlockRequired: true,
       }),
     );
     await flushPromises();
     expect(wrapper.find("#approval-title").text()).toBe("hisar in a background process wants to use Hisar");
     expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toBe("Hisar is locked; unlocking it also approves this connection.");
-    expect(wrapper.find('[data-testid="approval-duration"]').text()).toBe("Lasts for this connection only; Hisar cannot verify the app it comes from.");
+    expect(wrapper.find('[data-testid="approval-duration"]').text()).toBe(
+      "Lasts for this connection only, at most until 10 minutes after its last request or until Hisar locks.",
+    );
     wrapper.unmount();
   });
 
@@ -700,7 +710,7 @@ describe("SSHApprovalWindow", () => {
     expect(menu.findAll("option").map((option) => option.text())).toEqual(["Only this time", "For 1 hour"]);
     expect((menu.element as HTMLSelectElement).value).toBe("once");
     expect(wrapper.find('[data-testid="approval-grant-note"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="approval-grant-scope"]').text()).toBe("A longer choice covers only these secrets.");
+    expect(wrapper.find('[data-testid="approval-grant-scope"]').text()).toBe("A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again.");
     expect(api.respondSSHApproval).toHaveBeenCalledWith("agent-run-1", true, false);
     await menu.setValue("hour");
     expect(api.setSSHApprovalGrantDuration).toHaveBeenCalledWith("agent-run-1", "hour");
@@ -809,26 +819,50 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
-  it("lets the user pick the login when several are saved for the website", async () => {
+  it("lets the user pick the login when several are saved for the website, by username first", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent(
       "ssh-approval",
       createSignInApprovalEvent({
         allLogin: [
-          { vaultName: "Agents", title: "Tosun Lab", username: "user@example.com" },
-          { vaultName: "Agents", title: "Tosun Lab admin", username: "ops@example.com" },
+          { vaultName: "Production engineering and infrastructure operations", title: "Tosun Lab administrator", username: "first-admin@example.com" },
+          { vaultName: "Production engineering and infrastructure operations", title: "Tosun Lab administrator", username: "second-admin@example.com" },
         ],
       }),
     );
     await flushPromises();
-    expect(wrapper.findAll('[data-testid^="approval-login-"] .login-text').map((login) => login.text())).toEqual([
-      "Agents › Tosun Lab, user@example.com",
-      "Agents › Tosun Lab admin, ops@example.com",
+    expect(wrapper.findAll('[data-testid^="approval-login-"] .login-username').map((line) => line.text())).toEqual(["first-admin@example.com", "second-admin@example.com"]);
+    expect(wrapper.findAll('[data-testid^="approval-login-"] .login-item').map((line) => line.text())).toEqual([
+      "Production engineering and infrastructure operations › Tosun Lab administrator",
+      "Production engineering and infrastructure operations › Tosun Lab administrator",
     ]);
+    expect(wrapper.find('[data-testid="approval-login-1"] input').attributes("aria-label")).toBe(
+      "second-admin@example.com, Production engineering and infrastructure operations › Tosun Lab administrator",
+    );
     expect((wrapper.find('[data-testid="approval-login-0"] input').element as HTMLInputElement).checked).toBe(true);
     await wrapper.find('[data-testid="approval-login-1"] input').setValue(true);
     expect(api.setSSHApprovalLogin).toHaveBeenCalledWith("sign-in-1", 1);
     expect(approvalStore.loginIndex).toBe(1);
+    wrapper.unmount();
+  });
+
+  it("scrolls many logins inside the dialog and keeps the password form and Deny outside the scrolling part", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    const allLogin = Array.from({ length: 12 }, (_, index) => ({ vaultName: "Agents", title: `Tosun Lab ${index + 1}`, username: `user${index + 1}@example.com` }));
+    sendEvent("ssh-approval", createSignInApprovalEvent({ allLogin, isTouchIDApproval: false }));
+    await flushPromises();
+    const body = wrapper.get('[data-testid="approval-body"]').element as HTMLElement;
+    expect(wrapper.findAll('[data-testid^="approval-login-"] input').every((login) => body.contains(login.element))).toBe(true);
+    for (const testID of ["approval-password", "submit-password", "deny-approval"]) {
+      expect(body.contains(wrapper.get(`[data-testid="${testID}"]`).element), testID).toBe(false);
+    }
+
+    Object.defineProperties(body, { scrollHeight: { value: 709 }, clientHeight: { value: 481 } });
+    vi.spyOn(wrapper.get(".approval-content").element, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 480, 700));
+    approvalStore.failureMessage = "Wrong master password.";
+    await flushPromises();
+    expect(api.fitSSHApprovalWindow).toHaveBeenLastCalledWith(false, 928);
+    expect(body.contains(wrapper.get('[role="alert"]').element)).toBe(false);
     wrapper.unmount();
   });
 

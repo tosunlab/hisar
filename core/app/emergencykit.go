@@ -21,6 +21,7 @@ const emergencyKitFileName = "Hisar Emergency Kit.pdf"
 var ErrNoNewAccountSecretKey = errors.New("the new account's Secret Key is no longer in memory; save the Emergency Kit from Settings")
 
 // SaveNewAccountEmergencyKit saves the kit right after sign up or replacing the Secret Key; it returns the saved path, or "" when cancelled.
+// After a sign-up it also records the kit as saved in the sign-up's pending operation, which AcknowledgeNewAccountRecovery requires.
 func (s *Service) SaveNewAccountEmergencyKit() (string, error) {
 	s.mutex.Lock()
 	kit, err := s.buildNewAccountEmergencyKit()
@@ -29,7 +30,16 @@ func (s *Service) SaveNewAccountEmergencyKit() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return s.writeEmergencyKit(kit, epoch)
+	signUp, _, signUpErr := s.newAccountRecovery()
+	path, err := s.writeEmergencyKit(kit, epoch)
+	if err != nil || path == "" || signUpErr != nil {
+		return path, err
+	}
+	signUp.KitSaved = true
+	if err := s.updatePendingRecovery(signUp); err != nil {
+		return "", fmt.Errorf("the Emergency Kit was saved, but Hisar could not record it; save it again: %w", err)
+	}
+	return path, nil
 }
 
 func (s *Service) buildNewAccountEmergencyKit() (emergencykit.Kit, error) {
@@ -144,8 +154,8 @@ func ExportNewSecretKeyEmergencyKitToDirectory(s *Service, replacement Credentia
 }
 
 // newAccountRecovery is the pending sign-up operation of the account whose Secret Key onboarding retains in memory. That
-// key is the proof, as the retained account unlock key is for the Face ID offer, so onboarding asks no password again;
-// lock, sign-out, an account switch and the end of onboarding drop it.
+// key is the proof, as the retained account unlock key is for the biometric offer, so the apps' "Save your Secret Key"
+// screens ask no password again; lock, sign-out, an account switch and the end of onboarding drop it.
 func (s *Service) newAccountRecovery() (*PendingRecoverySummary, emergencykit.Kit, error) {
 	s.mutex.Lock()
 	kit, err := s.buildNewAccountEmergencyKit()
@@ -169,8 +179,8 @@ func (s *Service) newAccountRecovery() (*PendingRecoverySummary, emergencykit.Ki
 }
 
 // ExportNewAccountEmergencyKitToDirectory saves the kit of the account just created on this device and records it as
-// saved in its pending sign-up operation, without the master password. A function rather than a method so the desktop
-// UI, which saves it through SaveNewAccountEmergencyKit, can't call it.
+// saved in its pending sign-up operation, without the master password. A function rather than a method: the desktop UI
+// saves it through SaveNewAccountEmergencyKit.
 func ExportNewAccountEmergencyKitToDirectory(s *Service, directory string) (EmergencyKitFile, error) {
 	entry, kit, err := s.newAccountRecovery()
 	if err != nil {
@@ -187,9 +197,9 @@ func ExportNewAccountEmergencyKitToDirectory(s *Service, directory string) (Emer
 }
 
 // AcknowledgeNewAccountRecovery ends the pending sign-up operation of the account just created once its kit was saved,
-// as AcknowledgePendingRecovery does with the master password. A function rather than a method so the desktop UI, which
-// acknowledges delivery with the password, can't call it.
-func AcknowledgeNewAccountRecovery(s *Service) error {
+// as AcknowledgePendingRecovery does with the master password. Only the retained new Secret Key proves it, so it fails
+// for any other pending operation, after a lock and once onboarding ended.
+func (s *Service) AcknowledgeNewAccountRecovery() error {
 	entry, _, err := s.newAccountRecovery()
 	if err != nil {
 		return err

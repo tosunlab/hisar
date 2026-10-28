@@ -271,6 +271,7 @@ private fun InvitePersonSheet(model: AppModel, onDismiss: () -> Unit) {
                     imeAction = ImeAction.Send,
                 ),
                 keyboardActions = KeyboardActions(onSend = { invite() }),
+                label = "Email",
             )
         }
     }

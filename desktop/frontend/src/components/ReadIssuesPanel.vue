@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { api, getErrorMessage } from "../api";
 import { retryReads, store } from "../store";
+import ReadIssueDeletionDialog from "./ReadIssueDeletionDialog.vue";
 
 const issues = computed(() => store.allVault.flatMap((vault) => (vault.readIssues ?? []).map((issue) => ({ vault, issue }))));
 const error = ref("");
@@ -55,8 +56,8 @@ async function rename(vaultID: string, revision: string): Promise<void> {
 </script>
 
 <template>
-  <section v-if="issues.length" class="read-issues" role="alert" data-testid="read-issues">
-    <details>
+  <section v-if="issues.length || pending || error" class="read-issues" role="alert" data-testid="read-issues">
+    <details v-if="issues.length">
       <summary>{{ summary }}</summary>
       <div class="read-issues-body" role="region" aria-label="Unreadable records" tabindex="0" data-testid="read-issues-records">
         <p>Retry before repairing. Unreadable data is not an empty vault or proof that an item was deleted.</p>
@@ -67,19 +68,15 @@ async function rename(vaultID: string, revision: string): Promise<void> {
             <details><summary>Details</summary>{{ entry.issue.itemId || entry.issue.vaultId }}</details>
             <template v-if="entry.issue.canRename">
               <input v-model="repairNames[`${entry.issue.vaultId}/${entry.issue.revision ?? ''}`]" :aria-label="`New name for ${entry.issue.vaultId}`" placeholder="New vault name" />
-              <button :disabled="!repairNames[`${entry.issue.vaultId}/${entry.issue.revision ?? ''}`]?.trim()" @click="rename(entry.issue.vaultId, entry.issue.revision ?? '')">Repair name</button>
+              <button :disabled="!repairNames[`${entry.issue.vaultId}/${entry.issue.revision ?? ''}`]?.trim()" @click="rename(entry.issue.vaultId, entry.issue.revision ?? '')">Repair vault name</button>
             </template>
-            <button v-if="entry.issue.canDelete" @click="pending = entry">Delete unreadable data…</button>
+            <button v-if="entry.issue.canDelete" @click="pending = { vault: { ...entry.vault, readIssues: entry.vault.readIssues?.map(issue => ({ ...issue })) }, issue: { ...entry.issue } }">{{ entry.issue.itemId ? 'Delete unreadable data…' : 'Delete vault…' }}</button>
           </li>
         </ul>
-        <div v-if="pending" role="alertdialog" aria-label="Delete unreadable data">
-          <p>Permanently delete {{ pending.issue.itemId ? 'this unreadable item' : 'this vault and every item in it' }} on all devices? This cannot be undone.</p>
-          <button @click="pending = null">Cancel</button>
-          <button @click="remove">Permanently delete</button>
-        </div>
-        <p v-if="error">{{ error }}</p>
       </div>
     </details>
+    <ReadIssueDeletionDialog v-if="pending" :vault="pending.vault" :issue="pending.issue" @cancel="pending = null" @confirm="remove" />
+    <p v-if="error">{{ error }}</p>
   </section>
 </template>
 

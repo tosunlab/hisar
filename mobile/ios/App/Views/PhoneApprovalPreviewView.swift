@@ -21,7 +21,8 @@ struct PhoneApprovalPreviewView: View {
             return PhoneApproval(
                 requestID: "preview-cli", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindCommandLine,
                 appName: "hisar in Terminal", purpose: "use Hisar", commandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", terminalName: "ttys003",
-                allowance: "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time."
+                allowance: "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time.",
+                commandLineLifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks"
             )
         case "forwarded":
             return PhoneApproval(
@@ -122,7 +123,8 @@ struct PhoneApprovalPreviewView: View {
     }
 }
 
-// The Vaults card and the Approvals tab with made-up SSH, command-line and launcher requests from a Mac.
+// The Vaults card and the Approvals tab with made-up SSH, command-line and launcher requests from a Mac, or with the one
+// request of the kind after the argument, such as "-HisarApprovalBannerPreview launcher-share".
 struct PendingApprovalPreviewView: View {
     static let argument = "-HisarApprovalBannerPreview"
     // -HisarThemePreview <appearance> <color> <vaults|settings> themes the preview and picks its tab, for screenshots.
@@ -142,11 +144,19 @@ struct PendingApprovalPreviewView: View {
         return (theme, allArgument[index + 3] == "settings" ? .settings : .vaults)
     }
 
-    @State private var allApproval = [
-        PhoneApprovalPreviewView.createApproval(kind: "ssh", secondsLeft: 115),
-        PhoneApprovalPreviewView.createApproval(kind: "cli", secondsLeft: 70),
-        PhoneApprovalPreviewView.createApproval(kind: "launcher", secondsLeft: 90),
-    ]
+    static func readAllApproval() -> [PhoneApproval] {
+        let allArgument = ProcessInfo.processInfo.arguments
+        if let index = allArgument.firstIndex(of: argument), index + 1 < allArgument.count, !allArgument[index + 1].hasPrefix("-") {
+            return [PhoneApprovalPreviewView.createApproval(kind: allArgument[index + 1], secondsLeft: 90)]
+        }
+        return [
+            PhoneApprovalPreviewView.createApproval(kind: "ssh", secondsLeft: 115),
+            PhoneApprovalPreviewView.createApproval(kind: "cli", secondsLeft: 70),
+            PhoneApprovalPreviewView.createApproval(kind: "launcher", secondsLeft: 90),
+        ]
+    }
+
+    @State private var allApproval = Self.readAllApproval()
     @State private var presentedApproval: PhoneApproval?
     @State private var resultMessage: String?
     @State private var selectedTab = Self.readThemeArgument().tab

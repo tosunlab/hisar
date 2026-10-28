@@ -213,7 +213,11 @@ abstract class HisarUITestCase {
         scrollTo("sign-in-submit")
         saveScreenshot("create-account")
         tap("sign-in-submit")
-        val secretKey = finishPendingRecovery(email, MASTER_PASSWORD)
+        waitFor("new-secret-key", ACCOUNT_KEY_TIMEOUT)
+        val secretKey = readText("new-secret-key")
+        saveScreenshot("new-secret-key")
+        handOffEmergencyKit("new-secret-key-share-kit")
+        tapWhenEnabled("new-secret-key-done")
         if (isBiometricOfferExpected) {
             waitFor("biometric-offer-not-now", 10_000)
             return secretKey
@@ -228,6 +232,7 @@ abstract class HisarUITestCase {
         return secretKey
     }
 
+    /** Hands the Emergency Kit off as its owner would: opens the share sheet from [shareTag], then closes it. */
     fun handOffEmergencyKit(shareTag: String) {
         waitFor(shareTag, ACCOUNT_KEY_TIMEOUT)
         tap(shareTag)

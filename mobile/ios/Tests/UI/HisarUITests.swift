@@ -1,4 +1,3 @@
-import UIKit
 import XCTest
 
 final class HisarUITests: HisarUITestCase {
@@ -94,7 +93,7 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("items")
         app.buttons["item-GitHub"].tap()
         let passwordNotice = app.staticTexts["Password copied. It clears in 90 seconds."]
-        let passwordRow = app.buttons["copy-password"]
+        let passwordRow = app.buttons.matching(identifier: "copy-password").firstMatch
         waitFor(passwordRow)
         XCTAssertEqual(passwordRow.value as? String, "Hidden")
         let strength = app.descendants(matching: .any)["password-strength-meter"].firstMatch
@@ -148,6 +147,12 @@ final class HisarUITests: HisarUITestCase {
         let longNotes = app.textViews["editor-notes"].exists ? app.textViews["editor-notes"] : app.textFields["editor-notes"]
         type(longDraft, into: longNotes)
         type("dev, work", into: app.textFields["editor-new-tag"])
+        for (index, name) in ["Recovery code", "Recovery code", "recovery CODE", "Password"].enumerated() {
+            app.buttons["Add field"].tap()
+            type(name, into: app.textFields["editor-field-\(index)-name"])
+            type("row-secret-\(index)", into: app.textFields["editor-field-\(index)-value"])
+            app.cells.containing(.textField, identifier: "editor-field-\(index)-name").buttons["Secret"].tap()
+        }
         app.buttons["editor-save"].tap()
         let codeError = app.staticTexts["editor-one-time-code-error"]
         waitFor(codeError)
@@ -160,6 +165,31 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertTrue(app.buttons["editor-save"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
         XCTAssertNotEqual(passwordRow.value as? String, "ui-test-password-1", "the generated password replaced the old one")
         XCTAssertEqual(app.buttons["copy-notes"].value as? String, longDraft, "the full draft survives validation and retry")
+        let customRows = app.buttons.matching(identifier: "copy-recovery code")
+        for index in 0..<4 {
+            let copy = index < 3 ? customRows.element(boundBy: index) : app.buttons.matching(identifier: "copy-password").element(boundBy: 1)
+            copy.tap()
+            app.buttons["edit-item"].tap()
+            let title = app.textFields["editor-title"]
+            title.tap()
+            expectation(for: NSPredicate(format: "hasKeyboardFocus == true"), evaluatedWith: title)
+            waitForExpectations(timeout: 10)
+            typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "GitHub".count), into: title, showing: "")
+            title.press(forDuration: 1)
+            let paste = app.menuItems["Paste"]
+            waitFor(paste)
+            paste.tap()
+            XCTAssertEqual(title.value as? String, "row-secret-\(index)")
+            app.buttons["editor-cancel"].tap()
+            let discard = app.buttons["editor-discard"].firstMatch
+            waitForHittable(discard)
+            discard.tap()
+            waitFor(passwordRow)
+        }
+        app.buttons.matching(identifier: "reveal-recovery code").element(boundBy: 1).tap()
+        XCTAssertEqual(customRows.element(boundBy: 1).value as? String, "row-secret-1")
+        XCTAssertEqual(customRows.element(boundBy: 0).value as? String, "Hidden")
+        XCTAssertEqual(customRows.element(boundBy: 2).value as? String, "Hidden")
 
         scrollTo(app.buttons["copy-secret-reference"])
         app.buttons["copy-secret-reference"].tap()
@@ -324,6 +354,7 @@ final class HisarUITests: HisarUITestCase {
         type("2222", into: app.textFields["editor-server-port"])
         type("deploy", into: app.textFields["editor-username"])
         type("server-password-from-the-phone", into: app.secureTextFields["editor-password"])
+        type("JBSWY3DPEHPK3PXP", into: app.secureTextFields["editor-one-time-password"])
         saveScreenshot("add-server")
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "build.example.com:2222 · deploy")).firstMatch)
@@ -347,6 +378,18 @@ final class HisarUITests: HisarUITestCase {
             XCTAssertTrue(app.staticTexts["Host copied. It clears in 90 seconds."].waitForNonExistence(timeout: 10))
         }
         saveScreenshot("server")
+        app.buttons["edit-item"].tap()
+        waitFor(app.secureTextFields["editor-one-time-password"])
+        app.buttons["Reveal setup key"].tap()
+        waitFor(app.textFields["editor-one-time-password"])
+        XCTAssertTrue(app.secureTextFields["editor-password"].exists)
+        app.buttons["Hide setup key"].tap()
+        waitFor(app.secureTextFields["editor-one-time-password"])
+        app.buttons["Reveal setup key"].tap()
+        app.buttons["editor-cancel"].tap()
+        app.buttons["edit-item"].tap()
+        waitFor(app.secureTextFields["editor-one-time-password"])
+        app.buttons["editor-cancel"].tap()
         goBack()
 
         choose("New database", from: "new-menu", under: "new-more")

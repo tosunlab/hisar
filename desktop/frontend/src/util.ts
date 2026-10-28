@@ -5,6 +5,21 @@ export const touchIDConsent = "Touch ID unlocks Hisar after it locks, so you typ
 // themes.json defines tile0 to tile9 with their text colours for every theme.
 const tileColorCount = 10;
 
+const builtInReferenceNames: Record<string, true> = {
+  username: true, password: true, url: true, notes: true,
+  "one-time code": true, "public key": true, fingerprint: true, "connection string": true,
+};
+
+export function customFieldNameWarning(fields: { name: string }[], index: number): string {
+  const name = fields[index].name.trim().toLowerCase();
+  if (Object.hasOwn(builtInReferenceNames, name)) {
+    return "A secret reference with this name reaches the built-in field.";
+  }
+  return name && fields.some((field, other) => other !== index && field.name.trim().toLowerCase() === name)
+    ? "Secret references need a unique name."
+    : "";
+}
+
 export interface TileColor {
   background: string;
   color: string;
@@ -62,6 +77,15 @@ export function isApplicationCommand(event: Pick<KeyboardEvent, "metaKey" | "ctr
 // thisDevice is how the UI names the computer it runs on: "this Mac", or "this computer" on Linux.
 export function getThisDeviceName(): string {
   return isMacPlatform() ? "this Mac" : "this computer";
+}
+
+export function getSignOutCopy(isLocked: boolean): { title: string; message: string } {
+  const device = getThisDeviceName();
+  const message = `Hisar removes ${device}'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.`;
+  return {
+    title: `Sign out of Hisar on ${device}?`,
+    message: isLocked ? `${message} If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Security.` : message,
+  };
 }
 
 // getTrayName is where Hisar stays while its window is closed.

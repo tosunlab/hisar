@@ -35,11 +35,15 @@ onBeforeUnmount(() => clearInterval(clockTimer));
     <div ref="panel" class="card pairing" role="alertdialog" aria-modal="true" aria-labelledby="pairing-title" aria-describedby="pairing-description" tabindex="-1" data-testid="browser-pairing">
       <span class="pairing-icon"><AppIcon name="globe" :size="22" /></span>
       <h2 id="pairing-title">Pair {{ store.browserPairing.browser }} with Hisar?</h2>
-      <p id="pairing-description" class="muted">Enter this code in the Hisar extension to let it fill and save logins.</p>
+      <p id="pairing-description" class="muted">
+        Lets the Hisar extension browse your vaults, reveal and copy supported item fields, fill logins, cards, identities and addresses, and save new items while Hisar is
+        unlocked.
+      </p>
+      <p class="muted">This browser stays paired after Hisar locks. Remove it in Settings → Browser.</p>
       <div class="code monospace" :aria-label="store.browserPairing.code" data-testid="pairing-code">
         <span v-for="group in allCodeGroup" :key="group">{{ group }}</span>
       </div>
-      <p class="muted note">Expires in {{ timeLeft }}. If you did not start pairing in your browser, cancel.</p>
+      <p class="muted note">Enter this code in the Hisar extension. Pairing code expires in {{ timeLeft }}. If you did not start pairing in your browser, cancel.</p>
       <div class="row actions">
         <div class="spacer"></div>
         <button data-testid="cancel-pairing" @click="cancelBrowserPairing">Cancel</button>
@@ -89,6 +93,10 @@ p {
   margin: 0;
   font-size: var(--font-size-13);
   line-height: 1.5;
+}
+
+p + p {
+  margin-top: 8px;
 }
 
 .code {

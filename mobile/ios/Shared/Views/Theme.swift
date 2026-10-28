@@ -141,6 +141,7 @@ extension Color {
 
 struct ErrorBanner: View {
     var message: String
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Label {
@@ -153,6 +154,117 @@ struct ErrorBanner: View {
         .font(.subheadline)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("error-message")
+        .background(ErrorAnnouncementProbe(message: message, isActive: scenePhase == .active).frame(width: 0, height: 0).accessibilityHidden(true))
+    }
+}
+
+struct ErrorAnnouncementState {
+    private var presentations: [(id: UUID, message: String)] = []
+    private var lastMessage: String?
+
+    mutating func present(_ id: UUID, _ message: String) -> String? {
+        if let index = presentations.firstIndex(where: { $0.id == id }) {
+            presentations[index].message = message
+        } else {
+            presentations.append((id, message))
+        }
+        guard presentations.last?.id == id, lastMessage != message else { return nil }
+        lastMessage = message
+        return message
+    }
+
+    mutating func remove(_ id: UUID) {
+        presentations.removeAll { $0.id == id }
+        if presentations.isEmpty { lastMessage = nil }
+    }
+}
+
+private struct ErrorAnnouncementProbe: UIViewRepresentable {
+    var message: String
+    var isActive: Bool
+
+    func makeUIView(context: Context) -> ErrorAnnouncementView { ErrorAnnouncementView() }
+
+    func updateUIView(_ view: ErrorAnnouncementView, context: Context) {
+        view.message = message
+        view.isActive = isActive
+        view.scheduleAnnouncement()
+    }
+
+    static func dismantleUIView(_ view: ErrorAnnouncementView, coordinator: ()) {
+        ErrorAnnouncements.shared.remove(view.presentationID)
+    }
+}
+
+private final class ErrorAnnouncementView: UIView {
+    let presentationID = UUID()
+    var message = ""
+    var isActive = false
+    private var isScheduled = false
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { ErrorAnnouncements.shared.remove(presentationID) }
+        else { scheduleAnnouncement() }
+    }
+
+    func scheduleAnnouncement() {
+        guard !isScheduled else { return }
+        isScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            isScheduled = false
+            if let window, isActive {
+                ErrorAnnouncements.shared.present(presentationID, message, window: window)
+            } else {
+                ErrorAnnouncements.shared.remove(presentationID)
+            }
+        }
+    }
+}
+
+@MainActor
+private final class ErrorAnnouncements {
+    static let shared = ErrorAnnouncements()
+    private var state = ErrorAnnouncementState()
+
+    func present(_ id: UUID, _ message: String, window: UIWindow) {
+        guard let announcement = state.present(id, message) else { return }
+        var controller = window.rootViewController
+        while let presented = controller?.presentedViewController { controller = presented }
+        guard !(controller is UIAlertController) else { return }
+        AccessibilityNotification.Announcement(announcement).post()
+    }
+
+    func remove(_ id: UUID) {
+        state.remove(id)
+    }
+}
+
+private struct ValidationErrorModifier: ViewModifier {
+    var message: String?
+    @FocusState private var isFocused: Bool
+    @State private var announcedMessage: String?
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityHint(message ?? "")
+            .focused($isFocused)
+            .onChange(of: isFocused) { wasFocused, isFocused in
+                if wasFocused, !isFocused, let message, message != announcedMessage {
+                    AccessibilityNotification.Announcement(message).post()
+                    announcedMessage = message
+                }
+            }
+            .onChange(of: message) { _, message in
+                if message == nil { announcedMessage = nil }
+            }
+    }
+}
+
+extension View {
+    func validationError(_ message: String?) -> some View {
+        modifier(ValidationErrorModifier(message: message))
     }
 }
 

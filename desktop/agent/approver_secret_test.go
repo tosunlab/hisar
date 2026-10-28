@@ -108,6 +108,7 @@ func TestPhoneSeesTheSecretsOfARunRequest(t *testing.T) {
 		Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "run a command with 5 secrets", CommandLine: "docker compose up", TerminalName: "ttys003",
 		Secrets:   []string{"A › a › password", "B › b › password", "C › c › password", "D › d › password", "and 1 more"},
 		Allowance: commandLineAllowance,
+		Lifetime:  "until 10 minutes after this terminal’s last command, or until Hisar locks",
 	}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("phone request = %+v", description)

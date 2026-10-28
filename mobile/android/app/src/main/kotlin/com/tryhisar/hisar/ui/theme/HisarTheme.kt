@@ -75,7 +75,7 @@ private fun buildColors(theme: VaultTheme, isDark: Boolean): HisarColors {
         cellBackground = pick(0xFFFFFFFF, 0xFF1C1C1E),
         label = pick(0xFF000000, 0xFFFFFFFF),
         secondaryLabel = Color(palette.secondaryLabel.resolve(isDark)),
-        placeholder = pick(0x4D3C3C43, 0x4DEBEBF5),
+        placeholder = Color(ThemePalettes.placeholder.resolve(isDark)),
         separator = pick(0xFFC6C6C8, 0xFF38383A),
         fill = pick(0x1F767680, 0x3D767680),
         warning = Color(palette.warning.resolve(isDark)),

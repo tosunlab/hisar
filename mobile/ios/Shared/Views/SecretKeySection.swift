@@ -5,6 +5,7 @@ struct SecretKeySection: View {
     var valueIdentifier: String
     var copyIdentifier: String
     var footer: String? = nil
+    var onCopy: () -> Void = {}
     @State private var isCopied = false
 
     var body: some View {
@@ -15,6 +16,7 @@ struct SecretKeySection: View {
                 .accessibilityIdentifier(valueIdentifier)
             Button {
                 isCopied = PasteboardClipboard().setText(secretKey)
+                onCopy()
             } label: {
                 Label(isCopied ? "Copied · clears in 90 seconds" : "Copy Secret Key", systemImage: isCopied ? "checkmark" : "doc.on.doc")
                     .contentTransition(.symbolEffect(.replace))

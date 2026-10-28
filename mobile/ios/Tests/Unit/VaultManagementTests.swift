@@ -285,6 +285,39 @@ final class VaultManagementTests: XCTestCase {
         }
     }
 
+    func testRecoveryDeletionRequiresReviewedTargetConfirmation() {
+        let id = "12345678-1234-5678-1234-567812345678"
+        let nameIssue = ReadIssue(vaultId: id, itemId: nil, revision: "review-1", kind: "vault-name", canRename: true, canDelete: true)
+        var vault = VaultSummary(id: id, name: "Unreadable vault \(id)", type: "shared", role: "owner", itemCount: 2)
+        vault.readIssues = [nameIssue]
+        let review = RecoveryDeletionReview(vault: vault, issue: nameIssue)
+        XCTAssertFalse(review.canDelete(typed: ""))
+        XCTAssertFalse(review.canDelete(typed: vault.name))
+        XCTAssertFalse(review.canDelete(typed: id))
+        XCTAssertTrue(review.canDelete(typed: "12345678"))
+        XCTAssertTrue(review.message.contains("2 items, including the readable ones"))
+        vault.name = "Repaired elsewhere"
+        vault.readIssues = []
+        XCTAssertEqual(review.vault.name, "Unreadable vault \(id)")
+        XCTAssertEqual(review.issue.revision, "review-1")
+        let opened = RecoveryDeletionReview(vault: vault, issue: nameIssue)
+        XCTAssertFalse(opened.canDelete(typed: "12345678"))
+        XCTAssertTrue(opened.canDelete(typed: "Repaired elsewhere"))
+
+        var keyIssue = nameIssue
+        keyIssue.kind = "vault-key"
+        vault.readIssues = [keyIssue]
+        let unknown = RecoveryDeletionReview(vault: vault, issue: keyIssue)
+        XCTAssertTrue(unknown.message.contains("all its items"))
+        XCTAssertFalse(unknown.message.contains("2 items"))
+        XCTAssertTrue(unknown.canDelete(typed: "12345678"))
+        let item = ReadIssue(vaultId: id, itemId: "bad-item", revision: "item-r1", kind: "item", canRename: false, canDelete: true)
+        let itemReview = RecoveryDeletionReview(vault: vault, issue: item)
+        XCTAssertTrue(itemReview.canDelete(typed: ""))
+        XCTAssertTrue(itemReview.message.contains("bad-item"))
+        XCTAssertTrue(itemReview.message.contains(vault.name))
+    }
+
     func testUnreadableVaultRecoveryNamesTheReviewedRevision() async throws {
         let model = await createUnlockedModel()
         let reviewed = ReadIssue(vaultId: "work", itemId: nil, revision: "review-1", kind: "vault-name", canRename: true, canDelete: true)

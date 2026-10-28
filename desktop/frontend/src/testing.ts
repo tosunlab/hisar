@@ -264,6 +264,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     kind: "ssh-key",
     terminalName: "",
     coverage: "",
+    lifetime: "",
     isUnlockRequired: false,
     isPasswordUnlock: false,
     requesterKind: "app",
@@ -367,7 +368,7 @@ export function createAgentRunApprovalEvent(overrides: Partial<ApprovalEvent> = 
     allSecretName: ["Work › Stripe › api key", "Work › Postgres staging › password"],
     allGrantDuration: ["once", "hour"],
     grantDuration: "once",
-    grantScope: "A longer choice covers only these secrets.",
+    grantScope: "A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again.",
     grantHolderScope: "connection",
     isConnectionApproval: false,
     ...overrides,
@@ -492,6 +493,7 @@ export function createCommandLineApprovalEvent(overrides: Partial<ApprovalEvent>
     terminalName: "ttys003",
     coverage: "terminal-session",
     allowance: "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time.",
+    lifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks",
     ...overrides,
   });
 }
@@ -865,6 +867,7 @@ export function createApiMock() {
     deleteAccount: vi.fn(),
     dismissSignedOutReason: vi.fn(),
     forgetNewAccountSecretKey: vi.fn().mockResolvedValue(undefined),
+    acknowledgeNewAccountRecovery: vi.fn().mockResolvedValue(undefined),
     listPendingRecovery: vi.fn().mockResolvedValue([]),
     resumePendingRecovery: vi.fn(),
     savePendingRecoveryEmergencyKit: vi.fn(),

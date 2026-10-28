@@ -292,6 +292,7 @@ struct SignInView: View {
                 .textContentType(.newPassword)
                 .accessibilityIdentifier("sign-up-repeated-password")
                 .concealWhen(model.isBusy)
+                .validationError(isPasswordMismatch ? "The passwords do not match." : nil)
         } header: {
             Text("Master password")
                 .foregroundStyle(.themeSecondary)

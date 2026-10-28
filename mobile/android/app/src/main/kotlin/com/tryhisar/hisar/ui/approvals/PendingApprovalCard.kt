@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,6 +98,19 @@ private fun PendingApprovalCard(model: AppModel, approval: PhoneApproval, isBusy
                 .testTag("pending-approval-${approval.requestID}")
                 .padding(horizontal = 16.dp),
         )
+        if (approval.appWarning.isNotEmpty()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) {}
+                    .testTag("pending-approval-warning-${approval.requestID}")
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(Icons.Filled.Warning, contentDescription = null, tint = HisarTheme.colors.warning, modifier = Modifier.size(20.dp))
+                Text(approval.appWarning, style = HisarType.subheadline, color = HisarTheme.colors.label)
+            }
+        }
         if (approval.isRememberable) {
             ToggleRow(approval.rememberLabel, isRemembered, { model.approvals.setRememberChoice(approval, it) }, testTag = "pending-approval-remember-${approval.requestID}", enabled = !isBusy)
         }

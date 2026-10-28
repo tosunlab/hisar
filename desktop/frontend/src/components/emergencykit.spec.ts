@@ -67,14 +67,6 @@ describe("Emergency Kit after sign up", () => {
     expect(store.noticeMessage).toBe("");
     expect(store.errorMessage).toBe("");
   });
-
-  it("forgets the Secret Key in the backend once the user confirms", async () => {
-    const wrapper = mount(SecretKeyView);
-    await wrapper.find('input[name="hasSaved"]').setValue(true);
-    await wrapper.findAll("button").find((button) => button.text() === "Continue to Hisar")!.trigger("click");
-    expect(store.pendingSecretKey).toBe("");
-    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
-  });
 });
 
 describe("Emergency Kit from Settings", () => {

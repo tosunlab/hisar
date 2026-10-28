@@ -304,11 +304,16 @@ class HisarUITestCase: XCTestCase {
         let key = app.staticTexts["new-secret-key"]
         waitFor(key, timeout: 60)
         let secretKey = key.label
-        // The kit is prepared in the background; confirmation requires a completed save or print.
+        // The kit is prepared in the background; the confirm button needs a completed save, print or share of it.
         waitFor(app.buttons["new-secret-key-share-kit"], timeout: 60)
         saveScreenshot("new-secret-key")
         app.buttons["new-secret-key-copy"].tap()
+        XCTAssertFalse(app.buttons["new-secret-key-done"].isEnabled, "a copied Secret Key alone confirmed the kit")
+        app.buttons["new-secret-key-share-kit"].tap()
+        closeShareSheet()
+        XCTAssertFalse(app.buttons["new-secret-key-done"].isEnabled, "a cancelled share sheet confirmed the kit")
         handOffEmergencyKit(shareIdentifier: "new-secret-key-share-kit")
+        waitForHittable(app.buttons["new-secret-key-done"])
         app.buttons["new-secret-key-done"].tap()
         let notNowButton = app.buttons["biometric-offer-not-now"]
         if isBiometricOfferExpected {
@@ -321,6 +326,21 @@ class HisarUITestCase: XCTestCase {
         // The vaults exist under the Secret Key screen and the Face ID offer; they take a tap only once both have closed.
         waitForHittable(app.buttons["vault-Personal"])
         return secretKey
+    }
+
+    /** Closes the share sheet without choosing anything. */
+    func closeShareSheet() {
+        let close = app.navigationBars.buttons["Close"].firstMatch
+        if close.waitForExistence(timeout: 10) {
+            close.tap()
+        } else {
+            app.swipeDown(velocity: .fast)
+        }
+        waitForDisappearance(app.descendants(matching: .any)["Save to Files"].firstMatch)
+    }
+
+    func waitForDisappearance(_ element: XCUIElement) {
+        wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO"), object: element)], timeout: 10)
     }
 
     @discardableResult
@@ -420,7 +440,7 @@ class HisarUITestCase: XCTestCase {
         type(password, into: app.secureTextFields["editor-password"])
         type(website, into: app.textFields["editor-website-0"])
         if !oneTimePassword.isEmpty {
-            type(oneTimePassword, into: app.textFields["editor-one-time-password"])
+            type(oneTimePassword, into: app.secureTextFields["editor-one-time-password"])
         }
         saveScreenshot("add-item")
         app.buttons["editor-save"].tap()

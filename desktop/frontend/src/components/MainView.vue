@@ -147,6 +147,9 @@ const healthyItemCount = computed(() => store.allItem.length - unreadableItemCou
 const isReferenceScope = computed(() => store.isFavoritesSelected || store.isAllItemsSelected);
 const scopeReferences = computed(() => store.isAllItemsSelected ? store.allItemReference : store.allFavorite);
 const allVisibleFavorite = computed(() => filterAllFavorite(scopeReferences.value, store.searchQuery, store.selectedTag, selectedCategory.value));
+const listEntryIndex = computed(() => Math.max(0, isReferenceScope.value
+  ? allVisibleFavorite.value.findIndex(isSelectedFavorite)
+  : allVisibleItem.value.findIndex((item) => item.id === store.selectedItem?.id)));
 const allTag = computed(() => listAllTag(store.isAllItemsSelected ? store.allItemReference.map((reference) => reference.item) : store.allItem));
 const scopeItems = computed(() => isReferenceScope.value ? scopeReferences.value.map((reference) => reference.item) : store.allItem.filter((item) => !item.readIssue));
 const categoryCounts = computed(() => {
@@ -469,7 +472,14 @@ function focusRow(index: number): void {
     return;
   }
   rows[index].focus();
-  if (rows[index].getAttribute("aria-selected") !== "true") {
+}
+
+// A menu returning focus to the row it opened from does not move the selection; only moving focus does.
+function selectFocusedRow(index: number, event: FocusEvent): void {
+  if (event.relatedTarget instanceof Element && event.relatedTarget.closest('[role="menu"]')) {
+    return;
+  }
+  if (listRows()[index]?.getAttribute("aria-selected") !== "true") {
     void selectRow(index);
   }
 }
@@ -509,9 +519,15 @@ function handleListKey(event: KeyboardEvent): void {
 }
 
 function copySelectedField(fieldName: "username" | "password", label: string): void {
-  const selected = store.selectedItem;
-  if (selected && store.editorMode === "view" && selected[fieldName]) {
-    void copyItemField(store.selectedVaultID, selected.id, fieldName, label);
+  if (store.editorMode !== "view") {
+    return;
+  }
+  const index = listRows().indexOf(document.activeElement as HTMLElement);
+  const favorite = isReferenceScope.value ? allVisibleFavorite.value[index] : undefined;
+  const selected = index >= 0 ? favorite?.item ?? allVisibleItem.value[index] : store.selectedItem;
+  const vaultID = favorite?.vaultId ?? (index >= 0 ? store.listVaultID : store.selectedVaultID);
+  if (selected && (index >= 0 || selected[fieldName])) {
+    void copyItemField(vaultID, selected.id, fieldName, label);
   }
 }
 
@@ -811,12 +827,14 @@ onBeforeUnmount(() => {
           </template>
         </div>
         <ul v-else ref="itemList" role="listbox" :aria-label="store.isAllItemsSelected ? 'All items' : 'Favorites'" :data-testid="store.isAllItemsSelected ? 'all-items-list' : 'favorites-list'" @keydown="handleListKey">
-          <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`" role="presentation">
+          <li v-for="(favorite, index) in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`" role="presentation">
             <button
               class="item"
               :class="{ selected: isSelectedFavorite(favorite) }"
               role="option"
               :aria-selected="isSelectedFavorite(favorite)"
+              :tabindex="index === listEntryIndex ? 0 : -1"
+              @focus="selectFocusedRow(index, $event)"
               @click="selectFavoriteItem(favorite)"
               @contextmenu.prevent="openItemMenu(favorite.vaultId, favorite.item, $event, favorite)"
             >
@@ -843,12 +861,14 @@ onBeforeUnmount(() => {
         <button v-if="!store.searchQuery && !store.selectedTag && canEditList" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
       </div>
       <ul v-else ref="itemList" role="listbox" :aria-label="listVault?.name ?? 'Items'" @keydown="handleListKey">
-        <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id" role="presentation">
+        <li v-for="(vaultItem, index) in allVisibleItem" :key="vaultItem.id" role="presentation">
           <button
             class="item"
             :class="{ selected: store.selectedItem?.id === vaultItem.id }"
             role="option"
             :aria-selected="store.selectedItem?.id === vaultItem.id"
+            :tabindex="index === listEntryIndex ? 0 : -1"
+            @focus="selectFocusedRow(index, $event)"
             @click="selectItem(vaultItem.id)"
             @contextmenu.prevent="openItemMenu(store.listVaultID, vaultItem, $event)"
           >

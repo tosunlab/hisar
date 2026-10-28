@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { allTestVault, createApiMock, createItem, createStatus } from "../testing";
+import { computeAccessibleName } from "dom-accessibility-api";
+import { allTestVault, createApiMock, createItem, createServerItem, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -103,6 +104,26 @@ describe("one-time password in items", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
     expect(api.saveItem).toHaveBeenCalledWith("personal", expect.objectContaining({ id: "github", oneTimePassword: "jbsw y3dp ehpk 3pxp" }));
+    wrapper.unmount();
+  });
+
+  it.each(["", "server"])("conceals a saved %s setup key until its independent reveal action, including reopening", async (category) => {
+    store.editorMode = "edit";
+    store.selectedItem = (category === "server" ? createServerItem : createItem)({ oneTimePassword: "otpauth://totp/?secret=JBSWY3DPEHPK3PXP" });
+    let wrapper = mount(ItemEditor);
+    const field = () => wrapper.get('input[name="oneTimePassword"]');
+    expect(field().attributes("type")).toBe("password");
+    expect(field().element).toHaveProperty("value", store.selectedItem.oneTimePassword);
+    expect(computeAccessibleName(field().element)).toBe("One-time code setup key");
+    await wrapper.get('[aria-label="Show setup key"]').trigger("click");
+    expect(field().attributes("type")).toBe("text");
+    expect(wrapper.get('input[name="password"]').attributes("type")).toBe("password");
+    await wrapper.get('[aria-label="Hide setup key"]').trigger("click");
+    expect(field().attributes("type")).toBe("password");
+    await wrapper.get('[aria-label="Show setup key"]').trigger("click");
+    wrapper.unmount();
+    wrapper = mount(ItemEditor);
+    expect(field().attributes("type")).toBe("password");
     wrapper.unmount();
   });
 });

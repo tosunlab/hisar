@@ -31,6 +31,9 @@ final class PhoneApprovalUITests: HisarUITestCase {
     func testDenyCommandLineRequest() {
         launchPreview("cli")
         waitFor(app.staticTexts["phone-approval-summary"])
+        XCTAssertEqual(app.staticTexts["phone-approval-row-Lasts"].label, "Lasts, Until 10 minutes after this terminal’s last command, or until Hisar locks")
+        let note = app.descendants(matching: .any)["phone-approval-note"].label
+        XCTAssertEqual(note, "Approving also lets hisar in Terminal use Hisar without asking until then. It does not unlock Hisar on your Mac.")
         saveScreenshot("phone-approval-cli")
         app.buttons["phone-approval-deny"].tap()
         checkResult("Denied preview-cli")
@@ -154,6 +157,21 @@ final class PhoneApprovalUITests: HisarUITestCase {
         app.buttons["approvals-setup"].tap()
         waitFor(app.switches["mac-approval-toggle"])
         XCTAssertTrue(app.staticTexts["On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device."].exists)
+    }
+
+    func testWaitingRequestCardShowsTheAppWarning() {
+        app.launchArguments = ["-HisarUITest", "-HisarApprovalBannerPreview", "launcher-share"]
+        app.launch()
+        let warning = app.descendants(matching: .any)["pending-approval-warning-preview-launcher-share"]
+        waitFor(warning)
+        XCTAssertTrue(warning.label.contains("Anyone with the link can read these until it expires or its views run out."), warning.label)
+        let approve = app.buttons["pending-approval-approve-preview-launcher-share"]
+        XCTAssertLessThan(warning.frame.minY, approve.frame.minY, "the warning comes before Approve")
+        saveScreenshot("phone-approval-warning-card")
+        approve.tap()
+        let result = app.staticTexts["phone-approval-result"]
+        waitFor(result)
+        XCTAssertEqual(result.label, "Approved preview-launcher-share with Face ID")
     }
 
     private func launchPreview(_ kind: String, sensor: String = "Face ID", requiresPassword: Bool = false) {

@@ -252,12 +252,14 @@ private fun SignInSections(
         FormTextField(
             email, onEmailChange, placeholder = "you@example.com", testTag = "sign-in-email",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false, imeAction = ImeAction.Next),
+            label = "Email",
         )
         RowDivider()
         if (isServerShown) {
             FormTextField(
                 server, onServerChange, placeholder = SignInModel.DEFAULT_SERVER, testTag = "sign-in-server",
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Next),
+                label = "Server",
             )
         } else {
             FormButtonRow("Use a different server…", showServer, testTag = "sign-in-use-different-server")
@@ -270,6 +272,7 @@ private fun SignInSections(
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false, keyboardType = KeyboardType.Password, imeAction = ImeAction.Next,
             ),
+            label = "Secret Key",
         )
         RowDivider()
         FormTextField(
@@ -277,6 +280,7 @@ private fun SignInSections(
             revealName = "master password", concealWhen = concealWhen,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
             keyboardActions = KeyboardActions(onGo = { submit() }),
+            label = "Master password",
         )
     }
 }
@@ -306,6 +310,7 @@ private fun CreateAccountSections(
         FormTextField(
             inviteLink, onInviteLinkChange, placeholder = "Invite code or link (optional)", testTag = "sign-up-invite-link",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Next),
+            label = "Invite code or link",
         )
     }
     if (isServerAsked) {
@@ -317,6 +322,7 @@ private fun CreateAccountSections(
                 FormTextField(
                     server, onServerChange, placeholder = SignInModel.DEFAULT_SERVER, testTag = "sign-up-server",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Next),
+                    label = "Server",
                 )
             } else {
                 FormButtonRow("Use a different server…", showServer, testTag = "sign-up-use-different-server")
@@ -327,11 +333,13 @@ private fun CreateAccountSections(
         FormTextField(
             email, onEmailChange, placeholder = "you@example.com", testTag = "sign-up-email",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false, imeAction = ImeAction.Next),
+            label = "Email",
         )
         RowDivider()
         FormTextField(
             name, onNameChange, placeholder = "Your name", testTag = "sign-up-name",
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
+            label = "Your name",
         )
     }
     FormSection(
@@ -352,12 +360,15 @@ private fun CreateAccountSections(
             password, onPasswordChange, placeholder = "At least 10 characters", testTag = "sign-up-password", isSecure = true,
             revealName = "master password", concealWhen = concealWhen,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+            label = "Master password",
         )
         RowDivider()
         FormTextField(
             repeatedPassword, onRepeatedPasswordChange, placeholder = "Repeat master password", testTag = "sign-up-repeated-password", isSecure = true,
             revealName = "repeated master password", concealWhen = concealWhen,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            label = "Repeat master password",
+            errorMessage = if (isPasswordMismatch) "The passwords do not match." else null,
         )
     }
 }

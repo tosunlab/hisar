@@ -239,6 +239,7 @@ struct VaultsView: View {
                 )
                 RemovedVaultNoticeSection(allNotice: model.allRemovedVaultNotice) { model.dismissRemovedVaultNotice($0) }
                 keyWarningSection
+                reviewRecipientSection
                 invitationSection
                 favoriteSection
                 let grouping = OrganizationLogic.groupVaults(model.allVault, allOrganization: model.allOrganization, allWaiting: model.waitingVaultKeys.allWaiting)
@@ -360,6 +361,20 @@ struct VaultsView: View {
         await model.refreshAll { message in
             refreshFailure = message
             model.clearError()
+        }
+    }
+
+    @ViewBuilder
+    private var reviewRecipientSection: some View {
+        if !model.allReviewInvitation.isEmpty {
+            Section {
+                ForEach(model.allReviewInvitation) { invitation in
+                    SentInvitationRow(invitation: invitation, identifier: "review-invitation-\(invitation.id)")
+                }
+            } header: {
+                Text("Review recipients")
+                    .foregroundStyle(.themeSecondary)
+            }
         }
     }
 
@@ -662,12 +677,16 @@ struct ItemRow: View {
     var vaultName: String?
     var showsFavorite = true
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(spacing: 12) {
-            AppItemIcon(item: item)
+        HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
+            AppItemIcon(item: item, maxSize: 44)
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text(item.title).lineLimit(1)
+                    Text(item.title)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        .fixedSize(horizontal: false, vertical: true)
                     if showsFavorite && item.isFavorite {
                         Image(systemName: "star.fill")
                             .font(.caption)
@@ -680,7 +699,8 @@ struct ItemRow: View {
                     Text(subtitle)
                         .font(.footnote)
                         .foregroundStyle(.themeSecondary)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if let vaultName {
                     Text(vaultName)

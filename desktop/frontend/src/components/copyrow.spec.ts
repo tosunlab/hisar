@@ -96,7 +96,6 @@ describe("A click on a field row copies it", () => {
     await flushPromises();
     for (const [label, fieldName] of [
       ["username", "username"],
-      ["Recovery code", "Recovery code"],
       ["one-time code", "one-time code"],
       ["notes", "notes"],
     ]) {
@@ -105,6 +104,43 @@ describe("A click on a field row copies it", () => {
       expect(api.copyField).toHaveBeenLastCalledWith("personal", "github", fieldName);
     }
     expect(wrapper.text()).not.toContain("abcd-efgh");
+  });
+
+  it.each(["", "secure-note", "credit-card"])("copies and reveals exact custom row instances in %s", async (category) => {
+    store.selectedItem = createItem({
+      category,
+      password: "main-password",
+      fields: [
+        { name: "Recovery code", value: "first-secret", concealed: true },
+        { name: "Recovery code", value: "second-secret", concealed: true },
+        { name: "recovery CODE", value: "case-secret", concealed: true },
+        { name: "Password", value: "custom-password", concealed: true },
+      ],
+    });
+    const wrapper = mountDetail();
+    const rows = wrapper.findAll("[data-custom-index]");
+    for (const [index, row] of rows.entries()) {
+      const value = store.selectedItem.fields[index].value;
+      await row.get("[data-copy-target]").trigger("click");
+      await flushPromises();
+      expect(api.copyText).toHaveBeenLastCalledWith(value);
+      await row.get('button[title="Copy"]').trigger("click");
+      await flushPromises();
+      expect(api.copyText).toHaveBeenLastCalledWith(value);
+      await row.get("[data-copy-target]").trigger("keydown", { key: "Enter" });
+      await flushPromises();
+      expect(api.copyText).toHaveBeenLastCalledWith(value);
+    }
+    expect(api.copyField).not.toHaveBeenCalled();
+    await rows[1].get('button[aria-label="Reveal Recovery code"]').trigger("click");
+    expect(rows[1].text()).toContain("second-secret");
+    expect(rows[0].text()).not.toContain("first-secret");
+    expect(rows[2].text()).not.toContain("case-secret");
+    expect(rows[3].text()).not.toContain("custom-password");
+    store.selectedItem = { ...store.selectedItem, revision: "rev-2", fields: [...store.selectedItem.fields].reverse() };
+    await flushPromises();
+    expect(wrapper.get('[data-custom-index="1"]').text()).not.toContain("case-secret");
+    wrapper.unmount();
   });
 
   it("copies a website row's own link", async () => {

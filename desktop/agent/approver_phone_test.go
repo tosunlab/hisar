@@ -324,7 +324,10 @@ func TestPhoneApprovesCommandLine(t *testing.T) {
 	resultChannel := startCommandLineApproval(approver, context.Background())
 	waitForApprovalEvent(t, emitter)
 	description := phone.waitForStart(t)
-	want := approval.Description{Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar", CommandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003", Allowance: commandLineAllowance}
+	want := approval.Description{
+		Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar", CommandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003",
+		Allowance: commandLineAllowance, Lifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks",
+	}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("command-line request on the phone = %+v", description)
 	}

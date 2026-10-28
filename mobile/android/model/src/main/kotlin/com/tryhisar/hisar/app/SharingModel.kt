@@ -8,7 +8,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /** Sharing vaults with people: who a vault is shared with, invitations to it, roles, and inviting people to Hisar. */
-class SharingModel(private val context: ModelContext, private val vaults: VaultsModel) {
+class SharingModel(private val context: ModelContext, private val vaults: VaultsModel, private val invitations: InvitationsModel) {
     val peopleErrorMessage = MutableStateFlow<String?>(null)
 
     suspend fun loadAllPerson(): List<Member>? = context.perform(isBusyShown = false) { it.listAllPerson() }
@@ -48,10 +48,17 @@ class SharingModel(private val context: ModelContext, private val vaults: Vaults
         return context.perform { it.shareVault(vaultID, trimmedEmail, role) } != null
     }
 
-    suspend fun cancelShareInvitation(invitationID: String): Boolean = context.perform { it.cancelShareInvitation(invitationID) } != null
+    suspend fun cancelShareInvitation(invitationID: String): Boolean {
+        context.perform { it.cancelShareInvitation(invitationID) } ?: return false
+        invitations.refreshAfterSentChange(invitationID)
+        return true
+    }
 
-    suspend fun confirmShareRecipient(invitation: com.tryhisar.hisar.model.SentShareInvitation): Boolean =
-        context.perform { it.confirmShareRecipient(invitation.id, invitation.reviewToken) } != null
+    suspend fun confirmShareRecipient(invitation: com.tryhisar.hisar.model.SentShareInvitation): Boolean {
+        context.perform { it.confirmShareRecipient(invitation.id, invitation.reviewToken) } ?: return false
+        invitations.refreshAfterSentChange(invitation.id)
+        return true
+    }
 
     suspend fun changeVaultMemberRole(vaultID: String, accountID: String, role: String): Boolean =
         context.perform { it.changeVaultMemberRole(vaultID, accountID, role) } != null

@@ -120,30 +120,25 @@ fun DoneSheetBar(title: String, onDone: () -> Unit, doneTestTag: String) {
     }
 }
 
-/** The bar of a half-height sheet: Cancel on the left, the inline title, an action on the right. */
 @Composable
 fun ModalSheetBar(title: String, onCancel: () -> Unit, action: @Composable RowScope.() -> Unit) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(64.dp)
-            .padding(horizontal = ScreenMargin),
-    ) {
-        Box(Modifier.align(Alignment.CenterStart)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = ScreenMargin)) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 64.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
             BarCapsuleButton("Cancel", onCancel, testTag = "sheet-cancel")
+            Row(verticalAlignment = Alignment.CenterVertically, content = action)
         }
-        Text(
-            title,
-            style = HisarType.headline,
-            color = HisarTheme.colors.label,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 96.dp),
-        )
-        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, content = action)
+        if (title.isNotEmpty()) {
+            Text(
+                title,
+                style = HisarType.headline,
+                color = HisarTheme.colors.label,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            )
+        }
     }
 }
 

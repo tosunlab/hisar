@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { confirmSecretKeySaved, saveNewAccountEmergencyKit, store } from "../store";
+import { confirmSecretKeySaved, postponeSecretKey, saveNewAccountEmergencyKit, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import SecretKeyBlock from "./SecretKeyBlock.vue";
 
-const hasSaved = ref(false);
+const hasSavedKit = ref(false);
+const hasConfirmed = ref(false);
+
+async function saveKit(): Promise<void> {
+  if (await saveNewAccountEmergencyKit()) hasSavedKit.value = true;
+}
 </script>
 
 <template>
@@ -25,14 +30,19 @@ const hasSaved = ref(false);
         </p>
         <SecretKeyBlock :secret-key="store.pendingSecretKey" />
         <div class="row actions">
-          <button data-testid="save-emergency-kit" @click="saveNewAccountEmergencyKit"><AppIcon name="note" /> Save Emergency Kit…</button>
+          <button data-testid="save-emergency-kit" :disabled="store.isBusy" @click="saveKit"><AppIcon name="note" /> Save Emergency Kit…</button>
         </div>
+        <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
         <label class="row confirmation">
-          <input v-model="hasSaved" type="checkbox" name="hasSaved" />
-          <span class="confirmation-text">I have written down or stored my Secret Key somewhere safe</span>
+          <input v-model="hasConfirmed" type="checkbox" name="hasSaved" :disabled="!hasSavedKit" />
+          <span class="confirmation-text">I saved my Emergency Kit somewhere safe</span>
         </label>
-        <button class="primary full-width" :disabled="!hasSaved" @click="confirmSecretKeySaved">
+        <p v-if="!hasSavedKit" class="hint muted" data-testid="save-kit-hint">Save the Emergency Kit to continue.</p>
+        <button class="primary full-width" data-testid="secret-key-continue" :disabled="!hasSavedKit || !hasConfirmed || store.isBusy" @click="confirmSecretKeySaved">
           Continue to Hisar
+        </button>
+        <button class="ghost full-width finish-later" data-testid="secret-key-later" :disabled="store.isBusy" @click="postponeSecretKey">
+          Finish later
         </button>
       </div>
     </div>
@@ -78,5 +88,9 @@ const hasSaved = ref(false);
   font-size: var(--font-size-13);
   font-weight: 400;
   color: var(--color-text);
+}
+
+.finish-later {
+  margin-top: 8px;
 }
 </style>

@@ -190,6 +190,9 @@ fun FormTextField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     testTag: String,
+    label: String,
+    errorMessage: String? = null,
+    announceErrorOnBlur: Boolean = true,
     modifier: Modifier = Modifier,
     isSecure: Boolean = false,
     isSecret: Boolean = isSecure,
@@ -217,6 +220,7 @@ fun FormTextField(
                     .weight(1f)
                     .heightIn(min = RowMinHeight)
                     .secretInput(isSecret)
+                .then(fieldAccessibility(label, errorMessage, announceErrorOnBlur))
                     .testTag(testTag),
                 decorationBox = { innerTextField ->
                     Box(Modifier.padding(horizontal = RowInset, vertical = 14.dp), contentAlignment = Alignment.CenterStart) {

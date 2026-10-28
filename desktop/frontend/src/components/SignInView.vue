@@ -41,6 +41,7 @@ const inviteCode = ref("");
 const pastedInviteLink = ref("");
 const name = ref("");
 const repeatedPassword = ref("");
+const validationAnnouncement = ref("");
 
 const passwordMismatch = computed(
   () => mode.value !== "sign-in" && repeatedPassword.value !== "" && password.value !== repeatedPassword.value,
@@ -284,15 +285,16 @@ async function submitCreateAccount(): Promise<void> {
           </div>
           <label>
             <span>Master password</span>
-            <CredentialField><input v-model="password" name="password" type="password" autocomplete="new-password" minlength="10" placeholder="At least 10 characters" required /></CredentialField>
-            <StrengthMeter :password="password" />
-            <span class="password-feedback" :class="passwordFeedback.isBlocking ? 'blocking' : 'muted'" data-testid="password-feedback">{{ passwordFeedback.message }}</span>
+            <CredentialField><input v-model="password" name="password" type="password" autocomplete="new-password" minlength="10" placeholder="At least 10 characters" required aria-describedby="sign-up-password-feedback" :aria-invalid="passwordFeedback.isBlocking && !!password" @blur="validationAnnouncement = passwordFeedback.isBlocking && password ? passwordFeedback.message : ''" /></CredentialField>
           </label>
+          <StrengthMeter :password="password" />
+          <p id="sign-up-password-feedback" class="password-feedback" :class="passwordFeedback.isBlocking ? 'blocking' : 'muted'" data-testid="password-feedback">{{ passwordFeedback.message }}</p>
           <label>
             <span>Repeat master password</span>
-            <CredentialField secret-name="repeated master password"><input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" required /></CredentialField>
+            <CredentialField secret-name="repeated master password"><input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" required :aria-invalid="passwordMismatch" :aria-describedby="passwordMismatch ? 'sign-up-password-mismatch' : undefined" @blur="validationAnnouncement = passwordMismatch ? 'The passwords do not match.' : ''" /></CredentialField>
           </label>
-          <p v-if="passwordMismatch" class="error">The passwords do not match.</p>
+          <p v-if="passwordMismatch" id="sign-up-password-mismatch" class="error">The passwords do not match.</p>
+          <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ validationAnnouncement }}</p>
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch || isPasswordRefused">
             {{ store.isBusy ? "Creating account…" : "Create account" }}
           </button>

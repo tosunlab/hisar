@@ -160,6 +160,11 @@ class HisarKitBackend(
 
     override fun forgetNewAccountSecretKey() = call { forgetNewAccountSecretKey() }
 
+    override fun exportNewAccountEmergencyKit(directory: File): EmergencyKitExport =
+        decode(EmergencyKitExport.serializer(), call { exportNewAccountEmergencyKit(directory.path) })
+
+    override fun acknowledgeNewAccountRecovery() = call { acknowledgeNewAccountRecovery() }
+
     override fun disableBiometricUnlock(): VaultStatus = decode(VaultStatus.serializer(), call { disableBiometricUnlock() })
 
     override fun lock(): VaultStatus = readStatus(call { lock() })

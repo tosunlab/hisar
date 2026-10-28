@@ -19,12 +19,13 @@ class VaultsModel(private val context: ModelContext) {
     }
 
     /** Deletes the unreadable record the user reviewed, named by its revision; a changed record is refused. */
-    suspend fun deleteUnreadableRecord(issue: ReadIssue) {
+    suspend fun deleteUnreadableRecord(issue: ReadIssue): Boolean {
         context.perform { backend ->
             if (issue.itemId.isNotEmpty()) backend.deleteUnreadableItem(issue.vaultId, issue.itemId, issue.revision)
             else backend.deleteUnreadableVault(issue.vaultId, issue.revision)
-        } ?: return
+        } ?: return false
         context.refreshAll()
+        return true
     }
 
     /** Names a vault whose name did not open, only while its record is still the one the user reviewed. */

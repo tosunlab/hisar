@@ -24,6 +24,76 @@ enum VaultDeletionLogic {
     }
 }
 
+struct RecoveryDeletionReview: Identifiable {
+    let vault: VaultSummary
+    let issue: ReadIssue
+
+    var id: String { "\(issue.vaultId)/\(issue.itemId ?? "")/\(issue.revision ?? "")" }
+    var isItem: Bool { issue.itemId != nil }
+    var title: String { isItem ? "Delete unreadable item?" : "Delete “\(vault.name)”?" }
+    var confirmation: String {
+        vault.readIssues.contains { $0.kind == "vault-name" || $0.kind == "vault-key" } ? String(vault.id.prefix(8)) : vault.name
+    }
+    var message: String {
+        if let itemID = issue.itemId {
+            return "Delete unreadable item \(itemID) from “\(vault.name)” on every device. Everyone who has the vault loses this item. This cannot be undone."
+        }
+        let items = vault.readIssues.contains { $0.kind == "vault-key" } ? "all its items" : "its \(vault.itemCount) items, including the readable ones"
+        return "Delete the vault and \(items). Everyone who has the vault loses them. This cannot be undone."
+    }
+    func canDelete(typed: String) -> Bool { issue.canDelete && (isItem || typed == confirmation) }
+}
+
+struct RecoveryDeletionSheet: View {
+    let review: RecoveryDeletionReview
+
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var typed = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let message = model.errorMessage {
+                    Section { ErrorBanner(message: message) }
+                }
+                Section {
+                    Text(review.message)
+                    Text(review.vault.name)
+                        .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true)
+                    LabeledContent("Vault ID", value: review.vault.id)
+                    if !review.isItem {
+                        TextField("Type \(review.confirmation) to confirm", text: $typed)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityIdentifier("delete-unreadable-input")
+                    }
+                }
+                Section {
+                    Button("Permanently delete", role: .destructive) {
+                        Task {
+                            if await model.deleteUnreadableRecord(review.issue) { dismiss() }
+                        }
+                    }
+                    .disabled(!review.canDelete(typed: typed) || model.isBusy)
+                    .accessibilityIdentifier("delete-unreadable-confirm")
+                }
+            }
+            .navigationTitle(review.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("delete-unreadable-cancel")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .onAppear { model.clearError() }
+    }
+}
+
 enum ExportLogic {
     static let plainWarning = "Plain JSON is not encrypted. Anyone who gets the file can read every password, one-time code secret and SSH private key in it. Delete it when you are done."
 
@@ -351,10 +421,12 @@ struct ExportDataForm: View {
                             .textContentType(.newPassword)
                             .accessibilityIdentifier("export-passphrase")
                             .concealWhen(isBusy)
+                            .validationError(passphrase.count < options.minPassphraseLength && !passphrase.isEmpty ? inputProblem : nil)
                         CredentialField("Repeat export passphrase", text: $repeatedPassphrase, secretName: "repeated export passphrase")
                             .textContentType(.newPassword)
                             .accessibilityIdentifier("export-passphrase-repeat")
                             .concealWhen(isBusy)
+                            .validationError(passphrase.count >= options.minPassphraseLength ? inputProblem : nil)
                     } footer: {
                         Text("At least \(options.minPassphraseLength) characters. You need it to import the file; Hisar can't recover it.")
                             .foregroundStyle(.themeSecondary)

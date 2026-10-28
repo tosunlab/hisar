@@ -45,6 +45,11 @@ data class PhoneApproval(
     /** Set when approving can also be remembered on the Mac; the sheet and the Vaults card show it as a switch. */
     val rememberLabel: String = "",
     val isRememberedByDefault: Boolean = false,
+    /**
+     * How long approving a command-line request also lets its terminal, app or connection use Hisar, as the Mac words it
+     * ("until 10 minutes after …"); empty from an older Mac and for a request approved once.
+     */
+    @SerialName("lifetime") val commandLineLifetime: String = "",
 ) {
     data class DetailRow(val label: String, val value: String, val isMonospaced: Boolean, val isCompact: Boolean = false) {
         val id: String get() = label
@@ -57,9 +62,9 @@ data class PhoneApproval(
     /** The switch as the user left it, or its default; a request without the switch is never remembered. */
     fun resolveRememberChoice(chosenValue: Boolean?): Boolean = isRememberable && (chosenValue ?: isRememberedByDefault)
 
-    /** The Vaults card's footer: the card's switch says what else approving allows, so the footer says only what it never does. */
+    /** The Vaults card's footer: the card's switch or Lasts says what else approving allows, so the footer says only what it never does. */
     val cardApprovalNote: String
-        get() = if (isRememberable) {
+        get() = if (isRememberable || lifetime.isNotEmpty()) {
             "It never unlocks Hisar on your Mac."
         } else {
             "Approving answers this one request. It never unlocks Hisar on your Mac."
@@ -85,16 +90,22 @@ data class PhoneApproval(
         }
 
     /**
-     * Set for an approval that outlasts the request: a launcher keeps its approval until Hisar locks on the Mac. A launcher
-     * request that names secrets is a share link, which is approved once like any other request.
+     * Set for an approval that outlasts the request: a launcher keeps its approval until Hisar locks on the Mac, and a
+     * command-line approval lasts as long as [commandLineLifetime] says. A launcher request that names secrets is a share
+     * link, which is approved once like any other request.
      */
-    val lifetime: String get() = if (kind == KIND_LAUNCHER && secrets.isEmpty()) "Until Hisar locks on $macName" else ""
+    val lifetime: String
+        get() = if (kind == KIND_LAUNCHER) {
+            if (secrets.isEmpty()) "Until Hisar locks on $macName" else ""
+        } else {
+            commandLineLifetime.replaceFirstChar { it.uppercase() }
+        }
 
     val approvalNote: String
-        get() = if (lifetime.isNotEmpty()) {
-            "Approving lets $appName use Hisar until it locks on your Mac; it does not unlock Hisar there."
-        } else {
-            "Approving lets this one request continue; it does not unlock Hisar on your Mac."
+        get() = when {
+            kind == KIND_LAUNCHER && lifetime.isNotEmpty() -> "Approving lets $appName use Hisar until it locks on your Mac; it does not unlock Hisar there."
+            lifetime.isNotEmpty() -> "Approving also lets $appName use Hisar without asking until then. It does not unlock Hisar on your Mac."
+            else -> "Approving lets this one request continue; it does not unlock Hisar on your Mac."
         }
 
     val detailLine: String
@@ -137,6 +148,7 @@ data class PhoneApproval(
                     DetailRow("Forwarded from", if (isForwarded) forwardedFromHost else "", true),
                     DetailRow("Terminal", if (terminalName.isEmpty()) "" else "/dev/$terminalName", true),
                     DetailRow("Allows", allowance, false),
+                    DetailRow("Lasts", lifetime, false, isCompact = true),
                 )
             }
             return allCandidate.filter { it.value.isNotEmpty() }

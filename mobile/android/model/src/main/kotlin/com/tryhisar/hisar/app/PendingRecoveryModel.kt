@@ -46,6 +46,7 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         }
     }
 
+    /** Shows the records when they appear where there were none, unless [isOpening] is false, as for a clean sign-up. */
     suspend fun refresh(isOpening: Boolean = true, operationID: String? = null) {
         val listing = context.attempt {
             try {

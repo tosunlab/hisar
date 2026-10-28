@@ -53,6 +53,19 @@ struct PendingApprovalCard: View {
             .buttonStyle(.plain)
             .accessibilityHint("Shows the request's details")
             .accessibilityIdentifier("pending-approval-\(approval.requestID)")
+            if !approval.appWarning.isEmpty {
+                Label {
+                    Text(approval.appWarning)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.themeWarning)
+                }
+                .font(.subheadline)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("pending-approval-warning-\(approval.requestID)")
+            }
             if approval.isRememberable {
                 Toggle(approval.rememberLabel, isOn: $isRemembered)
                     .font(.subheadline)

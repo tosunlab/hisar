@@ -106,7 +106,7 @@ struct SettingsView: View {
                 Section {
                     NavigationLink(value: SettingsDestination.people) {
                         Label("People", systemImage: "person.2")
-                            .badge(model.receivedInvitationCount)
+                            .badge(model.peopleInvitationCount)
                     }
                     .accessibilityIdentifier("open-people")
                     NavigationLink(value: SettingsDestination.organizations) {
@@ -289,12 +289,12 @@ struct AccountView: View {
         }
         .applyThemedListStyle()
         .navigationTitle("Account")
-        .confirmationDialog("Sign out of Hisar on this iPhone?", isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
+        .confirmationDialog(AccountLifecycleLogic.signOutTitle, isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) {
                 Task { await model.signOut() }
             }
         } message: {
-            Text("You will need your Secret Key and master password to sign in again.")
+            Text(AccountLifecycleLogic.signOutMessage)
         }
         .sheet(isPresented: $isExportShown) {
             ExportDataView()
@@ -797,7 +797,7 @@ struct NotificationSettingsView: View {
         if notifications.authorization == .allowed && !notifications.settings.isServerSending {
             return "The Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
         }
-        return "A notification only says what kind of thing happened, never what or who it is about. Open and unlock Hisar to see the details. Hisar's push relay, Apple and the Hisar server see when a notification is sent, but not what it is about."
+        return PushNotificationsModel.privacyExplanation
     }
 }
 

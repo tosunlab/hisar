@@ -77,7 +77,7 @@ func describeAgentAction(request clisocket.AgentApprovalRequest) string {
 	return "use Hisar"
 }
 
-func describeGrantScope(request clisocket.AgentApprovalRequest) string {
+func describeGrantScope(request clisocket.AgentApprovalRequest, agentName string) string {
 	switch request.Kind {
 	case clisocket.AgentRequestCode:
 		return fmt.Sprintf("A longer choice covers only the one-time code of “%s”.", request.RevealedName)
@@ -87,9 +87,9 @@ func describeGrantScope(request clisocket.AgentApprovalRequest) string {
 		return "A longer choice covers only the chosen login at " + request.SignIn.Website + "."
 	}
 	if len(request.SecretNames) == 1 {
-		return "A longer choice covers only this secret."
+		return "A longer choice lets " + agentName + " run any command with this secret, in any folder, without asking again."
 	}
-	return "A longer choice covers only these secrets."
+	return "A longer choice lets " + agentName + " run any command with these secrets, in any folder, without asking again."
 }
 
 type agentChoice struct {
@@ -190,7 +190,6 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 	}
 	if len(event.GrantDurations) > 0 {
 		event.GrantDuration = string(clisocket.AgentGrantOnce)
-		event.GrantScope = describeGrantScope(request)
 		event.GrantHolderScope = string(request.GrantHolderScope)
 	}
 	if signIn := request.SignIn; signIn != nil {
@@ -207,6 +206,9 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 		case strings.EqualFold(event.AppName, agentName):
 			event.AppName = ""
 		}
+	}
+	if len(event.GrantDurations) > 0 {
+		event.GrantScope = describeGrantScope(request, event.AgentName)
 	}
 	if request.Kind == clisocket.AgentRequestReveal {
 		event.Warning = fmt.Sprintf("The value will be visible to %s and can end up in its transcript and logs.", event.AgentName)
@@ -274,6 +276,9 @@ func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent, reques
 	}
 	if event.Purpose == clisocket.AgentRequestConnect {
 		description.CommandLine = event.ClientPath
+	}
+	if event.IsConnectionApproval {
+		description.Lifetime = fmt.Sprintf("until %d minutes after the last request from %s, or until Hisar locks", int(clisocket.DefaultApprovalLifetime/time.Minute), event.AgentName)
 	}
 	if event.WorkingDirectory != "" {
 		description.RepositoryPath = event.WorkingDirectory

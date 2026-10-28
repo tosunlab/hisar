@@ -13,7 +13,7 @@ struct ItemListView: View {
     @State private var newName = ""
     @State private var isLeaveConfirmationShown = false
     @State private var blockedReason: String?
-    @State private var issueToDelete: ReadIssue?
+    @State private var issueToDelete: RecoveryDeletionReview?
     @State private var issueToRepair: ReadIssue?
     @State private var refusal: Refusal?
     @State private var refreshFailure: String?
@@ -59,7 +59,9 @@ struct ItemListView: View {
                                 Button("Repair vault name") { newName = ""; issueToRepair = issue; isRenameShown = true }
                             }
                             if issue.canDelete {
-                                Button("Delete unreadable data…", role: .destructive) { issueToDelete = issue }
+                                Button(issue.itemId == nil ? "Delete vault…" : "Delete unreadable data…", role: .destructive) {
+                                    issueToDelete = RecoveryDeletionReview(vault: vault, issue: issue)
+                                }
                             }
                         }
                     }
@@ -189,14 +191,9 @@ struct ItemListView: View {
         } message: {
             Text(blockedReason ?? "")
         }
-        .alert("Permanently delete unreadable data?", isPresented: Binding(get: { issueToDelete != nil }, set: { if !$0 { issueToDelete = nil } })) {
-            Button("Cancel", role: .cancel) { issueToDelete = nil }
-            Button("Permanently delete", role: .destructive) {
-                if let issue = issueToDelete { Task { await model.deleteUnreadableRecord(issue) } }
-                issueToDelete = nil
-            }
-        } message: {
-            Text(issueToDelete?.itemId == nil ? "This deletes the vault and all its items on every device. This cannot be undone." : "This deletes this unreadable item on every device. This cannot be undone.")
+        .sheet(item: $issueToDelete) { review in
+            RecoveryDeletionSheet(review: review)
+                .environmentObject(model)
         }
         .confirmationDialog("Leave “\(vault?.name ?? "this vault")”?", isPresented: $isLeaveConfirmationShown, titleVisibility: .visible) {
             Button("Leave vault", role: .destructive) {

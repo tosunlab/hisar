@@ -81,6 +81,11 @@ describe("BrowserPairingModal", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="pairing-code"]').text().replace(/\s/g, "")).toBe("482913");
     expect(wrapper.text()).toContain("Pair Chrome with Hisar?");
+    expect(wrapper.text()).toContain(
+      "Lets the Hisar extension browse your vaults, reveal and copy supported item fields, fill logins, cards, identities and addresses, and save new items while Hisar is unlocked.",
+    );
+    expect(wrapper.text()).toContain("This browser stays paired after Hisar locks. Remove it in Settings → Browser.");
+    expect(wrapper.text()).not.toContain("fill and save logins");
     await wrapper.find('[data-testid="cancel-pairing"]').trigger("click");
     expect(api.cancelBrowserPairing).toHaveBeenCalled();
     expect(wrapper.find('[data-testid="browser-pairing"]').exists()).toBe(false);
@@ -109,7 +114,7 @@ describe("BrowserPairingModal", () => {
     vi.useFakeTimers();
     store.browserPairing = { browser: "Arc", code: "111222", expiresAt: new Date(Date.now() + 2_000).toISOString() };
     const wrapper = mount(BrowserPairingModal);
-    expect(wrapper.text()).toContain("Expires in 0:02");
+    expect(wrapper.text()).toContain("Pairing code expires in 0:02");
     await vi.advanceTimersByTimeAsync(3_000);
     expect(wrapper.find('[data-testid="browser-pairing"]').exists()).toBe(false);
   });

@@ -8,7 +8,7 @@ import type { createApiMock } from "../testing";
 
 vi.mock("../api", async () => {
   const testing = await vi.importActual<{ createApiMock: typeof createApiMock }>("../testing");
-  return { api: testing.createApiMock(), getErrorMessage: String };
+  return { api: testing.createApiMock(), getErrorMessage: String, createEmptyItem: () => ({ id: "", title: "", username: "", urls: [], password: "", notes: "", fields: [] }) };
 });
 vi.mock("@wailsio/runtime", () => ({ Events: { On: () => () => undefined } }));
 

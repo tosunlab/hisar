@@ -18,6 +18,7 @@ struct RootView: View {
                 LockView()
             case .unlocked:
                 MainTabView()
+                    .id("\(model.status.server)\n\(model.status.email)")
             case .updateRequired(let requirement):
                 UpdateRequiredView(requirement: requirement, isChecking: model.isCheckingMinimumVersion) {
                     await model.checkMinimumVersion()
@@ -123,6 +124,23 @@ struct MainTabView: View {
             .accessibilityIdentifier("tab-settings")
             Tab(value: AppModel.Tab.search, role: .search) {
                 SearchView()
+            }
+        }
+        .safeAreaInset(edge: .top) {
+            if let message = model.editorRecoveryMessage {
+                VStack {
+                    Text(message)
+                    Button("Recover a copy") { model.recoverEditorCopy() }
+                        .disabled(!model.allVault.contains(where: AppModel.isWritableVault))
+                    Button("Discard draft", role: .destructive) { model.discardEditor() }
+                }
+                .padding()
+            }
+        }
+        .sheet(isPresented: $model.isRestoredEditorShown) {
+            if let draft = model.retainedEditor {
+                ItemEditorView(vaultID: draft.sourceVaultID, originalItem: draft.originalItem, newCategory: draft.item.category) { _, _ in }
+                    .environmentObject(model)
             }
         }
         .onChange(of: model.selectedTab) { _, _ in model.reportActivity() }

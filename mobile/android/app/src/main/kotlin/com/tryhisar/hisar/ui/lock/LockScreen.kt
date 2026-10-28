@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.model.AccountLifecycleLogic
 import com.tryhisar.hisar.ui.components.ClearSection
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormRow
@@ -94,8 +95,8 @@ fun LockScreen(model: AppModel) {
     if (isSignOutConfirmationShown) {
         AlertDialog(
             onDismissRequest = { isSignOutConfirmationShown = false },
-            title = { Text("Sign out of Hisar on this device?") },
-            text = { Text("You will need your Secret Key and master password to sign in again.") },
+            title = { Text(AccountLifecycleLogic.SIGN_OUT_TITLE) },
+            text = { Text(AccountLifecycleLogic.LOCKED_SIGN_OUT_MESSAGE) },
             confirmButton = {
                 PlainButton("Sign out", {
                     isSignOutConfirmationShown = false
@@ -234,6 +235,9 @@ fun UnlockPanel(
                 modifier = Modifier.focusRequester(focusRequester),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { submit() }),
+                label = "Master password",
+                errorMessage = errorMessage,
+                announceErrorOnBlur = false,
             )
         }
         ClearSection {

@@ -17,6 +17,9 @@ const masterPassword = ref("");
 const resultMessage = ref("");
 const authentication = ref<"biometric" | "password">("biometric");
 const isPasswordNeeded = computed(() => authentication.value === "password" || !exportOptions.value.isBiometricAvailable);
+const validationAnnouncement = ref("");
+const isPassphraseTooShort = computed(() => format.value === "encrypted" && passphrase.value !== "" && [...passphrase.value].length < exportOptions.value.minPassphraseLength);
+const isPassphraseMismatched = computed(() => format.value === "encrypted" && !isPassphraseTooShort.value && repeatedPassphrase.value !== "" && repeatedPassphrase.value !== passphrase.value);
 
 const passphraseProblem = computed(() => {
   if (format.value !== "encrypted") {
@@ -102,6 +105,9 @@ onMounted(async () => {
           aria-label="Export passphrase"
           :placeholder="`Export passphrase (at least ${exportOptions.minPassphraseLength} characters)`"
           data-testid="export-passphrase"
+          :aria-invalid="isPassphraseTooShort"
+          :aria-describedby="isPassphraseTooShort ? 'export-passphrase-problem' : undefined"
+          @blur="validationAnnouncement = isPassphraseTooShort ? passphraseProblem : ''"
         />
         </CredentialField>
         <CredentialField secret-name="repeated export passphrase">
@@ -113,9 +119,13 @@ onMounted(async () => {
           aria-label="Repeat export passphrase"
           placeholder="Repeat export passphrase"
           data-testid="export-passphrase-repeat"
+          :aria-invalid="isPassphraseMismatched"
+          :aria-describedby="isPassphraseMismatched ? 'export-passphrase-problem' : undefined"
+          @blur="validationAnnouncement = isPassphraseMismatched ? passphraseProblem : ''"
         />
         </CredentialField>
-        <p v-if="passphraseProblem" class="problem" data-testid="export-passphrase-problem">{{ passphraseProblem }}</p>
+        <p v-if="passphraseProblem" id="export-passphrase-problem" class="problem" data-testid="export-passphrase-problem">{{ passphraseProblem }}</p>
+        <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ validationAnnouncement }}</p>
         <p class="muted">Keep the passphrase somewhere safe. Hisar can't recover it, and without it the export can't be opened.</p>
       </div>
       <label class="setting choice">

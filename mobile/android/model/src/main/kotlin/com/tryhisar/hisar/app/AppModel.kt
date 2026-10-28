@@ -80,9 +80,6 @@ class AppModel(
     val isCheckingMinimumVersion: StateFlow<Boolean> = mutableIsCheckingMinimumVersion.asStateFlow()
     val notice: StateFlow<Notice?> = mutableNotice.asStateFlow()
 
-    /** An editor some other surface asks the app to open, such as AutoFill's save prompt; the Vaults tab shows it. */
-    val requestedEditor = MutableStateFlow<EditorRequest?>(null)
-
     /**
      * A Settings screen something outside the tab asks it to show: AutoFill for the system's Autofill service screen,
      * Devices for a tapped security alert. The Settings tab shows it and clears it.
@@ -102,7 +99,7 @@ class AppModel(
     val signIn = SignInModel(this, isPlainHttpAllowed)
     val lock = LockModel(this)
     val settings = SettingsModel(this)
-    val pendingRecovery = PendingRecoveryModel(this) { signIn.finishNewSecretKey() }
+    val pendingRecovery = PendingRecoveryModel(this) { signIn.offerBiometricUnlock() }
     val credentialImport = CredentialImportModel(this)
     val itemEditor = ItemEditorModel(this)
     val favorites = FavoritesModel(this)
@@ -110,8 +107,8 @@ class AppModel(
     val item = ItemModel(this)
     val vaults = VaultsModel(this)
     val invitations = InvitationsModel(this)
-    val navigation = VaultsNavigation(this, requestedEditor, selectedTab)
-    val sharing = SharingModel(this, vaults)
+    val navigation = VaultsNavigation(this, selectedTab, itemEditor)
+    val sharing = SharingModel(this, vaults, invitations)
     val organizations = OrganizationsModel(this, invitations)
     val approvals = ApprovalsModel(this, now)
     val notifications = NotificationsModel(this, notificationPlatform)
@@ -370,6 +367,7 @@ class AppModel(
                     allPasskey = result.allPasskey ?: data.allPasskey,
                     allReceivedInvitation = result.shareInvitations?.allReceived ?: data.allReceivedInvitation,
                     allWaitingInvitation = result.shareInvitations?.allWaiting ?: data.allWaitingInvitation,
+                    allReviewInvitation = result.shareInvitations?.allRequiringReview ?: data.allReviewInvitation,
                     // Offline both fail; the last organizations keep naming the vault groups.
                     allOrganization = result.organizations?.allOrganization ?: data.allOrganization,
                     allOrganizationInvitation = result.organizations?.allInvitation ?: data.allOrganizationInvitation,

@@ -20,7 +20,7 @@ describe("Vault name recovery drafts", () => {
     expect(inputs.map((input) => input.attributes("aria-label"))).toEqual(["New name for personal", "New name for team"]);
     await inputs[0].setValue("Recovered Personal");
     expect((inputs[1].element as HTMLInputElement).value).toBe("");
-    const repairs = () => wrapper.findAll("button").filter((button) => button.text() === "Repair name");
+    const repairs = () => wrapper.findAll("button").filter((button) => button.text() === "Repair vault name");
     expect(repairs().map((button) => button.attributes("disabled") !== undefined)).toEqual([false, true]);
     await inputs[1].setValue("Recovered Team");
     await repairs()[1].trigger("click");
