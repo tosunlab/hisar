@@ -1,6 +1,6 @@
 import XCTest
 
-// scripts/test-ios-ui.sh runs a partner on the command line who accepts every share invitation and completes every share it sent.
+// scripts/test-ios-ui.sh runs a partner (scripts/ui-test-partner.sh) who accepts every share invitation and completes every share it sent.
 final class SharingUITests: HisarUITestCase {
     override func tearDown() {
         XCUIDevice.shared.appearance = .light
