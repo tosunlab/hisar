@@ -319,8 +319,11 @@ class HisarUITestCase: XCTestCase {
         let deferredTitle = app.navigationBars["Save your Secret Key"]
         // One record opens on its own; several need the account chosen first.
         func openRecord() {
-            if !deferredTitle.waitForExistence(timeout: 2) && !phase.exists {
-                waitFor(account, timeout: 60)
+            let opened = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+                deferredTitle.exists || phase.exists || account.exists
+            }, object: nil)
+            XCTAssertEqual(XCTWaiter.wait(for: [opened], timeout: 60), .completed)
+            if !deferredTitle.exists && !phase.exists {
                 account.tap()
             }
         }

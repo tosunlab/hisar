@@ -50,7 +50,7 @@ final class OrganizationUITests: HisarUITestCase {
         app.buttons["vault-members"].tap()
         let platformRow = findElement("vault-team-Platform")
         waitFor(platformRow, timeout: 30)
-        XCTAssertTrue(platformRow.label.contains("Editor"), platformRow.label)
+        XCTAssertTrue(platformRow.staticTexts["Editor"].exists)
         XCTAssertFalse(app.textFields["share-email"].exists, "an organization vault has no Invite by email")
         XCTAssertFalse(app.buttons["give-vault-to-team"].exists, "only admins give the vault to a team")
         saveScreenshot("organization-vault-sharing-member")
@@ -133,7 +133,8 @@ final class OrganizationUITests: HisarUITestCase {
         app.buttons["share-vault"].tap()
         let opsRow = findElement("vault-team-Ops")
         waitFor(opsRow, timeout: 30)
-        XCTAssertTrue(opsRow.label.contains("Owner"), opsRow.label)
+        let role = opsRow.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'team-role-'")).firstMatch
+        XCTAssertEqual(role.value as? String, "Owner")
         XCTAssertTrue(app.buttons["give-vault-to-team"].exists, "admins give the vault to other teams")
         saveScreenshot("organization-vault-sharing-admin")
         app.buttons["vault-sharing-done"].tap()

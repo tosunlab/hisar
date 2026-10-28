@@ -25,7 +25,7 @@ final class WideLayoutUITests: HisarUITestCase {
         choose("new-login", from: "new-menu")
         type("Chosen vault item", into: app.textFields["editor-title"])
         app.buttons["editor-vault"].tap()
-        app.buttons["Other vault"].tap()
+        app.buttons["Shared vault / Other vault"].tap()
         app.buttons["editor-save"].tap()
         waitFor(app.navigationBars["Chosen vault item"])
         if !isWide {

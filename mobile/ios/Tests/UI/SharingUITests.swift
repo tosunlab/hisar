@@ -64,7 +64,7 @@ final class SharingUITests: HisarUITestCase {
         app.buttons["move-item-confirm"].tap()
         XCTAssertTrue(app.buttons["move-item-confirm"].waitForNonExistence(timeout: 30))
         app.buttons["edit-item"].tap()
-        app.buttons["Reveal password"].tap()
+        app.cells.containing(.secureTextField, identifier: "editor-password").buttons["Reveal password"].firstMatch.tap()
         XCTAssertEqual(app.textFields["editor-password"].value as? String, "retained-password")
         app.buttons["editor-cancel"].tap()
         goBack()
