@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/project"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/service"
@@ -220,6 +223,96 @@ func TestInviteDeepLinkCarriesEmail(t *testing.T) {
 			}
 			if query.Has("invitation") != (test.source != "") {
 				t.Errorf("invitation parameter present = %v, source = %q", query.Has("invitation"), test.source)
+			}
+		})
+	}
+}
+
+func TestInvitePageLeadsWithOpenInHisarOnPhones(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(context.Background(), "ada+phone@example.com", apitypes.RoleAdmin, nil))
+	deepLink := "hisar://invite/" + invite.Token + "?email=ada%2Bphone%40example.com&server=" + url.QueryEscape(baseURL)
+	type buttonLink struct {
+		label string
+		url   string
+		style string
+	}
+	buttonPattern := regexp.MustCompile(`<a class="button (primary|secondary)" href="([^"]+)"[^>]*>([^<]+)</a>`)
+	for _, test := range []struct {
+		name         string
+		userAgent    string
+		phoneLabel   string
+		instructions string
+	}{
+		{
+			name:         "iPhone",
+			userAgent:    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
+			phoneLabel:   "iPhone build instructions",
+			instructions: project.GitHubURL + "/blob/main/docs/docs/apps/ios.md",
+		},
+		{
+			name:         "Android",
+			userAgent:    "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/130.0.0.0 Mobile Safari/537.36",
+			phoneLabel:   "Android build instructions",
+			instructions: project.GitHubURL + "/blob/main/docs/docs/apps/mobile.md",
+		},
+		{name: "desktop", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36"},
+		{name: "missing"},
+		{name: "unknown", userAgent: "UnknownBrowser/1.0"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request, err := http.NewRequest(http.MethodGet, baseURL+"/invite/"+invite.Token, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Header.Set("User-Agent", test.userAgent)
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			bodyBytes, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := string(bodyBytes)
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("invite page: %d %s", response.StatusCode, body)
+			}
+			checkInvitePageHeader(t, response, body)
+			var links []buttonLink
+			for _, match := range buttonPattern.FindAllStringSubmatch(body, -1) {
+				links = append(links, buttonLink{label: html.UnescapeString(match[3]), url: html.UnescapeString(match[2]), style: match[1]})
+			}
+			want := []buttonLink{
+				{label: "Download for Mac", url: "https://tryhisar.com/download", style: "primary"},
+				{label: "Download for Linux", url: "https://tryhisar.com/download#linux", style: "secondary"},
+				{label: "Open in Hisar", url: deepLink, style: "secondary"},
+			}
+			if test.phoneLabel != "" {
+				want = []buttonLink{
+					{label: "Open in Hisar", url: deepLink, style: "primary"},
+					{label: test.phoneLabel, url: test.instructions, style: "secondary"},
+					{label: "Other downloads", url: "https://tryhisar.com/download", style: "secondary"},
+					{label: "Download for Mac", url: "https://tryhisar.com/download", style: "secondary"},
+					{label: "Download for Linux", url: "https://tryhisar.com/download#linux", style: "secondary"},
+				}
+			}
+			if !slices.Equal(links, want) {
+				t.Errorf("invite actions = %#v, want %#v", links, want)
+			}
+			guidance := "Need Hisar? See how to build and install it on your phone."
+			if strings.Contains(body, guidance) != (test.phoneLabel != "") {
+				t.Errorf("phone installation guidance present = %v", strings.Contains(body, guidance))
+			}
+			for _, expected := range []string{
+				`data-testid="invitee-email">ada&#43;phone@example.com</strong>`,
+				`data-testid="invite-code">` + invite.Token + `</code>`,
+				`data-testid="signup-command">hisar signup ` + baseURL + `/invite/` + invite.Token + `</code>`,
+			} {
+				if !strings.Contains(body, expected) {
+					t.Errorf("invite page lacks %q", expected)
+				}
 			}
 		})
 	}
