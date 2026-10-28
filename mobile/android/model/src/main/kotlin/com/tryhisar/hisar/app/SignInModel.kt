@@ -184,6 +184,12 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
         return true
     }
 
+    suspend fun revealNewAccountSecretKey(): String? {
+        val epoch = kitEpoch
+        val revealed = context.perform(isBusyShown = false) { it.revealNewAccountSecretKey() } ?: return null
+        return revealed.secretKey.takeIf { epoch == kitEpoch && context.status.value.isUnlocked }
+    }
+
     suspend fun exportNewAccountEmergencyKit(): EmergencyKitExport? {
         val directory = File(System.getProperty("java.io.tmpdir"), "${SettingsModel.HANDOFF_FOLDER_NAME}/EmergencyKit-${UUID.randomUUID()}")
         val epoch = kitEpoch

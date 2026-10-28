@@ -36,6 +36,9 @@ toolbar or tabs. **Not now** hides it until Hisar next locks. A master-password 
 postponed kit until the next lock. After a biometric unlock, opening the kit asks for one biometric check instead.
 If Hisar locks while the kit is open, unlock to return to the same kit screen.
 
+The kit screen shows the Secret Key and its copy button without waiting for the Emergency Kit file. If preparing the file
+fails, the Secret Key stays on screen and **Try again** prepares the file again.
+
 On iPhone, copying the Secret Key or cancelling the share sheet does not confirm delivery. **I saved my Emergency Kit**
 appears after a completed Save to Files, print or share. Keep a copy you can reach without the phone.
 

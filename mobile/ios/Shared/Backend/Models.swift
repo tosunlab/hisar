@@ -1682,6 +1682,10 @@ struct Device: Codable, Identifiable, Hashable {
     }
 }
 
+struct RevealedSecretKey: Codable, Equatable {
+    var secretKey: String
+}
+
 struct EmergencyKitExport: Codable, Equatable {
     var secretKey: String
     var emergencyKitPath: String

@@ -488,6 +488,13 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    func revealNewAccountSecretKey() async -> String? {
+        let epoch = lifecycleEpoch
+        let revealed = await perform(isBusyShown: false) { try $0.revealNewAccountSecretKey() }
+        guard let revealed, epoch == lifecycleEpoch else { return nil }
+        return revealed.secretKey
+    }
+
     func exportNewAccountEmergencyKit() async -> EmergencyKitExport? {
         let epoch = lifecycleEpoch
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)

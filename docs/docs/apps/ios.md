@@ -57,7 +57,8 @@ At accessibility text sizes, sign-in modes use stacked buttons and a wrapping he
 The Emergency Kit scanner explains denied or restricted camera access. **Open Settings** is available for denied access.
 Returning from Settings rechecks permission before starting the camera.
 If preparing the Emergency Kit fails, the kit screen offers **Try again**, which uses a fresh temporary folder. The Secret Key
-and **Copy** appear with the prepared kit. Only a completed non-copy handoff records delivery and shows **I saved my Emergency Kit**.
+and **Copy** appear without waiting for the kit and stay when preparing it fails. Only a completed non-copy handoff records
+delivery and shows **I saved my Emergency Kit**.
 Devices distinguishes a failed first fetch from a successful empty list and offers **Retry**.
 A failed refresh keeps the last loaded list with a warning that it has not refreshed; pull-to-refresh remains available.
 Vaults and item lists show failed favorite, rename, and invitation actions on the screen where they began.

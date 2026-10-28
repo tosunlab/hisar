@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.app
 
+import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.InviteLink
@@ -10,6 +11,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -40,6 +42,29 @@ class SignInModelTests {
         assertEquals(FakeBackend.NEW_ACCOUNT_OPERATION_ID, model.status.value.emergencyKit?.operationId)
         model.signIn.dismissNewSecretKey()
         assertNull(model.signIn.newAccountStep.value)
+    }
+
+    @Test
+    fun testNewAccountKitRetryKeepsTheKeyAndUsesAFreshDirectory() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startModel()
+        model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        harness.backend.newAccountEmergencyKitError = BackendError("Temporary storage is unavailable.")
+        val secretKey = model.signIn.revealNewAccountSecretKey()
+        val failed = model.signIn.exportNewAccountEmergencyKit()
+        assertEquals(FakeBackend.SECRET_KEY, secretKey)
+        assertNull(failed)
+        assertNotNull(model.errorMessage.value)
+        assertEquals(NewAccountStep.SaveSecretKey, model.signIn.newAccountStep.value)
+        harness.backend.newAccountEmergencyKitError = null
+        val export = assertNotNull(model.signIn.exportNewAccountEmergencyKit())
+        try {
+            assertNotEquals(harness.backend.allNewAccountEmergencyKitDirectory[0], harness.backend.allNewAccountEmergencyKitDirectory[1])
+            assertEquals(FakeBackend.SECRET_KEY, export.secretKey)
+            assertNull(model.errorMessage.value)
+        } finally {
+            File(export.emergencyKitPath).parentFile?.deleteRecursively()
+        }
     }
 
     @Test

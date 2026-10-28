@@ -481,6 +481,15 @@ class FakeBackend: VaultBackend {
         return status
     }
 
+    func revealNewAccountSecretKey() throws -> RevealedSecretKey {
+        record("revealNewAccountSecretKey")
+        try requireUnlocked()
+        guard isNewAccountSecretKeyRetained, status.emergencyKit?.isAuthorized == true else {
+            throw BackendError(message: "This account's setup needs finishing from the account recovery screen")
+        }
+        return RevealedSecretKey(secretKey: Self.secretKey)
+    }
+
     func exportNewAccountEmergencyKit(directory: URL) throws -> EmergencyKitExport {
         record("exportNewAccountEmergencyKit")
         allNewAccountEmergencyKitDirectory.append(directory)

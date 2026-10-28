@@ -108,6 +108,10 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.authorizeNewAccountEmergencyKitWithBiometric() }
     }
 
+    func revealNewAccountSecretKey() throws -> RevealedSecretKey {
+        try decode(RevealedSecretKey.self, from: callReturningText { hisar.revealNewAccountSecretKey($0) })
+    }
+
     func recordNewAccountEmergencyKitDelivery(exportID: String, method: String) throws {
         try callReturningNothing { try hisar.recordNewAccountEmergencyKitDelivery(exportID, method: method) }
     }

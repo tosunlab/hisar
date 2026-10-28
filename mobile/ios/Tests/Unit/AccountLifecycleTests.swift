@@ -24,8 +24,11 @@ final class AccountLifecycleTests: XCTestCase {
         await model.start { self.backend }?.value
         _ = await model.signUpWithoutInvite(server: "https://hisar.example.com", email: "new@example.com", name: "New", password: FakeBackend.password)
         backend.newAccountEmergencyKitError = BackendError(message: "Temporary storage is unavailable.")
+        let secretKey = await model.revealNewAccountSecretKey()
         let failed = await model.exportNewAccountEmergencyKit()
+        XCTAssertEqual(secretKey, FakeBackend.secretKey)
         XCTAssertNil(failed)
+        XCTAssertNotNil(model.errorMessage)
         XCTAssertEqual(model.onboardingStep, .kit)
         XCTAssertEqual(backend.allPendingRecovery.count, 1)
         XCTAssertFalse(backend.allPendingRecovery[0].kitSaved)

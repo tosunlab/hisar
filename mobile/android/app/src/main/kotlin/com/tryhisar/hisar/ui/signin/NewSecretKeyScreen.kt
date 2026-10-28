@@ -72,7 +72,9 @@ fun NewSecretKeyScreen(model: AppModel, copySecret: (String) -> Boolean) {
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var isCopied by remember { mutableStateOf(false) }
+    var secretKey by remember { mutableStateOf<String?>(null) }
     var export by remember { mutableStateOf<EmergencyKitExport?>(null) }
+    var isPreparing by remember { mutableStateOf(true) }
     var message by remember { mutableStateOf<String?>(null) }
     var password by remember { mutableStateOf("") }
     var isPasswordShown by remember { mutableStateOf(false) }
@@ -92,9 +94,18 @@ fun NewSecretKeyScreen(model: AppModel, copySecret: (String) -> Boolean) {
         scope.launch { model.signIn.authorizeEmergencyKit(if (withBiometric) null else entered) }
     }
     BackHandler { if (!isBusy) leave() }
+    suspend fun prepareKit() {
+        isPreparing = true
+        model.errorMessage.value = null
+        export = model.signIn.exportNewAccountEmergencyKit()
+        isPreparing = false
+    }
     LaunchedEffect(kit.operationId, kit.isAuthorized) {
         model.errorMessage.value = null
-        if (kit.isAuthorized) export = model.signIn.exportNewAccountEmergencyKit()
+        if (kit.isAuthorized) {
+            secretKey = model.signIn.revealNewAccountSecretKey()
+            prepareKit()
+        }
     }
     DisposableEffect(Unit) {
         onDispose { latestExport?.let(model.settings::removeEmergencyKit) }
@@ -151,12 +162,12 @@ fun NewSecretKeyScreen(model: AppModel, copySecret: (String) -> Boolean) {
                     style = HisarType.body, color = HisarTheme.colors.label,
                 )
             }
-            export?.let { current ->
+            secretKey?.let { key ->
                 FormSection(header = "Secret Key") {
                     FormRow {
                         SelectionContainer {
-                            FlowRow(Modifier.clearAndSetSemantics { text = AnnotatedString(current.secretKey); testTag = "new-secret-key" }) {
-                                for (group in current.secretKey.split("(?<=-)".toRegex())) {
+                            FlowRow(Modifier.clearAndSetSemantics { text = AnnotatedString(key); testTag = "new-secret-key" }) {
+                                for (group in key.split("(?<=-)".toRegex())) {
                                     Text(group, style = HisarType.title3Monospaced, color = HisarTheme.colors.label)
                                 }
                             }
@@ -165,29 +176,31 @@ fun NewSecretKeyScreen(model: AppModel, copySecret: (String) -> Boolean) {
                     RowDivider()
                     FormButtonRow(
                         if (isCopied) "Copied · clears in about 2 minutes" else "Copy Secret Key",
-                        onClick = { if (copySecret(current.secretKey)) { isCopied = true; view.performConfirmHaptic() } },
+                        onClick = { if (copySecret(key)) { isCopied = true; view.performConfirmHaptic() } },
                         testTag = "copy-new-secret-key", icon = if (isCopied) Icons.Filled.Check else Icons.Outlined.ContentCopy,
                     )
                 }
-                FormSection(header = "Emergency Kit") {
-                    FormRow {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("The Emergency Kit holds your Secret Key and has a space to write your master password.")
-                            Text("Keep it where you can get to it without this device: print it, or save it to storage you can open from another device. Don't keep the only copy in Hisar.")
-                        }
+            }
+            FormSection(header = "Emergency Kit") {
+                FormRow {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("The Emergency Kit holds your Secret Key and has a space to write your master password.")
+                        Text("Keep it where you can get to it without this device: print it, or save it to storage you can open from another device. Don't keep the only copy in Hisar.")
                     }
-                    RowDivider()
-                    EmergencyKitRows(
+                }
+                RowDivider()
+                val current = export
+                when {
+                    current != null -> EmergencyKitRows(
                         model, current.emergencyKitPath, "new-secret-key-save-kit", "new-secret-key-print-kit", "new-secret-key-share-kit",
                         onHandoff = { method -> scope.launch { if (model.signIn.recordEmergencyKitDelivery(current, method)) message = null } },
                         isSaveProminent = kit.savedBy.isEmpty(),
                         onMessage = { message = it },
                     )
-                    message?.let { FormRow { Text(it, Modifier.testTag("new-secret-key-hint")) } }
+                    isPreparing -> FormRow { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) }
+                    else -> FormButtonRow("Try again", { scope.launch { prepareKit() } }, testTag = "new-secret-key-retry-kit")
                 }
-            }
-            if (export == null && errorMessage == null) {
-                ClearSection { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp) }
+                message?.let { FormRow { Text(it, Modifier.testTag("new-secret-key-hint")) } }
             }
             if (kit.savedBy.isNotEmpty()) {
                 FormSection {

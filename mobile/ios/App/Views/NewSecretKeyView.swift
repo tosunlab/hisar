@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NewSecretKeyView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var secretKey: String?
     @State private var export: EmergencyKitExport?
     @State private var password = ""
     @State private var isPasswordShown = false
@@ -51,12 +52,17 @@ struct NewSecretKeyView: View {
             .navigationTitle(kit?.kind == "replace-secret-key" ? "Save your new Emergency Kit" : "Save your Emergency Kit")
             .navigationBarTitleDisplayMode(.inline)
             .task(id: isAuthorized) {
-                if isAuthorized { await prepareKit() }
+                guard isAuthorized else { return }
+                isPreparing = true
+                secretKey = await model.revealNewAccountSecretKey()
+                guard !Task.isCancelled else { return }
+                await prepareKit()
             }
             .onDisappear {
                 preparationGeneration += 1
                 if let export { model.removeEmergencyKit(export) }
                 export = nil
+                secretKey = nil
                 password = ""
             }
         }
@@ -69,8 +75,8 @@ struct NewSecretKeyView: View {
                  ? "Your Secret Key changed, so your old Emergency Kit no longer works. Save the new one."
                  : "Hisar created a Secret Key for your account. You need it and your master password to sign in on a new device. You don't need to remember it.")
         }
-        if let export {
-            SecretKeySection(secretKey: export.secretKey, valueIdentifier: "new-secret-key", copyIdentifier: "new-secret-key-copy", onCopy: model.reportActivity)
+        if let secretKey {
+            SecretKeySection(secretKey: secretKey, valueIdentifier: "new-secret-key", copyIdentifier: "new-secret-key-copy", onCopy: model.reportActivity)
         }
         Section {
             Text("The Emergency Kit holds your Secret Key and has a space to write your master password.")

@@ -89,6 +89,9 @@ open class FakeBackend : VaultBackend {
     var pendingSignUpResult: SignUpResult? = null
     /** Whether the backend still keeps the new account's Secret Key, the proof Save your Secret Key acts on. */
     var isNewAccountSecretKeyKept = false
+    /** While set, exportNewAccountEmergencyKit fails with it, as when the kit PDF cannot be written. */
+    var newAccountEmergencyKitError: BackendError? = null
+    val allNewAccountEmergencyKitDirectory = mutableListOf<File>()
     /** The server signUpWithoutInvite was last asked to create an account on; null until it is called. */
     var signUpWithoutInviteServer: String? = null
     /** While set, signUpWithoutInvite fails with this sentence: the server's admin has not opened registration. */
@@ -504,6 +507,8 @@ open class FakeBackend : VaultBackend {
 
     override fun exportNewAccountEmergencyKit(directory: File): EmergencyKitExport {
         record("exportNewAccountEmergencyKit")
+        allNewAccountEmergencyKitDirectory += directory
+        newAccountEmergencyKitError?.let { throw it }
         val index = findNewAccountRecovery()
         val kit = writeEmergencyKit(directory)
         val id = UUID.randomUUID().toString()
