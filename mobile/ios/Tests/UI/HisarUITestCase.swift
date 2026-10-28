@@ -163,7 +163,7 @@ class HisarUITestCase: XCTestCase {
         let lists = app.collectionViews
         let list = lists.element(boundBy: max(0, lists.count - 1))
         for _ in 0..<8 {
-            if element.waitForExistence(timeout: 1) && element.isHittable {
+            if element.waitForExistence(timeout: 1) && element.isHittable && isClearOfTabBar(element) {
                 return
             }
             guard list.exists else { break }
@@ -173,6 +173,13 @@ class HisarUITestCase: XCTestCase {
                 withVelocity: .slow, thenHoldForDuration: 0.1)
         }
         waitFor(element, file: file, line: line)
+    }
+
+    // The tab bar floats over the end of the list. A row partly under it still counts as hittable, but a tap there goes to
+    // the bar: in job 122902965203 the Add member menu under it never opened.
+    private func isClearOfTabBar(_ element: XCUIElement) -> Bool {
+        let tabBar = app.tabBars.firstMatch
+        return !(tabBar.exists && tabBar.isHittable) || element.frame.maxY <= tabBar.frame.minY
     }
 
     // On a slow simulator the keyboard focus comes a moment after the tap, and typing before it fails, so it waits for the focus
@@ -236,8 +243,9 @@ class HisarUITestCase: XCTestCase {
             XCTFail("\(element) would show its placeholder \"\(element.placeholderValue ?? "")\" whether or not \"\(text)\" is in; type something else", file: file, line: line)
             return
         }
-        // Formatting and live search redraw after each key, before the next key can safely arrive.
-        if showing == nil && ((normalize != nil && !typedText.isSecure) || element.elementType == .searchField) {
+        // Formatting and live search redraw after each key, before the next key can safely arrive. A key typed into a secure
+        // card number while it redraws is lost (job 122902964946 kept 14 of 16 digits).
+        if showing == nil && (normalize != nil || element.elementType == .searchField) {
             var entered = String(typedText.expected.dropLast(text.count))
             for character in text {
                 entered.append(character)
@@ -265,7 +273,9 @@ class HisarUITestCase: XCTestCase {
         return segmented.exists ? segmented : app.otherElements["sign-in-mode"].firstMatch
     }
 
-    func selectSignInMode(_ title: String) {
+    // On a loaded simulator a tap on the mode control can be lost (job 122902965025 stayed in Sign in), so the mode is tapped
+    // until it is selected.
+    func selectSignInMode(_ title: String, file: StaticString = #filePath, line: UInt = #line) {
         let welcome = app.buttons[title == "Create account" ? "welcome-create-account" : "welcome-sign-in"]
         if welcome.waitForExistence(timeout: 2) { welcome.tap(); return }
         for _ in 0..<8 {
@@ -274,9 +284,15 @@ class HisarUITestCase: XCTestCase {
             app.collectionViews.firstMatch.swipeDown()
         }
         let button = signInModeControl.buttons[title]
-        waitFor(button)
-        scrollTo(button)
-        button.tap()
+        waitFor(button, file: file, line: line)
+        scrollTo(button, file: file, line: line)
+        for _ in 0..<3 {
+            button.tap()
+            if waitUntil(timeout: 5, { button.isSelected }) {
+                return
+            }
+        }
+        XCTFail("the \(title) mode was not selected", file: file, line: line)
     }
 
     func handOffEmergencyKit(shareIdentifier: String) {

@@ -162,6 +162,8 @@ accessibility tree and can exhaust a wait after the sheet has already closed. Th
 Formatted fields wait for each character's update before typing the next one.
 Back navigation first selects the frontmost navigation bar, then its back button. A global `BackButton` query can
 select a covered stack's button instead of the visible sheet's back button.
+Scrolling to a row continues until the row ends above the floating tab bar. A row partly under the bar counts as
+hittable, but taps there go to the bar. Switching between Sign in and Create account taps the mode until it is selected.
 
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.
@@ -170,7 +172,8 @@ What the UI tests cover: only the journeys a user depends on end to end, plus th
 logic behind each screen is in the unit tests. `HisarUITests` creates an account from an invite, saves the Emergency
 Kit, adds a login with a one-time code (its password hidden until revealed, copied without revealing, revealed without
 copying; its setup key hidden in the editor until revealed) and a card (number and security code hidden until revealed),
-locks and unlocks with the master password, signs out and signs in again with the Secret Key, and checks the privacy
+locks and unlocks with the master password (a revealed password conceals again when Hisar leaves the foreground and
+when an unlock fails), signs out and signs in again with the Secret Key, and checks the privacy
 cover. `FaceIDUITests` turns on Face ID and unlocks with it (the test enrolls a face in the simulator and posts its
 "matching face" notification). `SharingUITests` shares a new vault, manages its members and invites someone from
 Settings → People. `AccountLifecycleUITests` changes the master password, replaces the Secret Key and deletes the
@@ -193,12 +196,9 @@ An older photo or its error cannot replace a newer choice.
 
 UI tests wait for the Files picker's **Save** button to become tappable before renaming an Emergency Kit.
 They wait for the filename field to disappear after saving, before continuing in Hisar.
-Visible formatted input and live search are entered one character at a time, with each field update observed before the next character.
-Replacing a search query uses the native clear control, waits for it to disappear, and enters the new query through the same synchronized helper.
+Formatted input, concealed card numbers included, and live search are entered one character at a time, with each field update observed before the next character. A concealed field is checked by its count of dots.
 
 `FaceIDUITests` checks that cancelling authentication leaves Hisar locked, focuses the master password field, and shows no error banner.
-`FavoritesUITests` injects its one-shot refresh failure only when the item list requests a manual refresh.
-Background item loads cannot consume that failure. The test checks the retained list, the Retry action, and recovery after retrying.
 
 Notification removal runs off the main thread because the system call can wait for the notification service during a scene transition.
 Returning from another app keeps the interface responsive while Hisar clears its approval reminder and refreshes setup status.
@@ -208,6 +208,8 @@ Returning from another app keeps the interface responsive while Hisar clears its
 The sharing sheet updates its presenting UIKit controller's busy-dismissal policy directly. Updating SwiftUI's
 `interactiveDismissDisabled` preference can recreate the sheet on iOS 27 and discard its form state after an
 invitation succeeds. The UI test checks that the success message and chosen role survive the response.
+Removing a member returns to the members through the sheet's own navigation path. Once a reload drops that member,
+the member page's dismiss action can belong to a replaced view and close the whole sheet.
 
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,

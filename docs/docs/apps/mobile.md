@@ -133,7 +133,8 @@ exit before tests start. Keeping those JVMs alive alongside the emulator can exh
 The instrumented tests keep only the journeys a user depends on end to end and the security checks only a device can
 make; the logic behind each screen is in the JVM tests of `:model`. The journeys: an account with a login and a card,
 lock, unlock and signing in again (`AccountItemFlowUITests`, which also checks what the keyboard and autofill are told
-about secret fields and that the invite link stays out of the saved state), changing the master password and Secret Key
+about secret fields, that the invite link stays out of the saved state, that a failed unlock conceals a revealed
+password, and that a long secret's full-value view offers no selection Copy and copies it as sensitive), changing the master password and Secret Key
 across a process restart and deleting the account (`ui.AccountLifecycleUITests`), biometric unlock
 (`ui.BiometricUITests`), sharing a vault (`SharingUITests`), organizations (`OrganizationUITests`), passkeys through
 Credential Manager (`passkey.PasskeyUITests`), filling a native app and a WebView (`autofill.AutofillServiceUITests`),

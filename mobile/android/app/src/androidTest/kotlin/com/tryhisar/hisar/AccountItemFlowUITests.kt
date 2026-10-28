@@ -1,11 +1,16 @@
 package com.tryhisar.hisar
 
+import android.content.ClipDescription
+import android.content.ClipboardManager
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
@@ -16,10 +21,12 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.core.view.children
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.tryhisar.hisar.platform.targetContext
 import com.tryhisar.hisar.ui.RecordedViewStructure
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -111,6 +118,27 @@ class AccountItemFlowUITests : HisarUITestCase() {
         goBack()
         goBack()
 
+        val longSecret = "0123456789abcdef".repeat(40) + "COMPLETE-END"
+        addLogin(title = "Long secret", username = "long-user", password = longSecret, website = "long.example.com")
+        tap("item-Long secret")
+        tap("reveal-password")
+        tap("view-full-password")
+        waitFor("full-value-text")
+        val fullValue = composeRule.onNode(hasTestTag("full-value-text")).fetchSemanticsNode().config
+        assertEquals(longSecret, fullValue[SemanticsProperties.Text].single().text)
+        assertNull("selecting the full value must not offer an unprotected Copy", fullValue.getOrNull(SemanticsActions.SetSelection))
+        tap("full-value-copy")
+        val clipboard = targetContext.getSystemService(ClipboardManager::class.java)
+        composeRule.waitUntil("the clipboard holds the complete secret", 10_000) {
+            clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString() == longSecret
+        }
+        assertTrue("the full value is copied as sensitive", clipboard.primaryClipDescription?.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE) == true)
+        tap("full-value-close")
+        waitForGone("full-value-text")
+        dismissNotice()
+        goBack()
+        goBack()
+
         choose("new-credit-card", "new-menu")
         type("Visa", "editor-title")
         type("4111111111111111", "editor-card-number")
@@ -128,8 +156,12 @@ class AccountItemFlowUITests : HisarUITestCase() {
 
         tap("lock-now")
         typeSecret("wrong password", "unlock-password")
+        tap("unlock-password-reveal")
+        waitFor(hasContentDescription("Hide master password"))
         tap("unlock-submit")
         waitFor("error-message")
+        assertTrue("a failed unlock conceals the revealed password", exists(hasContentDescription("Show master password")))
+        composeRule.onNode(hasTestTag("unlock-password")).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Password))
         saveScreenshot("lock")
         composeRule.onNode(hasTestTag("unlock-password")).performTextReplacement(MASTER_PASSWORD)
         tap("unlock-submit")
