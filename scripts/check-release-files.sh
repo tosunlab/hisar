@@ -44,6 +44,8 @@ case "$app" in
     for architecture in amd64 arm64; do
       allExpected+=("Hisar-$version-linux-$architecture".{deb,rpm,AppImage,flatpak}
         "SHA256SUMS-linux-$architecture" "SHA256SUMS-flatpak-$architecture")
+      # The signatures the Linux app checks before it installs an update; a custom build is never offered as one.
+      $isCustomBuild || allExpected+=("Hisar-$version-linux-$architecture".{deb,rpm,AppImage,flatpak}.sig)
     done
     ;;
   # A custom build's Firefox package is not signed: an AMO version is used up by its first signing.

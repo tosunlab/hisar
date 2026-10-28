@@ -42,7 +42,7 @@ func getStateSuffix(statePath string) string {
 // getAppVersion is the bundle's version, or the one the Linux packaging stamped; development builds send none, so no
 // minimum refuses them.
 func getAppVersion() string {
-	version, _ := newAppUpdater().GetVersion()
+	version, _ := newAppUpdater(nil).GetVersion()
 	if _, err := appversion.Parse(version); err != nil {
 		return ""
 	}

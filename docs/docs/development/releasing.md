@@ -99,7 +99,10 @@ The run then goes on by itself (`scripts/plan-release.sh` plans it):
 3. **Tag**: the annotated tag on that commit; its message is the title and the changes, which the desktop app's Sparkle
    update shows as release notes. The deploy key in `RELEASE_DEPLOY_KEY` pushes it, past the tag ruleset.
 4. **Build**: `release-<app>.yml`, which only the Release workflow calls. The desktop app builds the Mac DMG and Sparkle update
-   and the Linux packages and Flatpak (amd64 and arm64); the server pushes `ghcr.io/tosunlab/hisar-server:X.Y.Z` and the
+   and the Linux packages and Flatpak (amd64 and arm64); for a release version (not a custom build), the job "Sign the Linux
+   packages for in-app updates" then writes `Hisar-X.Y.Z-linux-<arch>.<deb|rpm|AppImage|flatpak>.sig` with the Sparkle key
+   (`desktop/cmd/hisar-update-key sign`), the signatures the Linux app checks before it installs an update. The server pushes
+   `ghcr.io/tosunlab/hisar-server:X.Y.Z` and the
    docs site `ghcr.io/tosunlab/hisar-docs:X.Y.Z` (both amd64 and arm64). The extension builds the Chrome zip and the Firefox
    add-on, which addons.mozilla.org signs as unlisted (`web-ext sign`, with the extension's source attached for review) into
    `hisar-extension-firefox-X.Y.Z.xpi`. AMO signs each version once, even if its prerelease is never published, so the next
@@ -173,7 +176,7 @@ these inputs select the affected releases.
 
 ## Repository secrets and environments
 
-Repository secrets: `SPARKLE_PRIVATE_KEY`, the Sparkle EdDSA private key file's content (`gh secret set SPARKLE_PRIVATE_KEY --repo
+Repository secrets: `SPARKLE_PRIVATE_KEY`, the Sparkle EdDSA private key file's content, which also signs the Linux packages (`gh secret set SPARKLE_PRIVATE_KEY --repo
 tosunlab/hisar < <key file>`); `RELEASE_DEPLOY_KEY`, the private half of the deploy key "Release workflow tags" (write
 access, a bypass actor of the ruleset "tags: only maintainers create"); and, for desktop releases, the team's Developer ID
 Application identity and the App Store Connect API key that notarizes the app: `MACOS_SIGNING_CERTIFICATE` (the identity as a

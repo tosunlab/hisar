@@ -19,9 +19,16 @@ type Updater interface {
 	CheckForUpdates() error
 }
 
-// UpdateNotifier is an updater that finds a newer version without installing it, on Linux and Windows: the user downloads it.
+// UpdateNotifier is an updater that finds a newer version for the user to download, on Linux and Windows.
 type UpdateNotifier interface {
 	GetAvailableUpdate() AvailableUpdate
+}
+
+// UpdateInstaller is a notifier that also installs what it found: Linux Hisar from a package. GetInstallKind names
+// the package ("appimage", "deb", "rpm", "flatpak"), empty for a copy that leaves the download to the user.
+type UpdateInstaller interface {
+	GetInstallKind() string
+	InstallUpdate() error
 }
 
 // AvailableUpdate is what an UpdateNotifier found; Version is empty while this version is the newest.
@@ -43,6 +50,10 @@ type UpdateStatus struct {
 	HasChecked       bool   `json:"hasChecked"`
 	AvailableVersion string `json:"availableVersion"`
 	DownloadURL      string `json:"downloadURL"`
+	// InstallKind is how InstallUpdate installs AvailableVersion: "appimage" replaces Hisar and starts it again;
+	// "deb", "rpm" and "flatpak" open the verified package in the system's software installer. Empty: the user
+	// downloads it from DownloadURL.
+	InstallKind string `json:"installKind"`
 }
 
 // UpdateService is bound to the UI for Settings → General → Updates.
@@ -88,6 +99,9 @@ func (updateService *UpdateService) GetUpdateStatus() UpdateStatus {
 		available := notifier.GetAvailableUpdate()
 		status.IsNotifyOnly, status.HasChecked, status.AvailableVersion, status.DownloadURL = true, available.HasChecked, available.Version, available.DownloadURL
 	}
+	if installer, isInstaller := updateService.updater.(UpdateInstaller); isInstaller {
+		status.InstallKind = installer.GetInstallKind()
+	}
 	return status
 }
 
@@ -101,6 +115,17 @@ func (updateService *UpdateService) CheckForUpdates() (UpdateStatus, error) {
 		return status, errUpdateSignedOut
 	}
 	err := updateService.updater.CheckForUpdates()
+	return updateService.GetUpdateStatus(), err
+}
+
+// InstallUpdate downloads and verifies the version a check found and installs it as InstallKind says; after an
+// AppImage update Hisar quits and the new version starts.
+func (updateService *UpdateService) InstallUpdate() (UpdateStatus, error) {
+	installer, isInstaller := updateService.updater.(UpdateInstaller)
+	if !isInstaller || installer.GetInstallKind() == "" {
+		return updateService.GetUpdateStatus(), errors.New("this copy of Hisar cannot install updates; download the new version from its release")
+	}
+	err := installer.InstallUpdate()
 	return updateService.GetUpdateStatus(), err
 }
 

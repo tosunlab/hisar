@@ -92,8 +92,12 @@ GitHub ([Self-hosting](../self-hosting.md)); if the server has updates off, chec
 version, **Check for updates**, and **Automatically check for updates**. `wails3 dev` builds have no Sparkle and say so.
 
 The EdDSA private key lives outside the repository (kept by the maintainer and in the `SPARKLE_PRIVATE_KEY` repository secret);
-losing it means existing installs can no longer verify updates, so keep a backup. Preview: `&settings=1&settingsSection=general`,
-`&updates=development` (build without Sparkle) or `&updates=signed-out`.
+losing it means existing installs can no longer verify updates, so keep a backup. It also signs each Linux package
+(`<package>.sig`): Linux Hisar from an AppImage, `.deb`, `.rpm` or Flatpak installs an update only when that signature verifies
+(design §9.1.1, "Updates (Linux)"). An AppImage replaces itself and relaunches; a `.deb`, `.rpm` or Flatpak bundle opens in the
+software installer. Preview: `&settings=1&settingsSection=general`, `&updates=development` (build without Sparkle),
+`&updates=signed-out`, `&updates=notify` and `&updates=available` (a Linux copy that leaves the download to the user), and
+`&updates=appimage` or `&updates=deb` (one that installs it).
 
 To work on the design without a server, run the UI in a browser with sample data:
 

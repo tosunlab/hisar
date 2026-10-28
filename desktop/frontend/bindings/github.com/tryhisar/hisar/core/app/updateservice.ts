@@ -25,6 +25,14 @@ export function GetUpdateStatus(): $CancellablePromise<$models.UpdateStatus> {
     return $Call.ByID(335887211);
 }
 
+/**
+ * InstallUpdate downloads and verifies the version a check found and installs it as InstallKind says; after an
+ * AppImage update Hisar quits and the new version starts.
+ */
+export function InstallUpdate(): $CancellablePromise<$models.UpdateStatus> {
+    return $Call.ByID(3756544406);
+}
+
 export function SetAutomaticUpdateCheck(isEnabled: boolean): $CancellablePromise<$models.UpdateStatus> {
     return $Call.ByID(294754402, isEnabled);
 }
