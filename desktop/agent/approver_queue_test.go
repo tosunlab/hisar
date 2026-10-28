@@ -131,6 +131,55 @@ func TestApprovalEventKeepsMillisecondDeadlineAndLifetime(t *testing.T) {
 	})
 }
 
+func TestDenyAllHidesAfterClosingEveryNotice(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		emitter := createFakeEmitter()
+		releaseWindow := make(chan struct{})
+		var releaseOnce sync.Once
+		release := func() { releaseOnce.Do(func() { close(releaseWindow) }) }
+		defer release()
+		approver := NewApprover(ApproverConfig{
+			Emit: emitter.emit,
+			ShowApprovalWindow: func(isCompact bool) {
+				emitter.showWindow(isCompact)
+				<-releaseWindow
+			},
+			HideApprovalWindow: func() {
+				closedCount := 0
+				for _, name := range emitter.listEventNames() {
+					if name == ApprovalClosedEventName {
+						closedCount++
+					}
+				}
+				if closedCount != 2 {
+					t.Errorf("window hidden after closing %d of 2 notices", closedCount)
+				}
+				emitter.hideWindow()
+			},
+		})
+		first := startApproval(approver, context.Background(), createTestRequest())
+		waitForApprovalEvent(t, emitter)
+		second := startApproval(approver, context.Background(), createTestRequest())
+		synctest.Wait()
+		if pending := approver.ListPendingApprovals(); len(pending) != 2 {
+			t.Fatalf("pending requests = %d, want both", len(pending))
+		}
+		approver.DenyAll()
+		firstResult, secondResult := waitForResult(t, first), waitForResult(t, second)
+		if firstResult.result.IsAllowed || secondResult.result.IsAllowed {
+			t.Fatal("DenyAll allowed a request")
+		}
+		if _, hidden := emitter.getWindowCount(); hidden != 0 {
+			t.Fatal("window hidden before its close events could run")
+		}
+		release()
+		approver.presenter.waitUntilIdle()
+		if shown, hidden := emitter.getWindowCount(); shown != 2 || hidden != 1 {
+			t.Fatalf("window shown %d times and hidden %d times, want twice and once", shown, hidden)
+		}
+	})
+}
+
 func TestDeadlineDeniesBeforeHidingTheNotice(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		emitter := createFakeEmitter()

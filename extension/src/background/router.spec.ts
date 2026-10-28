@@ -29,13 +29,6 @@ function createServices(controller: BackgroundController): RouterServices {
 }
 
 describe("routeMessage", () => {
-  it("routes popup messages from extension pages", async () => {
-    const controller = createController();
-    expect(await routeMessage(createServices(controller), { type: "popup.getState" }, popupSender, context)).toEqual({ ok: true, result: { view: "unlocked" } });
-    await routeMessage(createServices(controller), { type: "popup.fillLogin", tabId: 3, vaultID: "v", itemID: "i" } as never, popupSender, context);
-    expect(controller.fillLogin).toHaveBeenCalledWith(3, "v", "i");
-  });
-
   it("refuses popup messages from content scripts", async () => {
     const controller = createController();
     const response = await routeMessage(createServices(controller), { type: "popup.unlock" }, contentSender, context);

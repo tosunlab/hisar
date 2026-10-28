@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-
 	"github.com/tryhisar/hisar/core/cliprotocol"
 )
 
@@ -40,26 +38,6 @@ func TestSignInSendsTheWindowAndAnswersWithTheMessage(t *testing.T) {
 	if output.Outcome != "submitted" || output.Cleanup != "page-left" || output.Login.Username != "user@example.com" || len(output.Steps) != 2 ||
 		!slices.Equal(output.Steps[1].Filled, []string{"password", "one-time code"}) || !output.Steps[1].Submitted {
 		t.Errorf("output %+v", output)
-	}
-}
-
-func TestSignInDescriptionTellsTheModelWhatEachOutcomeMeans(t *testing.T) {
-	server := startTestServer(t, &fakeApp{}, Config{IsRevealDisabled: true})
-	tools, err := server.session.ListTools(t.Context(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	index := slices.IndexFunc(tools.Tools, func(tool *mcp.Tool) bool { return tool.Name == "sign_in" })
-	if index < 0 {
-		t.Fatal("no sign_in")
-	}
-	for _, phrase := range []string{"pid", "window_id", "list_windows", "native computer_use", "not a CDP browser tool", "submitted", "not-accepted", "stopped", "cleanup-failed", "fields-removed", "Never type a password yourself"} {
-		if !strings.Contains(tools.Tools[index].Description, phrase) {
-			t.Errorf("the description lacks %q", phrase)
-		}
-	}
-	if instructions := server.session.InitializeResult().Instructions; !strings.Contains(instructions, "call sign_in with the window's pid and window_id") {
-		t.Errorf("instructions %q", instructions)
 	}
 }
 

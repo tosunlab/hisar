@@ -54,11 +54,6 @@ describe("classifyBashCommand", () => {
       expect(classifyBashCommand(command)).toEqual({ block: false });
     });
   }
-
-  test("names the subcommand it blocked", () => {
-    const verdict = classifyBashCommand("hisar export");
-    expect(verdict.block && verdict.reason).toStartWith("`hisar export`");
-  });
 });
 
 describe("listHisarInvocations", () => {

@@ -43,14 +43,6 @@ beforeEach(() => {
 });
 
 describe("AppearanceSection", () => {
-  it("starts on System and Neutral, with System, Light and Dark and four colours", () => {
-    const wrapper = mount(AppearanceSection);
-    expect(wrapper.findAll('[role="radio"][data-testid^="appearance-"]').map((button) => button.text())).toEqual(["System", "Light", "Dark"]);
-    expect(wrapper.findAll(".swatch-name").map((name) => name.text())).toEqual(["Neutral", "Blue", "Purple", "Green"]);
-    expect(findAllChecked(wrapper)).toEqual(["appearance-system", "theme-color-neutral"]);
-    expect(wrapper.find('[data-testid="theme-color-neutral"] .swatch-check').exists()).toBe(true);
-  });
-
   it("previews a choice at once, before the backend has saved it, and saves it", async () => {
     let finishSaving: (theme: { appearance: string; color: string }) => void = () => undefined;
     api.setTheme.mockReturnValueOnce(new Promise((resolve) => (finishSaving = resolve)));

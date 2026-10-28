@@ -208,6 +208,7 @@ class CredentialImportTests {
         assertFalse(model.credentialImport.isShown)
         runCurrent()
         assertEquals(0, harness.backend.countCall("cancelImport"), "nothing was prepared to drop")
+        assertEquals(0, harness.backend.countCall("prepareCredentialExchangeImport"), "a failed transfer has nothing to preview")
     }
 
     @Test

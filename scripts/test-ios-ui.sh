@@ -7,7 +7,8 @@
 # clones of the simulator at once, each class signing up its own account; that is a loss on the GitHub macOS runners, where two
 # clones starve each other and tests time out, but can be quicker on a Mac with cores to spare. IOS_TESTS_PREBUILT=1 runs the
 # tests make build-ios built instead of building them again. IOS_UI_TEST_PART=1, 2 or 3 runs one of three parts of similar
-# length, for three CI jobs, as scripts/ui-test-parts.sh splits the classes; part 3 also runs every class new to its table.
+# length, for CI (part 1 in the build job, 2 and 3 in jobs of their own), as scripts/ui-test-parts.sh splits the classes;
+# part 3 also runs every class new to its table.
 #
 # The simulator boots after the server and the partner are ready, and the tests start once it has finished booting and its
 # post-boot background work is over. A simulator booted earlier and then left alone goes down with CoreSimulatorService, which

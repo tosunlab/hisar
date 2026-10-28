@@ -77,7 +77,6 @@
 		4574855F1385C0BD0A1BA703 /* UpdateRequiredView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F297FE1735F4AB352B1A037C /* UpdateRequiredView.swift */; };
 		472BD60EDDFB29C272E4F9DC /* ThemePalettes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */; };
 		481FE0BCCD0D2166F4469760 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F067661397CABF889DA6CF7C /* Theme.swift */; };
-		4AA5D5C3D6DAB5608269335B /* AutoFillUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED00276374ABADC314F5DF91 /* AutoFillUITests.swift */; };
 		4AC348C1E48603BA2998A584 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7FEB2D8C212608F4623951C3 /* Localizable.strings */; };
 		4C2B8094565EFE9F42D49B68 /* WideLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D8EF29B82716EB114C89A6 /* WideLayoutUITests.swift */; };
 		50C2ADE3D8276E6618F84030 /* SignUpForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 544DDC7A2F29FFCFCCEF433E /* SignUpForm.swift */; };
@@ -384,7 +383,6 @@
 		E9A5C76E2318A2B55CC5F849 /* HisarKitBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HisarKitBackend.swift; sourceTree = "<group>"; };
 		EAE5AE06D113B40C2B306DCD /* HisarAutoFill.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HisarAutoFill.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		EC9C623DBB6766EA5B9CBBF4 /* ItemPasswordStrengthMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemPasswordStrengthMeter.swift; sourceTree = "<group>"; };
-		ED00276374ABADC314F5DF91 /* AutoFillUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillUITests.swift; sourceTree = "<group>"; };
 		F067661397CABF889DA6CF7C /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		F1B3B016888438454F145B24 /* HisarConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HisarConfiguration.swift; sourceTree = "<group>"; };
 		F297FE1735F4AB352B1A037C /* UpdateRequiredView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateRequiredView.swift; sourceTree = "<group>"; };
@@ -429,7 +427,6 @@
 			isa = PBXGroup;
 			children = (
 				6257A3FFF8FE0BC1B95ACD0D /* AccountLifecycleUITests.swift */,
-				ED00276374ABADC314F5DF91 /* AutoFillUITests.swift */,
 				B2F41C1C5079B764C9809E28 /* CredentialRevealUITests.swift */,
 				D5829FBCBCC42B40AFEF68F3 /* FaceIDUITests.swift */,
 				4FA213E40620F47F0F235DA0 /* FavoritesUITests.swift */,
@@ -882,7 +879,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				891A92F8A53AD982CEF0DB05 /* AccountLifecycleUITests.swift in Sources */,
-				4AA5D5C3D6DAB5608269335B /* AutoFillUITests.swift in Sources */,
 				B092418CD12F1BDB3C327576 /* CardInput.swift in Sources */,
 				1E8719A831930A6E6EB0DC29 /* CredentialRevealUITests.swift in Sources */,
 				BA22AA3DF1A43D357843EA5E /* FaceIDUITests.swift in Sources */,

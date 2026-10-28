@@ -16,15 +16,15 @@ import (
 )
 
 func TestStrongerArgon2ParamsNeverLowersTheCost(t *testing.T) {
-	stronger := crypt.Argon2Params{Time: 40, MemoryKiB: 128 * 1024, Threads: 2}
-	if params := strongerArgon2Params(stronger); params != (crypt.Argon2Params{Time: 40, MemoryKiB: 128 * 1024, Threads: 4}) {
-		t.Errorf("stronger account: %+v", params)
+	mixed := crypt.Argon2Params{Time: 40, MemoryKiB: 128 * 1024, Threads: 1}
+	if params := strongerArgon2Params(mixed); params != (crypt.Argon2Params{Time: 40, MemoryKiB: 128 * 1024, Threads: crypt.NewAccountArgon2Params().Threads}) {
+		t.Errorf("account stronger in time and memory: %+v", params)
 	}
-	weaker := crypt.Argon2Params{Time: 2, MemoryKiB: 32 * 1024, Threads: 1}
-	if params := strongerArgon2Params(weaker); params != crypt.DefaultArgon2Params() {
+	weaker := crypt.MinArgon2Params()
+	if params := strongerArgon2Params(weaker); params != crypt.NewAccountArgon2Params() {
 		t.Errorf("weaker account: %+v", params)
 	}
-	if params := strongerArgon2Params(crypt.Argon2Params{Time: 1 << 30}); params != crypt.DefaultArgon2Params() {
+	if params := strongerArgon2Params(crypt.Argon2Params{Time: 1 << 30}); params != crypt.NewAccountArgon2Params() {
 		t.Errorf("out of range: %+v", params)
 	}
 }

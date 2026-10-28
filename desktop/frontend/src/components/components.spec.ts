@@ -233,6 +233,7 @@ describe("SignInView", () => {
     const secretKey = mount(SecretKeyView);
     expect(secretKey.findAll('[data-testid="master-password-warning"]')).toHaveLength(1);
     expect(secretKey.get('[data-testid="master-password-warning"]').text()).toBe("A forgotten master password can't be recovered by anyone, including Hisar.");
+    expect(secretKey.text()).not.toMatch(/admin/i);
     secretKey.unmount();
   });
 
@@ -433,7 +434,6 @@ describe("SignInView", () => {
     expect(store.status.state).toBe("signed-out");
   });
 });
-
 
 describe("TouchIDOfferView", () => {
   beforeEach(() => {

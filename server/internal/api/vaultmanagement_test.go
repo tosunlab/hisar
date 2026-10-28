@@ -273,7 +273,7 @@ func TestDeleteVaultMovesItemsDecryptableIntoTarget(t *testing.T) {
 	personal := findPersonalVault(t, alice)
 	expectStatus(t, "moving without every item", alice.Client.DeleteVault(ctx, work.ID, &apitypes.DeleteVaultRequest{MoveToVaultID: personal.ID, MovedItems: []apitypes.MovedItem{}}), http.StatusConflict)
 
-	bobEvents := openEventStream(t, bob.Client)
+	bobEvents := openEventStream(t, server, bob.Client, bob.AccountID)
 	waitForSubscriber(t, server, bob.AccountID, 1)
 	movedCount, err := alice.DeleteVault(ctx, work, session.VaultDeletion{MoveTo: personal})
 	if err != nil || movedCount != len(createdItems) {

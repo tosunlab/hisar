@@ -144,8 +144,9 @@ UNKNOWN_SHARE_OUTPUT=$(printf '%s\n' "$PW" | A share Family nobody@example.com 2
 echo "ok   a share to an email without an account gives the same response"
 expect "share email to bob" "$(wait_for_mail bob@example.com "$BOB_MAIL_COUNT")" "Alice (alice@example.com) shared a vault with you in Hisar as an editor."
 expect "share email to an unknown address carries a sign-up invite" "$(wait_for_mail nobody@example.com 0)" "$HISAR_PUBLIC_URL/invite/"
-expect "bob does not see Family before accepting" "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" "Personal"
-[[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *Family* ]] || fail "bob sees Family before accepting"
+BOB_VAULTS=$(printf '%s\n' "$PW" | B vaults 2>/dev/null)
+expect "bob does not see Family before accepting" "$BOB_VAULTS" "Personal"
+[[ "$BOB_VAULTS" != *Family* ]] || fail "bob sees Family before accepting"
 expect "bob's invitations" "$(B invitations 2>&1)" "Alice <alice@example.com>  editor"
 expect "bob accepts" "$(printf '\n' | B invitations accept 2>&1)" "Accepted."
 [[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *Family* ]] || fail "bob sees Family before alice completed the share"
@@ -453,8 +454,9 @@ printf 'dora@example.com\nDora\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/dora.json
 DORA_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/dora-signup.txt")
 D() { HISAR_STATE=$T/dora.json HISAR_SECRET_KEY=$DORA_SK hisar "$@"; }
 printf '%s\n' "$PW" | D vault-create Garden 2>/dev/null
-expect "account deletion shows what is deleted" "$(printf '%s\nwrong@example.com\n' "$PW" | D account delete 2>&1 || true)" 'Deleted with its items: "Garden"'
-expect "a wrong email deletes nothing" "$(printf '%s\nwrong@example.com\n' "$PW" | D account delete 2>&1 || true)" "nothing was deleted"
+WRONG_EMAIL_DELETION=$(printf '%s\nwrong@example.com\n' "$PW" | D account delete 2>&1 || true)
+expect "account deletion shows what is deleted" "$WRONG_EMAIL_DELETION" 'Deleted with its items: "Garden"'
+expect "a wrong email deletes nothing" "$WRONG_EMAIL_DELETION" "nothing was deleted"
 expect "a wrong master password deletes nothing" "$(printf 'wrong password\n' | D account delete --email dora@example.com 2>&1 || true)" "the master password is not correct"
 expect "delete account" "$(printf '%s\ndora@example.com\n' "$PW" | D account delete 2>&1)" "Deleted your Hisar account."
 expect "account deletion email" "$(wait_for_mail dora@example.com 0)" "Your Hisar account dora@example.com was deleted"

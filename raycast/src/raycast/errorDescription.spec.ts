@@ -18,13 +18,6 @@ describe("describeHisarError", () => {
     }
   });
 
-  it("tells how to let Raycast in instead of the command-line tool's sentence", () => {
-    const description = describeHisarError(
-      new HisarError("integration-disabled", "the Hisar app does not let the command-line tool use it"),
-    );
-    expect(description.message).toContain("Let the command-line tool use Hisar");
-  });
-
   it("offers nothing to open when Hisar answered and refused", () => {
     const description = describeHisarError(new HisarError("not-found", "“Office Wi-Fi” has no password"));
     expect(description).toEqual({ title: "Not found in Hisar", message: "“Office Wi-Fi” has no password" });

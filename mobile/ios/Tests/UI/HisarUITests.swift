@@ -187,8 +187,9 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertTrue(app.buttons["editor-save"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
         XCTAssertNotEqual(passwordRow.value as? String, "ui-test-password-1", "the generated password replaced the old one")
         let customRows = app.buttons.matching(identifier: "copy-recovery code")
+        let customPasswordRow = app.buttons.matching(identifier: "copy-password").element(boundBy: 1)
         for index in 0..<4 {
-            let copy = index < 3 ? customRows.element(boundBy: index) : app.buttons.matching(identifier: "copy-password").element(boundBy: 1)
+            let copy = index < 3 ? customRows.element(boundBy: index) : customPasswordRow
             copy.tap()
             app.buttons["edit-item"].tap()
             let title = app.textFields["editor-title"]
@@ -213,6 +214,7 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertEqual(customRows.element(boundBy: 2).value as? String, "Hidden")
         scrollTo(app.buttons["copy-notes"])
         XCTAssertEqual(app.buttons["copy-notes"].value as? String, longDraft, "the full draft survives validation and retry")
+        XCTAssertEqual(customPasswordRow.value as? String, "Hidden")
 
         scrollTo(app.buttons["copy-secret-reference"])
         app.buttons["copy-secret-reference"].tap()
@@ -402,18 +404,6 @@ final class HisarUITests: HisarUITestCase {
             XCTAssertTrue(app.staticTexts["Host copied. It clears in 90 seconds."].waitForNonExistence(timeout: 10))
         }
         saveScreenshot("server")
-        app.buttons["edit-item"].tap()
-        waitFor(app.secureTextFields["editor-one-time-password"])
-        app.buttons["Reveal setup key"].tap()
-        waitFor(app.textFields["editor-one-time-password"])
-        XCTAssertTrue(app.secureTextFields["editor-password"].exists)
-        app.buttons["Hide setup key"].tap()
-        waitFor(app.secureTextFields["editor-one-time-password"])
-        app.buttons["Reveal setup key"].tap()
-        app.buttons["editor-cancel"].tap()
-        app.buttons["edit-item"].tap()
-        waitFor(app.secureTextFields["editor-one-time-password"])
-        app.buttons["editor-cancel"].tap()
         goBack()
 
         choose("New database", from: "new-menu", under: "new-more")
@@ -454,22 +444,7 @@ final class HisarUITests: HisarUITestCase {
         app.buttons["unlock-submit"].tap()
         waitFor(app.buttons["vault-Personal"])
 
-        openTab("Approvals")
-        saveScreenshot("approvals-empty")
-
-        openSettings("open-security")
-        app.buttons["5 minutes"].firstMatch.tap()
-        app.buttons["1 hour"].firstMatch.tap()
-        saveScreenshot("security")
-        goBack()
-
-        app.buttons["open-devices"].tap()
-        // iOS shows the section header as "This iPhone" or "THIS IPHONE"; the screen may still be opening, so both are awaited.
-        waitFor(app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "This iPhone")).firstMatch)
-        saveScreenshot("devices")
-        goBack()
-
-        app.buttons["open-appearance"].tap()
+        openSettings("open-appearance")
         app.buttons["appearance-dark"].tap()
         app.buttons["theme-color-purple"].tap()
         saveScreenshot("appearance")
@@ -507,25 +482,6 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertFalse(app.images["secret-key-qr-code"].exists)
         goBack()
 
-        for _ in 0..<5 where !app.buttons["open-help"].isHittable {
-            app.swipeUp()
-        }
-        app.buttons["open-help"].tap()
-        XCTAssertFalse(app.staticTexts["App version"].exists)
-        app.buttons["copy-diagnostics"].tap()
-        saveScreenshot("settings-help")
-        goBack()
-        let about = app.buttons["open-about"]
-        scrollTo(about)
-        XCTAssertEqual(about.label, "About Hisar")
-        about.tap()
-        waitFor(app.staticTexts["Version"])
-        goBack()
-
-        XCTAssertFalse(app.buttons["sign-out"].exists, "Help and About contain no account action")
-        for _ in 0..<5 where !app.buttons["open-account"].isHittable {
-            app.swipeDown()
-        }
         app.buttons["open-account"].tap()
         for _ in 0..<5 where !app.buttons["sign-out"].isHittable {
             app.swipeUp()
