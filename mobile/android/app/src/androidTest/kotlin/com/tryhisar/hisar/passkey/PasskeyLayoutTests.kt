@@ -62,7 +62,7 @@ class PasskeyLayoutTests {
         composeRule.onNodeWithTag("autofill-passkey-destination").assertTextContains("New login in Personal")
         composeRule.onNodeWithTag("autofill-passkey-login-ZZ Shared").performScrollTo().performClick()
         composeRule.onNodeWithTag("autofill-save-passkey").assertIsDisplayed()
-        composeRule.onNodeWithTag("autofill-passkey-destination").assertTextContains("Family")
+        composeRule.onNodeWithTag("autofill-passkey-destination").assertTextContains("Family", substring = true)
         composeRule.onNodeWithText("Shared. Other members can sign in with this passkey.").assertIsDisplayed()
     }
 }

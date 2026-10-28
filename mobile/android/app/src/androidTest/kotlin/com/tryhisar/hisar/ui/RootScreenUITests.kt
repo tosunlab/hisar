@@ -49,7 +49,7 @@ class RootScreenUITests {
             )
         }
         launchApp(backend).use {
-            composeRule.waitForTag("pending-recovery-pending-cover")
+            composeRule.waitForTag("pending-recovery-phase")
             composeRule.onNodeWithTag("lock-now").assertDoesNotExist()
             composeRule.onNodeWithTag("full-screen-cover").performTouchInput {
                 click(Offset(width - 32.dp.toPx(), 80.dp.toPx()))

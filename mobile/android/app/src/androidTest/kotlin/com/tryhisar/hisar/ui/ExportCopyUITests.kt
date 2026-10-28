@@ -11,6 +11,7 @@ class ExportCopyUITests : HisarUITestCase() {
         val backend = FakeBackend().apply {
             seedSignedIn()
             isBiometricAvailable = false
+            exportOptions = exportOptions.copy(isBiometricAvailable = false)
         }
         launchApp(backend).use {
             waitFor("vaults-list")

@@ -299,7 +299,7 @@ class VaultsScreenUITests : HisarUITestCase() {
         launchApp(backend).use {
             waitFor("vaults-list")
             scrollTo("tags")
-            assertFalse(exists(hasTestTag("favorites-empty")))
+            assertFalse(exists(hasTestTag("show-all-favorites")))
             assertFalse(exists(hasTestTag("tag-work")))
             assertFalse(exists(hasTestTag("tag-finance")))
             tap("tags")

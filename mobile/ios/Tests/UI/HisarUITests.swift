@@ -26,10 +26,11 @@ final class HisarUITests: HisarUITestCase {
         type("tiny", into: app.secureTextFields["sign-up-password"])
         type("tiny", into: app.secureTextFields["sign-up-repeated-password"])
         scrollTo(app.buttons["sign-in-submit"])
-        app.buttons["sign-in-submit"].tap()
-        let error = app.staticTexts["error-message"]
-        waitForHittable(error)
-        XCTAssertLessThan(error.frame.maxY, app.buttons["sign-in-submit"].frame.maxY)
+        let problem = app.staticTexts["sign-up-password-problem"]
+        waitForHittable(problem)
+        XCTAssertEqual(problem.label, "Use at least 10 characters.")
+        XCTAssertFalse(app.buttons["sign-in-submit"].isEnabled)
+        XCTAssertLessThan(problem.frame.maxY, app.buttons["sign-in-submit"].frame.maxY)
         for _ in 0..<8 {
             if app.textFields["sign-up-name"].isHittable { break }
             app.collectionViews.firstMatch.swipeDown()
@@ -41,10 +42,11 @@ final class HisarUITests: HisarUITestCase {
             app.collectionViews.firstMatch.swipeDown()
         }
         app.segmentedControls["sign-in-mode"].buttons["Sign in"].tap()
-        type("error@example.com", into: app.textFields["sign-in-email"])
+        XCTAssertEqual(app.textFields["sign-in-email"].value as? String, "error@example.com")
         type("not-a-secret-key", into: app.textFields["sign-in-secret-key"])
         type("wrong", into: app.secureTextFields["sign-in-password"])
         app.secureTextFields["sign-in-password"].typeText("\n")
+        let error = app.staticTexts["error-message"]
         waitForHittable(error)
         XCTAssertLessThan(error.frame.maxY, app.buttons["sign-in-submit"].frame.maxY)
         XCTAssertTrue(app.keyboards.firstMatch.exists)

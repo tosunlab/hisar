@@ -14,7 +14,7 @@ struct PhoneApprovalSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var password = ""
-    @FocusState private var isPasswordFocused: Bool
+    @State private var isPasswordFocused = false
 
     var body: some View {
         NavigationStack {

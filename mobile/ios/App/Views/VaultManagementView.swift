@@ -271,6 +271,7 @@ struct RemovedVaultNoticeSection: View {
                         .accessibilityLabel("Dismiss notice for \(notice.name)")
                         .accessibilityIdentifier("dismiss-removed-vault-\(notice.id)")
                     }
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("removed-vault-\(notice.id)")
                 }
             }

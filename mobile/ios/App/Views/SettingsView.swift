@@ -312,7 +312,7 @@ struct SecretKeyView: View {
     @EnvironmentObject private var model: AppModel
     @State private var password = ""
     @State private var export: EmergencyKitExport?
-    @FocusState private var isPasswordFocused: Bool
+    @State private var isPasswordFocused = false
 
     var body: some View {
         List {
@@ -714,10 +714,11 @@ struct MacApprovalsView: View {
                         .accessibilityIdentifier("mac-approval-error")
                 }
             } footer: {
-                Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")
-                    .foregroundStyle(.themeSecondary)
-                Text("On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device.")
-                    .foregroundStyle(.themeSecondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")
+                    Text("On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device.")
+                }
+                .foregroundStyle(.themeSecondary)
             }
         }
         .applyThemedListStyle()

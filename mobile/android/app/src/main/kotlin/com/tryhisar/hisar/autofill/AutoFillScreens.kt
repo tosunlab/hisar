@@ -194,6 +194,7 @@ private fun AutoFillListView(model: AutoFillModel) {
                 PasskeySection(request.relyingPartyID, allPasskey) { passkey -> if (!isBusy) scope.launch { model.selectPasskey(passkey) } }
             }
             val noun = if (requestKind == RequestKind.ONE_TIME_CODE) "One-time codes" else "Logins"
+            val matchingCount = allMatchingLogin.count { requestKind != RequestKind.ONE_TIME_CODE || it.hasOneTimePassword }
             val allMatching = model.allVisibleMatchingLogin
             FormSection(header = if (serviceName.isEmpty()) "Matching ${noun.lowercase()}" else "$noun for $serviceName") {
                 FormRow {
@@ -210,9 +211,8 @@ private fun AutoFillListView(model: AutoFillModel) {
                                 AutoFillModel.MatchingLookup.Loading -> if (requestKind == RequestKind.ONE_TIME_CODE) "Looking for one-time codes…" else "Looking for logins…"
                                 is AutoFillModel.MatchingLookup.Failed -> lookup.message
                                 AutoFillModel.MatchingLookup.Loaded -> {
-                                    val count = allMatchingLogin.count { requestKind != RequestKind.ONE_TIME_CODE || it.hasOneTimePassword }
-                                    val label = if (count == 1) noun.lowercase().removeSuffix("s") else noun.lowercase()
-                                    "$count $label found."
+                                    val label = if (matchingCount == 1) noun.lowercase().removeSuffix("s") else noun.lowercase()
+                                    "$matchingCount $label found."
                                 }
                             },
                             style = HisarType.body, color = HisarTheme.colors.secondaryLabel,

@@ -156,7 +156,7 @@ final class SharingUITests: HisarUITestCase {
         acceptButton.tap()
         waitFor(app.alerts["Accept"])
         XCTAssertTrue(app.alerts.staticTexts["This action couldn't reach the Hisar server. Try again."].exists)
-        app.buttons["refusal-ok"].tap()
+        app.alerts.buttons["refusal-ok"].firstMatch.tap()
         XCTAssertTrue(acceptButton.exists, "a failed Accept keeps its invitation")
         acceptButton.tap()
         let sharedVault = app.buttons["vault-Infrastructure"]

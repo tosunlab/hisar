@@ -20,7 +20,7 @@ struct UnlockPanel: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var promptedLockCount = -1
     @State private var password = ""
-    @FocusState private var isPasswordFocused: Bool
+    @State private var isPasswordFocused = false
 
     var body: some View {
         Form {

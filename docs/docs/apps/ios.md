@@ -25,7 +25,9 @@ Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconp
 At accessibility text sizes, item-detail headers stack a capped decorative icon above the full-width title.
 The icon picker's preset grid adapts its column count to the scaled tiles instead of fixing six columns.
 Color swatches, the editor's **Change icon**, and removed-vault dismiss buttons each have at least a 44-point target.
-Dismiss buttons name their vault so VoiceOver distinguishes notices.
+Dismiss buttons name their vault so VoiceOver distinguishes notices. Each notice keeps its dismiss action separate from
+the message. The empty Approvals screen likewise keeps its setup link separate from its explanation.
+The Mac approvals page shows both the iPhone's approval explanation and the Mac settings needed to turn requests on.
 
 New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.

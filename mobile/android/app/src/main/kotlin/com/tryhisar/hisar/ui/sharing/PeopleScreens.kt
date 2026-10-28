@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
+    val refreshError by model.sharing.peopleErrorMessage.collectAsStateWithLifecycle()
     val remoteChangeCount by model.remoteChangeCount.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var people by remember { mutableStateOf<com.tryhisar.hisar.app.PeopleSnapshot?>(null) }
@@ -77,7 +78,7 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
     }
 
     RefreshablePage(bar = { PushedTopBar(if (it) "People" else "", onBack) }, onRefresh = { load() }, largeTitle = "People", bottomInset = TabBarHeight) {
-        (actionError ?: errorMessage)?.let { FormSection { ErrorBanner(it) } }
+        (actionError ?: refreshError ?: errorMessage)?.let { FormSection { ErrorBanner(it) } }
         if (shareInvitations.allReceived.isNotEmpty() || shareInvitations.allWaiting.isNotEmpty()) {
             FormSection(header = "Invitations for you") {
                 shareInvitations.allReceived.forEachIndexed { index, invitation ->

@@ -9,7 +9,7 @@ struct CredentialField: View {
     private var contentType: UITextContentType = .password
     private var returnKey: UIReturnKeyType = .default
     private var fieldID = ""
-    private var focus: FocusState<Bool>.Binding?
+    private var focus: Binding<Bool>?
     private var submit: (() -> Void)?
     private var shouldConceal = false
     @Environment(\.scenePhase) private var scenePhase
@@ -58,7 +58,7 @@ struct CredentialField: View {
         return field
     }
 
-    func focused(_ binding: FocusState<Bool>.Binding) -> Self {
+    func focused(_ binding: Binding<Bool>) -> Self {
         var field = self
         field.focus = binding
         return field
@@ -106,7 +106,7 @@ private struct CredentialTextInput: UIViewRepresentable {
     var contentType: UITextContentType
     var returnKey: UIReturnKeyType
     var fieldID: String
-    var focus: FocusState<Bool>.Binding?
+    var focus: Binding<Bool>?
     var submit: () -> Void
 
     func makeUIView(context: Context) -> UITextField {

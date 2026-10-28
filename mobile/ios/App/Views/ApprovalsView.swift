@@ -88,6 +88,7 @@ struct ApprovalList: View {
                         .buttonStyle(.glass)
                         .accessibilityIdentifier("approvals-setup")
                 }
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("approvals-empty")
             }
         }

@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.model.ItemDetail
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -26,7 +27,8 @@ class CrossDeviceSyncUITests : HisarUITestCase() {
             readArgument("HISAR_UI_TEST_CROSS_DEVICE_SECRET_KEY"),
             readArgument("HISAR_UI_TEST_CROSS_DEVICE_PASSWORD"),
         )
-        waitFor("favorites-empty")
+        waitFor("vaults-list")
+        assertFalse(exists(hasText("Favorites")))
 
         addLogin(title = LOGIN, username = "android-user", password = "android-login-password", website = "https://cross-device.example.com")
         waitFor("item-Server lists android/mobile", SYNC_TIMEOUT)
@@ -38,7 +40,8 @@ class CrossDeviceSyncUITests : HisarUITestCase() {
         goBack()
         goBack()
 
-        waitFor("favorites-empty")
+        waitFor("vaults-list")
+        assertFalse(exists(hasText("Favorites")))
         askOtherDevice("Ready for a favorite")
         waitFor("favorite-$LOGIN", SYNC_TIMEOUT)
         saveScreenshot("cross-device-starred-on-the-command-line")

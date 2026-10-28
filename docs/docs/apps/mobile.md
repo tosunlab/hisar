@@ -130,6 +130,9 @@ On Android 14 and later, Credential Manager's password sheet also offers **Searc
 the requesting app or site. For an unlinked app, choose **Only this time** or **Always use for this app** before filling.
 When the sheet has no matching credentials, Hisar returns your search choice to the sheet for you to confirm.
 
+Matching logins appear when the lookup finishes, alongside the result count. A failed People refresh keeps the last
+loaded invitations and its error, even if a background vault refresh succeeds.
+
 Copy and action notices use Material snackbars above the tab bar. Favorite changes offer **Undo** until the
 snackbar is dismissed. TalkBack announces each notice. Swipe it away or use its dismiss button to close it without undoing the action.
 If a snackbar covers another field or row, dismiss it before tapping that row. Notices stay clear of pinned primary actions.

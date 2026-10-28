@@ -22,7 +22,8 @@ class FavoritesUITests : HisarUITestCase() {
         val email = readArgument("HISAR_UI_TEST_FAVORITES_EMAIL")
         launch()
         signUp(inviteLink, email, "Android Favorites")
-        waitFor("favorites-empty")
+        waitFor("vaults-list")
+        assertFalse(exists(hasText("Favorites")))
         saveScreenshot("favorites-empty")
 
         addLogin(title = "GitHub", username = "octocat", password = "favorite-github-password", website = "https://github.com")
@@ -61,7 +62,7 @@ class FavoritesUITests : HisarUITestCase() {
 
         waitFor("favorite-GitHub")
         waitFor("favorite-AWS Console")
-        assertFalse(exists(hasTestTag("favorites-empty")))
+        assertTrue(exists(hasText("Favorites")))
         saveScreenshot("favorites-vaults")
 
         composeRule.onNodeWithTag("favorite-GitHub").performTouchInput { swipeLeft() }

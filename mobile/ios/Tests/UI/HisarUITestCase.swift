@@ -255,9 +255,15 @@ class HisarUITestCase: XCTestCase {
         let share = app.buttons[shareIdentifier]
         scrollTo(share)
         share.tap()
-        let saveToFiles = app.buttons["Save to Files"]
+        let saveToFiles = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Save to Files")).firstMatch
         waitForHittable(saveToFiles)
         saveToFiles.tap()
+        let fileName = app.textFields["DOCPicker.filenameTextField"]
+        waitForHittable(fileName)
+        fileName.tap()
+        let uniqueName = "Hisar Emergency Kit \(UUID().uuidString)"
+        let deletion = String(repeating: XCUIKeyboardKey.delete.rawValue, count: (fileName.value as? String ?? "").count)
+        typeText(deletion + uniqueName, into: fileName, showing: uniqueName)
         let save = app.navigationBars.buttons["Save"]
         waitForHittable(save)
         save.tap()

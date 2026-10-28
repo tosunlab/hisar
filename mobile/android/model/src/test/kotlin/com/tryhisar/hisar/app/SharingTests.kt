@@ -52,9 +52,13 @@ class SharingTests {
         harness.backend.shareInvitations = ShareInvitations()
         people = model.sharing.loadPeople(people)
         assertEquals(listOf(waiting), people?.invitations?.allWaiting)
+        assertEquals("Offline", model.sharing.peopleErrorMessage.value)
+        model.refreshAll()
+        assertEquals("Offline", model.sharing.peopleErrorMessage.value)
         harness.backend.peopleErrorMessage = null
         people = model.sharing.loadPeople(people)
         assertTrue(people?.invitations?.allWaiting?.isEmpty() == true)
+        assertNull(model.sharing.peopleErrorMessage.value)
     }
 
     @Test
