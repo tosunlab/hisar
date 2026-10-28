@@ -71,6 +71,8 @@ final class AppModel: ObservableObject {
     /// settingsAfterUnlock is the Settings screen an invitation link opened while Hisar was locked; the next unlock
     /// shows it, and a sign-out drops it.
     private var settingsAfterUnlock: SettingsDestination?
+    /// lastApprovalPushVerifier is what the shared keychain last got, so a status change writes only a new one.
+    private var lastApprovalPushVerifier: ApprovalPushVerifier?
     /// isNewSecretKeyShown is true while Settings shows a replaced Secret Key, which shows only once.
     private(set) var isNewSecretKeyShown = false
     @Published private(set) var copyCount = 0
@@ -333,6 +335,21 @@ final class AppModel: ObservableObject {
             startApprovalPolling()
         }
         handlePendingCredentialImport()
+        syncApprovalPushVerifier()
+    }
+
+    // syncApprovalPushVerifier mirrors the account's approval push verifier into the shared keychain, where the
+    // notification service extension reads it to check a locked phone's approval previews. It writes when the
+    // verifier changed (the signing key outlasts a lock) and clears it on sign-out, off the main thread.
+    private func syncApprovalPushVerifier() {
+        guard let backend else { return }
+        Task {
+            guard let verifier = try? await runInBackground({ try backend.getApprovalPushVerifier() }),
+                  verifier != lastApprovalPushVerifier else { return }
+            lastApprovalPushVerifier = verifier
+            let accessGroup = HisarConfiguration.current.keychainAccessGroup
+            try? await runInBackground { try ApprovalPushVerifierStore(accessGroup: accessGroup).write(verifier) }
+        }
     }
 
     private func applyShareInvitations(_ shareInvitations: ShareInvitations) {

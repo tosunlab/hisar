@@ -528,6 +528,13 @@ class HisarKitBackend(
 
     override fun getPushSettings(): PushSettings = decode(PushSettings.serializer(), call { getPushSettings() })
 
+    override fun openApprovalPush(message: String): PhoneApproval? = try {
+        decode(PhoneApproval.serializer(), call { openApprovalPush(message) })
+    } catch (_: BackendError) {
+        // Go rejects a missing, expired or wrongly signed preview; the notification keeps the kind's sentence.
+        null
+    }
+
     override fun addAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail =
         decode(ItemDetail.serializer(), call { addAndroidApp(vaultID, itemID, packageName, certificateSHA256) })
 

@@ -95,6 +95,9 @@ targets:
         keychain-access-groups: [$(HISAR_KEYCHAIN_ACCESS_GROUP)]
         # Push notifications; exporting for the App Store takes "production" from the distribution profile.
         aps-environment: development
+        # Time-sensitive approval pushes break through Focus; the release profile must carry this capability. The
+        # personal-team variant (HisarPersonal) signs with no entitlements file, so it does not claim it.
+        com.apple.developer.usernotifications.time-sensitive: true
     dependencies:
       - target: HisarAutoFill
       - target: HisarNotificationService
@@ -165,6 +168,8 @@ targets:
     sources:
       - NotificationService
       - Shared/Push
+      # PhoneApproval builds an approval push's title and body; it needs only Foundation, so the extension shares it.
+      - path: Shared/Backend/PhoneApproval.swift
       - path: Shared/Platform/HisarConfiguration.swift
     settings:
       base:

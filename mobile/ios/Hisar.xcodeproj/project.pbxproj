@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		001F842336BE420EB0BF42D7 /* PasswordStrengthMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9989C5FE07D2381AD1FC1930 /* PasswordStrengthMeter.swift */; };
+		017A6B202594AC0D0EBAF8BC /* ApprovalPushTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3421AE9637A70443C5B947A /* ApprovalPushTests.swift */; };
 		01A6FE523D8DA1B696665F6B /* OneTimeCodeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52CA41C98B20CCCC570ECDA2 /* OneTimeCodeRow.swift */; };
 		0519427F1A30123623C1514D /* PasswordGeneratorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A031DA382226E9A30A8DA85C /* PasswordGeneratorView.swift */; };
 		0738F234B5FC729D53DFCB1F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F067661397CABF889DA6CF7C /* Theme.swift */; };
@@ -24,12 +25,14 @@
 		1C4C0438B2CF7BD2FB18DCC6 /* DevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */; };
 		1C8DFC381A299FC74ABC0696 /* WebPushDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7F01A8C316E01D46E510AD /* WebPushDecryptor.swift */; };
 		1E6F174F2382C5574842C6E0 /* UnlockPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */; };
+		1EC29EB1946CB4E77B9BCF5A /* PhoneApproval.swift in Sources */ = {isa = PBXBuildFile; fileRef = A128DD342FC95DBB54C289C6 /* PhoneApproval.swift */; };
 		1F28B9CCD36BFB98A0F6A64F /* ItemEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58725D5CFD94EED72E93193F /* ItemEditorView.swift */; };
 		1F7290AC6F10333AE09BC264 /* PushPayloadKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDD150DB904FF34A7EE81FC /* PushPayloadKeyStore.swift */; };
 		1FC014BDA52438E0C24285E3 /* PhoneApprovalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7C541FAC5348577EADDE35 /* PhoneApprovalSheet.swift */; };
 		208B3AD9466D298F33D2433E /* WebPushDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7F01A8C316E01D46E510AD /* WebPushDecryptor.swift */; };
 		21CB8A2B084894417B395E0D /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A27E1D1B8F40B6BD8851EA2 /* SignInView.swift */; };
 		236F343E99EBEB565B80E597 /* DevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */; };
+		2488505331F31810AEE1CC8E /* ApprovalPush.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65D19B6D0B4520BE83C04B5D /* ApprovalPush.swift */; };
 		25B3DE446BCBA48722D21164 /* VaultManagementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62FB24F76BEE115AC930EC61 /* VaultManagementTests.swift */; };
 		27C22EB95CF61B5CB39A3DD3 /* AutoFillPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22698CECCF02525330145455 /* AutoFillPreviewView.swift */; };
 		28608092A20E19D2C9E342CC /* AccountLifecycleLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 601EF17B716B840E1BB373D8 /* AccountLifecycleLogic.swift */; };
@@ -47,6 +50,7 @@
 		36DE9AB043E9FDA932377B5F /* KeychainSecretKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */; };
 		37B8625077147FD073CDEB86 /* PhoneApprovalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51DDBE193CE96E78C6788441 /* PhoneApprovalTests.swift */; };
 		385610A06FAE72AFC83F4F07 /* HisarUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B49F20D7B3678555E885AD /* HisarUITests.swift */; };
+		39FECB0E094AA100217090AB /* ApprovalPush.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65D19B6D0B4520BE83C04B5D /* ApprovalPush.swift */; };
 		3A0A7510FED0E3EC64017E68 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 749D535C9C6B489F37C5F4C6 /* AuthenticationServices.framework */; };
 		3AE35B263BFA9835802F1A1B /* OrganizationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A3E7E65ACA85444F2E4830 /* OrganizationViews.swift */; };
 		3E22B7C06A9CE05131DA05E4 /* ItemIconTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583B03B9AF903A2AFD45D820 /* ItemIconTests.swift */; };
@@ -139,6 +143,7 @@
 		B092418CD12F1BDB3C327576 /* CardInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = B337DBEFF36317EB806A13C1 /* CardInput.swift */; };
 		B0D783794A26B0594D271359 /* KeychainSecretKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */; };
 		B157232134C3DDBFE2774982 /* VaultSharingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F012F76F1EDB1B44FF1082E /* VaultSharingView.swift */; };
+		B1E5947F802841625E0B8B98 /* ApprovalPush.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65D19B6D0B4520BE83C04B5D /* ApprovalPush.swift */; };
 		B2393CCCFBDE641E9D29319E /* BackendFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1346D0E3E68C5BDA1B3344E9 /* BackendFactory.swift */; };
 		B2D87CBBB8635681A36D3B76 /* AutoFillRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB833F7AE4DD1DCE9AB0EEC /* AutoFillRootView.swift */; };
 		B38BAFF0A563BDB8AA9235F2 /* PasswordStrengthMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9989C5FE07D2381AD1FC1930 /* PasswordStrengthMeter.swift */; };
@@ -155,6 +160,7 @@
 		BF1A86ECA4563E56069C5DB0 /* VaultBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3573A4BEA82AFBD320C27A14 /* VaultBackend.swift */; };
 		BF4F3F027E347231B1760F19 /* HisarAutoFill.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = EAE5AE06D113B40C2B306DCD /* HisarAutoFill.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C25CF2A328EDD75B1054EF0B /* SharingPushText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8013EEA324E335AC3F584E9 /* SharingPushText.swift */; };
+		C370F0D0CAB82D1D9B83297B /* ApprovalPush.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65D19B6D0B4520BE83C04B5D /* ApprovalPush.swift */; };
 		C84A058AFCD826EC5E00DEDA /* PendingApprovalSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8377C0BA43756107B7C54F28 /* PendingApprovalSection.swift */; };
 		C869199A9D7D7DBC3309E97B /* HisarKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15377A521C283EA5723954C2 /* HisarKit.xcframework */; };
 		C9B332C8EDAC479E1EC33EC5 /* AccountLifecycleLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 601EF17B716B840E1BB373D8 /* AccountLifecycleLogic.swift */; };
@@ -297,6 +303,7 @@
 		62FB24F76BEE115AC930EC61 /* VaultManagementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultManagementTests.swift; sourceTree = "<group>"; };
 		647E01C2B3F64259DBAF90B5 /* PasskeyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasskeyUITests.swift; sourceTree = "<group>"; };
 		64E051721EA2F755340973BE /* VaultManagementView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultManagementView.swift; sourceTree = "<group>"; };
+		65D19B6D0B4520BE83C04B5D /* ApprovalPush.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalPush.swift; sourceTree = "<group>"; };
 		68D14A831312CE53174AE269 /* PushNotificationsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationsModel.swift; sourceTree = "<group>"; };
 		6A0557C083DC71D33D7D838B /* PrivacyShield.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyShield.swift; sourceTree = "<group>"; };
 		6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePalettes.swift; sourceTree = "<group>"; };
@@ -320,6 +327,7 @@
 		AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSecretKeyStore.swift; sourceTree = "<group>"; };
 		B033299FD6E753ABEC665FC2 /* VaultManagementPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultManagementPreviewView.swift; sourceTree = "<group>"; };
 		B337DBEFF36317EB806A13C1 /* CardInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardInput.swift; sourceTree = "<group>"; };
+		B3421AE9637A70443C5B947A /* ApprovalPushTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalPushTests.swift; sourceTree = "<group>"; };
 		B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesView.swift; sourceTree = "<group>"; };
 		B5CAE9257D26523B30362ACC /* AppItemIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppItemIcon.swift; sourceTree = "<group>"; };
 		B7689BDDB94FD64917944388 /* OneTimeCodeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneTimeCodeUITests.swift; sourceTree = "<group>"; };
@@ -480,6 +488,7 @@
 		602D237E00B3E813CC656F0A /* Push */ = {
 			isa = PBXGroup;
 			children = (
+				65D19B6D0B4520BE83C04B5D /* ApprovalPush.swift */,
 				1BDD150DB904FF34A7EE81FC /* PushPayloadKeyStore.swift */,
 				F8013EEA324E335AC3F584E9 /* SharingPushText.swift */,
 				3B7F01A8C316E01D46E510AD /* WebPushDecryptor.swift */,
@@ -561,6 +570,7 @@
 			children = (
 				DE18719EE21D2029B6FDFD85 /* AccountLifecycleTests.swift */,
 				0D54C09BE6FCF29F969C4E18 /* AppModelTests.swift */,
+				B3421AE9637A70443C5B947A /* ApprovalPushTests.swift */,
 				5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */,
 				485ED95656DCEAE23CB924CE /* CredentialImportTests.swift */,
 				7B2774C869B2E88A54905C78 /* FakeBackend.swift */,
@@ -839,6 +849,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				28608092A20E19D2C9E342CC /* AccountLifecycleLogic.swift in Sources */,
+				B1E5947F802841625E0B8B98 /* ApprovalPush.swift in Sources */,
 				6E067186CA8E3B3F7B57CE1A /* AutoFillModel.swift in Sources */,
 				180EDCB93895A51FA8AA8123 /* AutoFillRootView.swift in Sources */,
 				A0E84C2ACA3FABF84806641B /* BackendFactory.swift in Sources */,
@@ -871,6 +882,7 @@
 			files = (
 				6E06BB3841ACDFDD3B3F6C76 /* AccountLifecycleTests.swift in Sources */,
 				641117B1BC86ED26F0DAF500 /* AppModelTests.swift in Sources */,
+				017A6B202594AC0D0EBAF8BC /* ApprovalPushTests.swift in Sources */,
 				343CD1DE10EC8C27BD57EFD5 /* AutoFillModelTests.swift in Sources */,
 				5E555F44D126AB82C96B9857 /* CredentialImportTests.swift in Sources */,
 				BDD67F160CD76BD42407E230 /* FakeBackend.swift in Sources */,
@@ -896,6 +908,7 @@
 				14374DD058E143DF2B26B1C3 /* AccountLifecycleViews.swift in Sources */,
 				5FAD076390F8BED3236B811C /* AppItemIcon.swift in Sources */,
 				BAF1C19FBEBFD77B4E6D5B1E /* AppModel.swift in Sources */,
+				39FECB0E094AA100217090AB /* ApprovalPush.swift in Sources */,
 				3E6F84E78D992221EBE8A95A /* ApprovalsView.swift in Sources */,
 				BDC26D31EA21F003B2F989F6 /* AutoFillModel.swift in Sources */,
 				9C287B952870C5A23543D04D /* AutoFillPreviewView.swift in Sources */,
@@ -958,8 +971,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2488505331F31810AEE1CC8E /* ApprovalPush.swift in Sources */,
 				1517D9AC08F51C8B4B6254D8 /* HisarConfiguration.swift in Sources */,
 				60BC059CB8EEF534D4E80D19 /* NotificationService.swift in Sources */,
+				1EC29EB1946CB4E77B9BCF5A /* PhoneApproval.swift in Sources */,
 				4317F5760951956EDE6A68E9 /* PushPayloadKeyStore.swift in Sources */,
 				F632837BC959472265FBBF3A /* SharingPushText.swift in Sources */,
 				208B3AD9466D298F33D2433E /* WebPushDecryptor.swift in Sources */,
@@ -974,6 +989,7 @@
 				F25607D6F2F0D4C5EB519890 /* AccountLifecycleViews.swift in Sources */,
 				9BDEC98BE1BF0C9E7E125BA9 /* AppItemIcon.swift in Sources */,
 				944EF0E34DA8F818A4F0700F /* AppModel.swift in Sources */,
+				C370F0D0CAB82D1D9B83297B /* ApprovalPush.swift in Sources */,
 				1BDECDA716425CA17E65D9B5 /* ApprovalsView.swift in Sources */,
 				DCAC536617685C2305C80C97 /* AutoFillModel.swift in Sources */,
 				27C22EB95CF61B5CB39A3DD3 /* AutoFillPreviewView.swift in Sources */,

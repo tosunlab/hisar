@@ -143,6 +143,9 @@ protocol VaultBackend: AnyObject {
     func setPushPayloadKey(p256dh: String, auth: String) throws
     func setPushKindEnabled(_ kind: PushKind, isEnabled: Bool) throws
     func getPushSettings() throws -> PushSettings
+    /// getApprovalPushVerifier returns the signed-in account and its public signing key, which the notification service
+    /// extension checks an approval preview against; both are empty before the first unlock.
+    func getApprovalPushVerifier() throws -> ApprovalPushVerifier
 }
 
 struct BackendError: LocalizedError, Equatable {

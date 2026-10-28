@@ -150,6 +150,9 @@ func (s *Service) CreateApproval(actor Actor, request *apitypes.CreateApprovalRe
 	if len(request.SealedRequest) == 0 || len(request.SealedRequest) > ApprovalMaximumSealedSize {
 		return newError(KindInvalid, "invalid sealed request")
 	}
+	if !isValidApprovalPushMessages(request.AllPushMessage) {
+		return newError(KindInvalid, "invalid push messages")
+	}
 	relay := s.Approvals
 	relay.mutex.Lock()
 	now := relay.now()
@@ -191,8 +194,25 @@ func (s *Service) CreateApproval(actor Actor, request *apitypes.CreateApprovalRe
 	}
 	relay.mutex.Unlock()
 	s.publishApprovalEvent(actor.AccountID, apitypes.EventApprovalRequested, request.RequestID)
-	s.notifyPhones(actor.AccountID, apitypes.PushMessage{Kind: apitypes.PushKindApproval}, actor.DeviceID)
+	s.notifyPhones(actor.AccountID, apitypes.PushMessage{Kind: apitypes.PushKindApproval}, actor.DeviceID, request.AllPushMessage)
 	return nil
+}
+
+// maximumApprovalPushMessageLength bounds one encrypted push message: a Web Push message is one record of at most 4 KB,
+// in base64url.
+const maximumApprovalPushMessageLength = 4096 * 4 / 3
+
+func isValidApprovalPushMessages(allPushMessage []apitypes.ApprovalPushMessage) bool {
+	if len(allPushMessage) > apitypes.MaximumApprovalPushMessages {
+		return false
+	}
+	for _, pushMessage := range allPushMessage {
+		if !IsValidUUID(pushMessage.DeviceID) || pushMessage.P256DH == "" || len(pushMessage.P256DH) > 128 ||
+			pushMessage.Message == "" || len(pushMessage.Message) > maximumApprovalPushMessageLength {
+			return false
+		}
+	}
+	return true
 }
 
 // ListPendingApprovals returns the account's open approvals, oldest first.
