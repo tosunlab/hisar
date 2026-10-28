@@ -3,19 +3,21 @@
 # invites the UI tests sign up with, and signs up a partner on the standalone CLI who owns the shared vault and the
 # organization the tests join, and who answers in the background as the partner's own Hisar would.
 #
-# Needs ROOT, UI_TEST_PLATFORM_NAME (iOS or Android) and UI_TEST_PORT. Leaves the server's address in HISAR_PUBLIC_URL
+# Needs ROOT, UI_TEST_PLATFORM_NAME (iOS or Android) and UI_TEST_PORT; with UI_TEST_OPEN_PORT it also starts a second
+# server there, on the same database, with open registration. Leaves the server's address in HISAR_PUBLIC_URL
 # and every value the tests read in UI_TEST_VALUES, as NAME=value. On exit it stops what it started; a caller that needs
 # more cleanup sets its own EXIT trap that also calls ui_test_stop. ui_test_print_logs prints the partner and server logs.
 : "${HISAR_DATABASE_URL:?set HISAR_DATABASE_URL to an empty database}"
 
 T=$(mktemp -d)
 UI_TEST_SERVER=
+UI_TEST_OPEN_SERVER=
 UI_TEST_SINK=
 UI_TEST_PARTNER_LOOP=
 # Stops the server, the sink, the partner loop and any processes passed in, then deletes $T once they stopped writing.
 ui_test_stop() {
   local allProcess
-  allProcess=$(echo "$@" $UI_TEST_SERVER $UI_TEST_SINK $UI_TEST_PARTNER_LOOP)
+  allProcess=$(echo "$@" $UI_TEST_SERVER $UI_TEST_OPEN_SERVER $UI_TEST_SINK $UI_TEST_PARTNER_LOOP)
   if [ -n "$allProcess" ]; then
     kill $allProcess 2>/dev/null || true
     wait $allProcess 2>/dev/null || true
@@ -33,6 +35,10 @@ ui_test_print_logs() {
   cat "$T/partner.log" >&2
   echo "server log:" >&2
   cat "$T/server.log" >&2
+  if [ -n "$UI_TEST_OPEN_SERVER" ]; then
+    echo "open registration server log:" >&2
+    cat "$T/open-server.log" >&2
+  fi
 }
 
 (cd "$ROOT" && go build -o bin/hisar-server ./server/cmd/hisar-server && go build -o bin/hisar ./cli/cmd/hisar &&
@@ -74,6 +80,13 @@ printf '%s\n%s\n%s\n%s\n' "$PARTNER_EMAIL" "$PARTNER_NAME" "$PARTNER_PASSWORD" "
 PARTNER_SECRET_KEY=$(grep -oE 'H1-[0-9A-Z-]+' "$T/partner-signup.txt")
 partner() { HISAR_STATE=$T/partner.json HISAR_SECRET_KEY=$PARTNER_SECRET_KEY "$ROOT/bin/hisar" "$@"; }
 partner_unlocked() { printf '%s\n' "$PARTNER_PASSWORD" | partner "$@"; }
+# Started once the partner exists, so this process reads a setup that is past its first admin and answers "open".
+if [ -n "${UI_TEST_OPEN_PORT:-}" ]; then
+  HISAR_OPEN_REGISTRATION=true HISAR_PUBLIC_URL=http://127.0.0.1:$UI_TEST_OPEN_PORT \
+    "$ROOT/bin/hisar-server" serve -addr "127.0.0.1:$UI_TEST_OPEN_PORT" >"$T/open-server.log" 2>&1 &
+  UI_TEST_OPEN_SERVER=$!
+  curl -sf --retry 20 --retry-all-errors --retry-delay 1 "http://127.0.0.1:$UI_TEST_OPEN_PORT/healthz" >/dev/null
+fi
 # check_partner fails when a partner step's output lacks what the step promises, so a broken setup stops here and a
 # broken step in the loop below is in the partner log printed when the tests fail.
 check_partner() {
@@ -182,3 +195,9 @@ ui_test_add_account ORGANIZATION_ADMIN_ "$EMAIL_PREFIX-organization-admin-$(date
 ui_test_add_account ONBOARDING_POSTPONED_ "$EMAIL_PREFIX-onboarding-postponed-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ONBOARDING_AUTOLOCK_ "$EMAIL_PREFIX-onboarding-autolock-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account EMERGENCY_KIT_BANNER_ "$EMAIL_PREFIX-emergency-kit-banner-$(date +%s)-$RANDOM@example.com"
+if [ -n "$UI_TEST_OPEN_SERVER" ]; then
+  UI_TEST_VALUES+=(
+    "HISAR_UI_TEST_OPEN_SERVER=http://127.0.0.1:$UI_TEST_OPEN_PORT"
+    "HISAR_UI_TEST_OPEN_EMAIL=$EMAIL_PREFIX-open-$(date +%s)-$RANDOM@example.com"
+  )
+fi

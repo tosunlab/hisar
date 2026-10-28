@@ -201,6 +201,23 @@ class OnboardingUITests {
         capture("invite-only-before-password")
     }
 
+    @Test fun testOpenServerCreatesAccountWithoutInvitation() {
+        backend.signUpPolicyMode = "open"
+        start()
+        tap("welcome-create-account")
+        compose.waitUntil(10_000) { model.signIn.signUpPolicy.value is com.tryhisar.hisar.app.SignUpPolicyState.Ready }
+        compose.onNodeWithTag("sign-up-invite-link").assertDoesNotExist()
+        capture("open-server-create-account")
+        type("sign-up-email", "ada@example.com")
+        type("sign-up-name", "Ada")
+        type("sign-up-password", FakeBackend.PASSWORD)
+        type("sign-up-repeated-password", FakeBackend.PASSWORD)
+        tap("sign-in-submit")
+        compose.waitUntil(30_000) { model.signIn.newAccountStep.value == NewAccountStep.SaveSecretKey }
+        assertEquals(1, backend.countCall("signUpWithoutInvite"))
+        compose.waitUntil(10_000) { compose.onAllNodes(hasTestTag("new-secret-key")).fetchSemanticsNodes().isNotEmpty() }
+    }
+
     @Test fun testLostKeyHelpPreservesCredentials() {
         start()
         tap("welcome-sign-in")

@@ -35,6 +35,7 @@ fi
 
 UI_TEST_PLATFORM_NAME=iOS
 UI_TEST_PORT=${IOS_UI_TEST_PORT:-18082}
+UI_TEST_OPEN_PORT=${IOS_UI_TEST_OPEN_PORT:-18086}
 source "$ROOT/scripts/ui-test-partner.sh"
 
 SIMULATOR_ID=${IOS_SIMULATOR_ID:-$("$ROOT/mobile/ios/scripts/find-simulator.sh")}

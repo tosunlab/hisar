@@ -121,6 +121,29 @@ final class OnboardingUITests: HisarUITestCase {
         saveScreenshot("onboarding-invitation-first")
     }
 
+    func testOpenServerCreatesAccountWithoutInvitation() throws {
+        let server = try readEnvironment("HISAR_UI_TEST_OPEN_SERVER")
+        let email = try readEnvironment("HISAR_UI_TEST_OPEN_EMAIL")
+        app.launch()
+        selectSignInMode("Create account")
+        app.buttons["sign-up-use-different-server"].tap()
+        replaceText(server, in: app.textFields["sign-up-server"])
+        waitFor(app.textFields["sign-up-email"])
+        XCTAssertFalse(app.textFields["sign-up-invite-link"].exists)
+        saveScreenshot("onboarding-open-server")
+        type(email, into: app.textFields["sign-up-email"])
+        type("Open", into: app.textFields["sign-up-name"])
+        type(Self.masterPassword, into: app.secureTextFields["sign-up-password"])
+        type(Self.masterPassword, into: app.secureTextFields["sign-up-repeated-password"])
+        XCTAssertFalse(app.textFields["sign-up-invite-link"].exists)
+        scrollTo(app.buttons["sign-in-submit"])
+        app.buttons["sign-in-submit"].tap()
+        let key = app.staticTexts["new-secret-key"]
+        waitFor(key, timeout: 60)
+        XCTAssertTrue(key.label.hasPrefix("H1-"), key.label)
+        saveScreenshot("onboarding-open-server-kit")
+    }
+
     func testLostKeyHelpPreservesCredentials() {
         app.launch()
         selectSignInMode("Sign in")
