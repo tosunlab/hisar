@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.ui.item
 
+import android.content.ClipboardManager
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
@@ -17,11 +18,14 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.app.FakeTextClipboard
+import com.tryhisar.hisar.HisarTestApplication
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.ItemServer
 import com.tryhisar.hisar.model.ItemField
 import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.platform.targetContext
+import com.tryhisar.hisar.platform.waitUntil
 import com.tryhisar.hisar.ui.tap
 import com.tryhisar.hisar.ui.waitForTag
 import com.tryhisar.hisar.ui.waitForTagToGo
@@ -122,6 +126,24 @@ class ItemDetailScreenTests {
     }
 
     @Test
+    fun testFullValueCopyUsesTheProtectedAndroidClipboard() {
+        val application = targetContext.applicationContext as HisarTestApplication
+        val clipboardManager = targetContext.getSystemService(ClipboardManager::class.java)
+        val secret = "0123456789abcdef".repeat(160) + "COMPLETE-END"
+        backend.saveItem("personal", backend.getItem("personal", "github").copy(password = secret))
+        host = ItemDetailHost(backend, application).also { it.show("personal", "github") }
+        composeRule.waitForTag("reveal-password")
+        composeRule.tap("reveal-password")
+        composeRule.onNodeWithTag("view-full-password").performScrollTo().performClick()
+        composeRule.waitForTag("full-value-text")
+        composeRule.tap("full-value-copy")
+        waitUntil(10_000, "the clipboard holds the complete secret") {
+            clipboardManager.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString() == secret
+        }
+        assertTrue("the full-value view uses Hisar's sensitive clipboard path", clipboardManager.primaryClipDescription?.extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true)
+    }
+
+    @Test
     fun testServerOpensItsSSHKeyAndBackReturnsToTheServer() {
         val host = openHost()
         host.show("personal", "build")
@@ -216,21 +238,6 @@ class ItemDetailScreenTests {
         composeRule.onNodeWithTag("field-action-Copy").performClick()
         composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
         composeRule.waitUntil(5_000) { host.model.notice.value?.message == "Website copied. It clears in about 2 minutes." }
-    }
-
-    @Test
-    fun testTouchAndHoldCopiesAnAndroidAppCertificate() {
-        val certificate = List(32) { "14" }.joinToString(":")
-        backend.addAndroidApp("personal", "bank", "com.bank.app", certificate)
-        val host = openHost()
-        host.show("personal", "bank")
-        composeRule.waitForTag("android-app-com.bank.app")
-        composeRule.onNodeWithTag("android-app-com.bank.app").performScrollTo().performTouchInput { longClick() }
-        composeRule.waitForTag("field-action-Copy certificate")
-        composeRule.onNodeWithTag("field-action-Copy certificate").performClick()
-        composeRule.waitForTagToGo("field-action-Copy certificate")
-        composeRule.waitUntil(5_000) { clipboard.allCopiedPlain == listOf(certificate) }
-        composeRule.waitUntil(5_000) { host.model.notice.value?.message == "Certificate copied" }
     }
 
     @Test

@@ -80,6 +80,9 @@ final class OneTimeCodeUITests: HisarUITestCase {
         app.buttons["edit-item"].tap()
         waitFor(app.secureTextFields["editor-one-time-password"])
         app.buttons["editor-cancel"].tap()
+        goBack()
+        goBack()
+        addLogin(title: "Other site", username: "other-user", password: "other-password-1", website: "other.example.org")
 
         launchAutoFill(argument: "-HisarAutoFillOneTimeCodePreview")
         let codeLogin = app.buttons["autofill-login-Example"]
@@ -98,6 +101,16 @@ final class OneTimeCodeUITests: HisarUITestCase {
         let prefix = "Filled code-user with a password of 15 characters and copied the one-time code "
         XCTAssertTrue(passwordResult.hasPrefix(prefix), passwordResult)
         checkCurrentCode(String(passwordResult.dropFirst(prefix.count)), startedAt: passwordStartedAt)
+
+        launchAutoFill(argument: "-HisarAutoFillPreview")
+        waitFor(app.buttons["autofill-login-Example"])
+        type("other", into: app.searchFields.firstMatch)
+        app.buttons["autofill-login-Other site"].tap()
+        let confirmation = app.alerts.firstMatch
+        waitFor(confirmation)
+        XCTAssertTrue(confirmation.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "other.example.org")).firstMatch.exists)
+        confirmation.buttons["Fill once"].tap()
+        XCTAssertEqual(readResult(), "Filled other-user with a password of 16 characters")
     }
 
     private func launchAutoFill(argument: String) {

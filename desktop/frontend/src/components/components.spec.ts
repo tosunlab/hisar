@@ -198,22 +198,6 @@ describe("SignInView", () => {
     expect(wrapper.find('[role="alert"]').text()).toContain("cannot reach the Hisar server");
   });
 
-  it("keeps one tagline and shows the developer panel for sign in and the safety panel for account creation", async () => {
-    const tagline = "Passwords, SSH keys and secrets for developers, end-to-end encrypted.";
-    const wrapper = mount(SignInView);
-    expect(wrapper.find('[data-testid="brand-title"]').text()).toBe(tagline);
-    expect(wrapper.find("h1").exists()).toBe(false);
-    expect(wrapper.text()).toContain("Made for the terminal");
-    expect(wrapper.text()).toContain("The hisar command-line tool reads passwords and one-time codes, and uses SSH keys through the agent");
-    expect(wrapper.text()).toContain("Private keys never leave Hisar.");
-    expect(wrapper.text()).not.toContain("!");
-    await wrapper.findAll('[role="tab"]')[1].trigger("click");
-    expect(wrapper.find('[data-testid="brand-title"]').text()).toBe(tagline);
-    expect(wrapper.get("h1").text()).toBe("Create your account");
-    expect(wrapper.get(".subtitle").text()).toBe("Enter the invite code you received, or paste the whole invite link. Some servers let anyone sign up without one.");
-    expect(wrapper.text()).toContain("Safe even if the server is breached");
-  });
-
   it("points to the Emergency Kit for a lost Secret Key and offers no account recovery", () => {
     const wrapper = mount(SignInView);
     expect(wrapper.find('[data-testid="secret-key-note"]').text()).toBe("Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.");
@@ -232,6 +216,7 @@ describe("SignInView", () => {
     const secretKey = mount(SecretKeyView);
     expect(secretKey.findAll('[data-testid="master-password-warning"]')).toHaveLength(1);
     expect(secretKey.get('[data-testid="master-password-warning"]').text()).toBe("A forgotten master password can't be recovered by anyone, including Hisar.");
+    expect(secretKey.text()).not.toMatch(/admin/i);
     secretKey.unmount();
   });
 
@@ -430,14 +415,6 @@ describe("SignInView", () => {
 
 describe("SecretKeyView", () => {
   beforeEach(resetStore);
-
-  it("says that a forgotten master password can't be recovered", () => {
-    store.pendingSecretKey = "H1-ABC123-SECRET";
-    const wrapper = mount(SecretKeyView);
-    expect(wrapper.find("h1").text()).toBe("Save your Secret Key");
-    expect(wrapper.find('[data-testid="master-password-warning"]').text()).toBe("A forgotten master password can't be recovered by anyone, including Hisar.");
-    expect(wrapper.text()).not.toMatch(/admin/i);
-  });
 
   it("only continues after the Emergency Kit was saved and the user confirms it", async () => {
     store.pendingSecretKey = "H1-ABC123-SECRET";

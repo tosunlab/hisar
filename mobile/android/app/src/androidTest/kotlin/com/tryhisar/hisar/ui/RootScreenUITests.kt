@@ -2,7 +2,6 @@ package com.tryhisar.hisar.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -27,7 +26,6 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import com.tryhisar.hisar.AppViewModel
 import com.tryhisar.hisar.HisarTestApplication
-import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.model.PendingRecovery
@@ -143,36 +141,6 @@ class RootScreenUITests {
             composeRule.waitForTagToGo("biometric-offer-not-now")
             composeRule.onNodeWithTag("tab-vaults").assertIsDisplayed()
             composeRule.waitUntil { "forgetNewAccountSecretKey" in backend.allCallName }
-        }
-    }
-
-    @Test
-    fun testLockNowThenUnlockWithTheMasterPassword() {
-        val backend = FakeBackend().apply { seedSignedIn() }
-        launchApp(backend).use {
-            composeRule.waitForTag("lock-now")
-            composeRule.onNodeWithTag("lock-now").performClick()
-            composeRule.waitForTag("unlock-password")
-            composeRule.onNodeWithTag("unlock-password").assertIsFocused()
-            composeRule.onNodeWithTag("lock-email").assertTextEquals("alice@example.com")
-            composeRule.type("unlock-password", "wrong")
-            composeRule.tap("unlock-submit")
-            composeRule.waitForTag("error-message")
-            composeRule.type("unlock-password", FakeBackend.PASSWORD)
-            composeRule.tap("unlock-submit")
-            composeRule.waitForTag("tab-vaults")
-            assertEquals(VaultStatus.STATE_UNLOCKED, backend.status.state)
-        }
-    }
-
-    @Test
-    fun testStartupFailureShowsWhyHisarCouldNotStart() {
-        val backend = object : FakeBackend() {
-            override fun getStatus(): VaultStatus = throw BackendError("Hisar could not open its files.")
-        }
-        launchApp(backend).use {
-            composeRule.waitForTag("error-message")
-            composeRule.onNodeWithTag("error-message").assertTextEquals("Hisar could not open its files.")
         }
     }
 

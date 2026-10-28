@@ -90,7 +90,7 @@ HISAR_DATABASE_URL=postgres://…/hisar_android_empty make test-android-ui   # i
 starts `hisar-server` on port 18084 (`ANDROID_UI_TEST_PORT`), the SMTP sink, the sharing partner and
 `hisar-ui-test-mac`, creates one invite per account the tests need, and reaches the server from the emulator through
 `adb reverse`. The test orchestrator clears the app's data before each test. `ANDROID_UI_TESTS` picks tests by class or
-test name (`ANDROID_UI_TESTS=HarnessServerTests,testAccountItemLockAndSignInFlow`), and `ANDROID_UI_TESTS=smoke` runs the
+test name (`ANDROID_UI_TESTS=HisarKitBackendTests,testAccountItemLockAndSignInFlow`), and `ANDROID_UI_TESTS=smoke` runs the
 short list that the API 29 and 34 emulators get. Set `HISAR_UI_TEST_SCREENSHOT_DIRECTORY` to save each test's screenshots.
 Instrumented taps and swipes scroll rows clear of both the floating tab bar and **New**, which can cover a row that is
 still inside the list's visible bounds.

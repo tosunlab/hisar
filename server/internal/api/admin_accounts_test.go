@@ -128,7 +128,7 @@ func TestAdminAccountsSuspendAndReactivate(t *testing.T) {
 	member := signUpAccountWithRole(t, server, baseURL, "member@example.com", apitypes.RoleMember)
 	token, memberID := admin.session.Client.Token, member.session.AccountID
 
-	memberEvents := openEventStream(t, member.session.Client)
+	memberEvents := openEventStream(t, server, member.session.Client, member.session.AccountID)
 	waitForSubscriber(t, server, memberID, 1)
 	if status, body := sendRawRequest(t, baseURL, token, "POST", adminAccountsPath+"/"+memberID+"/suspend", nil); status != http.StatusNoContent {
 		t.Fatalf("suspend: %d %s", status, body)
@@ -300,8 +300,8 @@ func TestAdminAccountsDelete(t *testing.T) {
 	shareThroughInvitation(t, member.session, admin.session, shared, apitypes.VaultOwner)
 	memberPersonal := requireValue[*session.Vault](t)(member.session.FindVault(ctx, "Personal"))
 
-	memberEvents := openEventStream(t, member.session.Client)
-	adminEvents := openEventStream(t, admin.session.Client)
+	memberEvents := openEventStream(t, server, member.session.Client, member.session.AccountID)
+	adminEvents := openEventStream(t, server, admin.session.Client, admin.session.AccountID)
 	waitForSubscriber(t, server, memberID, 1)
 	waitForSubscriber(t, server, admin.session.AccountID, 1)
 	request := reviewedAdminDeletion(t, admin, memberID, " Member@Example.com ")
@@ -347,8 +347,8 @@ func TestAdminAccountsSignOutAndRevokeADevice(t *testing.T) {
 	memberID, token := member.session.AccountID, admin.session.Client.Token
 	laptop := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "member@example.com", member.password, member.secretKey, testDevice))
 
-	laptopEvents := openEventStream(t, laptop.Client)
-	desktopEvents := openEventStream(t, member.session.Client)
+	laptopEvents := openEventStream(t, server, laptop.Client, laptop.AccountID)
+	desktopEvents := openEventStream(t, server, member.session.Client, member.session.AccountID)
 	waitForSubscriber(t, server, memberID, 2)
 	if status, body := sendRawRequest(t, baseURL, token, "DELETE", adminAccountsPath+"/"+memberID+"/devices/"+laptop.DeviceID, nil); status != http.StatusNoContent {
 		t.Fatalf("revoke: %d %s", status, body)
@@ -389,7 +389,7 @@ func TestRevokingOwnDeviceEndsItsStream(t *testing.T) {
 	ctx := context.Background()
 	member := signUpAccountWithRole(t, server, baseURL, "member@example.com", apitypes.RoleMember)
 	laptop := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "member@example.com", member.password, member.secretKey, testDevice))
-	laptopEvents := openEventStream(t, laptop.Client)
+	laptopEvents := openEventStream(t, server, laptop.Client, laptop.AccountID)
 	waitForSubscriber(t, server, member.session.AccountID, 1)
 	if err := member.session.Client.RevokeDevice(ctx, laptop.DeviceID); err != nil {
 		t.Fatal(err)

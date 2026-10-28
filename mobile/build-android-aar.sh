@@ -10,11 +10,13 @@ export GOTOOLCHAIN
 PATH="$(go env GOPATH)/bin:$PATH"
 export PATH
 export GOWORK=off
+# shellcheck source=mobile/fast-test-kdf.sh
+source fast-test-kdf.sh
 
-GOOS=android GOARCH=arm64 go vet ./hisarkit
+GOOS=android GOARCH=arm64 go vet ${TAGS[@]+"${TAGS[@]}"} ./hisarkit
 mkdir -p build
 aar=build/HisarKit.aar
-gomobile bind -target=android/arm64,android/amd64 -androidapi 29 -javapkg com.tryhisar -trimpath -ldflags="-s -w" -o "$aar" ./hisarkit
+gomobile bind ${TAGS[@]+"${TAGS[@]}"} -target=android/arm64,android/amd64 -androidapi 29 -javapkg com.tryhisar -trimpath -ldflags="-s -w" -o "$aar" ./hisarkit
 
 workDirectory=$(mktemp -d)
 trap 'rm -rf "$workDirectory"' EXIT
