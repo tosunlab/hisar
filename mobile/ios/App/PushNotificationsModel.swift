@@ -6,7 +6,7 @@ protocol NotificationScheduling: Sendable {
     func requestAuthorization() async throws -> Bool
     func getAuthorization() async -> NotificationAuthorization
     func add(_ request: UNNotificationRequest) async throws
-    func removeNotifications(withIdentifiers allIdentifier: [String])
+    func removeNotifications(withIdentifiers allIdentifier: [String]) async
 }
 
 enum NotificationAuthorization: Equatable {
@@ -32,9 +32,16 @@ struct SystemNotificationCenter: NotificationScheduling {
         try await UNUserNotificationCenter.current().add(request)
     }
 
-    func removeNotifications(withIdentifiers allIdentifier: [String]) {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: allIdentifier)
-        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: allIdentifier)
+    func removeNotifications(withIdentifiers allIdentifier: [String]) async {
+        // UserNotifications can wait synchronously for its service during a scene transition.
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                let center = UNUserNotificationCenter.current()
+                center.removePendingNotificationRequests(withIdentifiers: allIdentifier)
+                center.removeDeliveredNotifications(withIdentifiers: allIdentifier)
+                continuation.resume()
+            }
+        }
     }
 }
 
@@ -155,7 +162,7 @@ final class PushNotificationsModel: ObservableObject {
     /// remindOfWaitingApproval leaves a reminder when Hisar goes to the background with an approval still waiting, and
     /// removes it otherwise. It says no more than a push would.
     func remindOfWaitingApproval(isWaiting: Bool) async {
-        center.removeNotifications(withIdentifiers: [Self.approvalReminderIdentifier])
+        await center.removeNotifications(withIdentifiers: [Self.approvalReminderIdentifier])
         guard isWaiting, settings.isEnabled(.approval), await center.getAuthorization() == .allowed else { return }
         let content = UNMutableNotificationContent()
         content.title = "Hisar"
@@ -167,7 +174,7 @@ final class PushNotificationsModel: ObservableObject {
         try? await center.add(UNNotificationRequest(identifier: Self.approvalReminderIdentifier, content: content, trigger: trigger))
     }
 
-    func clearApprovalReminder() {
-        center.removeNotifications(withIdentifiers: [Self.approvalReminderIdentifier])
+    func clearApprovalReminder() async {
+        await center.removeNotifications(withIdentifiers: [Self.approvalReminderIdentifier])
     }
 }

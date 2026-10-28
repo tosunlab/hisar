@@ -7,7 +7,8 @@ final class FakeNotificationCenter: NotificationScheduling, @unchecked Sendable 
     private var authorization: NotificationAuthorization
     private var isGrantedOnRequest: Bool
     private(set) var requestCount = 0
-    private(set) var allAdded: [UNNotificationRequest] = []
+    private var addedNotifications: [UNNotificationRequest] = []
+    var allAdded: [UNNotificationRequest] { lock.withLock { addedNotifications } }
     private(set) var allRemovedIdentifier: [String] = []
 
     init(authorization: NotificationAuthorization = .notDetermined, isGrantedOnRequest: Bool = true) {
@@ -32,13 +33,13 @@ final class FakeNotificationCenter: NotificationScheduling, @unchecked Sendable 
     }
 
     func add(_ request: UNNotificationRequest) async throws {
-        lock.withLock { allAdded.append(request) }
+        lock.withLock { addedNotifications.append(request) }
     }
 
-    func removeNotifications(withIdentifiers allIdentifier: [String]) {
+    func removeNotifications(withIdentifiers allIdentifier: [String]) async {
         lock.withLock {
             allRemovedIdentifier.append(contentsOf: allIdentifier)
-            allAdded.removeAll { allIdentifier.contains($0.identifier) }
+            addedNotifications.removeAll { allIdentifier.contains($0.identifier) }
         }
     }
 }
@@ -151,6 +152,8 @@ final class PushNotificationTests: XCTestCase {
         XCTAssertFalse(reminder.content.body.contains("git"), "the reminder names nothing from the request")
         XCTAssertFalse(reminder.content.body.contains("MacBook"))
         model.handleWillEnterForeground()
+        let cleared = XCTNSPredicateExpectation(predicate: NSPredicate { [center] _, _ in center?.allAdded.isEmpty == true }, object: nil)
+        await fulfillment(of: [cleared], timeout: 5)
         XCTAssertTrue(center.allAdded.isEmpty)
     }
 

@@ -225,6 +225,15 @@ class HisarUITestCase: XCTestCase {
             XCTFail("\(element) would show its placeholder \"\(element.placeholderValue ?? "")\" whether or not \"\(text)\" is in; type something else", file: file, line: line)
             return
         }
+        // Formatting and live search redraw after each key, before the next key can safely arrive.
+        if showing == nil && ((normalize != nil && !typedText.isSecure) || element.elementType == .searchField) {
+            var entered = String(typedText.expected.dropLast(text.count))
+            for character in text {
+                entered.append(character)
+                typeText(String(character), into: element, showing: entered, normalizedBy: normalize, file: file, line: line)
+            }
+            return
+        }
         element.typeText(text)
         let isShown = waitUntil(timeout: 30) { typedText.isShown(byValue: element.value as? String, placeholder: element.placeholderValue) }
         XCTAssertTrue(isShown, "\(element) shows \"\(element.value as? String ?? "")\", not \"\(typedText.expected)\"", file: file, line: line)
@@ -259,18 +268,19 @@ class HisarUITestCase: XCTestCase {
         let saveToFiles = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Save to Files")).firstMatch
         waitForHittable(saveToFiles)
         saveToFiles.tap()
+        let save = app.navigationBars.buttons["Save"].firstMatch
+        waitForHittable(save, timeout: 60)
         let fileName = app.textFields["DOCPicker.filenameTextField"]
         waitForHittable(fileName)
         fileName.tap()
         let uniqueName = "Hisar Emergency Kit \(UUID().uuidString)"
         let deletion = String(repeating: XCUIKeyboardKey.delete.rawValue, count: (fileName.value as? String ?? "").count)
         typeText(deletion + uniqueName, into: fileName, showing: uniqueName)
-        let save = app.navigationBars.buttons["Save"]
-        waitForHittable(save)
         save.tap()
         if app.buttons["Replace"].waitForExistence(timeout: 2) {
             app.buttons["Replace"].tap()
         }
+        XCTAssertTrue(fileName.waitForNonExistence(timeout: 60), "Files did not finish saving the Emergency Kit")
         waitForHittable(share)
     }
 
