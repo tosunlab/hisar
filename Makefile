@@ -37,13 +37,18 @@ build-cli-all:
 package-cli-release:
 	./scripts/package-cli-release.sh $(VERSION) bin/cli-release
 
-# -p 1: database tests in different packages share one schema.
+# These packages drop the same database schema, so only this group needs -p 1.
+DATABASE_TEST_PACKAGES := github.com/tryhisar/hisar/server/cmd/hisar-server \
+	github.com/tryhisar/hisar/server/internal/api \
+	github.com/tryhisar/hisar/server/internal/service \
+	github.com/tryhisar/hisar/server/internal/store
+TEST_PACKAGES = $(filter-out $(DATABASE_TEST_PACKAGES),$(shell go list $(addsuffix /...,$(addprefix ./,$(MODULES)))))
 # desktop: every package but the Wails main package, which needs cgo and the built frontend.
 DESKTOP_PACKAGES = $(shell cd desktop && go list -e ./... | grep -v '^github.com/tryhisar/hisar/desktop$$')
 
 test:
-	@for m in $(MODULES); do (cd $$m && go test -p 1 -count=1 $(TESTFLAGS) ./...) || exit 1; done
-	cd desktop && go test -count=1 $(TESTFLAGS) $(DESKTOP_PACKAGES)
+	go test -count=1 $(TESTFLAGS) $(TEST_PACKAGES) $(DESKTOP_PACKAGES)
+	go test -p 1 -count=1 $(TESTFLAGS) $(DATABASE_TEST_PACKAGES)
 
 vet:
 	@for m in $(MODULES); do (cd $$m && go vet ./...) || exit 1; done
