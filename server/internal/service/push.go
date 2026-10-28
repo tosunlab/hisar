@@ -95,7 +95,10 @@ func (s *Service) checkPushKeySignature(ctx context.Context, actor Actor, target
 	if err != nil {
 		return nil, err
 	}
-	if crypt.VerifyPushKey(account.SignPub, actor.AccountID, actor.DeviceID, p256dh, auth, signature) != nil {
+	// The apps up to iPhone 0.1.16 never stored their own device ID and sign their key with an empty one. That signature
+	// still binds the key to the account, which is what keeps the server from handing a Mac a key of its own.
+	if crypt.VerifyPushKey(account.SignPub, actor.AccountID, actor.DeviceID, p256dh, auth, signature) != nil &&
+		crypt.VerifyPushKey(account.SignPub, actor.AccountID, "", p256dh, auth, signature) != nil {
 		return nil, invalid
 	}
 	return signature, nil

@@ -431,6 +431,9 @@ func TestAnApprovalPushCarriesThePreviewTheMacEncryptedForEachPhone(t *testing.T
 	} {
 		expectStatus(t, name, iPhone.Client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: "iphone-handle", PayloadKey: key, KeySignature: signature, AllKind: approvalKind}), http.StatusBadRequest)
 	}
+	if err := iPhone.Client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: "iphone-handle", PayloadKey: key, KeySignature: signKey("", payloadKey.PublicKey().Bytes(), payloadAuth), AllKind: approvalKind}); err != nil {
+		t.Fatalf("a released iPhone's signature over an empty device ID was refused: %v", err)
+	}
 	expectStatus(t, "a signature without a key", iPhone.Client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: "iphone-handle", KeySignature: signKey(iPhoneID, payloadKey.PublicKey().Bytes(), payloadAuth), AllKind: approvalKind}), http.StatusBadRequest)
 	if err := iPhone.Client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: "iphone-handle", PayloadKey: key, KeySignature: signKey(iPhoneID, payloadKey.PublicKey().Bytes(), payloadAuth), AllKind: approvalKind}); err != nil {
 		t.Fatal(err)
