@@ -48,33 +48,6 @@ final class OnboardingUITests: HisarUITestCase {
         saveScreenshot("onboarding-postponed-finished")
     }
 
-    func testAutoLockDuringKitSaveResumesAfterUnlock() throws {
-        try postponeAccount("ONBOARDING_AUTOLOCK")
-        openSettings("open-security")
-        app.buttons["5 minutes"].firstMatch.tap()
-        app.buttons["30 seconds"].firstMatch.tap()
-        openTab("Vaults")
-        scrollTo(app.buttons["emergency-kit-banner-save"])
-        app.buttons["emergency-kit-banner-save"].tap()
-        waitFor(app.staticTexts["new-secret-key"], timeout: 60)
-        scrollTo(app.buttons["new-secret-key-share-kit"])
-        app.buttons["new-secret-key-share-kit"].tap()
-        waitFor(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Save to Files")).firstMatch)
-        waitFor(app.secureTextFields["unlock-password"], timeout: 65)
-        XCTAssertFalse(app.navigationBars["Finish account setup"].exists)
-        let interrupted = app.staticTexts["Hisar locked while you were saving your Emergency Kit. Unlock to continue."]
-        waitFor(interrupted)
-        saveScreenshot("onboarding-autolock-interrupted")
-        type(Self.masterPassword, into: app.secureTextFields["unlock-password"])
-        app.buttons["unlock-submit"].tap()
-        waitFor(app.staticTexts["new-secret-key"], timeout: 60)
-        XCTAssertFalse(app.secureTextFields["new-secret-key-password"].exists)
-        XCTAssertFalse(app.buttons["new-secret-key-done"].exists)
-        saveScreenshot("onboarding-autolock-resumed")
-        scrollTo(app.buttons["new-secret-key-later"])
-        app.buttons["new-secret-key-later"].tap()
-    }
-
     func testEmergencyKitBannerDoesNotCoverControls() throws {
         try postponeAccount("EMERGENCY_KIT_BANNER")
         checkBannerLayout("default")
@@ -142,24 +115,5 @@ final class OnboardingUITests: HisarUITestCase {
         waitFor(key, timeout: 60)
         XCTAssertTrue(key.label.hasPrefix("H1-"), key.label)
         saveScreenshot("onboarding-open-server-kit")
-    }
-
-    func testLostKeyHelpPreservesCredentials() {
-        app.launch()
-        selectSignInMode("Sign in")
-        type("ada@example.com", into: app.textFields["sign-in-email"])
-        type("H1-KEPT", into: app.textFields["sign-in-secret-key"])
-        type("typed master password", into: app.secureTextFields["sign-in-password"])
-        scrollTo(app.buttons["secret-key-note"])
-        app.buttons["secret-key-note"].tap()
-        waitFor(app.buttons["secret-key-help-done"])
-        saveScreenshot("onboarding-lost-key-help")
-        app.buttons["secret-key-help-done"].tap()
-        scrollTo(app.textFields["sign-in-email"])
-        XCTAssertEqual(app.textFields["sign-in-email"].value as? String, "ada@example.com")
-        XCTAssertEqual(app.textFields["sign-in-secret-key"].value as? String, "H1-KEPT")
-        scrollTo(app.buttons["sign-in-password-reveal"])
-        app.buttons["sign-in-password-reveal"].tap()
-        XCTAssertEqual(app.textFields["sign-in-password"].value as? String, "typed master password")
     }
 }

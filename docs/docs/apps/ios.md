@@ -159,28 +159,29 @@ The sign-up tests save each Emergency Kit under a unique name because the simula
 The helper waits for the Files picker to become tappable and for saving to finish, then waits for Hisar's share button
 to become tappable again. A missing system activity cell requires searching the remote share sheet's entire
 accessibility tree and can exhaust a wait after the sheet has already closed. The confirmation must still become enabled.
-Formatted fields wait for each character's update before typing the next one. Custom-field clipboard checks paste
-inside Hisar because iOS does not grant the test runner access to the app's clipboard.
+Formatted fields wait for each character's update before typing the next one.
 Back navigation first selects the frontmost navigation bar, then its back button. A global `BackButton` query can
 select a covered stack's button instead of the visible sheet's back button.
 
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.
 
-What the UI tests cover: create an account from an invite and read the new Secret Key, add a login, Favorites (the star in an item,
-the swipe actions and the Favorites section at the top of Vaults), creating every item type through the + menu and its More… submenu, item detail
-(tap a field anywhere to copy, including a concealed field, reveal independently with the eye, and long-press for
-Copy or Copy secret reference from the field's context menu, independently of the page's secret-reference button), editing with the password generator, search, lock and unlock with the master password, Settings (the empty Approvals tab, auto-lock, devices, the Secret Key behind the master
-password with the Emergency Kit share), turning Mac approvals off in Settings and back on from Approvals, sign out and sign in with the Secret Key, creating a shared vault and seeing its members, inviting someone from Settings → People, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
-simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in
-with it, check the attestation and the ES256 signature with CryptoKit, then see and delete it in the item.
-`WideLayoutUITests` checks the split views: beside their list on a wide screen, pushed over it on a compact one, so it
-means something on both the iPhone Duo simulator and the compact one CI uses.
-`OnboardingUITests` covers a postponed kit that needs only the unlock password, auto-lock while saving the kit, the
-reminder at the default and the largest accessibility text size (every toolbar and tab control stays tappable and the
-reminder scrolls with Vaults), invitation-first Create account on an invite-only server, and lost-key help that keeps
-the typed credentials. Its accounts come from the `ONBOARDING_POSTPONED`, `ONBOARDING_AUTOLOCK` and
-`EMERGENCY_KIT_BANNER` invites that `scripts/ui-test-partner.sh` creates.
+What the UI tests cover: only the journeys a user depends on end to end, plus the device-only security checks; the
+logic behind each screen is in the unit tests. `HisarUITests` creates an account from an invite, saves the Emergency
+Kit, adds a login with a one-time code (its password hidden until revealed, copied without revealing, revealed without
+copying; its setup key hidden in the editor until revealed) and a card (number and security code hidden until revealed),
+locks and unlocks with the master password, signs out and signs in again with the Secret Key, and checks the privacy
+cover. `FaceIDUITests` turns on Face ID and unlocks with it (the test enrolls a face in the simulator and posts its
+"matching face" notification). `SharingUITests` shares a new vault, manages its members and invites someone from
+Settings → People. `AccountLifecycleUITests` changes the master password, replaces the Secret Key and deletes the
+account. `PasskeyUITests` registers a passkey into a login and signs in with it, checks the attestation and the ES256
+signature with CryptoKit, then sees and deletes it in the item. `OrganizationUITests` creates an organization and gives
+its team a vault. `PhoneApprovalUITests` approves a Mac's SSH request with Face ID.
+`OnboardingUITests` covers a postponed kit that needs only the unlock password, the reminder at the default and the
+largest accessibility text size (every toolbar and tab control stays tappable and the reminder scrolls with Vaults),
+invitation-first Create account on an invite-only server, and Create account without an invitation on a server with open
+registration. Its accounts come from the `ONBOARDING_POSTPONED` and `EMERGENCY_KIT_BANNER` invites that
+`scripts/ui-test-partner.sh` creates, and from the open-registration server it starts beside the test server.
 
 The icon picker keeps the last completed icon while a photo is preparing. **Done** stays disabled until it finishes.
 **Cancel preparation**, selecting another icon, or dismissing the sheet cancels the pending photo.

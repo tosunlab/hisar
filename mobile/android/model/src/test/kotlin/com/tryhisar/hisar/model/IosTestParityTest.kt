@@ -12,8 +12,10 @@ import kotlin.test.fail
 class IosTestParityTest {
     private val renamed = mapOf(
         "testFaceIDUnlockAfterTurningItOn" to "testBiometricUnlockAfterTurningItOn",
-        "testApproveSSHRequestWithFaceID" to "testApproveSSHRequestWithBiometrics",
-        "testApproveWithMasterPasswordWhenFaceIDIsUnavailable" to "testApproveWithMasterPasswordWhenBiometricsAreUnavailable",
+        // The simulator cannot run the Mac side, so the iPhone answers a made-up request; Android answers hisar-ui-test-mac's.
+        "testApproveSSHRequestWithFaceID" to "testApproveAndDenyRealRequestsFromTheMac",
+        // Android's privacy check reads the Recents card instead of the cover's view.
+        "testPrivacyCoverHidesContentInTheBackground" to "testAppSwitcherHidesAnOpenSheet",
         "testApproveWithFaceID" to "testApproveWithBiometrics",
         "testDenyNeedsNoFaceID" to "testDenyNeedsNoBiometrics",
         "testCancelledFaceIDKeepsTheRequest" to "testCancelledBiometricsKeepTheRequest",
@@ -41,11 +43,8 @@ class IosTestParityTest {
 
     private val notApplicable = run {
         val identityStore = "Android AutoFill asks Hisar for logins at fill time; it has no credential identity store to keep up to date (D3)"
+        val deviceOnly = "Android's counterpart could only run as an instrumented test on a device, where the UI tests keep the core journeys and the device-only security checks"
         mapOf(
-            "testCredentialErrorsStayBesideSubmission" to
-                "Checks the iOS Form error position with its keyboard; Android uses a separate Compose form",
-            "testSignInModesScaleAtAccessibilitySizes" to
-                "Checks the iOS Dynamic Type replacement for its unscaled segmented control; Android has scaled Compose mode buttons",
             "testCameraAuthorizationChoosesActionableScannerState" to
                 "Covers AVFoundation camera authorization and the iOS app Settings route",
             "testForegroundRefreshUpdatesAutoFillWithoutRequestingPermission" to
@@ -56,16 +55,12 @@ class IosTestParityTest {
                 "UIKit-specific regression for iOS automatic hyphenation and selectable UITextView Dynamic Type wrapping; Android does not use UIKit",
             "testIconPhotoPreparationRejectsStaleResults" to
                 "iOS PhotosPicker uses an asynchronous transfer and conversion task; this test covers its generation guard and sheet dismissal",
-            "testTagsKeepNamesAndCountsReadableAtAccessibilitySizes" to
-                "The iPhone adapts its native badge at accessibility Dynamic Type sizes; Android's tag rows use their own Compose layout",
             "testRefreshFailureKeepsReadableListAndOperationError" to
                 "The iPhone's operation callback retains browse errors independently of AppModel.errorMessage; Android uses area-model refusals",
             "testDetailHeaderUsesFullWidthAtAccessibilitySizesAndCapsItsIcon" to
                 "SwiftUI Dynamic Type header layout; Android uses its own Compose header and font scaling",
             "testPresetGridFitsScaledTargetsAtBothPhoneWidths" to
                 "SwiftUI adaptive preset grid at iOS Dynamic Type sizes; Android uses its own Compose icon picker",
-            "testRemovedVaultDismissTargetNamesItsVaultAndMeetsMinimumSize" to
-                "iPhone's shared 44-point icon hit-area helper; Android uses Material minimum interactive targets",
             "testSupportingTextContrastAcrossPalettesAndAppearances" to
                 "Resolves SwiftUI themeSecondary against iOS grouped Form and List backgrounds",
             "testLightSupportingInstructionsRenderInSignInExportAndAccountChange" to
@@ -96,8 +91,21 @@ class IosTestParityTest {
                 "Android seals the Secret Key into an AtomicFile, which replaces the old copy in one rename; there is no keychain item to delete first",
             "testNewPrivacyWindowsUseTheSelectedTheme" to
                 "Only iOS creates a separate UIKit privacy window; Android draws its privacy cover inside the themed Compose root",
-            "testListsStayBesideWhatTheyOpenOnAWideScreen" to
-                "The iPhone app lays Vaults, Search and Settings out as split views for the open iPhone Duo; the Android app has one layout for every width so far",
+            "testCredentialInputPreservesSelectionAndFocus" to deviceOnly,
+            "testImportFileNameWrapsAtLargeTextSize" to deviceOnly,
+            "testImportFileNameWrapsAtStandardTextSize" to deviceOnly,
+            "testLoadedItemConversionFailurePreservesItemAndReportsError" to deviceOnly,
+            "testLoadedItemCopyFailurePreservesItemAndReportsError" to deviceOnly,
+            "testLoadedItemPasskeyDeletionFailurePreservesItemAndReportsError" to deviceOnly,
+            "testInvitationEmailAndServerStayBound" to deviceOnly,
+            "testCrossVaultRowsReserveSourceLine" to deviceOnly,
+            "testOfflineDisclosuresFollowOnlineStatus" to deviceOnly,
+            "testErrorPresentationAnnouncesChangedMessagesOnce" to deviceOnly,
+            "testPhotosInFormatsTheBackendDoesNotReadBecomeJPEGOrPNG" to deviceOnly,
+            "testPlainTextAndLegacyKitFramesDecodeForSignIn" to deviceOnly,
+            "testCopiedTextIsReportedUntilReplaced" to deviceOnly,
+            "testEmptyTextClearsThePasteboard" to deviceOnly,
+            "testSetTextFromABackgroundThread" to deviceOnly,
             "testAnApprovalPreviewVerifiesWithTheAccountsKey" to
                 "Android checks the preview in Go through HisarKit (OpenApprovalPush); core/approval's tests cover the signature",
         )

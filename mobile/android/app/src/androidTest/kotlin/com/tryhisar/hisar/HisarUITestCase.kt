@@ -59,6 +59,16 @@ abstract class HisarUITestCase {
         scenario = ActivityScenario.launch(MainActivity::class.java)
     }
 
+    /** Recreates the activity, as a configuration change does: what the screens keep comes back from their saved state. */
+    fun recreate() {
+        checkNotNull(scenario) { "the app is not launched" }.recreate()
+    }
+
+    /** Runs [action] on the app's activity, on its main thread. */
+    fun withActivity(action: (MainActivity) -> Unit) {
+        checkNotNull(scenario) { "the app is not launched" }.onActivity(action)
+    }
+
     fun readArgument(name: String): String {
         val value = InstrumentationRegistry.getArguments().getString(name)
         return requireNotNull(value?.takeIf { it.isNotEmpty() }) {
