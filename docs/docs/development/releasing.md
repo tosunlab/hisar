@@ -26,6 +26,11 @@ two more, split by the test classes' measured run times in `scripts/ui-test-part
 and tests already passed locally with `make build-android-aar build-android test-android test-android-ui`; add the label before
 pushing).
 
+The extension job installs dependencies once. Its Chromium tests build the Chrome and Firefox outputs, then the job lints
+the Firefox output and packages both without rebuilding. The Chrome ZIP contains the output used by those browser tests.
+The standalone `make test-extension`, `make test-extension-end-to-end` and `make build-extension` commands still install
+their own dependencies.
+
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
 (HisarKit, Xcode project check, unit tests, then UI tests against a local server in three jobs that run the one build, split by
 the test classes' measured run times in `scripts/ui-test-parts.sh`) on
