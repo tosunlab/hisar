@@ -300,6 +300,7 @@ class HisarUITestCase: XCTestCase {
         let uniqueName = "Hisar Emergency Kit \(UUID().uuidString)"
         typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldName.count) + uniqueName, into: filename, showing: uniqueName)
         save.tap()
+        XCTAssertTrue(filename.waitForNonExistence(timeout: 60), "Files did not finish saving the Emergency Kit")
         waitForDisappearance(saveToFiles)
     }
 
