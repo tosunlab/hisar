@@ -251,12 +251,17 @@ func requireHisar(hisarPath string) error {
 	return nil
 }
 
-// FindOmpPlugin returns Hisar.app's Contents/Resources/omp-plugin, or for a development build the repository's omp
-// folder above the executable.
+// FindOmpPlugin returns Hisar.app's Contents/Resources/omp-plugin, a Linux package's share/hisar/omp-plugin beside its
+// bin (/usr/share/hisar/omp-plugin for /usr/bin/Hisar), or for a development build the repository's omp folder above
+// the executable.
 func FindOmpPlugin(executableDirectory string) string {
-	bundled := filepath.Join(filepath.Dir(executableDirectory), "Resources", "omp-plugin")
-	if isFile(filepath.Join(bundled, "package.json")) {
-		return bundled
+	for _, packaged := range []string{
+		filepath.Join(filepath.Dir(executableDirectory), "Resources", "omp-plugin"),
+		filepath.Join(filepath.Dir(executableDirectory), "share", "hisar", "omp-plugin"),
+	} {
+		if isFile(filepath.Join(packaged, "package.json")) {
+			return packaged
+		}
 	}
 	for directory := executableDirectory; ; directory = filepath.Dir(directory) {
 		if candidate := filepath.Join(directory, "omp"); isFile(filepath.Join(candidate, "package.json")) {

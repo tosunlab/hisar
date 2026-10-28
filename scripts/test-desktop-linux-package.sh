@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Installs a Hisar .deb, or takes a Hisar AppImage, starts the app hidden on a virtual display and checks that it serves
-# the command-line socket and the SSH agent socket, and that its hisar reaches the app through them.
+# the command-line socket and the SSH agent socket, that its hisar reaches the app through them, and that the omp plugin
+# it ships runs that hisar.
 # Usage: test-desktop-linux-package.sh <Hisar-<version>-linux-<arch>.deb|.AppImage>     (as root on Debian or Ubuntu, as in CI)
 set -euo pipefail
 
@@ -15,14 +16,17 @@ case $package in
     done
     appCommand=(/usr/bin/Hisar)
     commandLine=/usr/bin/hisar
+    ompPlugin=/usr/share/hisar/omp-plugin
     ;;
   *.AppImage)
     apt-get install -y -qq libgtk-4-1 libwebkitgtk-6.0-4 xvfb xauth dbus-x11 openssh-client >/dev/null
     # A container has no FUSE to mount the AppImage; the runtime extracts it instead.
     export APPIMAGE_EXTRACT_AND_RUN=1
     appCommand=("$package")
-    # The app copies hisar out of the AppImage, with the launcher hisar starts it through (desktop/portable).
+    # The app copies hisar and the omp plugin out of the AppImage, with the launcher hisar starts it through
+    # (desktop/portable).
     commandLine=$HOME/.local/share/hisar/bin/hisar
+    ompPlugin=$HOME/.local/share/hisar/omp-plugin
     ;;
   *) echo "$package is neither a .deb nor an AppImage"; exit 1 ;;
 esac
@@ -33,8 +37,8 @@ log=$HOME/hisar.log
 
 xvfb-run -a dbus-run-session -- bash -c '
   set -euo pipefail
-  log=$1 commandLine=$2
-  shift 2
+  log=$1 commandLine=$2 ompPlugin=$3
+  shift 3
   "$@" --hidden >"$log" 2>&1 &
   appPID=$!
   trap "kill $appPID 2>/dev/null || true" EXIT
@@ -53,5 +57,9 @@ xvfb-run -a dbus-run-session -- bash -c '
     *.AppImage) [ -x "$HOME/.local/share/hisar/bin/hisar-app" ] && [ -x "$HOME/.local/share/hisar/bin/hisar-browser-host" ] ||
       { echo "the AppImage did not copy out its launcher and browser host"; exit 1; } ;;
   esac
-' _ "$log" "$commandLine" "${appCommand[@]}"
-echo "$(basename "$package") serves hisar and the SSH agent"
+  # Settings → Coding agents links omp to this folder, and omp starts its MCP server with bin/run-hisar.
+  [ -f "$ompPlugin/package.json" ] && [ -f "$ompPlugin/mcp.json" ] || { echo "the omp plugin is not in $ompPlugin"; exit 1; }
+  [ "$("$ompPlugin/bin/run-hisar" --version)" = "$("$commandLine" --version)" ] ||
+    { echo "the omp plugin does not run the packaged hisar"; exit 1; }
+' _ "$log" "$commandLine" "$ompPlugin" "${appCommand[@]}"
+echo "$(basename "$package") serves hisar and the SSH agent, and ships the omp plugin"

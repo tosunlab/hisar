@@ -58,12 +58,15 @@ modules:
       - cd desktop && CGO_ENABLED=1 ../go/bin/go build -tags production -ldflags="-w -s -X github.com/tryhisar/hisar/desktop/updater.stampedVersion=@VERSION@" -o /app/bin/Hisar .
       - cd desktop && CGO_ENABLED=0 ../go/bin/go build -ldflags="-w -s" -o /app/lib/hisar/hisar-browser-host ./cmd/hisar-browser-host
       - cd cli && CGO_ENABLED=0 ../go/bin/go build -ldflags="-w -s -X main.version=@VERSION@" -o /app/bin/hisar ./cmd/hisar
+      # The omp plugin, which desktop/portable copies out of the sandbox for omp to link.
+      - bash scripts/stage-omp-plugin.sh /app/share/hisar/omp-plugin
       - sed 's|^Exec=/usr/bin/Hisar$|Exec=Hisar|' desktop/build/linux/com.tryhisar.hisar.desktop > com.tryhisar.hisar.desktop
       - install -Dm644 com.tryhisar.hisar.desktop /app/share/applications/com.tryhisar.hisar.desktop
       - install -Dm644 desktop/build/linux/appicon-512.png /app/share/icons/hicolor/512x512/apps/com.tryhisar.hisar.png
     sources:
-      # Only the three modules the build reads, so nothing else in the checkout (such as deploy/ with an operator's
-      # credentials) enters the build. desktop/ has the frontend already built (frontend/dist, which the app embeds).
+      # Only the three modules the build reads and the omp plugin, so nothing else in the checkout (such as deploy/ with
+      # an operator's credentials) enters the build. desktop/ has the frontend already built (frontend/dist, which the
+      # app embeds).
       - type: dir
         path: "@SOURCE@/core"
         dest: core
@@ -78,6 +81,15 @@ modules:
           - frontend/node_modules
           - build/linux/appimage/build
           - build/linux/flatpak/build
+      - type: dir
+        path: "@SOURCE@/omp"
+        dest: omp
+        skip:
+          - node_modules
+          - test
+      - type: file
+        path: "@SOURCE@/scripts/stage-omp-plugin.sh"
+        dest: scripts
       - type: archive
         url: https://go.dev/dl/go1.26.10.linux-amd64.tar.gz
         sha256: ccfe7ae822d2c2f41f4fe7c956199967a4dac22d0ee0d2b2bfdb440aab3b20c5
