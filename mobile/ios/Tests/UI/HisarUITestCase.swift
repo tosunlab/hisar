@@ -6,7 +6,7 @@ class HisarUITestCase: XCTestCase {
         var name: String
     }
 
-    static let masterPassword = "ui test master password"
+    static let masterPassword = "ui test orange cactus harbor"
     var app: XCUIApplication!
 
     override func setUp() {
@@ -224,6 +224,15 @@ class HisarUITestCase: XCTestCase {
             XCTFail("\(element) would show its placeholder \"\(element.placeholderValue ?? "")\" whether or not \"\(text)\" is in; type something else", file: file, line: line)
             return
         }
+        // A formatter rewrites the field after each key, so its update must finish before the next key arrives.
+        if normalize != nil && showing == nil {
+            var entered = String(typedText.expected.dropLast(text.count))
+            for character in text {
+                entered.append(character)
+                typeText(String(character), into: element, showing: entered, normalizedBy: normalize, file: file, line: line)
+            }
+            return
+        }
         element.typeText(text)
         let isShown = waitUntil(timeout: 30) { typedText.isShown(byValue: element.value as? String, placeholder: element.placeholderValue) }
         XCTAssertTrue(isShown, "\(element) shows \"\(element.value as? String ?? "")\", not \"\(typedText.expected)\"", file: file, line: line)
@@ -259,10 +268,16 @@ class HisarUITestCase: XCTestCase {
         let key = app.staticTexts["new-secret-key"]
         waitFor(key, timeout: 60)
         let secretKey = key.label
-        // The kit is prepared in the background; the confirm button needs it and a copy or a share.
+        // The kit is prepared in the background; the confirm button needs a completed save, print or share of it.
         waitFor(app.buttons["new-secret-key-share-kit"], timeout: 60)
         saveScreenshot("new-secret-key")
         app.buttons["new-secret-key-copy"].tap()
+        XCTAssertFalse(app.buttons["new-secret-key-done"].isEnabled, "a copied Secret Key alone confirmed the kit")
+        app.buttons["new-secret-key-share-kit"].tap()
+        closeShareSheet()
+        XCTAssertFalse(app.buttons["new-secret-key-done"].isEnabled, "a cancelled share sheet confirmed the kit")
+        handOffEmergencyKit(shareIdentifier: "new-secret-key-share-kit")
+        waitForHittable(app.buttons["new-secret-key-done"])
         app.buttons["new-secret-key-done"].tap()
         let notNowButton = app.buttons["biometric-offer-not-now"]
         if isBiometricOfferExpected {
@@ -275,6 +290,52 @@ class HisarUITestCase: XCTestCase {
         // The vaults exist under the Secret Key screen and the Face ID offer; they take a tap only once both have closed.
         waitForHittable(app.buttons["vault-Personal"])
         return secretKey
+    }
+
+    /// Saves the kit under a unique name because the simulator's Files folder survives between tests.
+    func handOffEmergencyKit(shareIdentifier: String) {
+        let share = app.buttons[shareIdentifier]
+        waitFor(share, timeout: 60)
+        scrollTo(share)
+        share.tap()
+        let saveToFiles = app.descendants(matching: .any)["Save to Files"].firstMatch
+        waitFor(saveToFiles, timeout: 10)
+        saveToFiles.tap()
+        let save = app.navigationBars.buttons["Save"].firstMatch
+        waitForHittable(save, timeout: 60)
+        let filename = app.textFields["DOCPicker.filenameTextField"]
+        guard focus(filename, file: #filePath, line: #line) else { return }
+        let oldName = filename.value as? String ?? ""
+        let uniqueName = "Hisar Emergency Kit \(UUID().uuidString)"
+        typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldName.count) + uniqueName, into: filename, showing: uniqueName)
+        save.tap()
+        XCTAssertTrue(filename.waitForNonExistence(timeout: 60), "Files did not finish saving the Emergency Kit")
+        waitForDisappearance(saveToFiles)
+    }
+
+    /** Closes the share sheet without choosing anything. */
+    func closeShareSheet() {
+        let close = app.navigationBars.buttons["Close"].firstMatch
+        if close.waitForExistence(timeout: 10) {
+            close.tap()
+        } else {
+            app.swipeDown(velocity: .fast)
+        }
+        waitForDisappearance(app.descendants(matching: .any)["Save to Files"].firstMatch)
+    }
+
+    func waitForDisappearance(_ element: XCUIElement) {
+        wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO"), object: element)], timeout: 10)
+    }
+
+    /** Acknowledging needs a handoff of the kit shown now; a restart or a resume clears it, so it is prepared again. */
+    func handOffPendingRecoveryKit(password: String) {
+        if !app.buttons["pending-recovery-share-kit"].exists {
+            type(password, into: app.secureTextFields["pending-recovery-password"])
+            scrollTo(app.buttons["pending-recovery-export"])
+            app.buttons["pending-recovery-export"].tap()
+        }
+        handOffEmergencyKit(shareIdentifier: "pending-recovery-share-kit")
     }
 
     @discardableResult
@@ -299,6 +360,7 @@ class HisarUITestCase: XCTestCase {
             waitFor(account, timeout: 60)
             account.tap()
         }
+        handOffPendingRecoveryKit(password: password)
         type(password, into: passwordField)
         scrollTo(app.buttons["pending-recovery-acknowledge"])
         app.buttons["pending-recovery-acknowledge"].tap()
@@ -311,6 +373,7 @@ class HisarUITestCase: XCTestCase {
             app.buttons["pending-recovery-resume"].tap()
             let committed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'delivery-pending'"), object: phase)
             wait(for: [committed], timeout: 60)
+            handOffPendingRecoveryKit(password: password)
             type(password, into: passwordField)
             scrollTo(app.buttons["pending-recovery-acknowledge"])
             app.buttons["pending-recovery-acknowledge"].tap()
@@ -335,7 +398,7 @@ class HisarUITestCase: XCTestCase {
         type(password, into: app.secureTextFields["editor-password"])
         type(website, into: app.textFields["editor-website-0"])
         if !oneTimePassword.isEmpty {
-            type(oneTimePassword, into: app.textFields["editor-one-time-password"])
+            type(oneTimePassword, into: app.secureTextFields["editor-one-time-password"])
         }
         saveScreenshot("add-item")
         app.buttons["editor-save"].tap()

@@ -612,6 +612,27 @@ class FakeBackend: VaultBackend {
         return String(repeating: isSymbolIncluded ? "!" : (isDigitIncluded ? "1" : "a"), count: length)
     }
 
+    func ratePassword(_ password: String) throws -> PasswordStrength {
+        record("ratePassword")
+        return rateMasterPassword(password).strength
+    }
+
+    func checkMasterPassword(_ password: String) throws -> MasterPasswordFeedback {
+        record("checkMasterPassword")
+        return rateMasterPassword(password)
+    }
+
+    /// core/item's answers for password1234 and the empty password; any other password rates Good.
+    private func rateMasterPassword(_ password: String) -> MasterPasswordFeedback {
+        let advice = "A few random words you can remember make a strong master password."
+        switch password {
+        case "": return MasterPasswordFeedback(message: advice)
+        case "password1234":
+            return MasterPasswordFeedback(level: "weak", label: "Weak", bits: 8, message: "This password is too easy to guess. Add a few more words or characters.", isBlocking: true)
+        default: return MasterPasswordFeedback(level: "good", label: "Good", bits: 60, message: advice)
+        }
+    }
+
     func listAllLoginForService(serviceIdentifier: String) throws -> [LoginMatch] {
         record("listAllLoginForService")
         try requireUnlocked()

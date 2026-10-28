@@ -21,6 +21,8 @@ struct SignInView: View {
     @State private var repeatedPassword = ""
     @State private var isScannerShown = false
     @State private var scannerMessage: String?
+    @State private var ratedPassword = ""
+    @State private var passwordFeedback: MasterPasswordFeedback?
 
     private var isPasswordMismatch: Bool {
         mode == .createAccount && !repeatedPassword.isEmpty && password != repeatedPassword
@@ -31,7 +33,8 @@ struct SignInView: View {
         case .signIn:
             return !server.isEmpty && !email.isEmpty && !secretKey.isEmpty && !password.isEmpty
         case .createAccount:
-            return (!isSignUpServerAsked || !server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) && !email.isEmpty && !name.isEmpty && !password.isEmpty && password == repeatedPassword
+            return (!isSignUpServerAsked || !server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) && !email.isEmpty && !name.isEmpty && password == repeatedPassword
+                && AccountLifecycleLogic.isMasterPasswordAccepted(password, feedback: ratedPassword == password ? passwordFeedback : nil)
         }
     }
 
@@ -240,16 +243,33 @@ struct SignInView: View {
             SecureField("Repeat master password", text: $repeatedPassword)
                 .textContentType(.newPassword)
                 .accessibilityIdentifier("sign-up-repeated-password")
+                .validationError(isPasswordMismatch ? "The passwords do not match." : nil)
         } header: {
             Text("Master password")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
+                PasswordStrengthMeter(strength: passwordFeedback?.strength ?? PasswordStrength())
                 if isPasswordMismatch {
                     Text("The passwords do not match.")
                         .foregroundStyle(.red)
                 }
+                if let problem = AccountLifecycleLogic.describeMasterPasswordProblem(password, feedback: passwordFeedback) {
+                    Text(problem)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("sign-up-password-problem")
+                } else if let hint = AccountLifecycleLogic.describeMasterPasswordHint(feedback: passwordFeedback) {
+                    Text(hint)
+                } else {
                 Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
             }
+        }
+    }
+        .task(id: password) {
+            let typedPassword = password
+            let feedback = await model.checkMasterPassword(typedPassword)
+            guard !Task.isCancelled else { return }
+            ratedPassword = typedPassword
+            passwordFeedback = feedback
         }
     }
 

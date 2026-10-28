@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCommitSigningCommandList,
-  computePasswordStrength,
+  customFieldNameWarning,
   describeSignedOutDevices,
   formatExpiresIn,
   formatShareLinkViews,
@@ -26,30 +26,20 @@ import {
   isCalendarDate,
 } from "./util";
 
+describe("custom field reference names", () => {
+  it("warns for duplicate and built-in names without changing their values", () => {
+    const fields = [{ name: "Recovery code", value: "first" }, { name: "recovery CODE", value: "second" }, { name: "Password", value: "custom" }];
+    expect(customFieldNameWarning(fields, 0)).toBe("Secret references need a unique name.");
+    expect(customFieldNameWarning(fields, 1)).toBe("Secret references need a unique name.");
+    expect(customFieldNameWarning(fields, 2)).toBe("A secret reference with this name reaches the built-in field.");
+    expect(fields.map((field) => field.value)).toEqual(["first", "second", "custom"]);
+  });
+});
+
 describe("describeSignedOutDevices", () => {
   it("does not report an unknown count as zero", () => {
     expect(describeSignedOutDevices(-1)).toBe("Any other devices were signed out; their count could not be recovered.");
     expect(describeSignedOutDevices(0)).toBe("No other devices were signed in.");
-  });
-});
-
-describe("computePasswordStrength", () => {
-  it("rates random passwords by length and character classes", () => {
-    expect(computePasswordStrength("").level).toBe("empty");
-    expect(computePasswordStrength("k7#Vq2!mZp9@Lx4$Rt8w").level).toBe("strong");
-    expect(computePasswordStrength("Mx9$Lp2!Qw7@").level).toBe("good");
-    expect(computePasswordStrength("abcdef").level).toBe("weak");
-  });
-
-  it("treats word phrases as dictionary words, not random characters", () => {
-    expect(computePasswordStrength("netflix-family-pass").level).toBe("weak");
-    expect(computePasswordStrength("correct-horse-battery-staple-orbit-lantern-mosaic-tundra").level).toBe("good");
-  });
-
-  it("penalizes common patterns", () => {
-    expect(computePasswordStrength("password1").level).toBe("weak");
-    expect(computePasswordStrength("Spring2024!").level).toBe("weak");
-    expect(computePasswordStrength("aaaaaaaaaaaaaaaa").level).toBe("weak");
   });
 });
 

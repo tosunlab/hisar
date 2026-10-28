@@ -209,6 +209,7 @@ fun NewVaultScreen(model: AppModel, onCancel: () -> Unit, onCreated: (VaultSumma
                 modifier = Modifier.focusRequester(focusRequester),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { create() }),
+                label = "Vault name",
             )
             val allLoadedLocation = allLocation
             if (allLoadedLocation != null && (allLoadedLocation.size > 1 || location == null)) {
@@ -250,6 +251,7 @@ fun VaultDeletionScreen(model: AppModel, actions: VaultActions, onClose: () -> U
                         placeholder = "Type ${actions.vault.name} to confirm",
                         testTag = "deletion-confirm-name",
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
+                        label = "Vault name",
                     )
                 }
             }

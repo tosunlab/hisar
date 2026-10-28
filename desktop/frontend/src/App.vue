@@ -69,7 +69,7 @@ onBeforeUnmount(() => {
   <UnlockView v-else-if="store.status.state === 'locked'" />
   <MainView v-else />
   <BrowserPairingModal v-if="store.status.state === 'unlocked'" />
-  <button v-if="!store.isRecoveryOpen && store.pendingRecovery.length > 0" class="recovery-reminder" data-testid="open-pending-recovery" @click="store.isRecoveryOpen = true">
+  <button v-if="!store.isRecoveryOpen && !store.pendingSecretKey && store.pendingRecovery.length > 0" class="recovery-reminder" data-testid="open-pending-recovery" @click="store.isRecoveryOpen = true">
     Account recovery and kit sign-in ({{ store.pendingRecovery.length }})
   </button>
   <AppNotice />

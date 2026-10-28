@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Delete
@@ -37,6 +41,8 @@ import com.tryhisar.hisar.model.VaultActions
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.model.ReadIssue
+import com.tryhisar.hisar.model.RecoveryDeletionReview
+import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.ToolbarIconButton
@@ -69,7 +75,9 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
     var dialog by remember { mutableStateOf<VaultDialog?>(null) }
     var isNewSheetShown by remember { mutableStateOf(false) }
     var isActionMenuShown by remember { mutableStateOf(false) }
-    var issueToDelete by remember { mutableStateOf<ReadIssue?>(null) }
+    var issueToDelete by remember { mutableStateOf<RecoveryDeletionReview?>(null) }
+    val isBusy by model.isBusy.collectAsStateWithLifecycle()
+    val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { model.reportActivity() }
     LaunchedEffect(vault) { vaultActions = vault?.takeIf { it.readIssues.none { issue -> issue.kind == "vault-key" } }?.let { model.vaults.loadVaultActions(vaultID) } }
@@ -113,10 +121,13 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         if (vault.readIssues.isNotEmpty()) {
             cardSection("read-issues", vault.readIssues, rowKey = { "${it.vaultId}/${it.itemId}/${it.kind}" }) { issue ->
                 Column {
-                    Text("${vault.readIssues.size} unreadable records. ${issue.kind}. ${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.warning)
+                    Text("${vault.readIssues.size} unreadable records. ${issue.kind}. ${issue.itemId.ifEmpty { issue.vaultId }}. Items that open remain available until deleted. Deleting a vault also deletes its readable items for everyone who has it.", color = HisarTheme.colors.warning)
                     PlainButton("Retry reads", { scope.launch { model.refreshAll() } }, testTag = "retry-unreadable-$vaultID")
                     if (issue.canRename) PlainButton("Repair vault name", { dialog = VaultDialog.RepairName(issue) }, testTag = "repair-vault-name")
-                    if (issue.canDelete) PlainButton("Delete unreadable data…", { issueToDelete = issue }, testTag = "delete-unreadable-${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.destructive)
+                    if (issue.canDelete) PlainButton(if (issue.itemId.isEmpty()) "Delete vault…" else "Delete unreadable data…", {
+                        model.errorMessage.value = null
+                        issueToDelete = RecoveryDeletionReview(vault.copy(readIssues = vault.readIssues.toList()), issue)
+                    }, testTag = "delete-unreadable-${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.destructive)
                 }
             }
         }
@@ -137,13 +148,13 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
             onDismiss = { isNewSheetShown = false },
         )
     }
-    issueToDelete?.let { issue ->
-        AlertDialog(
-            onDismissRequest = { issueToDelete = null },
-            title = { Text("Permanently delete unreadable data?") },
-            text = { Text(if (issue.itemId.isEmpty()) "This deletes the vault and every item in it on all devices. This cannot be undone." else "This deletes the unreadable item on every device. This cannot be undone.") },
-            confirmButton = { PlainButton("Permanently delete", { issueToDelete = null; scope.launch { model.vaults.deleteUnreadableRecord(issue) } }, testTag = "delete-unreadable-confirm", color = HisarTheme.colors.destructive) },
-            dismissButton = { PlainButton("Cancel", { issueToDelete = null }, testTag = "delete-unreadable-cancel") },
+    issueToDelete?.let { review ->
+        RecoveryDeletionDialog(
+            review = review,
+            isBusy = isBusy,
+            errorMessage = errorMessage,
+            onDismiss = { issueToDelete = null },
+            onConfirm = { scope.launch { if (model.vaults.deleteUnreadableRecord(review.issue)) issueToDelete = null } },
         )
     }
 
@@ -190,6 +201,37 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         )
         null -> Unit
     }
+}
+
+@Composable
+private fun RecoveryDeletionDialog(review: RecoveryDeletionReview, isBusy: Boolean, errorMessage: String?, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    var typed by remember(review) { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(review.title) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                errorMessage?.let { ErrorBanner(it) }
+                Text(review.message)
+                Text("Vault ID: ${review.vault.id}")
+                if (!review.isItem) {
+                    Text("Type ${review.confirmation} to confirm")
+                    FormTextField(
+                        typed,
+                        { typed = it },
+                        placeholder = "Type ${review.confirmation} to confirm",
+                        testTag = "delete-unreadable-input",
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
+                        label = "Vault name or ID",
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            PlainButton("Permanently delete", onConfirm, testTag = "delete-unreadable-confirm", color = HisarTheme.colors.destructive, enabled = review.canDelete(typed) && !isBusy)
+        },
+        dismissButton = { PlainButton("Cancel", onDismiss, testTag = "delete-unreadable-cancel") },
+    )
 }
 
 /**
@@ -250,7 +292,7 @@ private fun RenameVaultDialog(initialName: String, onDismiss: () -> Unit, onRena
                 Text("Everyone who shares the vault sees the new name.")
                 Spacer(Modifier.height(12.dp))
                 Box(Modifier.background(HisarTheme.colors.fill, RoundedCornerShape(10.dp))) {
-                    FormTextField(name, { name = it }, placeholder = "Vault name", testTag = "rename-vault-name")
+                    FormTextField(name, { name = it }, placeholder = "Vault name", testTag = "rename-vault-name", label = "Vault name")
                 }
             }
         },

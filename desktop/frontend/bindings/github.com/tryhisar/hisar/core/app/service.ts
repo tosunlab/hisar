@@ -12,6 +12,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as item$0 from "../item/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as session$0 from "../session/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -30,6 +33,15 @@ export function AcceptOrganizationInvitation(invitationID: string): $Cancellable
  */
 export function AcceptShareInvitation(invitationID: string): $CancellablePromise<void> {
     return $Call.ByID(3210650703, invitationID);
+}
+
+/**
+ * AcknowledgeNewAccountRecovery ends the pending sign-up operation of the account just created once its kit was saved,
+ * as AcknowledgePendingRecovery does with the master password. Only the retained new Secret Key proves it, so it fails
+ * for any other pending operation, after a lock and once onboarding ended.
+ */
+export function AcknowledgeNewAccountRecovery(): $CancellablePromise<void> {
+    return $Call.ByID(1945039949);
 }
 
 export function AcknowledgePendingRecovery(operationID: string, password: string): $CancellablePromise<void> {
@@ -82,6 +94,14 @@ export function ChangeMasterPassword(currentPassword: string, newPassword: strin
  */
 export function ChangeVaultMemberRole(vaultID: string, accountID: string, role: string): $CancellablePromise<void> {
     return $Call.ByID(3754330141, vaultID, accountID, role);
+}
+
+/**
+ * CheckMasterPassword rates a new master password for Create account and Change master password, with the one sentence
+ * to show under it; the forms refuse a password whose feedback is blocking.
+ */
+export function CheckMasterPassword(password: string): $CancellablePromise<item$0.MasterPasswordFeedback> {
+    return $Call.ByID(1185217996, password);
 }
 
 /**
@@ -606,6 +626,13 @@ export function PreviewImport(vaultID: string): $CancellablePromise<$models.Impo
 }
 
 /**
+ * RatePassword is the strength meter's rating of a password, the same rule CheckMasterPassword uses.
+ */
+export function RatePassword(password: string): $CancellablePromise<item$0.PasswordStrength> {
+    return $Call.ByID(219966386, password);
+}
+
+/**
  * RemoveAndroidApp unlinks a login from an Android app; removing a link the login does not have changes nothing.
  */
 export function RemoveAndroidApp(vaultID: string, itemID: string, packageName: string, certificateSHA256: string): $CancellablePromise<$models.ItemDetail> {
@@ -727,6 +754,7 @@ export function SaveItem(vaultID: string, detail: $models.ItemDetail): $Cancella
 
 /**
  * SaveNewAccountEmergencyKit saves the kit right after sign up or replacing the Secret Key; it returns the saved path, or "" when cancelled.
+ * After a sign-up it also records the kit as saved in the sign-up's pending operation, which AcknowledgeNewAccountRecovery requires.
  */
 export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
     return $Call.ByID(3118509742);

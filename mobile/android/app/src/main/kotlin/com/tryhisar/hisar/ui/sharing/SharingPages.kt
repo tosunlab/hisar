@@ -119,6 +119,7 @@ fun FormSheet(isBusy: Boolean, onDismiss: () -> Unit, bar: @Composable () -> Uni
         bar()
         Column(
             Modifier
+                .weight(1f, fill = false)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = ScreenMargin)
                 .padding(bottom = 32.dp),

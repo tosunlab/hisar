@@ -9,6 +9,7 @@ struct ItemDetailView: View {
     @State private var item: ItemDetail?
     @State private var isPasswordRevealed = false
     @State private var allRevealedFieldName = Set<String>()
+    @State private var allRevealedCustomIndex = Set<Int>()
     @State private var isEditorShown = false
     @State private var passkeyToDelete: ItemPasskey?
 
@@ -79,6 +80,11 @@ struct ItemDetailView: View {
             .accessibilityIdentifier("confirm-delete-passkey")
         } message: { passkey in
             Text("You can no longer sign in to \(passkey.relyingPartyID) as \(passkey.userName) with it.")
+        }
+        .onChange(of: item?.revision) { _, _ in
+            isPasswordRevealed = false
+            allRevealedFieldName = []
+            allRevealedCustomIndex = []
         }
         .task { await loadItem() }
         .onDisappear {
@@ -162,12 +168,14 @@ struct ItemDetailView: View {
             }
             if !item.allField.isEmpty {
                 Section("Other fields") {
-                    ForEach(Array(item.allField.enumerated()), id: \.offset) { _, field in
+                    ForEach(Array(item.allField.enumerated()), id: \.offset) { index, field in
                         SecretFieldRow(
                             label: field.name, isCustomField: true, value: field.value, isConcealed: field.concealed,
-                            isRevealed: allRevealedFieldName.contains(field.name),
-                            toggleReveal: { toggleReveal(fieldName: field.name) },
-                            copy: { copy(fieldName: field.name, label: field.name) },
+                            isRevealed: allRevealedCustomIndex.contains(index),
+                            toggleReveal: {
+                                if !allRevealedCustomIndex.insert(index).inserted { allRevealedCustomIndex.remove(index) }
+                            },
+                            copy: { model.copyText(field.value, label: field.name) },
                             copyReference: { copyReference(fieldName: field.name) }
                         )
                     }

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { clearError, dismissSignedOutReason, signIn, signUp, signUpWithoutInvite, store } from "../store";
-import { getMasterPasswordFeedback, getThisDeviceName, isMacPlatform } from "../util";
+import { useMasterPasswordFeedback } from "../passwordStrength";
+import { getThisDeviceName, isMacPlatform } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import StrengthMeter from "./StrengthMeter.vue";
@@ -38,11 +39,13 @@ const inviteCode = ref("");
 const pastedInviteLink = ref("");
 const name = ref("");
 const repeatedPassword = ref("");
+const validationAnnouncement = ref("");
 
 const passwordMismatch = computed(
   () => mode.value !== "sign-in" && repeatedPassword.value !== "" && password.value !== repeatedPassword.value,
 );
-const passwordFeedback = computed(() => getMasterPasswordFeedback(mode.value === "sign-in" ? "" : password.value));
+const { value: passwordFeedback, isCurrent: isPasswordFeedbackCurrent } = useMasterPasswordFeedback(() => (mode.value === "sign-in" ? "" : password.value));
+const isPasswordRefused = computed(() => passwordFeedback.value.isBlocking || !isPasswordFeedbackCurrent.value);
 const allSubtitle: Record<Mode, string> = {
   "sign-in": `Sign in to Hisar on ${getThisDeviceName()}.`,
   "create-account": "Enter the invite code you received, or paste the whole invite link. Some servers let anyone sign up without one.",
@@ -132,7 +135,7 @@ async function submitSignIn(): Promise<void> {
 }
 
 async function submitCreateAccount(): Promise<void> {
-  if (password.value !== repeatedPassword.value || passwordFeedback.value.isBlocking) {
+  if (password.value !== repeatedPassword.value || isPasswordRefused.value) {
     return;
   }
   const succeeded = hasInvite.value
@@ -252,16 +255,17 @@ async function submitCreateAccount(): Promise<void> {
           </div>
           <label>
             <span>Master password</span>
-            <input v-model="password" name="password" type="password" autocomplete="new-password" minlength="10" placeholder="At least 10 characters" required />
-            <StrengthMeter :password="password" />
-            <span class="password-feedback" :class="passwordFeedback.isBlocking ? 'blocking' : 'muted'" data-testid="password-feedback">{{ passwordFeedback.message }}</span>
+            <input v-model="password" name="password" type="password" autocomplete="new-password" minlength="10" placeholder="At least 10 characters" required aria-describedby="sign-up-password-feedback" :aria-invalid="passwordFeedback.isBlocking && !!password" @blur="validationAnnouncement = passwordFeedback.isBlocking && password ? passwordFeedback.message : ''" />
           </label>
+          <StrengthMeter :password="password" />
+          <p id="sign-up-password-feedback" class="password-feedback" :class="passwordFeedback.isBlocking ? 'blocking' : 'muted'" data-testid="password-feedback">{{ passwordFeedback.message }}</p>
           <label>
             <span>Repeat master password</span>
-            <input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" required />
+            <input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" required :aria-invalid="passwordMismatch" :aria-describedby="passwordMismatch ? 'sign-up-password-mismatch' : undefined" @blur="validationAnnouncement = passwordMismatch ? 'The passwords do not match.' : ''" />
           </label>
-          <p v-if="passwordMismatch" class="error">The passwords do not match.</p>
-          <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch || passwordFeedback.isBlocking">
+          <p v-if="passwordMismatch" id="sign-up-password-mismatch" class="error">The passwords do not match.</p>
+          <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ validationAnnouncement }}</p>
+          <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch || isPasswordRefused">
             {{ store.isBusy ? "Creating account…" : "Create account" }}
           </button>
           <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://eu.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://eu.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
