@@ -224,6 +224,15 @@ class HisarUITestCase: XCTestCase {
             XCTFail("\(element) would show its placeholder \"\(element.placeholderValue ?? "")\" whether or not \"\(text)\" is in; type something else", file: file, line: line)
             return
         }
+        // A formatter rewrites the field after each key, so its update must finish before the next key arrives.
+        if normalize != nil && showing == nil {
+            var entered = String(typedText.expected.dropLast(text.count))
+            for character in text {
+                entered.append(character)
+                typeText(String(character), into: element, showing: entered, normalizedBy: normalize, file: file, line: line)
+            }
+            return
+        }
         element.typeText(text)
         let isShown = waitUntil(timeout: 30) { typedText.isShown(byValue: element.value as? String, placeholder: element.placeholderValue) }
         XCTAssertTrue(isShown, "\(element) shows \"\(element.value as? String ?? "")\", not \"\(typedText.expected)\"", file: file, line: line)
@@ -293,7 +302,7 @@ class HisarUITestCase: XCTestCase {
         waitFor(saveToFiles, timeout: 10)
         saveToFiles.tap()
         let save = app.navigationBars.buttons["Save"].firstMatch
-        waitFor(save, timeout: 10)
+        waitForHittable(save, timeout: 60)
         let filename = app.textFields["DOCPicker.filenameTextField"]
         guard focus(filename, file: #filePath, line: #line) else { return }
         let oldName = filename.value as? String ?? ""

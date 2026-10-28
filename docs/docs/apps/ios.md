@@ -88,6 +88,11 @@ to the tests as `TEST_RUNNER_HISAR_UI_TEST_*` variables. The test classes run on
 runs them on two clones of the simulator at once, which is quicker on a Mac with cores to spare but a loss on the CI runners.
 Set `HISAR_UI_TEST_SCREENSHOT_DIRECTORY` to save a PNG of each screen.
 
+The sign-up tests save each Emergency Kit under a unique name because the simulator's Files folder survives between tests.
+The helper waits for the Files picker to become tappable and for saving to finish. Formatted fields wait for each character's
+update before typing the next one. Custom-field clipboard checks paste inside Hisar because iOS does not grant the test
+runner access to the app's clipboard.
+
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.
 
