@@ -16,6 +16,16 @@ type PreloginResponse struct {
 // registration.
 const RegistrationClosedMessage = "Sign-ups are not open on this server. Ask an admin for an invitation."
 
+type RegistrationPolicy struct {
+	Mode string `json:"mode"`
+}
+
+const (
+	RegistrationModeOpen   = "open"
+	RegistrationModeInvite = "invite"
+	RegistrationModeSetup  = "setup"
+)
+
 // RegisterStartRequest starts a sign-up. Invite is the invite token, or empty on a server with open registration.
 type RegisterStartRequest struct {
 	Invite    string `json:"invite"`
