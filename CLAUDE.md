@@ -117,7 +117,7 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 | `portable` | Running from an AppImage or a Flatpak: copies the browser host, `hisar` and the omp plugin out, with the `hisar-app` launcher |
 | `loginitem`, `background` | Open at login; login item, Dock icon, appearance |
 | `biometric`, `systemidle`, `windowplacement`, `updater`, `pasteboard` | Touch ID and keychain, idle time (D-Bus on Linux), window placement, Sparkle (on Linux `Notifier` finds versions and, in a copy from a package, installs the release's signed package: `install.go`), the clipboard (copies concealed from clipboard managers) |
-| `granthead` | The saved agent grants' head (`app.AgentGrantHeadStore`) in a login keychain item whose default access list trusts the creating Hisar. Another program's read prompts for Keychain access; overwrite or deletion only drops grants. Written through Security.framework from the app itself; no store on Linux |
+| `granthead` | The saved agent grants' head (`app.AgentGrantHeadStore`) in a login keychain item whose default access list trusts the creating Hisar. Another program's read prompts for Keychain access; overwrite or deletion only drops grants. Written through Security.framework from the app itself; on Linux a Secret Service item through go-keyring, which any program of the user may read |
 | `cmd/hisar-browser-host`, `cmd/hisar-update-key` | Helper binaries |
 | `cmd/hisar-agent-sign-in-test` | The local Mac website sign-in end-to-end driver for `scripts/test-agent-sign-in.sh`: isolated desktop and browsers, real approval UI, MCP calls, and canary scanning with Vision OCR |
 
