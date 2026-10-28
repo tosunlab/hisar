@@ -124,19 +124,23 @@ jobs:
           path: desktop/bin/Hisar-macos.zip
           retention-days: 14
 
+  # The build job also runs the first part of the UI tests: its simulator booted while the app built, so that part skips the
+  # minutes a fresh simulator spends on its post-boot work.
   ios-build:
-    name: iPhone app build and unit tests
+    name: iPhone app build, unit tests and UI tests (part 1 of 3)
     needs: changes
     if: needs.changes.outputs.isMobileChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-ios')
     # The iPhone app is built with the iOS 27.1 SDK, which lets it use the whole inner display of the iPhone Duo; the
     # xcode-27 image is the one with that Xcode.
     runs-on: xcode-27
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       XCODE_PATH: /Applications/Xcode_27.1.app
+      DATABASE_NAME: hisar_ios_${{ github.run_id }}_${{ github.run_attempt }}
       IOS_DERIVED_DATA: ${{ github.workspace }}/DerivedData
       # make build-ios builds the app and the tests once; the unit tests and the UI test jobs run what it built.
       IOS_TESTS_PREBUILT: "1"
+      IS_RUNNING_UI_TESTS: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -161,7 +165,7 @@ jobs:
       - name: Check that the generated Xcode project is committed
         run: git diff --exit-code -- mobile/ios
       # HisarKit is built from the Go code alone, so a pull request whose push left that code as it was reuses the HisarKit
-      # its earlier run built. A pull request can only reuse what it or main saved, so its first run builds HisarKit.
+      # its earlier run built, or the one main saved (caches.yml).
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: hisarkit
         with:
@@ -174,7 +178,7 @@ jobs:
           test -d mobile/build/HisarKit.xcframework/ios-arm64/HisarKit.framework
           test -d mobile/build/HisarKit.xcframework/ios-arm64_x86_64-simulator/HisarKit.framework
       - run: make build-ios
-      - run: make test-ios
+      # The other UI test parts wait for this artifact, so it goes up before the unit tests run.
       # A tar keeps the executable bits of the app, which an artifact's zip loses.
       - name: Pack the app and the test bundles for the UI test jobs
         run: tar -cf "$RUNNER_TEMP/ios-build.tar" -C "$IOS_DERIVED_DATA" Build/Products
@@ -183,19 +187,45 @@ jobs:
           name: ios-build
           path: ${{ runner.temp }}/ios-build.tar
           retention-days: 1
+      - run: make test-ios
+      - name: Start Postgres
+        if: env.IS_RUNNING_UI_TESTS == 'true'
+        run: |
+          brew list postgresql@17 >/dev/null 2>&1 || brew install postgresql@17
+          brew services start postgresql@17
+          for _ in $(seq 30); do "$(brew --prefix postgresql@17)/bin/pg_isready" -h localhost && break; sleep 1; done
+          "$(brew --prefix postgresql@17)/bin/createdb" -h localhost "$DATABASE_NAME"
+      - name: iPhone UI tests (part 1 of 3)
+        if: env.IS_RUNNING_UI_TESTS == 'true'
+        run: HISAR_DATABASE_URL="postgres://$(whoami)@localhost:5432/$DATABASE_NAME?sslmode=disable" IOS_RESULT_BUNDLE=$GITHUB_WORKSPACE/HisarUITests.xcresult IOS_UI_TEST_PART=1 make test-ios-ui
+      - name: Drop the test database
+        if: always() && env.IS_RUNNING_UI_TESTS == 'true'
+        run: '"$(brew --prefix postgresql@17)/bin/dropdb" -h localhost --if-exists "$DATABASE_NAME" || true'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: (failure() || cancelled()) && env.IS_RUNNING_UI_TESTS == 'true'
+        with:
+          name: HisarUITests-1.xcresult
+          path: HisarUITests.xcresult
+          retention-days: 7
 
+  # Each part runs about a third of the UI tests (IOS_UI_TEST_PART in scripts/test-ios-ui.sh) on its own simulator, with the
+  # app and tests ios-build built. It starts with ios-build rather than after it: the simulator boots and runs its post-boot
+  # work while the app builds, and the job polls the simulator while it waits, so CoreSimulatorService stays in use.
   ios:
     name: iPhone UI tests against the server (part ${{ matrix.part }} of 3)
-    needs: [changes, ios-build]
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    needs: changes
+    if: >-
+      needs.changes.outputs.isMobileChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-ios') &&
+      (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: xcode-27
-    timeout-minutes: 60
-    # Each part runs about a third of the UI tests (IOS_UI_TEST_PART in scripts/test-ios-ui.sh) on its own simulator, with the
-    # app and tests ios-build built. The script boots the simulator once the server is up, right before the tests.
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
-        part: [1, 2, 3]
+        part: [2, 3]
     env:
       XCODE_PATH: /Applications/Xcode_27.1.app
       DATABASE_NAME: hisar_ios_${{ github.run_id }}_${{ github.run_attempt }}
@@ -203,24 +233,42 @@ jobs:
       IOS_TESTS_PREBUILT: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Select Xcode
+        run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
+      - name: Choose and boot the simulator
+        run: |
+          IOS_SIMULATOR_ID=$(mobile/ios/scripts/find-simulator.sh)
+          echo "IOS_SIMULATOR_ID=$IOS_SIMULATOR_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$IOS_SIMULATOR_ID"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
           cache-dependency-path: "**/go.sum"
-      - name: Select Xcode
-        run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: ios-build
-          path: ${{ runner.temp }}
-      - name: Unpack the app and the test bundles
-        run: mkdir -p "$IOS_DERIVED_DATA" && tar -xf "$RUNNER_TEMP/ios-build.tar" -C "$IOS_DERIVED_DATA"
       - name: Start Postgres
         run: |
           brew list postgresql@17 >/dev/null 2>&1 || brew install postgresql@17
           brew services start postgresql@17
           for _ in $(seq 30); do "$(brew --prefix postgresql@17)/bin/pg_isready" -h localhost && break; sleep 1; done
           "$(brew --prefix postgresql@17)/bin/createdb" -h localhost "$DATABASE_NAME"
+      # A re-run of this job alone finds the artifact of the earlier attempt's ios-build.
+      - name: Wait for ios-build's app and test bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_JOB_NAME: iPhone app build, unit tests and UI tests (part 1 of 3)
+        run: |
+          while [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=ios-build" --jq .total_count || echo 0)" = 0 ]; do
+            buildStatus=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" \
+              --jq ".jobs[] | select(.name == \"$BUILD_JOB_NAME\") | .status" || true)
+            if [ "$buildStatus" = completed ]; then echo "::error::ios-build finished without uploading the build"; exit 1; fi
+            xcrun simctl bootstatus "$IOS_SIMULATOR_ID" > /dev/null
+            sleep 15
+          done
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ios-build
+          path: ${{ runner.temp }}
+      - name: Unpack the app and the test bundles
+        run: mkdir -p "$IOS_DERIVED_DATA" && tar -xf "$RUNNER_TEMP/ios-build.tar" -C "$IOS_DERIVED_DATA"
       - name: iPhone UI tests
         run: HISAR_DATABASE_URL="postgres://$(whoami)@localhost:5432/$DATABASE_NAME?sslmode=disable" IOS_RESULT_BUNDLE=$GITHUB_WORKSPACE/HisarUITests.xcresult IOS_UI_TEST_PART=${{ matrix.part }} make test-ios-ui
       - name: Drop the test database

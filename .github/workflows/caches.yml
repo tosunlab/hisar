@@ -1,0 +1,105 @@
+name: Caches
+
+# A pull request restores the caches its base branch saved, and saves its own only when none matches. Every push to main
+# builds what the CI and macOS workflows cache, so pull requests start from main's caches instead of each saving a copy.
+# Each cache here must keep the key and path of the step it stands in for in ci.yml or macos.yml. A closed pull request's
+# caches are deleted, so they stop counting against the repository's 10 GB and evicting main's.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request_target:
+    types: [closed]
+
+concurrency:
+  group: caches-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -buildvcs=false
+
+jobs:
+  # setup-go (the go job's cache: the module cache and the compiled packages of every test) and the Android caches
+  # (Gradle, read-only on pull requests, and HisarKit.aar).
+  linux:
+    name: Go and Android caches
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - name: Compile every Go test, as make test does, without running one
+        run: make test TESTFLAGS=-run=^NONE
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+      - name: Install the pinned Android SDK packages
+        run: |
+          scripts/install-android-sdk.sh --build-only
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: hisarkit
+        with:
+          path: mobile/build/HisarKit.aar
+          key: hisarkit-android-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'scripts/install-android-sdk.sh') }}
+      - if: steps.hisarkit.outputs.cache-hit != 'true'
+        run: make build-android-aar
+      - run: make build-android
+      # The instrumented test jobs build with other Gradle flags, so their configuration cache entry is its own.
+      - name: Build the instrumented tests' APKs as their jobs do
+        run: ./scripts/test-android-ui.sh --build-apks
+
+  ios:
+    name: HisarKit.xcframework cache
+    if: github.event_name != 'pull_request_target'
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      XCODE_PATH: /Applications/Xcode_27.1.app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: hisarkit
+        with:
+          path: mobile/build/HisarKit.xcframework
+          key: hisarkit-ios-${{ env.XCODE_PATH }}-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-framework.sh') }}
+      - if: steps.hisarkit.outputs.cache-hit != 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - if: steps.hisarkit.outputs.cache-hit != 'true'
+        name: Build HisarKit with the iPhone app's Xcode
+        run: |
+          sudo xcode-select -s "$XCODE_PATH"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          make build-ios-framework
+
+  # pull_request_target runs this workflow as main has it and never checks out the pull request's code.
+  delete-pull-request-caches:
+    name: Delete the closed pull request's caches
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      REF: refs/pull/${{ github.event.pull_request.number }}/merge
+    steps:
+      - run: |
+          for id in $(gh cache list --ref "$REF" --limit 1000 --json id --jq '.[].id'); do
+            gh cache delete "$id"
+          done

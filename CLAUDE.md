@@ -251,7 +251,7 @@ exported method is callable from the UI. After changing a bound type, run
 ```sh
 docker run -d --name hisar-pg -e POSTGRES_PASSWORD=hisar -e POSTGRES_DB=hisar -p 127.0.0.1:55432:5432 postgres:18
 export HISAR_TEST_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar?sslmode=disable"
-make vet test            # every module; only the four shared-schema database packages use -p 1
+make vet test            # every module; server with -p 1 because its database tests share one schema, the rest beside it
 make build build-cli-all # hisar-server with the admin dashboard (needs Node 24), and hisar; the CLI for every OS
 make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
 make test-desktop-frontend
@@ -325,6 +325,12 @@ check cache repair, concurrent reuse and Python failures.
   account as `HISAR_UI_TEST_<NAME>_INVITE_LINK` and `_EMAIL`, the iPhone's names; invites are single-use, so a new
   server test adds a `ui_test_add_account` line. The test orchestrator runs each test in a new process with the app's
   data cleared. `ANDROID_UI_TESTS=<class or test names>` or `ANDROID_UI_TESTS=smoke` runs a subset.
-- CI runs the iPhone UI tests in three jobs and the Android instrumented tests in two, split by the test classes' measured
+- CI runs the iPhone UI tests in three parts and the Android instrumented tests in two, split by the test classes' measured
   run times in `scripts/ui-test-parts.sh` (`IOS_UI_TEST_PART`, `ANDROID_UI_TEST_PART`); a class missing from its table runs
-  in the last part.
+  in the last part. iPhone part 1 runs in the build job on its warm simulator; parts 2 and 3 start alongside the build and
+  wait for its artifact. The Android jobs build `HisarKit.aar` and the APKs in the background while the emulator boots
+  (`test-android-ui.sh --build-apks`, `ANDROID_UI_TEST_APK_BUILD`).
+- Which CI jobs run is decided per pull request by `scripts/detect-app-changes.sh` from `scripts/app-paths.sh`; a new job
+  gets an `is<Area>Changed` output there and a row in `scripts/test-app-paths.sh`. `caches.yml` fills main's caches on every
+  push to `main` (its cache keys must match the steps they stand in for in `ci.yml` and `macos.yml`) and deletes a closed
+  pull request's caches.

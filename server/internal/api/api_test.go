@@ -74,6 +74,10 @@ func setupServerWithConfig(t *testing.T, config Config) (baseURL string, server 
 	}
 	t.Cleanup(func() { listener.Close() })
 	config.PublicURL = "http://" + listener.Addr().String()
+	// Shutdown waits for open event streams, and a stream only notices that its client left on its next heartbeat.
+	if config.EventHeartbeatInterval == 0 {
+		config.EventHeartbeatInterval = 100 * time.Millisecond
+	}
 	server, err = NewServer(database, testServerSecrets, config)
 	if err != nil {
 		t.Fatal(err)

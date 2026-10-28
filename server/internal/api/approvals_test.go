@@ -42,7 +42,6 @@ type approvalAccounts struct {
 func setupApprovalAccounts(t *testing.T) (*Server, approvalAccounts) {
 	t.Helper()
 	baseURL, server, _ := setupServer(t)
-	server.config.EventHeartbeatInterval = 100 * time.Millisecond
 	ctx := context.Background()
 	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "dev@example.com", apitypes.RoleAdmin, nil))
 	password := []byte("dev password")
