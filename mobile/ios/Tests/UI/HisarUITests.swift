@@ -142,7 +142,8 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.descendants(matching: .any)["password-strength-meter"].firstMatch)
         saveScreenshot("password-generator")
         app.buttons["generator-use"].tap()
-        type("not a secret!", into: app.textFields["editor-one-time-password"])
+        let setupKeyField = app.secureTextFields["editor-one-time-password"]
+        type("not a secret!", into: setupKeyField)
         let longDraft = String(repeating: "A long draft. ", count: 60)
         let longNotes = app.textViews["editor-notes"].exists ? app.textViews["editor-notes"] : app.textFields["editor-notes"]
         type(longDraft, into: longNotes)
@@ -158,8 +159,8 @@ final class HisarUITests: HisarUITestCase {
         waitFor(codeError)
         XCTAssertTrue(codeError.isHittable)
         XCTAssertTrue(app.buttons["editor-save"].isEnabled, "the draft stays open for retry after validation fails")
-        app.textFields["editor-one-time-password"].tap()
-        app.textFields["editor-one-time-password"].typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 13))
+        setupKeyField.tap()
+        typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 13), into: setupKeyField, showing: "")
         app.buttons["editor-save"].tap()
         // The item under the editor shows the old password until the save finishes and the editor closes.
         XCTAssertTrue(app.buttons["editor-save"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
@@ -400,7 +401,7 @@ final class HisarUITests: HisarUITestCase {
         type("billing", into: app.textFields["editor-database-name"])
         type("app", into: app.textFields["editor-username"])
         type("database-password-from-the-phone", into: app.secureTextFields["editor-password"])
-        XCTAssertFalse(app.textFields["editor-one-time-password"].exists, "a database asks for a one-time password")
+        XCTAssertFalse(app.secureTextFields["editor-one-time-password"].exists || app.textFields["editor-one-time-password"].exists, "a database asks for a one-time password")
         saveScreenshot("add-database")
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "PostgreSQL · pg.example.com:6432/billing")).firstMatch)
