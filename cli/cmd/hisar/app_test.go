@@ -1140,6 +1140,38 @@ func TestSignupRefusesAnExistingKitPathBeforeReachingTheServer(t *testing.T) {
 	}
 }
 
+func TestSignupWithoutInviteStopsOnInviteOnlyServer(t *testing.T) {
+	for _, mode := range []string{"invite", "setup"} {
+		t.Run(mode, func(t *testing.T) {
+			var requestPaths []string
+			var mutex sync.Mutex
+			apiServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				mutex.Lock()
+				requestPaths = append(requestPaths, request.URL.Path)
+				mutex.Unlock()
+				writer.Write([]byte(`{"mode":"` + mode + `"}`))
+			}))
+			defer apiServer.Close()
+			t.Setenv("HISAR_STATE", filepath.Join(t.TempDir(), "state.json"))
+			t.Setenv(standaloneEnvironment, "1")
+			input := "a@example.com\nA\npw-long-enough\npw-long-enough\n"
+			kitPath := filepath.Join(t.TempDir(), "kit.pdf")
+			_, stderr, err := runCapturingOutput(t, false, input, "signup", "-o", kitPath, "-server", apiServer.URL)
+			if err == nil || err.Error() != "This server needs an invitation. Run: hisar signup <invite link>" {
+				t.Fatalf("signup on an invite-only server: %v", err)
+			}
+			if strings.Contains(stderr, "Email") || strings.Contains(stderr, "assword") {
+				t.Errorf("signup asked for details before learning the server needs an invitation: %q", stderr)
+			}
+			mutex.Lock()
+			defer mutex.Unlock()
+			if len(requestPaths) != 1 || requestPaths[0] != "/api/v1/auth/register/policy" {
+				t.Errorf("the server got %q", requestPaths)
+			}
+		})
+	}
+}
+
 func TestStatusInsideAHarness(t *testing.T) {
 	runInsideOmp(t)
 	t.Setenv(noLaunchEnvironment, "1")
