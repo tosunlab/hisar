@@ -37,9 +37,9 @@ class ItemDetailOverflowTests {
 
     @Test fun longAPISecretsCanBeInspectedWithoutEditing() = inspect(ItemDetail(category = ItemDetail.CATEGORY_API_CREDENTIAL, apiCredential = ItemAPICredential(secret = secret)), "Secret", "Secret")
     @Test fun longConnectionStringsCanBeInspectedWithoutEditing() = inspect(ItemDetail(category = ItemDetail.CATEGORY_DATABASE, database = ItemDatabase(engine = "postgresql", connectionString = secret)), "Connection string", "connection string")
-    @Test fun longCustomSecretsCanBeInspectedWithoutEditing() = inspect(ItemDetail(allField = listOf(ItemField("Recovery", secret, true))), "Recovery", "Recovery")
+    @Test fun longCustomSecretsCanBeInspectedWithoutEditing() = inspect(ItemDetail(allField = listOf(ItemField("Recovery", secret, true))), "Recovery", null)
 
-    private fun inspect(draft: ItemDetail, label: String, fieldName: String) {
+    private fun inspect(draft: ItemDetail, label: String, fieldName: String?) {
         val backend = FakeBackend().apply { seedSignedIn() }
         val item = backend.saveItem("personal", draft.copy(title = "Long value"))
         backend.allVault = mutableListOf(VaultSummary(id = "personal", name = "Read only", type = "shared", role = "reader", itemCount = 1))
@@ -59,7 +59,10 @@ class ItemDetailOverflowTests {
         assertNull("ordinary selection must not expose unprotected Copy", full.fetchSemanticsNode().config.getOrNull(SemanticsActions.SetSelection))
         assertEquals(secret, full.fetchSemanticsNode().config[SemanticsProperties.Text].single().text)
         rule.onNodeWithTag("full-value-copy").performClick()
-        rule.waitUntil(5_000) { backend.allCopiedField == listOf("${item.id}.$fieldName") }
+        rule.waitUntil(5_000) {
+            if (fieldName == null) clipboard.allCopiedSecret == listOf(secret)
+            else backend.allCopiedField == listOf("${item.id}.$fieldName")
+        }
         assertTrue(clipboard.allCopiedPlain.isEmpty())
         rule.onNodeWithTag("full-value-hide").performClick()
         rule.waitForTagToGo("full-value-text")
