@@ -508,6 +508,8 @@ jobs:
           heap-size: 576M
           disk-size: 8192M
           emulator-boot-timeout: 900
+          # Vulkan loses its SwiftShader context during the tests and hangs QEMU, leaving the device offline.
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -feature -Vulkan
           # An app's "isn't responding" dialog takes the window focus from the app under test, and this image's Pixel Launcher
           # sometimes stops responding about 27 seconds after boot; with error dialogs hidden, Android closes such an app
           # instead. The step before built mobile/build/HisarKit.aar, which `make test-android-ui` would build again.
