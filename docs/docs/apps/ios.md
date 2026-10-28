@@ -34,7 +34,7 @@ Saving stores the item in the chosen vault. Canceling or swiping down with unsav
 Text and secret fields retain visible labels above their values, including populated identity, address, credential,
 license, server and database editors. Labels and inputs stay vertically stacked at larger text sizes.
 Organization vault role pickers announce the team, vault, and current role to VoiceOver.
-The Search tab exposes its search field in compact and wide layouts.
+The Search tab keeps its search field visible in compact and wide layouts without a pull-down gesture.
 Nonempty item passwords show their strength below the field in detail, the editor, and the generator,
 without revealing the password.
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, account deletion, and sign out.
@@ -137,9 +137,16 @@ An older photo or its error cannot replace a newer choice.
 
 `FaceIDUITests` posts matching-face notifications every 500 ms on a background timer, starting before the action that requests authentication. Slow XCTest permission and accessibility queries must not delay the simulated face. The timer stops when that step finishes, and authentication errors still fail the test.
 
+UI tests wait for the Files picker's **Save** button to become tappable before renaming an Emergency Kit.
+They wait for the filename field to disappear after saving, before continuing in Hisar.
+Visible formatted input and live search are entered one character at a time, with each field update observed before the next character.
+
 `FaceIDUITests` checks that cancelling authentication leaves Hisar locked, focuses the master password field, and shows no error banner.
 `FavoritesUITests` injects its one-shot refresh failure only when the item list requests a manual refresh.
 Background item loads cannot consume that failure. The test checks the retained list, the Retry action, and recovery after retrying.
+
+Notification removal runs off the main thread because the system call can wait for the notification service during a scene transition.
+Returning from another app keeps the interface responsive while Hisar clears its approval reminder and refreshes setup status.
 
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,

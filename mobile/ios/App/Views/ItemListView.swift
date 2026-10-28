@@ -423,7 +423,7 @@ struct SearchView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .searchable(text: $searchText, prompt: "Search all items")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search all items")
         .onChange(of: selection) { _, _ in detailPath = NavigationPath() }
         .onChange(of: searchText) { _, _ in model.reportActivity() }
     }

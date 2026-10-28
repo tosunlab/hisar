@@ -524,7 +524,7 @@ final class AppModel: ObservableObject {
     }
 
     func handleWillEnterForeground() {
-        notifications.clearApprovalReminder()
+        Task { await notifications.clearApprovalReminder() }
         Task { await checkMinimumVersion() }
         isInForeground = true
         defer {

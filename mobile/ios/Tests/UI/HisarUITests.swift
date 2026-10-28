@@ -408,15 +408,20 @@ final class HisarUITests: HisarUITestCase {
         app.buttons["open-account"].tap()
         let importDisclosure = app.buttons["other-app-import-disclosure"]
         scrollTo(importDisclosure)
-        XCTAssertFalse(app.staticTexts["other-app-import-guidance"].exists)
+        let guidanceText = "Start the export in the other password manager and choose Hisar. Hisar will open so you can review the items and choose their vaults."
+        let exampleText = "For example, in 1Password, open Settings → Export → Hisar. Keep the source app until you have reviewed the imported items in Hisar."
+        let importGuidance = app.staticTexts.matching(NSPredicate(format: "label == %@", guidanceText)).firstMatch
+        let importExample = app.staticTexts.matching(NSPredicate(format: "label == %@", exampleText)).firstMatch
+        XCTAssertFalse(importGuidance.exists)
         importDisclosure.tap()
-        let importGuidance = app.staticTexts["other-app-import-guidance"]
-        waitFor(importGuidance)
-        XCTAssertEqual(importGuidance.label, "Start the export in the other password manager and choose Hisar. Hisar will open so you can review the items and choose their vaults.")
-        XCTAssertEqual(app.staticTexts["other-app-import-example"].label, "For example, in 1Password, open Settings → Export → Hisar. Keep the source app until you have reviewed the imported items in Hisar.")
+        scrollTo(importGuidance)
+        XCTAssertEqual(importGuidance.label, guidanceText)
+        scrollTo(importExample)
+        XCTAssertEqual(importExample.label, exampleText)
+        for _ in 0..<8 where !importDisclosure.isHittable { app.collectionViews.firstMatch.swipeDown() }
         importDisclosure.tap()
         XCTAssertFalse(importGuidance.exists)
-        scrollTo(app.buttons["open-secret-key"])
+        for _ in 0..<8 where !app.buttons["open-secret-key"].isHittable { app.collectionViews.firstMatch.swipeDown() }
         waitForHittable(app.buttons["open-secret-key"])
         app.buttons["open-secret-key"].tap()
         type(Self.masterPassword, into: app.secureTextFields["secret-key-password"])
