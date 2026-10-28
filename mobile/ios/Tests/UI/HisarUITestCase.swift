@@ -283,7 +283,7 @@ class HisarUITestCase: XCTestCase {
         return secretKey
     }
 
-    /** Saves the Emergency Kit to Files from the share button [shareIdentifier], a completed handoff of the kit. */
+    /// Saves the kit under a unique name because the simulator's Files folder survives between tests.
     func handOffEmergencyKit(shareIdentifier: String) {
         let share = app.buttons[shareIdentifier]
         waitFor(share, timeout: 60)
@@ -294,9 +294,12 @@ class HisarUITestCase: XCTestCase {
         saveToFiles.tap()
         let save = app.navigationBars.buttons["Save"].firstMatch
         waitFor(save, timeout: 10)
+        let filename = app.textFields["DOCPicker.filenameTextField"]
+        guard focus(filename, file: #filePath, line: #line) else { return }
+        let oldName = filename.value as? String ?? ""
+        let uniqueName = "Hisar Emergency Kit \(UUID().uuidString)"
+        typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldName.count) + uniqueName, into: filename, showing: uniqueName)
         save.tap()
-        let replace = app.buttons["Replace"].firstMatch
-        if replace.waitForExistence(timeout: 2) { replace.tap() }
         waitForDisappearance(saveToFiles)
     }
 
