@@ -6,6 +6,7 @@ import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.PhoneApproval
 import com.tryhisar.hisar.model.ReceivedShareInvitation
+import com.tryhisar.hisar.model.SentShareInvitation
 import com.tryhisar.hisar.model.UpdateRequirement
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.model.VaultSummary
@@ -124,12 +125,15 @@ class AppModelCoreTests {
                 ),
             ),
         )
+        val review = SentShareInvitation("review", "family", "Family", "ada@example.com", "reader", "accepted", "", requiresConfirmation = true, reviewToken = "reviewed")
+        backend.shareInvitations = backend.shareInvitations.copy(allSent = listOf(review))
         val remoteChangeCount = model.remoteChangeCount.value
         harness.events.emit(BackendEvent.RemoteChange)
         runCurrent()
         assertEquals(remoteChangeCount + 1, model.remoteChangeCount.value, "an open sharing sheet reloads on this count")
         assertNotNull(model.unlockedData.value.findVault("shared-with-me"))
         assertEquals(listOf("from-carol"), model.unlockedData.value.allReceivedInvitation.map { it.id })
+        assertEquals(listOf(review), model.unlockedData.value.allReviewInvitation)
 
         model.lock()
         harness.events.emit(BackendEvent.RemoteChange)
@@ -227,7 +231,7 @@ class AppModelCoreTests {
         model.copySecretReference("personal", "github", "password")
         assertEquals(2, model.copyCount.value)
         assertEquals(listOf("hisar://Personal/GitHub/password"), harness.backend.allCopiedReference)
-        assertEquals("Secret reference copied.", model.notice.value?.message)
+        assertEquals("Copied hisar://Personal/GitHub/password.", model.notice.value?.message)
     }
 
     @Test

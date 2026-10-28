@@ -59,6 +59,8 @@ type fakeAPIServer struct {
 	isPushUnsupported bool
 	acceptsPayloadKey bool
 	pushRegistration  *apitypes.PushRegistration
+	// pushKeys is what GET /push/keys lists; nil answers 404, as a server older than approval previews does.
+	pushKeys *apitypes.DevicePushKeysResponse
 	// isSessionEnded answers every request 401, as the server does once it ended this device's session.
 	isSessionEnded bool
 }
@@ -292,7 +294,16 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 			writer.WriteHeader(http.StatusNotFound)
 			return
 		}
-		writeJSON(writer, http.StatusOK, apitypes.PushConfig{RelayURL: server.pushRelayURL, AcceptsPayloadKey: server.acceptsPayloadKey})
+		writeJSON(writer, http.StatusOK, apitypes.PushConfig{RelayURL: server.pushRelayURL, AcceptsPayloadKey: server.acceptsPayloadKey, AcceptsKeySignature: server.acceptsPayloadKey})
+	})
+	mux.HandleFunc("GET /api/v1/push/keys", func(writer http.ResponseWriter, request *http.Request) {
+		server.mutex.Lock()
+		defer server.mutex.Unlock()
+		if server.pushKeys == nil {
+			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "not found"})
+			return
+		}
+		writeJSON(writer, http.StatusOK, server.pushKeys)
 	})
 	mux.HandleFunc("PUT /api/v1/devices/current/push", func(writer http.ResponseWriter, request *http.Request) {
 		var registration apitypes.PushRegistration

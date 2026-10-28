@@ -39,6 +39,9 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     // rememberLabel is set when approving can also be remembered on the Mac; the sheet shows it as a switch.
     var rememberLabel: String
     var isRememberedByDefault: Bool
+    // commandLineLifetime is how long approving a command-line request also lets its terminal, app or connection use
+    // Hisar, as the Mac words it ("until 10 minutes after …"); empty from an older Mac and for a request approved once.
+    var commandLineLifetime: String
 
     var id: String { requestID }
 
@@ -52,9 +55,10 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case requestID = "requestId"
         case requesterDeviceName, createdAt, expiresAt, kind, appName, purpose, host, commandLine, repositoryPath, projectPath, keyName, isForwarded, forwardedFromHost, terminalName, secrets, appIcon, appWarning, rememberLabel, isRememberedByDefault
+        case commandLineLifetime = "lifetime"
     }
 
-    init(requestID: String, requesterDeviceName: String, createdAt: String = "", expiresAt: String, kind: String, appName: String, purpose: String, host: String = "", commandLine: String = "", repositoryPath: String = "", projectPath: String = "", keyName: String = "", isForwarded: Bool = false, forwardedFromHost: String = "", terminalName: String = "", secrets: [String] = [], appIcon: Data? = nil, appWarning: String = "", rememberLabel: String = "", isRememberedByDefault: Bool = false) {
+    init(requestID: String, requesterDeviceName: String, createdAt: String = "", expiresAt: String, kind: String, appName: String, purpose: String, host: String = "", commandLine: String = "", repositoryPath: String = "", projectPath: String = "", keyName: String = "", isForwarded: Bool = false, forwardedFromHost: String = "", terminalName: String = "", secrets: [String] = [], appIcon: Data? = nil, appWarning: String = "", rememberLabel: String = "", isRememberedByDefault: Bool = false, commandLineLifetime: String = "") {
         self.requestID = requestID
         self.requesterDeviceName = requesterDeviceName
         self.createdAt = createdAt
@@ -75,6 +79,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         self.appWarning = appWarning
         self.rememberLabel = rememberLabel
         self.isRememberedByDefault = isRememberedByDefault
+        self.commandLineLifetime = commandLineLifetime
     }
 
     init(from decoder: Decoder) throws {
@@ -99,6 +104,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         appWarning = try container.decodeIfPresent(String.self, forKey: .appWarning) ?? ""
         rememberLabel = try container.decodeIfPresent(String.self, forKey: .rememberLabel) ?? ""
         isRememberedByDefault = try container.decodeIfPresent(Bool.self, forKey: .isRememberedByDefault) ?? false
+        commandLineLifetime = try container.decodeIfPresent(String.self, forKey: .commandLineLifetime) ?? ""
     }
 
     var expiryDate: Date? { Self.parseDate(expiresAt) }
@@ -121,13 +127,22 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         }
     }
 
-    // lifetime is set for an approval that outlasts the request: a launcher keeps its approval until Hisar locks on the Mac.
-    // A launcher request that names secrets is a share link, which is approved once like any other request.
-    var lifetime: String { kind == Self.kindLauncher && secrets.isEmpty ? "Until Hisar locks on \(macName)" : "" }
+    // lifetime is set for an approval that outlasts the request: a launcher keeps its approval until Hisar locks on the Mac,
+    // and a command-line approval lasts as long as commandLineLifetime says. A launcher request that names secrets is a
+    // share link, which is approved once like any other request.
+    var lifetime: String {
+        if kind == Self.kindLauncher {
+            return secrets.isEmpty ? "Until Hisar locks on \(macName)" : ""
+        }
+        return commandLineLifetime.prefix(1).uppercased() + commandLineLifetime.dropFirst()
+    }
 
     var approvalNote: String {
-        if !lifetime.isEmpty {
+        if kind == Self.kindLauncher && !lifetime.isEmpty {
             return "Approving lets \(appName) use Hisar until it locks on your Mac; it does not unlock Hisar there."
+        }
+        if !lifetime.isEmpty {
+            return "Approving also lets \(appName) use Hisar without asking until then. It does not unlock Hisar on your Mac."
         }
         return "Approving lets this one request continue; it does not unlock Hisar on your Mac."
     }
@@ -183,6 +198,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
             secretRow,
             DetailRow(label: "Forwarded from", value: isForwarded ? forwardedFromHost : "", isMonospaced: true),
             DetailRow(label: "Terminal", value: terminalName.isEmpty ? "" : "/dev/\(terminalName)", isMonospaced: true),
+            DetailRow(label: "Lasts", value: lifetime, isMonospaced: false),
         ]
         return allCandidate.filter { !$0.value.isEmpty }
     }

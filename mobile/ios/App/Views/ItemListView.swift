@@ -13,7 +13,7 @@ struct ItemListView: View {
     @State private var newName = ""
     @State private var isLeaveConfirmationShown = false
     @State private var blockedReason: String?
-    @State private var issueToDelete: ReadIssue?
+    @State private var issueToDelete: RecoveryDeletionReview?
     @State private var issueToRepair: ReadIssue?
     @Environment(\.dismiss) private var dismiss
 
@@ -37,7 +37,7 @@ struct ItemListView: View {
             }
             if let vault, !vault.readIssues.isEmpty {
                 Section {
-                    Text("\(vault.readIssues.count) records could not be opened. Healthy items remain available.")
+                    Text("\(vault.readIssues.count) records could not be opened. Items that open remain available until deleted. Deleting a vault also deletes its readable items for everyone who has it.")
                     Button("Retry reads") { Task { await model.refreshAll() } }
                     ForEach(vault.readIssues) { issue in
                         VStack(alignment: .leading) {
@@ -46,7 +46,9 @@ struct ItemListView: View {
                                 Button("Repair vault name") { newName = ""; issueToRepair = issue; isRenameShown = true }
                             }
                             if issue.canDelete {
-                                Button("Delete unreadable data…", role: .destructive) { issueToDelete = issue }
+                                Button(issue.itemId == nil ? "Delete vault…" : "Delete unreadable data…", role: .destructive) {
+                                    issueToDelete = RecoveryDeletionReview(vault: vault, issue: issue)
+                                }
                             }
                         }
                     }
@@ -70,7 +72,7 @@ struct ItemListView: View {
                     ContentUnavailableView {
                         Label("No items yet", systemImage: "tray")
                     } description: {
-                        Text(isWritable ? "Tap + to add a login." : "Items appear here once an editor adds them.")
+                        Text(isWritable ? "Tap + to add your first item." : "Items appear here once an editor adds them.")
                     }
                 } else {
                     ContentUnavailableView.search(text: searchText)
@@ -163,14 +165,9 @@ struct ItemListView: View {
         } message: {
             Text(blockedReason ?? "")
         }
-        .alert("Permanently delete unreadable data?", isPresented: Binding(get: { issueToDelete != nil }, set: { if !$0 { issueToDelete = nil } })) {
-            Button("Cancel", role: .cancel) { issueToDelete = nil }
-            Button("Permanently delete", role: .destructive) {
-                if let issue = issueToDelete { Task { await model.deleteUnreadableRecord(issue) } }
-                issueToDelete = nil
-            }
-        } message: {
-            Text(issueToDelete?.itemId == nil ? "This deletes the vault and all its items on every device. This cannot be undone." : "This deletes this unreadable item on every device. This cannot be undone.")
+        .sheet(item: $issueToDelete) { review in
+            RecoveryDeletionSheet(review: review)
+                .environmentObject(model)
         }
         .confirmationDialog("Leave “\(vault?.name ?? "this vault")”?", isPresented: $isLeaveConfirmationShown, titleVisibility: .visible) {
             Button("Leave vault", role: .destructive) {

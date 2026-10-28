@@ -396,7 +396,7 @@ func (s *Service) SavePendingRecoveryEmergencyKit(operationID, password string) 
 	if s.config.FileSaver == nil {
 		return "", errors.New("saving files is not available")
 	}
-	path, err := s.config.FileSaver.ChooseSavePath(emergencyKitFileName)
+	path, err := s.config.FileSaver.ChooseSavePath(emergencyKitFileName(kit))
 	if err != nil || path == "" {
 		return path, err
 	}
@@ -414,7 +414,7 @@ func ExportPendingRecoveryEmergencyKitToDirectory(s *Service, operationID, passw
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return EmergencyKitFile{}, err
 	}
-	path := filepath.Join(directory, emergencyKitFileName)
+	path := filepath.Join(directory, emergencyKitFileName(kit))
 	if err := s.savePendingEmergencyKit(entry, kit, path); err != nil {
 		return EmergencyKitFile{}, err
 	}

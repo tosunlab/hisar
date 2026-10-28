@@ -18,3 +18,15 @@ object VaultDeletionLogic {
         return VaultDeletionRequest(moveToVaultID = targetVaultID)
     }
 }
+
+data class RecoveryDeletionReview(val vault: VaultSummary, val issue: ReadIssue) {
+    val isItem: Boolean get() = issue.itemId.isNotEmpty()
+    val title: String get() = if (isItem) "Delete unreadable item?" else "Delete “${vault.name}”?"
+    val confirmation: String get() = if (vault.readIssues.any { it.kind == "vault-name" || it.kind == "vault-key" }) vault.id.take(8) else vault.name
+    val message: String get() {
+        if (isItem) return "Delete unreadable item ${issue.itemId} from “${vault.name}” on every device. Everyone who has the vault loses this item. This cannot be undone."
+        val items = if (vault.readIssues.any { it.kind == "vault-key" }) "all its items" else "its ${vault.itemCount} items, including the readable ones"
+        return "Delete the vault and $items. Everyone who has the vault loses them. This cannot be undone."
+    }
+    fun canDelete(typed: String): Boolean = issue.canDelete && (isItem || typed == confirmation)
+}

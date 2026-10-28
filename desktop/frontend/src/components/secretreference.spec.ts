@@ -82,7 +82,7 @@ describe("Copy secret reference", () => {
     await flushPromises();
     expect(api.copySecretReference).toHaveBeenCalledWith("personal", "github", "API token");
     expect(api.copyField).not.toHaveBeenCalled();
-    expect(store.noticeMessage).toBe("Copied hisar://Personal/GitHub/API%20token — use it with hisar run or hisar read");
+    expect(store.noticeMessage).toBe("Copied hisar://Personal/GitHub/API%20token.");
     wrapper.unmount();
   });
 

@@ -1,4 +1,5 @@
 import type { CredentialChangeResult, PendingRecoverySummary, SignUpResult, Status } from "./api";
+import type * as ApiModule from "./api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   allTestVault,
@@ -19,10 +20,11 @@ const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMo
 
 vi.mock("./api", async () => {
   const { createApiMock: createMock } = await import("./testing");
+  const { getErrorMessage } = await vi.importActual<typeof ApiModule>("./api");
   apiMock.current = createMock();
   return {
     api: apiMock.current,
-    getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    getErrorMessage,
     createEmptyItem: () => ({ id: "", revision: "", title: "", username: "", urls: [], password: "", notes: "", fields: [] }),
   };
 });
@@ -69,23 +71,79 @@ describe("store", () => {
   it("shows the error message when sign in fails", async () => {
     api.signIn.mockRejectedValue(new Error("incorrect email, master password or Secret Key"));
     expect(await storeModule.signIn("s", "e", "k", "p")).toBe(false);
-    expect(store.errorMessage).toBe("incorrect email, master password or Secret Key");
+    expect(store.errorMessage).toBe("Incorrect email, master password or Secret Key.");
     expect(store.status.state).toBe("signed-out");
     expect(store.isBusy).toBe(false);
   });
 
-  it("keeps the Secret Key pending after sign up until confirmed", async () => {
-    api.signUp.mockResolvedValue({ status: createStatus("unlocked"), secretKey: "H1-SECRET" });
+  const cleanSignUp = { status: createStatus("unlocked"), secretKey: "H1-SECRET", pendingOperationId: "signup", setupState: "delivery-pending", problems: [] };
+  const signUpRecord = {
+    operationId: "signup", kind: "signup", origin: "https://hisar.test", accountId: "account", email: "alice@example.com", name: "Alice",
+    phase: "delivery-pending", kitSaved: false, manualUnlock: false, problems: [], keychainProtected: true, revision: 1,
+  };
+
+  it("shows Save your Secret Key, not recovery, after a sign-up that waits only for its kit", async () => {
+    api.signUp.mockResolvedValue(cleanSignUp);
+    api.listPendingRecovery.mockResolvedValue([signUpRecord]);
     api.listAllVault.mockResolvedValue([allTestVault[0]]);
     api.listAllItem.mockResolvedValue([]);
     await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
     expect(store.pendingSecretKey).toBe("H1-SECRET");
-    storeModule.confirmSecretKeySaved();
+    expect(store.isRecoveryOpen).toBe(false);
+    expect(store.pendingRecovery).toHaveLength(1);
+    expect(store.recoveryFactor).toBeNull();
+    api.listPendingRecovery.mockResolvedValue([]);
+    expect(await storeModule.confirmSecretKeySaved()).toBe(true);
+    expect(api.acknowledgeNewAccountRecovery).toHaveBeenCalledTimes(1);
     expect(store.pendingSecretKey).toBe("");
+    expect(store.pendingRecovery).toEqual([]);
+    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
+  });
+
+  it("keeps the Secret Key screen with the error when the sign-up can't be acknowledged", async () => {
+    api.signUp.mockResolvedValue(cleanSignUp);
+    api.listPendingRecovery.mockResolvedValue([signUpRecord]);
+    api.listAllVault.mockResolvedValue([allTestVault[0]]);
+    api.listAllItem.mockResolvedValue([]);
+    await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
+    api.acknowledgeNewAccountRecovery.mockRejectedValueOnce(new Error("finish setup and save the Emergency Kit before acknowledging delivery"));
+    expect(await storeModule.confirmSecretKeySaved()).toBe(false);
+    expect(store.pendingSecretKey).toBe("H1-SECRET");
+    expect(store.isTouchIDOfferShown).toBe(false);
+    expect(store.errorMessage).toBe("Finish setup and save the Emergency Kit before acknowledging delivery.");
+    expect(api.forgetNewAccountSecretKey).not.toHaveBeenCalled();
+  });
+
+  it("keeps the sign-up's record for the recovery reminder on Finish later, even before the list loaded", async () => {
+    const vaults = Promise.withResolvers<typeof allTestVault>();
+    api.signUp.mockResolvedValue(cleanSignUp);
+    api.listPendingRecovery.mockResolvedValue([signUpRecord]);
+    api.listAllVault.mockReturnValueOnce(vaults.promise);
+    api.listAllItem.mockResolvedValue([]);
+    const signingUp = storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
+    await vi.waitFor(() => expect(store.pendingSecretKey).toBe("H1-SECRET"));
+    await storeModule.postponeSecretKey();
+    vaults.resolve([allTestVault[0]]);
+    await signingUp;
+    expect(store.pendingSecretKey).toBe("");
+    expect(store.isRecoveryOpen).toBe(false);
+    expect(store.pendingRecovery).toHaveLength(1);
+    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
+    expect(api.acknowledgeNewAccountRecovery).not.toHaveBeenCalled();
+  });
+
+  it("opens recovery for a sign-up that still needs finishing", async () => {
+    api.signUp.mockResolvedValue({ ...cleanSignUp, problems: ["The account was created, but its Personal vault could not finish. Resume account setup."] });
+    api.listPendingRecovery.mockResolvedValue([signUpRecord]);
+    api.listAllVault.mockResolvedValue([allTestVault[0]]);
+    api.listAllItem.mockResolvedValue([]);
+    await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
+    expect(store.pendingSecretKey).toBe("");
+    expect(store.isRecoveryOpen).toBe(true);
   });
 
   it("creates an account without an invite on an open server", async () => {
-    api.signUpWithoutInvite.mockResolvedValue({ status: createStatus("unlocked"), secretKey: "H1-SECRET" });
+    api.signUpWithoutInvite.mockResolvedValue(cleanSignUp);
     api.listAllVault.mockResolvedValue([allTestVault[0]]);
     api.listAllItem.mockResolvedValue([]);
     expect(await storeModule.signUpWithoutInvite("hisar.test", "alice@example.com", "Alice", "long password")).toBe(true);
@@ -436,7 +494,7 @@ describe("sharing, people and devices", () => {
 
     api.shareVault.mockRejectedValue(new Error("this person already has access to the vault"));
     expect(await storeModule.shareVault("bob@example.com", "reader")).toBe(false);
-    expect(store.errorMessage).toBe("this person already has access to the vault");
+    expect(store.errorMessage).toBe("This person already has access to the vault.");
   });
 
   it("accepts, declines and cancels share invitations", async () => {
@@ -457,7 +515,7 @@ describe("sharing, people and devices", () => {
 
     api.acceptShareInvitation.mockRejectedValue(new Error("this invitation no longer exists"));
     expect(await storeModule.acceptShareInvitation(fromCarol)).toBe(false);
-    expect(store.errorMessage).toBe("this invitation no longer exists");
+    expect(store.errorMessage).toBe("This invitation no longer exists.");
   });
 
   it("loads invitations with the vaults, quietly, so accepted shares complete", async () => {
@@ -485,7 +543,7 @@ describe("sharing, people and devices", () => {
 
     api.removeVaultMember.mockRejectedValue(new Error("only owners of this vault can share it, change roles or remove members"));
     expect(await storeModule.removeVaultMember(bob)).toBe(false);
-    expect(store.errorMessage).toContain("only owners");
+    expect(store.errorMessage).toContain("Only owners");
   });
 
   it("loads settings data, invites by email and revokes devices", async () => {
@@ -501,7 +559,7 @@ describe("sharing, people and devices", () => {
     expect(store.noticeMessage).toBe("Invitation sent to dan@example.com");
     api.invitePerson.mockRejectedValue(new Error("this server cannot send email yet, so invitations cannot be sent"));
     expect(await storeModule.invitePerson("dan@example.com")).toBe(false);
-    expect(store.errorMessage).toBe("this server cannot send email yet, so invitations cannot be sent");
+    expect(store.errorMessage).toBe("This server cannot send email yet, so invitations cannot be sent.");
 
     api.revokeDevice.mockResolvedValue(undefined);
     api.listAllDevice.mockResolvedValue([createDevice()]);

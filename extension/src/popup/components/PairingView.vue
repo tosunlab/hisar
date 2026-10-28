@@ -53,7 +53,7 @@ async function finishPairing(): Promise<void> {
   <section class="panel" data-testid="pairing-view">
     <template v-if="step === 'start'">
       <h1>Connect to Hisar</h1>
-      <p class="subtitle">Unlock Hisar first, then pair this browser with the app on this computer to fill and save logins.</p>
+      <p class="subtitle">Unlock Hisar first, then pair this browser with the app on this computer. Pairing lets this browser use your vaults while Hisar is unlocked.</p>
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
       <button type="button" class="primary full-width" :disabled="isBusy" data-testid="start-pairing" @click="startPairing">
         <AppIcon name="laptop" /> Pair with Hisar

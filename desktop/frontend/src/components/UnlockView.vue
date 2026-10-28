@@ -2,10 +2,11 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { api } from "../api";
 import { loadShareAwaitingUnlockQuietly, signOut, store, unlock, unlockWithBiometric } from "../store";
-import { describePerson } from "../util";
+import { describePerson, getSignOutCopy } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 
+const signOutCopy = getSignOutCopy(true);
 const password = ref("");
 const isConfirmingSignOut = ref(false);
 const isWaitingForTouchID = ref(false);
@@ -83,7 +84,7 @@ onBeforeUnmount(() => {
         <ul v-if="store.allShareAwaitingUnlock.length > 0" class="awaiting-list" data-testid="share-awaiting-unlock">
           <li v-for="awaiting in store.allShareAwaitingUnlock" :key="awaiting.invitationId" class="awaiting" role="status">
             <AppIcon name="users" :size="15" />
-            <span><strong>{{ describePerson(awaiting.recipientName, awaiting.recipientEmail) }}</strong> accepted your invitation to a vault — unlock to finish sharing</span>
+            <span><strong>{{ describePerson(awaiting.recipientName, awaiting.recipientEmail) }}</strong> accepted your invitation to a vault. Unlock to finish sharing.</span>
           </li>
         </ul>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
@@ -107,7 +108,8 @@ onBeforeUnmount(() => {
               type="button"
               class="touch-id-button"
               :class="{ waiting: isWaitingForTouchID }"
-              aria-label="Use Touch ID"
+              aria-label="Unlock with Touch ID"
+              title="Unlock with Touch ID"
               data-testid="use-touch-id"
               @click="startTouchID"
             >
@@ -125,7 +127,8 @@ onBeforeUnmount(() => {
         <div class="sign-out">
           <button v-if="!isConfirmingSignOut" class="link" @click="isConfirmingSignOut = true">Sign out of this device</button>
           <div v-else class="card confirm">
-            <p>You will need your Secret Key to sign in again.</p>
+            <p><strong>{{ signOutCopy.title }}</strong></p>
+            <p>{{ signOutCopy.message }}</p>
             <div class="row">
               <button class="ghost" @click="isConfirmingSignOut = false">Cancel</button>
               <button class="danger-solid" data-testid="confirm-sign-out" @click="signOut"><AppIcon name="signOut" /> Sign out</button>

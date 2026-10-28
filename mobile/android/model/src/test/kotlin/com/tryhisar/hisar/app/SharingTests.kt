@@ -5,6 +5,10 @@ import com.tryhisar.hisar.model.ShareInvitations
 import com.tryhisar.hisar.model.VaultSharing
 import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.model.backendJson
+import com.tryhisar.hisar.model.FakeBackend
+import com.tryhisar.hisar.model.ReceivedShareInvitation
+import com.tryhisar.hisar.model.SentShareInvitation
+import com.tryhisar.hisar.model.VaultStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -15,6 +19,19 @@ import kotlinx.coroutines.test.runTest
 
 /** The iPhone app's AppModelTests for sharing vaults with people and inviting them to Hisar. */
 class SharingTests {
+    @Test
+    fun testInvitationLifetimeShowsExpiryAndClosesAcceptanceAtItsDeadline() {
+        val now = java.time.Instant.ofEpochSecond(1_800_000_000)
+        val lifetime = com.tryhisar.hisar.model.InvitationLifetime(now.plusSeconds(5 * 86400).toString())
+        assertEquals("Expires in 5 days", lifetime.describe(now))
+        assertFalse(lifetime.isExpired(now))
+        assertTrue(lifetime.exactDate.isNotEmpty())
+        assertEquals("Expires tomorrow", lifetime.describe(now.plusSeconds(4 * 86400)))
+        assertEquals("Expired", lifetime.describe(now.plusSeconds(5 * 86400)))
+        assertTrue(lifetime.isExpired(now.plusSeconds(5 * 86400)))
+        assertNotNull(com.tryhisar.hisar.model.InvitationLifetime("2027-01-15T12:00:00.123Z").date)
+    }
+
     @Test
     fun testAnyoneInvitesByEmailWithTrimmedAddress() = runTest {
         val harness = AppModelHarness(this)
@@ -67,10 +84,52 @@ class SharingTests {
         val vault = assertNotNull(model.vaults.createVault("Team"))
         val invitation = com.tryhisar.hisar.model.SentShareInvitation("accepted", vault.id, "Team", "new@example.com", "reader", "accepted", "2027-01-22T08:00:00Z", true, "new-account", "3333 4444", "reviewed-identity")
         harness.backend.shareInvitations = ShareInvitations(allSent = listOf(invitation))
+        model.invitations.loadShareInvitations()
+        assertEquals(listOf(invitation), model.unlockedData.value.allReviewInvitation)
         assertFalse(model.sharing.confirmShareRecipient(invitation.copy(reviewToken = "other-identity")))
         assertEquals(1, harness.backend.shareInvitations.allSent.size)
+        assertEquals(listOf(invitation), model.unlockedData.value.allReviewInvitation)
         assertTrue(model.sharing.confirmShareRecipient(invitation))
         assertTrue(harness.backend.shareInvitations.allSent.isEmpty())
+        assertTrue(model.unlockedData.value.allReviewInvitation.isEmpty())
+    }
+
+    @Test
+    fun testUnlockKeepsAcceptedRecipientsVisibleUntilReviewed() = runTest {
+        val harness = AppModelHarness(this)
+        val backend = harness.backend
+        backend.seedSignedIn(state = VaultStatus.STATE_LOCKED)
+        val review = SentShareInvitation("review", "family", "Family", "ada@example.com", "reader", "accepted", "", requiresConfirmation = true, reviewToken = "reviewed")
+        backend.shareInvitations = ShareInvitations(
+            allReceived = listOf(ReceivedShareInvitation("received", "another", "editor", "Bob", "bob@example.com", "")),
+            allSent = listOf(review, review.copy(id = "pending", state = "pending"), review.copy(id = "bound", requiresConfirmation = false)),
+        )
+        val model = harness.startModel()
+        assertTrue(model.unlockedData.value.allReviewInvitation.isEmpty())
+        assertTrue(model.lock.unlock(FakeBackend.PASSWORD))
+        assertEquals(listOf(review), model.unlockedData.value.allReviewInvitation)
+        assertEquals(1, model.unlockedData.value.allReceivedInvitation.size)
+        assertEquals(2, model.unlockedData.value.peopleInvitationCount)
+    }
+
+    @Test
+    fun testReviewRemindersRefreshAfterCancellationAndClearOnLock() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        val review = SentShareInvitation("review", "family", "Family", "ada@example.com", "reader", "accepted", "", requiresConfirmation = true, reviewToken = "reviewed")
+        val other = review.copy(id = "other")
+        harness.backend.shareInvitations = ShareInvitations(allSent = listOf(review, other))
+        model.invitations.loadShareInvitations()
+        assertTrue(model.sharing.cancelShareInvitation(review.id))
+        assertEquals(listOf(other), model.unlockedData.value.allReviewInvitation)
+        assertEquals(1, model.unlockedData.value.peopleInvitationCount)
+        model.lock()
+        assertTrue(model.unlockedData.value.allReviewInvitation.isEmpty())
+        assertEquals(0, model.unlockedData.value.peopleInvitationCount)
+        assertTrue(model.lock.unlock(FakeBackend.PASSWORD))
+        assertEquals(listOf(other), model.unlockedData.value.allReviewInvitation)
+        assertTrue(model.lock.signOut())
+        assertTrue(model.unlockedData.value.allReviewInvitation.isEmpty())
     }
 
     @Test

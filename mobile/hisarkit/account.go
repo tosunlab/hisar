@@ -11,6 +11,12 @@ type secretKeyReplacement struct {
 	EmergencyKitPath string `json:"emergencyKitPath"`
 }
 
+// CheckMasterPassword returns item.MasterPasswordFeedback ({"level", "label", "bits", "message", "isBlocking"}) as JSON;
+// Create account and Change master password refuse a new master password whose feedback is blocking.
+func (hisar *Hisar) CheckMasterPassword(password string) (string, error) {
+	return encodeJSON(hisar.service.CheckMasterPassword(password), nil)
+}
+
 // ChangeMasterPassword returns app.CredentialChangeResult as JSON; every other device is signed out.
 func (hisar *Hisar) ChangeMasterPassword(currentPassword, newPassword string) (string, error) {
 	defer releaseMemory()

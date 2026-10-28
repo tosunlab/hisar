@@ -6,9 +6,11 @@ import com.tryhisar.hisar.model.InviteLink
 import com.tryhisar.hisar.model.SignInLink
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.VaultStatus
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runCurrent
@@ -34,8 +36,44 @@ class SignInModelTests {
         assertTrue(isSignedUp)
         assertEquals(NewAccountStep.SaveSecretKey(FakeBackend.SECRET_KEY), model.signIn.newAccountStep.value)
         assertEquals(Screen.Unlocked, model.screen.value)
+        assertFalse(model.pendingRecovery.isShown.value, "account recovery covered Save your Secret Key")
+        assertEquals(listOf(FakeBackend.NEW_ACCOUNT_OPERATION_ID), model.pendingRecovery.allRecovery.value.map { it.operationId })
         model.signIn.dismissNewSecretKey()
         assertNull(model.signIn.newAccountStep.value)
+    }
+
+    @Test
+    fun testSecretKeyScreenAcknowledgesTheSignUpOnlyAfterASavedKit() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.isBiometricAvailable = false
+        val model = harness.startModel()
+        model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        assertFalse(model.signIn.finishNewSecretKey())
+        assertEquals(NewAccountStep.SaveSecretKey(FakeBackend.SECRET_KEY), model.signIn.newAccountStep.value)
+        assertEquals("finish setup and save the Emergency Kit before acknowledging delivery", model.errorMessage.value)
+        val kit = assertNotNull(model.signIn.exportNewAccountEmergencyKit())
+        try {
+            assertTrue(model.signIn.finishNewSecretKey())
+            assertNull(model.signIn.newAccountStep.value)
+            assertEquals(emptyList(), model.pendingRecovery.allRecovery.value)
+            assertFalse("acknowledgePendingRecovery" in harness.backend.allCallName, "no master password asked again")
+        } finally {
+            File(kit.emergencyKitPath).parentFile?.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun testFinishLaterKeepsTheSignUpRecordWithoutOpeningRecovery() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startModel()
+        model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        model.signIn.postponeNewSecretKey()
+        runCurrent()
+        assertNull(model.signIn.newAccountStep.value)
+        assertFalse(model.pendingRecovery.isShown.value)
+        assertEquals(listOf(FakeBackend.NEW_ACCOUNT_OPERATION_ID), model.pendingRecovery.allRecovery.value.map { it.operationId })
+        assertTrue("forgetNewAccountSecretKey" in harness.backend.allCallName)
+        assertFalse("acknowledgeNewAccountRecovery" in harness.backend.allCallName)
     }
 
     @Test
@@ -74,10 +112,22 @@ class SignInModelTests {
     }
 
     @Test
+    fun testLockOnTheSecretKeyScreenLeavesTheKitReminderAfterUnlock() = runTest {
+        val model = AppModelHarness(this).startModel()
+        model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        model.lock()
+        assertNull(model.signIn.newAccountStep.value)
+        assertTrue(model.lock.unlock(FakeBackend.PASSWORD))
+        assertEquals(listOf(FakeBackend.NEW_ACCOUNT_OPERATION_ID), model.pendingRecovery.allRecovery.value.map { it.operationId })
+        assertFalse(model.pendingRecovery.isShown.value)
+    }
+
+    @Test
     fun testAutoLockHidesTheBiometricOffer() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startModel()
         model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        model.signIn.exportNewAccountEmergencyKit()
         model.signIn.finishNewSecretKey()
         assertEquals(NewAccountStep.BiometricOffer, model.signIn.newAccountStep.value)
         harness.backend.lock()
@@ -92,6 +142,7 @@ class SignInModelTests {
         val harness = AppModelHarness(this)
         val model = harness.startModel()
         model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        model.signIn.exportNewAccountEmergencyKit()
         model.signIn.finishNewSecretKey()
         assertEquals(NewAccountStep.BiometricOffer, model.signIn.newAccountStep.value, "the cover stays up for the offer")
         val isTurnedOn = model.signIn.turnOnBiometricUnlockFromOffer()
@@ -109,6 +160,7 @@ class SignInModelTests {
         val harness = AppModelHarness(this)
         val model = harness.startModel()
         model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        model.signIn.exportNewAccountEmergencyKit()
         model.signIn.finishNewSecretKey()
         harness.backend.isBiometricSucceeding = false
         val isTurnedOn = model.signIn.turnOnBiometricUnlockFromOffer()
@@ -128,6 +180,7 @@ class SignInModelTests {
         harness.backend.isBiometricAvailable = false
         val model = harness.startModel()
         model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        model.signIn.exportNewAccountEmergencyKit()
         model.signIn.finishNewSecretKey()
         assertNull(model.signIn.newAccountStep.value)
         runCurrent()
@@ -284,11 +337,16 @@ class SignInModelTests {
         val model = AppModelHarness(this).startModel()
         model.signIn.isScannerShown.value = true
         model.signIn.openScannedEmergencyKit("hisar://invite/abc")
-        assertFalse(model.signIn.isScannerShown.value, "the first code closes the scanner")
+        assertTrue(model.signIn.isScannerShown.value, "an invalid code keeps the scanner open")
         assertNull(model.signIn.pendingInviteLink.value, "an invite is no Emergency Kit")
         assertEquals("This QR code is not from a Hisar Emergency Kit.", model.signIn.scannerMessage.value)
+        model.signIn.openScannedEmergencyKit("hisar://sign-in?email=ignored")
+        assertNull(model.signIn.pendingSignInLink.value, "scanning stays paused until Try again")
+        model.signIn.scannerMessage.value = null
         model.signIn.openScannedEmergencyKit("hisar://sign-in?server=https%3A%2F%2Fhisar.example.com&email=alice%40example.com&secretKey=H1-ABC123")
         assertEquals(SignInLink(server = "https://hisar.example.com", email = "alice@example.com", secretKey = "H1-ABC123"), model.signIn.pendingSignInLink.value)
+        assertFalse(model.signIn.isScannerShown.value, "a valid kit closes the scanner")
+        assertNull(model.signIn.scannerMessage.value)
     }
 
     @Test

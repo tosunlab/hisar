@@ -162,6 +162,7 @@ fun OrganizationsScreen(model: AppModel, onBack: () -> Unit) {
                     InvitationRow(
                         text = invitation.message,
                         email = invitation.invitedByEmail,
+                        expiresAt = invitation.expiresAt,
                         icon = Icons.Filled.Business,
                         testTagPrefix = "",
                         testTagName = "organization-invitation",
@@ -247,6 +248,7 @@ private fun CreateOrganizationSheet(model: AppModel, onDismiss: () -> Unit, onCr
                 modifier = Modifier.focusRequester(focusRequester),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { create() }),
+                label = "Name",
             )
         }
     }
@@ -429,6 +431,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
                         imeAction = ImeAction.Send,
                     ),
                     keyboardActions = KeyboardActions(onSend = { send() }),
+                    label = "Email",
                 )
                 RowDivider()
                 PickerRow("Role", inviteRole, OrganizationRole.all, OrganizationRole::describe, { inviteRole = it }, testTag = "organization-invite-role")
@@ -501,6 +504,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
                             testTag = "organization-invitation-${invitation.email}",
                             onCancel = { dialog = OrganizationDialog.CancelInvitation(invitation) },
                             cancelLabel = "Cancel invitation",
+                            expiresAt = invitation.expiresAt,
                         )
                     }
                 }
@@ -610,10 +614,11 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     if (givenTeam != null && loaded != null) {
         GiveVaultSheet(
             model = model,
-            title = "Give a vault to ${givenTeam.name}",
+            title = "Give a vault",
+            identity = "To: ${givenTeam.name}, ${loaded.name}",
             choiceTitle = "Vault",
             allChoice = OrganizationLogic.listAllGivableVault(loaded, givenTeam, data.allVault).map {
-                GiveVaultChoice(id = it.vaultID, label = it.displayName, teamID = givenTeam.id, vaultID = it.vaultID)
+                GiveVaultChoice(id = it.vaultID, label = it.displayName, teamID = givenTeam.id, vaultID = it.vaultID, canPreselect = it.canOpen)
             },
             organizationID = organizationID,
             onFinish = { load() },
@@ -629,7 +634,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
 private fun TeamSection(
     team: Team,
     organization: Organization,
-    allGivableVault: List<TeamVault>,
+    allGivableVault: List<com.tryhisar.hisar.model.GivableVault>,
     rowMenu: RowMenu?,
     onMenu: (RowMenu?) -> Unit,
     onRemoveMember: (TeamMember) -> Unit,
@@ -735,7 +740,8 @@ private fun TeamSection(
                     )
                     HisarMenu(rowMenu == RowMenu.AddMember(team.id), onDismiss = { onMenu(null) }) {
                         for (member in allAddableMember) {
-                            HisarMenuItem(describeMemberName(member), "team-${team.name}-add-${member.email}", onClick = {
+                            val choice = OrganizationLogic.describeMemberChoice(member)
+                            HisarMenuItem(choice.title, "team-${team.name}-add-${member.email}", detail = choice.detail, onClick = {
                                 onMenu(null)
                                 onAddMember(member)
                             })
@@ -790,7 +796,7 @@ private fun NameDialog(
                     Spacer(Modifier.height(12.dp))
                 }
                 Box(Modifier.background(HisarTheme.colors.fill, RoundedCornerShape(10.dp))) {
-                    FormTextField(name, { name = it }, placeholder = placeholder, testTag = fieldTestTag)
+                    FormTextField(name, { name = it }, placeholder = placeholder, testTag = fieldTestTag, label = "Name")
                 }
             }
         },

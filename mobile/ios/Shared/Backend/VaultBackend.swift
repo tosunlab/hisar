@@ -93,6 +93,8 @@ protocol VaultBackend: AnyObject {
     func getOneTimeCodeForService(vaultID: String, itemID: String, serviceIdentifier: String) throws -> OneTimeCode
     func copyField(vaultID: String, itemID: String, fieldName: String) throws
     func generatePassword(length: Int, isDigitIncluded: Bool, isSymbolIncluded: Bool) throws -> String
+    func ratePassword(_ password: String) throws -> PasswordStrength
+    func checkMasterPassword(_ password: String) throws -> MasterPasswordFeedback
     func listAllLoginForService(serviceIdentifier: String) throws -> [LoginMatch]
     func getLoginForService(vaultID: String, itemID: String, serviceIdentifier: String) throws -> LoginCredential
     func listAllPasskey() throws -> [StoredPasskey]
@@ -141,6 +143,9 @@ protocol VaultBackend: AnyObject {
     func setPushPayloadKey(p256dh: String, auth: String) throws
     func setPushKindEnabled(_ kind: PushKind, isEnabled: Bool) throws
     func getPushSettings() throws -> PushSettings
+    /// getApprovalPushVerifier returns the signed-in account and its public signing key, which the notification service
+    /// extension checks an approval preview against; both are empty before the first unlock.
+    func getApprovalPushVerifier() throws -> ApprovalPushVerifier
 }
 
 struct BackendError: LocalizedError, Equatable {

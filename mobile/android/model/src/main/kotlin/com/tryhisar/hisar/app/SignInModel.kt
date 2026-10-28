@@ -1,10 +1,14 @@
 package com.tryhisar.hisar.app
 
+import com.tryhisar.hisar.model.AccountLifecycleLogic
+import com.tryhisar.hisar.model.EmergencyKitExport
 import com.tryhisar.hisar.model.InviteLink
 import com.tryhisar.hisar.model.SignInLink
 import com.tryhisar.hisar.model.SignUpResult
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.trimmingWhitespacesAndNewlines
+import java.io.File
+import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -90,7 +94,7 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
     }
 
     private suspend fun finishSignUp(result: SignUpResult): Boolean {
-        if (result.pendingOperationId.isNotEmpty()) {
+        if (result.pendingOperationId.isNotEmpty() && !AccountLifecycleLogic.isWaitingOnlyForKit(result.setupState, result.secretKey, result.problems)) {
             context.refreshStatus()
             // The backend's first sync can report its change before this status arrives, when it is ignored.
             if (context.status.value.isUnlocked) context.refreshAll()
@@ -101,11 +105,35 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
         mutableNewAccountStep.value = NewAccountStep.SaveSecretKey(result.secretKey)
         context.applyStatus(result.status)
         context.refreshAll()
+        context.refreshPendingRecovery(isOpening = false)
         return true
     }
 
-    /** "I saved my Secret Key": offers biometric unlock when the device has it and it is off, else closes the cover. */
-    fun finishNewSecretKey() {
+    /**
+     * Writes the new account's Emergency Kit into a folder of its own and records it as saved, from the Secret Key the
+     * backend keeps until onboarding ends; the screen deletes the folder when it leaves.
+     */
+    suspend fun exportNewAccountEmergencyKit(): EmergencyKitExport? {
+        val directory = File(System.getProperty("java.io.tmpdir"), "${SettingsModel.HANDOFF_FOLDER_NAME}/EmergencyKit-${UUID.randomUUID()}")
+        return context.perform(isBusyShown = false) { it.exportNewAccountEmergencyKit(directory) }
+    }
+
+    /** "I saved my Emergency Kit": ends the sign-up's pending record, then offers biometric unlock. */
+    suspend fun finishNewSecretKey(): Boolean = context.runInModel {
+        context.perform { it.acknowledgeNewAccountRecovery() } ?: return@runInModel false
+        context.refreshPendingRecovery(isOpening = false)
+        offerBiometricUnlock()
+        true
+    }
+
+    /** "Finish later": the sign-up's record stays for Finish account recovery, which then asks the master password. */
+    suspend fun postponeNewSecretKey() {
+        dismissNewSecretKey()
+        context.refreshPendingRecovery(isOpening = false)
+    }
+
+    /** Offers biometric unlock when the device has it and it is off, else closes the cover. */
+    fun offerBiometricUnlock() {
         val status = context.status.value
         if (status.biometricAvailable && !status.biometricEnabled) {
             context.errorMessage.value = null
@@ -139,17 +167,15 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
         InviteLink.parse(text)?.let(::openInviteLink)
     }
 
-    /**
-     * Takes the text of the first QR code the scanner read, and closes the scanner; only an Emergency Kit's sign-in
-     * link fills the form in.
-     */
+    /** Keeps an invalid code in the scanner until the user explicitly tries again. */
     fun openScannedEmergencyKit(text: String) {
-        isScannerShown.value = false
+        if (scannerMessage.value != null) return
         val link = SignInLink.parse(text)
         if (link == null) {
             scannerMessage.value = "This QR code is not from a Hisar Emergency Kit."
             return
         }
+        isScannerShown.value = false
         pendingSignInLink.value = link
     }
 

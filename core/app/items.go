@@ -381,6 +381,11 @@ func (s *Service) saveItem(vaultID string, detail ItemDetail, importScope string
 	if strings.TrimSpace(detail.Title) == "" {
 		return ItemDetail{}, errors.New("enter a title")
 	}
+	for _, field := range detail.Fields {
+		if strings.TrimSpace(field.Name) == "" && field.Value != "" {
+			return ItemDetail{}, errors.New("enter a name for each field that has a value")
+		}
+	}
 	if detail.Icon != nil && len(detail.Icon.Image) > 0 && !item.IsIconImage(detail.Icon.Image) {
 		return ItemDetail{}, itemicon.ErrUnsupportedImage
 	}
@@ -711,6 +716,11 @@ func (s *Service) GeneratePassword(config PasswordConfig) (string, error) {
 		config.Length = item.DefaultGeneratorConfig().Length
 	}
 	return item.GeneratePassword(item.GeneratorConfig{Length: config.Length, Digits: config.Digits, Symbols: config.Symbols})
+}
+
+// RatePassword is the strength meter's rating of a password, the same rule CheckMasterPassword uses.
+func (s *Service) RatePassword(password string) item.PasswordStrength {
+	return item.RatePassword(password)
 }
 
 // fieldNames are the names the apps pass to CopyField for built-in fields.

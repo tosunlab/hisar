@@ -108,6 +108,11 @@ and navigation to another item, vault, Favorites, or a tag from Favorites. If th
 offers **Keep editing** and **Discard**. Locking keeps the draft in memory and restores it after unlock.
 ⌘S and ⌘↩ save after the form passes validation.
 
+**Settings → General → Password generator…** generates a password without an item draft.
+Search Settings for "Password generator" to find the same row.
+Set the length, digits and symbols, then use **Regenerate** or **Copy**. Copied passwords clear after 90 seconds.
+The inline generator in an item editor keeps **Cancel** and **Use password**.
+
 Item and Favorites lists are listboxes with keyboard navigation and `aria-selected` on each option.
 The item list's accessible name is its vault's name. The selected sidebar vault or Favorites entry has `aria-current="true"`.
 
@@ -134,16 +139,19 @@ Design: [Design](../design.md) §4.5 (icons and website icons).
 Design: [Design](../design.md) §4.4 (vault keys and rotation), §5.1 (invites) and §5.6 (public key pinning).
 
 - **Share a vault**: select a shared vault and press **Share** in the item list header. Everyone with access is listed with their role; owners can invite someone by email (owner, editor or reader), change roles and remove people. Editors and readers see the list read-only. Personal vaults show **Private** instead and cannot be shared.
+- **Share links** open without a Hisar account. Hisar encrypts the content before sending it, but opening a web link requires trusting the page supplied by the Hisar server. The dialog keeps this warning visible before and after creating the link.
 - **Removing someone** re-encrypts the vault: the owner's device generates a new vault key, re-encrypts every item and wraps the new key only for the remaining members (`session.RemoveVaultMember`). Copies the removed person already downloaded stay readable to them.
 - **Key pinning**: the first time this device shares with someone, it pins their signing key in `desktop.json` (`pins`), like the CLI (`localstate.State.CheckMemberPin`). Sharing, changing a role or re-encrypting the vault stops if a pinned key changes. Each person has a security code (`crypt.FormatKeyFingerprint`: the first 8 bytes of SHA-256 of their Ed25519 signing key, as 4 groups of 4 hex digits); expand a member in the sharing panel or open Settings → People to see it, and compare it over a channel you trust.
 - **Settings → People** lists the people you share a vault with and their security codes, and the share invitations you sent and received. Anyone can **Invite** someone to Hisar by email. The app shows no account roles; the admin role only matters to the operator's `hisar-server` command.
-- **Settings → Devices** lists the devices signed in to your account. **Revoke** signs another device out; to sign out this Mac, use **Sign out** in Settings → Account.
+- **Settings → Devices** lists the devices signed in to your account. **Sign out…** asks you to confirm **Sign out device** for another device. To sign out this Mac, use **Sign out** in Settings → Account.
 
 ## Signing in again: the Emergency Kit
 
 Design: [Design](../design.md) §6. The Emergency Kit (email, server and Secret Key) plus the master password is the only way to sign in again; there is no account recovery.
 
-- **Lost Secret Key**: it is on the Emergency Kit. Settings → Security → Emergency Kit saves a new kit after the master password, and the sign-in screen says where to find it.
+On the Mac, **Open Emergency Kit…** fills in the server, email and Secret Key from the QR code in a kit PDF. Hisar reads it locally and never uploads the PDF. Enter your master password and choose **Sign in**. You can still type or paste the account fields on the Mac and Linux.
+
+- **Lost Secret Key**: it is on the Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings. On the Mac, it is under Security → Emergency Kit.
 - **Forgotten master password**: nobody can recover it, including Hisar. The Create account form and the Secret Key screen after sign up say so.
 
 ## Secure notes
@@ -237,7 +245,7 @@ The Hisar extension (`extension/`) fills and saves logins through the desktop ap
 
 - `Hisar.app/Contents/MacOS/hisar-browser-host` is the native messaging host. At launch the app writes `com.tryhisar.hisar.json` into `NativeMessagingHosts` of every Chromium browser it knows (Chrome, Brave, Edge and their beta, dev, canary and nightly channels, Chromium, Arc, Dia, Vivaldi and Vivaldi Snapshot, Opera and Opera GX), whether or not it is installed, so a browser installed later finds the host at its first launch. Dia reads Chrome's folder rather than its own, so its entry points there. It allows only the extension `mmipiffoogblblocokimpemdopmdjghf`. For Firefox it writes the same file with `allowed_extensions: ["extension@tryhisar.com"]` into `~/Library/Application Support/Mozilla/NativeMessagingHosts` (Linux: `~/.mozilla/native-messaging-hosts`); Firefox counts as having run once its `profiles.ini` exists. The host reads Chrome's argument (the extension origin) or Firefox's (the manifest path, then the add-on ID). Settings → Browser lists the browsers that have run. A development build (`wails3 dev`) has no host next to its binary and registers nothing.
 - The host relays to the app on `~/.hisar/browser.sock` (`HISAR_BROWSER_SOCKET` overrides it for both). In the packaged app only that host binary may connect. If the app is not running, the host opens it in the background.
-- Pairing: clicking the extension's icon the first time makes Hisar show a 6-digit code (2 minutes, 5 attempts) to type into the extension. Settings → Browser links to the extension's Chrome Web Store item (every Chromium browser) and, for Firefox, to the extension's GitHub releases with the signed `.xpi`; it lists paired browsers with Remove and has "Only fill on the exact host".
+- Pairing: clicking the extension's icon the first time makes Hisar show a 6-digit code (2 minutes, 5 attempts) to type into the extension. The dialog says what pairing allows: while Hisar is unlocked, the extension browses your vaults, reveals and copies item fields (never SSH private keys or passkeys), fills logins, cards, identities and addresses, and saves new items. The browser stays paired after Hisar locks until you remove it. Settings → Browser links to the extension's Chrome Web Store item (every Chromium browser) and, for Firefox, to the extension's GitHub releases with the signed `.xpi`; it lists paired browsers with Remove and has "Only fill on the exact host".
 - Unlocking with the master password in the paired extension also updates the desktop window, so it shows the vault instead of a stale lock screen.
 - Preview: `&settings=1&settingsSection=browser` (registered and paired browsers), `&browsers=none` (nothing found), `&browserPairing=1` (pairing code).
 
@@ -246,6 +254,7 @@ The Hisar extension (`extension/`) fills and saves logins through the desktop ap
 Hisar is an SSH agent for the SSH keys in your vaults (design: [Design](../design.md) §9.6).
 
 1. Add a key: **+** → **SSH key**, then **Generate** (Ed25519, or RSA 4096 for old servers) or **Import** (paste an OpenSSH or PEM private key; a passphrase is only needed to import, the key is stored without it).
+   Generate and Import use the same discard confirmation and memory-only lock restoration as the item editor, including the key type, pasted private key and optional import passphrase. Saving, discarding or signing out clears the draft.
 2. Copy the public key from the key's page (**Copy public key**) into GitHub or the server's `~/.ssh/authorized_keys`.
 3. Settings → SSH & Git → **Use Hisar for SSH**. This backs up `~/.ssh/config` to `~/.ssh/config.hisar-backup-<timestamp>` and adds at the top:
 
@@ -343,7 +352,7 @@ An Approve button alone would let an agent that controls the screen approve itse
   A screenshot or recording can capture a one-time code while the page retains it. Browsers normally mask secure password
   fields with dots, but a page script or show-password control can reveal the value. Captures and page-script copies have no
   Hisar-enforced deletion limit.
-- Preview: `?window=ssh-approval&approval=sign-in` (add `&logins=2` for a choice, `&agentLocked=1` for a locked Hisar, `&noTouchID=1`
+- Preview: `?window=ssh-approval&approval=sign-in` (add `&logins=2` for a choice, or `&logins=12` for a list that scrolls, `&agentLocked=1` for a locked Hisar, `&noTouchID=1`
   for the master password, `&phone=1`), `&approval=agent-run` and `&approval=omp` for the menu, and
   `&settings=1&settingsSection=developer&agentSessions=1&agentSignIn=on` (or `=noAccess`) for Settings.
 

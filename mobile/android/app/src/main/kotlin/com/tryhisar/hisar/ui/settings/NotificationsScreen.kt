@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import com.tryhisar.hisar.MainActivity
 import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.app.NotificationsModel
 import com.tryhisar.hisar.model.PushKind
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormButtonRow
@@ -46,7 +47,7 @@ private data class KindDescription(val title: String, val detail: String, val ic
 
 private fun describe(kind: PushKind): KindDescription = when (kind) {
     PushKind.APPROVAL -> KindDescription(
-        "Approval requests", "Your Mac asks this device to approve an SSH key, the command-line tool or an app.", Icons.Outlined.LaptopMac,
+        "Approval requests", "Your Mac asks this device to approve an SSH key, the command-line tool, a coding agent or an app.", Icons.Outlined.LaptopMac,
     )
     PushKind.SECURITY -> KindDescription("Security alerts", "A new device signed in, or your master password or Secret Key changed.", Icons.Outlined.Security)
     PushKind.SHARING -> KindDescription("Sharing", "Someone invited you to a vault or an organization.", Icons.Outlined.Group)
@@ -86,9 +87,9 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
                         isPermissionGranted && !isDistributorInstalled ->
                             "Hisar gets notifications through a UnifiedPush app, such as ntfy, which keeps one connection open for all your apps. Install one, then come back here."
                         isPermissionGranted && !settings.isServerSending ->
-                            "Your Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
+                            "The Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
                         else ->
-                            "A notification only says what kind of thing happened, never what or who it is about. Open and unlock Hisar to see the details. Your Hisar server and your UnifiedPush app see when a notification is sent, but not what it is about."
+                            NotificationsModel.privacyExplanation
                     },
                 )
             },

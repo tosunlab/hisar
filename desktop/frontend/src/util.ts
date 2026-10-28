@@ -3,6 +3,21 @@ import type { IconName } from "./components/AppIcon.vue";
 // themes.json defines tile0 to tile9 with their text colours for every theme.
 const tileColorCount = 10;
 
+const builtInReferenceNames: Record<string, true> = {
+  username: true, password: true, url: true, notes: true,
+  "one-time code": true, "public key": true, fingerprint: true, "connection string": true,
+};
+
+export function customFieldNameWarning(fields: { name: string }[], index: number): string {
+  const name = fields[index].name.trim().toLowerCase();
+  if (Object.hasOwn(builtInReferenceNames, name)) {
+    return "A secret reference with this name reaches the built-in field.";
+  }
+  return name && fields.some((field, other) => other !== index && field.name.trim().toLowerCase() === name)
+    ? "Secret references need a unique name."
+    : "";
+}
+
 export interface TileColor {
   background: string;
   color: string;
@@ -36,58 +51,6 @@ export function getInitials(text: string): string {
   return (allWord[0][0] + allWord[1][0]).toUpperCase();
 }
 
-export type StrengthLevel = "empty" | "weak" | "fair" | "good" | "strong";
-
-export interface PasswordStrength {
-  level: StrengthLevel;
-  label: string;
-  bits: number;
-}
-
-const allCommonPattern = [
-  /pass(word)?/i,
-  /qwert/i,
-  /admin/i,
-  /welcome/i,
-  /letmein/i,
-  /iloveyou/i,
-  /(spring|summer|autumn|fall|winter)/i,
-  /(19|20)\d\d/,
-  /1234/,
-  /abc/i,
-];
-
-const bitsPerDictionaryWord = 11;
-
-// computePasswordStrength estimates entropy: dictionary-style phrases count per word, common
-// patterns are penalized, otherwise character classes times length, discounting repeats and sequences.
-export const minimumMasterPasswordLength = 10;
-// Below this only clearly guessable passwords are refused; the meter still says Weak up to 40 bits.
-const minimumMasterPasswordBits = 28;
-const masterPasswordAdvice = "A few random words you can remember make a strong master password.";
-
-export interface MasterPasswordFeedback {
-  message: string;
-  isBlocking: boolean;
-}
-
-export function getMasterPasswordFeedback(password: string): MasterPasswordFeedback {
-  if (password === "") {
-    return { message: masterPasswordAdvice, isBlocking: false };
-  }
-  if (password.length < minimumMasterPasswordLength) {
-    return { message: `Use at least ${minimumMasterPasswordLength} characters.`, isBlocking: true };
-  }
-  const strength = computePasswordStrength(password);
-  if (strength.bits < minimumMasterPasswordBits) {
-    return { message: "This password is too easy to guess. Add a few more words or characters.", isBlocking: true };
-  }
-  if (strength.level === "weak") {
-    return { message: "You can use it, but another word or a few more characters make it much harder to guess.", isBlocking: false };
-  }
-  return { message: masterPasswordAdvice, isBlocking: false };
-}
-
 export function describeSignedOutDevices(signedOutDeviceCount: number): string {
   if (signedOutDeviceCount < 0) {
     return "Any other devices were signed out; their count could not be recovered.";
@@ -101,40 +64,6 @@ export function describeSignedOutDevices(signedOutDeviceCount: number): string {
   return `${signedOutDeviceCount} other devices were signed out.`;
 }
 
-export function computePasswordStrength(password: string): PasswordStrength {
-  if (password === "") {
-    return { level: "empty", label: "", bits: 0 };
-  }
-  const penalty = allCommonPattern.filter((pattern) => pattern.test(password)).length * 20;
-  if (/^[a-z]+([-_ .][a-z]+)+$/i.test(password)) {
-    const wordCount = password.split(/[-_ .]/).length;
-    return classifyBits(wordCount * bitsPerDictionaryWord - penalty);
-  }
-  let poolSize = 0;
-  if (/[a-z]/.test(password)) poolSize += 26;
-  if (/[A-Z]/.test(password)) poolSize += 26;
-  if (/[0-9]/.test(password)) poolSize += 10;
-  if (/[^a-zA-Z0-9]/.test(password)) poolSize += 33;
-
-  let effectiveLength = 0;
-  for (let index = 0; index < password.length; index++) {
-    const previous = password.charCodeAt(index - 1);
-    const current = password.charCodeAt(index);
-    const isRepeat = index > 0 && current === previous;
-    const isSequence = index > 0 && Math.abs(current - previous) === 1;
-    effectiveLength += isRepeat || isSequence ? 0.3 : 1;
-  }
-  return classifyBits(Math.round(effectiveLength * Math.log2(Math.max(poolSize, 2))) - penalty);
-}
-
-function classifyBits(estimatedBits: number): PasswordStrength {
-  const bits = Math.max(estimatedBits, 0);
-  if (bits < 40) return { level: "weak", label: "Weak", bits };
-  if (bits < 60) return { level: "fair", label: "Fair", bits };
-  if (bits < 90) return { level: "good", label: "Good", bits };
-  return { level: "strong", label: "Strong", bits };
-}
-
 export function isMacPlatform(): boolean {
   return /Mac/i.test(navigator.platform || navigator.userAgent);
 }
@@ -142,6 +71,15 @@ export function isMacPlatform(): boolean {
 // thisDevice is how the UI names the computer it runs on: "this Mac", or "this computer" on Linux.
 export function getThisDeviceName(): string {
   return isMacPlatform() ? "this Mac" : "this computer";
+}
+
+export function getSignOutCopy(isLocked: boolean): { title: string; message: string } {
+  const device = getThisDeviceName();
+  const message = `Hisar removes ${device}'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.`;
+  return {
+    title: `Sign out of Hisar on ${device}?`,
+    message: isLocked ? `${message} If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Security.` : message,
+  };
 }
 
 // getTrayName is where Hisar stays while its window is closed.

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createApiMock, createDevice, createPerson, createReceivedShareInvitation, createSSHAgentStatus, createStatus, createUpdateStatus } from "../testing";
 import MainView from "./MainView.vue";
+import UnlockView from "./UnlockView.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -68,6 +69,7 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount();
   wrapper = null;
+  Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
 });
 
 describe("Settings sidebar", () => {
@@ -170,6 +172,93 @@ describe("Settings sidebar", () => {
     await settings.find('[data-testid="settings-section-people"]').trigger("click");
     expect(settings.find('[data-testid="invite-form"]').exists()).toBe(false);
   });
+
+  it("generates and copies a password from General without an item draft", async () => {
+    api.generatePassword.mockResolvedValueOnce("first-password").mockResolvedValue("another-password");
+    store.editorMode = "view";
+    store.selectedItem = null;
+    const settings = await mountSettings();
+    await settings.get('[data-testid="open-password-generator"]').trigger("click");
+    await flushPromises();
+    const dialog = settings.get('[data-testid="password-generator-dialog"]');
+    const headingID = dialog.get('[role="dialog"]').attributes("aria-labelledby");
+    expect(dialog.get(`#${headingID}`).text()).toBe("Password generator");
+    expect(dialog.get('[data-testid="generated-password"]').text()).toBe("first-password");
+    await dialog.get('button[aria-label="Regenerate"]').trigger("click");
+    await flushPromises();
+    await dialog.findAll("button").find((button) => button.text() === "Copy")!.trigger("click");
+    await flushPromises();
+    expect(api.copyText).toHaveBeenCalledWith("another-password");
+    expect(store.noticeMessage).toBe("Password copied. It clears in 90 seconds.");
+    expect(store.editorMode).toBe("view");
+    expect(store.selectedItem).toBeNull();
+    await dialog.findAll("button").find((button) => button.text() === "Close")!.trigger("click");
+    expect(settings.find('[data-testid="password-generator-dialog"]').exists()).toBe(false);
+    expect(store.isSettingsOpen).toBe(true);
+  });
+
+  it("finds the same generator row through Settings search and closes only its modal on Escape", async () => {
+    api.generatePassword.mockResolvedValue("generated-password");
+    const settings = await mountSettings();
+    await search(settings, "password generator");
+    expect(readAllSectionLabel(settings)).toEqual(["General"]);
+    expect(settings.get('[data-testid="open-password-generator"]').isVisible()).toBe(true);
+    await settings.get('[data-testid="open-password-generator"]').trigger("click");
+    await flushPromises();
+    await settings.get('[data-testid="password-generator-dialog"] input[name="length"]').trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(settings.find('[data-testid="password-generator-dialog"]').exists()).toBe(false);
+    expect(store.isSettingsOpen).toBe(true);
+  });
+});
+
+describe("Sign-out disclosure", () => {
+  it.each([
+    { platform: "MacIntel", device: "this Mac" },
+    { platform: "Linux x86_64", device: "this computer" },
+  ])("explains local removal in Account on $platform", async ({ platform, device }) => {
+    Object.defineProperty(navigator, "platform", { value: platform, configurable: true });
+    const settings = await mountSettings();
+    await settings.get('[data-testid="settings-section-account"]').trigger("click");
+    await settings.get('[data-testid="account-section"] button.danger').trigger("click");
+    const confirmation = settings.get('[data-testid="settings-sign-out-confirmation"]');
+    expect(confirmation.get("h3").text()).toBe(`Sign out of Hisar on ${device}?`);
+    expect(confirmation.get("p").text()).toBe(`Hisar removes ${device}'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.`);
+    expect(settings.get('[data-testid="settings-confirm-sign-out"]').text()).toBe("Sign out");
+    expect(api.signOut).not.toHaveBeenCalled();
+    await confirmation.get("button.ghost").trigger("click");
+    expect(settings.find('[data-testid="settings-sign-out-confirmation"]').exists()).toBe(false);
+  });
+
+  it.each([
+    { platform: "MacIntel", device: "this Mac" },
+    { platform: "Linux x86_64", device: "this computer" },
+  ])("explains how to save a kit before signing out while locked on $platform", async ({ platform, device }) => {
+    Object.defineProperty(navigator, "platform", { value: platform, configurable: true });
+    store.status = createStatus("locked");
+    wrapper = mount(UnlockView, { attachTo: document.body });
+    await wrapper.get(".sign-out > button").trigger("click");
+    const confirmation = wrapper.get(".confirm");
+    expect(confirmation.get("strong").text()).toBe(`Sign out of Hisar on ${device}?`);
+    expect(confirmation.findAll("p")[1].text()).toBe(`Hisar removes ${device}'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device. If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Security.`);
+    expect(wrapper.get('[data-testid="confirm-sign-out"]').text()).toBe("Sign out");
+    expect(api.signOut).not.toHaveBeenCalled();
+  });
+
+  it("opens the existing Emergency Kit form from Account without signing out", async () => {
+    const settings = await mountSettings();
+    await search(settings, "account");
+    await settings.get('[data-testid="settings-section-account"]').trigger("click");
+    await settings.get('[data-testid="account-section"] button.danger').trigger("click");
+    await settings.get('[data-testid="sign-out-save-emergency-kit"]').trigger("click");
+    await flushPromises();
+    expect(settings.get("#settings-title").text()).toBe("Security");
+    expect(settings.get('[data-testid="settings-search"]').element).toHaveProperty("value", "");
+    expect(settings.get('input[name="emergencyKitPassword"]').isVisible()).toBe(true);
+    expect(settings.find('[data-testid="settings-sign-out-confirmation"]').exists()).toBe(false);
+    expect(api.signOut).not.toHaveBeenCalled();
+    expect(store.status.state).toBe("unlocked");
+  });
 });
 
 describe("People empty state", () => {
@@ -180,7 +269,7 @@ describe("People empty state", () => {
     api.listAllPerson.mockResolvedValue(allPerson);
     const settings = await mountSettings();
     await settings.get('[data-testid="settings-section-people"]').trigger("click");
-    expect(settings.get('[data-testid="people-empty-hint"]').text()).toBe("Nobody yet. Share a vault to see the people you share with here.");
+    expect(settings.get('[data-testid="people-empty-hint"]').text()).toBe("Nobody else yet. Share a vault to see the people you share with here.");
     expect(settings.get('[data-testid="people-share-vault"]').attributes("disabled")).toBeUndefined();
   });
 

@@ -153,6 +153,7 @@ fun PhoneApprovalSheet(model: AppModel, approval: PhoneApproval) {
                         isSecure = true,
                         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
                         keyboardActions = KeyboardActions(onGo = { submitPassword() }),
+                        label = "Master password",
                     )
                 }
             }

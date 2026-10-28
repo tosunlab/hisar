@@ -7,18 +7,32 @@ import (
 )
 
 // PushTarget is a phone to send a push to: its device, and either its push relay handle or its Web Push subscription.
-// PayloadKey, with a handle only, is the key an iPhone opens a push's details with.
+// PayloadKey, with a handle only, is the key an iPhone opens a push's details with. KeySignature is the account's
+// signature over the key messages are encrypted to, once the phone sent one.
 type PushTarget struct {
-	DeviceID   string
-	Handle     string
-	PayloadKey *PushPayloadKey
-	WebPush    *WebPushSubscription
+	DeviceID     string
+	Handle       string
+	PayloadKey   *PushPayloadKey
+	WebPush      *WebPushSubscription
+	KeySignature []byte
 }
 
 // PushPayloadKey is an iPhone's public key and authentication secret for push details, decoded.
 type PushPayloadKey struct {
 	P256DH []byte
 	Auth   []byte
+}
+
+// GetMessageKey returns the key the phone's push messages are encrypted to: its Web Push subscription's, or its payload
+// key; nil for an iPhone without one.
+func (target PushTarget) GetMessageKey() (p256dh, auth []byte) {
+	switch {
+	case target.WebPush != nil:
+		return target.WebPush.P256DH, target.WebPush.Auth
+	case target.PayloadKey != nil:
+		return target.PayloadKey.P256DH, target.PayloadKey.Auth
+	}
+	return nil, nil
 }
 
 // WebPushSubscription is a Web Push endpoint with the phone's public key and authentication secret, decoded.
@@ -32,17 +46,21 @@ type WebPushSubscription struct {
 // push kinds; for any other device it fails with ErrNotFound.
 func (s *Store) SetDevicePush(ctx context.Context, accountID string, target PushTarget, allKind []string) error {
 	handle, endpoint, p256dh, auth := target.columns()
-	var payloadP256DH, payloadAuth []byte
+	var payloadP256DH, payloadAuth, keySignature []byte
 	if target.PayloadKey != nil && target.WebPush == nil {
 		payloadP256DH, payloadAuth = target.PayloadKey.P256DH, target.PayloadKey.Auth
 	}
+	if p256dh != nil || payloadP256DH != nil {
+		keySignature = target.KeySignature
+	}
 	commandTag, err := s.pool.Exec(ctx, `
-		INSERT INTO device_push (device_id, handle, web_push_endpoint, web_push_p256dh, web_push_auth, payload_p256dh, payload_auth, kinds)
-		SELECT id, $3, $4, $5, $6, $7, $8, $9 FROM devices WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL AND platform LIKE '%/mobile'
+		INSERT INTO device_push (device_id, handle, web_push_endpoint, web_push_p256dh, web_push_auth, payload_p256dh, payload_auth, key_signature, kinds)
+		SELECT id, $3, $4, $5, $6, $7, $8, $9, $10 FROM devices WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL AND platform LIKE '%/mobile'
 		ON CONFLICT (device_id) DO UPDATE SET handle = excluded.handle, web_push_endpoint = excluded.web_push_endpoint,
 			web_push_p256dh = excluded.web_push_p256dh, web_push_auth = excluded.web_push_auth,
-			payload_p256dh = excluded.payload_p256dh, payload_auth = excluded.payload_auth, kinds = excluded.kinds, updated_at = now()`,
-		target.DeviceID, accountID, handle, endpoint, p256dh, auth, payloadP256DH, payloadAuth, allKind)
+			payload_p256dh = excluded.payload_p256dh, payload_auth = excluded.payload_auth, key_signature = excluded.key_signature,
+			kinds = excluded.kinds, updated_at = now()`,
+		target.DeviceID, accountID, handle, endpoint, p256dh, auth, payloadP256DH, payloadAuth, keySignature, allKind)
 	if err != nil {
 		return err
 	}
@@ -78,7 +96,7 @@ func (s *Store) DeleteStalePushTarget(ctx context.Context, target PushTarget) er
 // ListPushTargets returns the account's signed-in devices that want pushes of the kind, except exceptDeviceID.
 func (s *Store) ListPushTargets(ctx context.Context, accountID, kind, exceptDeviceID string) ([]PushTarget, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT d.id, p.handle, p.web_push_endpoint, p.web_push_p256dh, p.web_push_auth, p.payload_p256dh, p.payload_auth
+		SELECT d.id, p.handle, p.web_push_endpoint, p.web_push_p256dh, p.web_push_auth, p.payload_p256dh, p.payload_auth, p.key_signature
 		FROM device_push p JOIN devices d ON d.id = p.device_id
 		WHERE d.account_id = $1 AND d.revoked_at IS NULL AND $2 = ANY (p.kinds) AND d.id::text <> $3
 		ORDER BY d.id`,
@@ -90,7 +108,7 @@ func (s *Store) ListPushTargets(ctx context.Context, accountID, kind, exceptDevi
 		var target PushTarget
 		var handle, endpoint *string
 		var p256dh, auth, payloadP256DH, payloadAuth []byte
-		if err := row.Scan(&target.DeviceID, &handle, &endpoint, &p256dh, &auth, &payloadP256DH, &payloadAuth); err != nil {
+		if err := row.Scan(&target.DeviceID, &handle, &endpoint, &p256dh, &auth, &payloadP256DH, &payloadAuth, &target.KeySignature); err != nil {
 			return target, err
 		}
 		if endpoint != nil {

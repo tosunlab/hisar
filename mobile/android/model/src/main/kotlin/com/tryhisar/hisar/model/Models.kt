@@ -141,7 +141,9 @@ data class VaultSummary(
 }
 
 @Serializable
-data class ItemField(val name: String, val value: String, val concealed: Boolean)
+data class ItemField(val name: String, val value: String, val concealed: Boolean) {
+    val isNameMissing: Boolean get() = name.isBlank() && value.isNotEmpty()
+}
 
 @Serializable
 data class ItemDetail(
@@ -720,6 +722,28 @@ data class LoginMatch(
 @Serializable
 data class LoginCredential(val username: String = "", val password: String = "", val hasOneTimePassword: Boolean = false)
 
+/**
+ * core/item's rating of a password for the strength meter: level is "" for an empty password, else "weak", "fair", "good"
+ * or "strong", and label is the word the meter shows.
+ */
+@Serializable
+data class PasswordStrength(val level: String = "", val label: String = "", val bits: Int = 0)
+
+/**
+ * core/item's rule for a new master password: its rating and the one sentence under it. Create account and Change master
+ * password refuse a password whose feedback is blocking.
+ */
+@Serializable
+data class MasterPasswordFeedback(
+    val level: String = "",
+    val label: String = "",
+    val bits: Int = 0,
+    val message: String = "",
+    val isBlocking: Boolean = false,
+) {
+    val strength: PasswordStrength get() = PasswordStrength(level, label, bits)
+}
+
 @Serializable
 data class OneTimeCode(val code: String, val expiresAt: String, val period: Int) {
     val expiryDate: Instant? get() = parseTimestamp(expiresAt)
@@ -946,6 +970,29 @@ data class SentShareInvitation(
     }
 }
 
+class InvitationLifetime(timestamp: String) {
+    val date: Instant? = parseTimestamp(timestamp)
+
+    fun isExpired(now: Instant): Boolean = date?.let { !it.isAfter(now) } ?: true
+
+    fun describe(now: Instant): String {
+        val expiry = date ?: return ""
+        val seconds = java.time.Duration.between(now, expiry).toMillis() / 1000.0
+        if (seconds <= 0) return "Expired"
+        val minutes = kotlin.math.ceil(seconds / 60).toInt()
+        if (minutes < 60) return "Expires in $minutes ${if (minutes == 1) "minute" else "minutes"}"
+        val hours = kotlin.math.ceil(seconds / 3600).toInt()
+        if (hours < 24) return "Expires in $hours ${if (hours == 1) "hour" else "hours"}"
+        val days = kotlin.math.ceil(seconds / 86400).toInt()
+        return if (days == 1) "Expires tomorrow" else "Expires in $days days"
+    }
+
+    val exactDate: String get() = date?.let {
+        java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM, java.time.format.FormatStyle.SHORT)
+            .withZone(ZoneId.systemDefault()).format(it)
+    }.orEmpty()
+}
+
 /** A share this user accepted that the owner's app has not finished yet. */
 @Serializable
 data class WaitingShareInvitation(
@@ -976,7 +1023,7 @@ data class ShareAwaitingUnlock(
     val id: String get() = invitationID
     val recipientDisplayName: String
         get() = if (recipientName.isEmpty() || recipientName == recipientEmail) recipientEmail else recipientName
-    val message: String get() = "$recipientDisplayName accepted your invitation to a vault — unlock to finish sharing"
+    val message: String get() = "$recipientDisplayName accepted your invitation to a vault. Unlock to continue sharing."
 }
 
 /** A short "since" for banners: "just now", "5 min ago", "2 h ago", "yesterday", "3 days ago". */
@@ -997,7 +1044,10 @@ data class ShareInvitations(
     @SerialName("sent") val allSent: List<SentShareInvitation> = emptyList(),
     @SerialName("waiting") val allWaiting: List<WaitingShareInvitation> = emptyList(),
     val completionError: String = "",
-)
+) {
+    val allRequiringReview: List<SentShareInvitation>
+        get() = allSent.filter { it.state == SentShareInvitation.STATE_ACCEPTED && it.requiresConfirmation }
+}
 
 @Serializable
 data class VaultSharing(

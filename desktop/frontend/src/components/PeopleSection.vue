@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { SentShareInvitation } from "../api";
-import { acceptShareInvitation, cancelShareInvitation, declineShareInvitation, invitePerson, openFromSettings, store } from "../store";
+import type { SentShareInvitation, VaultRole } from "../api";
+import { acceptShareInvitation, cancelShareInvitation, declineShareInvitation, invitePerson, openFromSettings, shareVault, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { describePerson, formatRole, formatTimeAgo } from "../util";
+import { describePerson, formatDateTime, formatExpiresIn, formatRole, formatTimeAgo } from "../util";
+import { useInvitationClock } from "../invitationClock";
 import AppIcon from "./AppIcon.vue";
 import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
 import MemberAvatar from "./MemberAvatar.vue";
@@ -12,7 +13,18 @@ const isInviting = defineModel<boolean>("isInviting", { default: false });
 const isRowVisible = useSettingsRowVisibility();
 const inviteEmail = ref("");
 const cancellingInvitationID = ref("");
+const now = useInvitationClock();
+const resendErrors = ref<Record<string, string>>({});
+
+async function resend(invitation: SentShareInvitation): Promise<void> {
+  delete resendErrors.value[invitation.id];
+  if (!(await shareVault(invitation.email, invitation.role as VaultRole, invitation.vaultId))) {
+    resendErrors.value[invitation.id] = store.errorMessage;
+    store.errorMessage = "";
+  }
+}
 const isAlone = computed(() => store.allPerson.every((person) => person.isCurrentUser));
+const currentPerson = computed(() => store.allPerson.find((person) => person.isCurrentUser));
 
 async function submitInvite(): Promise<void> {
   if (await invitePerson(inviteEmail.value.trim())) {
@@ -29,7 +41,7 @@ async function confirmCancel(invitation: SentShareInvitation): Promise<void> {
 
 function describeSentState(invitation: SentShareInvitation): string {
   if (invitation.requiresConfirmation) return "Accepted · Review recipient identity";
-  return invitation.state === "accepted" ? "Accepted · Hisar is finishing sharing" : "Waiting for them to accept";
+  return invitation.state === "accepted" ? "Accepted · Hisar is finishing sharing" : `Waiting for them to accept · ${formatExpiresIn(invitation.expiresAt, now.value)}`;
 }
 
 function describeInviter(name: string, email: string): string {
@@ -68,10 +80,10 @@ function describeInviter(name: string, email: string): string {
               <span class="title-text">{{ describeInviter(invitation.invitedByName, invitation.invitedByEmail) }} shared a vault with you</span>
               <span class="tag accent">{{ formatRole(invitation.role) }}</span>
             </strong>
-            <p class="muted">{{ invitation.invitedByEmail }} · You get access after you accept and their Hisar finishes sharing.</p>
+            <p class="muted" :title="formatDateTime(invitation.expiresAt)">{{ invitation.invitedByEmail }} · {{ formatExpiresIn(invitation.expiresAt, now) }} · You get access after you accept and their Hisar finishes sharing.</p>
           </div>
           <button class="ghost" :disabled="store.isBusy" :data-testid="`decline-invitation-${invitation.id}`" @click="declineShareInvitation(invitation)">Decline</button>
-          <button class="primary" :disabled="store.isBusy" :data-testid="`accept-invitation-${invitation.id}`" @click="acceptShareInvitation(invitation)">Accept</button>
+          <button class="primary" :disabled="store.isBusy || new Date(invitation.expiresAt) <= now" :data-testid="`accept-invitation-${invitation.id}`" @click="acceptShareInvitation(invitation)">Accept</button>
         </div>
         <div v-for="waiting in store.shareInvitations.waiting ?? []" :key="waiting.id" class="setting" :data-testid="`waiting-invitation-${waiting.id}`">
           <span class="settings-row-icon"><AppIcon name="clock" :size="14" /></span>
@@ -81,6 +93,10 @@ function describeInviter(name: string, email: string): string {
               <span class="tag">{{ formatRole(waiting.role) }}</span>
             </strong>
             <p class="muted">Accepted {{ formatTimeAgo(waiting.acceptedAt) }}</p>
+            <template v-if="currentPerson">
+              <p class="security-code monospace" data-testid="waiting-security-code">{{ currentPerson.securityCode }}</p>
+              <p class="muted">This is your security code. People you share with can compare it with the code they see for you.</p>
+            </template>
           </div>
         </div>
       </div>
@@ -89,12 +105,6 @@ function describeInviter(name: string, email: string): string {
     <div v-show="isRowVisible('people')" class="settings-block">
       <p class="section-label">People you share with</p>
       <p v-if="store.isBusy && store.allPerson.length === 0" class="muted empty-note">Loading people…</p>
-      <div v-else-if="isAlone" class="settings-group">
-        <div class="setting">
-          <p class="muted setting-text" data-testid="people-empty-hint">Nobody yet. Share a vault to see the people you share with here.</p>
-          <button data-testid="people-share-vault" :disabled="store.isBusy" @click="openFromSettings('sharing')">Share vault…</button>
-        </div>
-      </div>
       <div v-else class="settings-group">
         <div v-for="person in store.allPerson" :key="person.accountId" class="setting" :data-testid="`person-${person.accountId}`">
           <MemberAvatar :name="person.name || person.email" />
@@ -114,6 +124,10 @@ function describeInviter(name: string, email: string): string {
             >{{ person.securityCode }}</span
           >
         </div>
+        <div v-if="isAlone && !store.isBusy" class="setting">
+          <p class="muted setting-text" data-testid="people-empty-hint">Nobody else yet. Share a vault to see the people you share with here.</p>
+          <button data-testid="people-share-vault" :disabled="store.isBusy" @click="openFromSettings('sharing')">Share vault…</button>
+        </div>
       </div>
       <p v-if="!isAlone" class="muted settings-note">Compare a security code with that person over a channel you trust.</p>
       <p v-if="store.shareInvitations.completionError" class="warning-text settings-note" data-testid="share-completion-error">
@@ -131,9 +145,11 @@ function describeInviter(name: string, email: string): string {
               <span class="title-text">{{ invitation.email }}</span>
               <span class="tag" :class="{ success: invitation.state === 'accepted' }">{{ formatRole(invitation.role) }}</span>
             </strong>
-            <p class="muted">{{ invitation.vaultName || "A vault you own" }} · {{ describeSentState(invitation) }}</p>
+            <p class="muted" :title="formatDateTime(invitation.expiresAt)">{{ invitation.vaultName || "A vault you own" }} · {{ describeSentState(invitation) }}</p>
+            <p v-if="resendErrors[invitation.id]" class="error" role="alert">{{ resendErrors[invitation.id] }} <button class="ghost" @click="delete resendErrors[invitation.id]">Dismiss</button></p>
           </div>
           <ShareRecipientConfirmation :invitation="invitation" />
+          <button v-if="invitation.state !== 'accepted' && !invitation.requiresConfirmation" class="ghost" :disabled="store.isBusy" title="Sending again replaces the previous invitation." :data-testid="`resend-invitation-${invitation.id}`" @click="resend(invitation)">Send again</button>
           <button
             v-if="cancellingInvitationID !== invitation.id"
             class="ghost"

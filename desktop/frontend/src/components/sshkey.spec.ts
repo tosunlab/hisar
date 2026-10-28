@@ -172,6 +172,10 @@ describe("SSHKeyForm", () => {
     expect(submitButton().text()).toBe("Import key");
     expect(submitButton().attributes("disabled")).toBeDefined();
     await findButton(wrapper, "Cancel").trigger("click");
+    expect(store.editorMode).toBe("create-ssh-key");
+    expect(store.discardDraftPrompt).not.toBeNull();
+    store.discardDraftPrompt?.answer(true);
+    await flushPromises();
     expect(store.editorMode).toBe("view");
   });
 });
@@ -313,7 +317,7 @@ describe("Settings SSH agent section", () => {
     const phoneSwitch = wrapper.find('[data-testid="phone-approval-switch"]');
     expect((phoneSwitch.element as HTMLInputElement).checked).toBe(true);
     expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("Approve requests on my smart device");
-    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("never unlocks this Mac");
+    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("SSH keys, the command-line tool, coding agents and apps");
     await phoneSwitch.setValue(false);
     await flushPromises();
     expect(api.setPhoneApproval).toHaveBeenCalledWith(false);

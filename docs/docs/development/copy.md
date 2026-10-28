@@ -23,26 +23,46 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 |---|---|
 | master password | password (when the master password is meant), passphrase |
 | Secret Key | secret key, account key |
-| Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." | "has both places to keep them" |
-| Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock |
-| Sign in, Sign out, Create account | Log in, Register |
+| Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." After replacing the Secret Key: "Save the new one now, and destroy the old one." | "has both places to keep them", sign-in address (use server) |
+| Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock; Use Touch ID (the Mac retry button and tooltip use Unlock with Touch ID) |
+| Sign in, Sign out, Create account; Sign out… then Sign out device (Mac Settings → Devices) | Log in, Register, Revoke (a device session) |
 | Change master password…, Replace Secret Key… | Reset password, Rotate key, Regenerate Secret Key |
 | "Your other devices will be signed out. Sign in on them with the new master password." / "…with your master password and the new Secret Key from the new Emergency Kit." | Logged out, session invalidated |
 | "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one." | Session expired, unauthorized |
 | Delete account…, Delete account (the confirm button, after typing the email) | Close account, Remove account, Deactivate |
 | "Export your items first in Settings → Import & Export." (Mac), "… in Settings → Account → Export data." (iPhone, Android), "… with `hisar export`" (CLI) | Back up your data |
 
+### Sign-out confirmations
+
+The Account and locked-screen confirmations share this table. The title is "Sign out of Hisar on \<device>?"
+The message is "Hisar removes \<device>'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device."
+
+| Platform | Device | Emergency Kit route |
+|---|---|---|
+| Mac | this Mac | Settings, Security |
+| Linux | this computer | Settings, Security |
+| iPhone | this iPhone | Settings, Account, Secret Key and Emergency Kit |
+| Android | this device | Settings, Account |
+
+The locked-screen confirmation adds "If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in \<route>."
+Keep **Cancel** and destructive **Sign out**. Unlocked Mac Account also offers **Save Emergency Kit…**, which opens the Security kit form without signing out.
+Sign-out removes the active account's local data, not separately protected unfinished-setup recovery records.
+
 ## People and sharing
 
 | Use | Meaning |
 |---|---|
 | Invite to Hisar | Creates a Hisar account: the server emails a sign-up link. Settings → People. Never "+ Invite" alone. |
-| Share, Invite by email | Gives someone a vault. The vault's Share panel (Mac) or sheet (iPhone). |
+| Share, Invite by email, Send invitation | Gives someone a vault. Share opens the panel (Mac) or sheet (iPhone and Android). Send invitation submits the email invitation. |
 | invitation | A pending vault share ("Invitations for you", "Invitations you sent"). |
 | Review recipient · Give this person access? · Give access | Confirms the concrete account, security code, vault, and role before delivering a key to an identity not bound by the original invitation. Available on Mac, iPhone, and Android. |
+| Review recipients | Accepted first shares waiting for the owner's identity review. Shown above received invitations on Vaults on both phones and included in the People badge. |
+| "\<name> accepted your invitation to a vault. Unlock to continue sharing." | Locked notice. Unlocking may still require Review recipient before the vault key is shared. |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
 | Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
+| Loading members… | The sharing panel omits its member count until members have loaded. |
+| Cancel invitation · Keep invitation | The phones' cancellation confirmation says "Their invitation link stops working. You can invite them again later." |
 
 ## Organizations
 
@@ -53,6 +73,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Members, Teams, Invitations | The segments of the Mac's organization page. |
 | organization vault | A vault that belongs to an organization and reaches people through its teams. |
 | Create organization…, New team…, Invite by email, Send invitation, Give a vault…, Give to a team…, Take back, Add member, Remove, Make admin, Make member | Actions (Settings → Organizations, the organization screen, an organization vault's sharing panel). |
+| Add member choices show the name and email, or only the email when there is no distinct name. The current account keeps "(you)". | Distinguishes people before granting all the team's vaults. |
 | "Ada invited you to Acme as a member" · Accept · Decline | A received organization invitation in Settings → Organizations. The Mac's Inbox row leads there; the phones also show it above the vaults. |
 | Remove from Acme…, Leave Acme…, Rename organization…, Delete organization…, Rename…, Delete team… | Confirmed actions; each confirmation names what goes: "Bob loses the vaults they have through Acme's teams." · "Its members lose the vaults they have only through Platform." · "Leave Acme?" / "You lose the vaults you have through Acme's teams." · "Delete Acme?" / "Its teams and pending invitations are deleted with it." · "Everyone in Acme sees the new name." |
 | "You joined Acme. Its vaults appear once an admin adds you to a team." | After accepting an organization invitation. |
@@ -60,7 +81,9 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Admin · 3 members · Organization · Editor | An organization's row; an organization vault's row (iPhone). |
 | "Hisar couldn't give every vault key: …" · "Hisar couldn't re-encrypt every vault that needs a new key: …" | Warnings above the vaults when a key delivery or a rotation failed. |
 | Shared through teams in Acme · Ask an admin of Acme to change who has this vault. | An organization vault's sharing panel. |
-| A vault you can't open | An organization's vault this device has no key for. |
+| A vault you can't open | An organization's vault this device has no key for. Give a vault choices append the teams that have it, and the first six characters of its ID if the labels still match. An unopened first choice is not selected automatically. |
+| Give a vault · To: Observers, Acme · Give to a team · Vault: “Deploy” | Android grant sheets keep the full team, organization and fixed vault identity in the scrolling form, separate from Cancel and Give. Sheet headings wrap below the action row. |
+| Couldn't take Deploy keys back from Ops · Couldn't remove Elif from Ops · Couldn't delete Acme | Organization refusal headings name the failed action and its targets. The body keeps the server's refusal sentence. |
 | Waiting for an owner of a vault in Acme to give you its key · Waiting for the owners of N vaults in Acme to give you their keys | One line per organization in Settings → Organizations on the Mac, above the vaults on the phones. A team gives you a vault that no owner's Hisar has delivered yet. |
 | Acme is deleted with your account · Ada becomes an admin of Acme · You leave Acme | Account deletion. |
 
@@ -77,6 +100,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Item actions (the ⋯ button in the Mac's item header) | Unlabelled ⋯ |
 | Secret (a field hidden until revealed) | Concealed, Hidden |
 | secret reference | secret URI, reference link |
+| "Copied \<reference>." (secret-reference copy notices on all three apps) | "Secret reference copied.", repeated command-line instructions |
 | "\<Field> copied. It clears in 90 seconds." (Mac and iPhone copy notices) | "\<Field> copied, clears in 90 seconds" |
 | Favorites (the list at the top of the sidebar and of Vaults), favorite, star (the icon) | Starred, Pinned, Bookmarks |
 | Add to Favorites, Remove from Favorites (the star's label, the context menu, swipe actions; ⌘D on the Mac) | Favorite, Unfavorite, Star (as a button label) |
@@ -107,9 +131,20 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | the hisar command-line tool (`hisar`) | the CLI (in app copy), the binary |
 | SSH agent, Use Hisar for SSH | key agent |
 | Approve requests on my smart device (Mac) / Approve requests from my Mac (iPhone, Android) · or approve on your smart device (Mac approval window) · Your smart device can now approve requests | Approve requests on my iPhone, Allow approvals from my iPhone, Allow approving Mac requests |
+| SSH keys, the command-line tool, coding agents and apps | The request kinds listed in Mac approvals settings on all three apps. Notifications use "an SSH key, the command-line tool, a coding agent or an app". |
 | Approve, Deny | Allow, Reject |
-| "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet) · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
+| "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet, for a request approved once) · "Approving also lets \<app> use Hisar without asking until then. It does not unlock Hisar on your Mac." (phone approval sheet for a command-line request, under its **Lasts** row: "Until 10 minutes after this terminal’s last command, or until Hisar locks", "Until 10 minutes after the last request from \<app>, or until Hisar locks", "For this connection only, at most until 10 minutes after its last request or until Hisar locks", which the Mac's dialog says after "Lasts") · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
+
+## Notifications
+
+Both phones open their privacy explanation with "Approval requests and security alerts don't name items or people. Sharing invitations show who invited you and, for an organization, its name, even while Hisar is locked."
+
+The iPhone continues with "To keep them off the lock screen, set Show Previews for Hisar to When Unlocked or Never in iOS Settings. Hisar's push relay and Apple see only the kind of notification; its details are encrypted for this phone."
+
+Android continues with "To keep them off the lock screen, hide sensitive notification content in Android's notification settings. Your UnifiedPush app sees only the kind of notification; its details are encrypted for this phone."
+
+The Hisar server knows the invitation details it encrypts. Do not say that sharing identities need a Hisar unlock or that the server cannot see them.
 
 ## Invites and updates
 
@@ -194,6 +229,7 @@ The Android app uses the iPhone's copy with these changes. Shared sentences from
 ## Style
 
 - Plain sentences: no exclamation marks, no comma splices, and only claims the code keeps ("private keys never leave Hisar"; the command-line tool reads passwords and one-time codes but never private keys).
+- Desktop prose errors capitalize the first character for iPhone parity. They also end in a period unless they already end in a period, question mark or exclamation mark. The final period is a desktop copy-style choice; the iPhone converter only capitalizes.
 - Developer features lead; sharing with other people is described as person-to-person, never as family sharing.
 - Sentence case for buttons, labels and menu items ("Copy one-time code"), title case only for product names (Secret Key, Emergency Kit, Touch ID). Generated action labels preserve user-authored custom field names and acronyms.
 - An ellipsis (…) on an action that opens more input; "…" while busy ("Signing in…").

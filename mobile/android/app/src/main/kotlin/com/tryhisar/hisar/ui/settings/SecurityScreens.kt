@@ -130,7 +130,7 @@ private fun BiometricPasswordAlert(onTurnOn: (String) -> Unit, onDismiss: () -> 
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("Enter your master password to unlock with biometrics.")
                 Box(Modifier.background(HisarTheme.colors.fill, RoundedCornerShape(10.dp))) {
-                    FormTextField(password, { password = it }, placeholder = "Master password", testTag = "biometric-password", isSecure = true)
+                    FormTextField(password, { password = it }, placeholder = "Master password", testTag = "biometric-password", isSecure = true, label = "Master password")
                 }
             }
         },
@@ -154,7 +154,7 @@ fun MacApprovalsScreen(model: AppModel, onBack: () -> Unit) {
         FormSection(
             footer = {
                 Text(
-                    "Requests from Hisar on your Mac appear in the Approvals tab while Hisar is open and unlocked on this device.",
+                    "Requests to use SSH keys, the command-line tool, coding agents and apps on your Mac appear here while Hisar is open and unlocked on both devices.",
                 )
             },
         ) {

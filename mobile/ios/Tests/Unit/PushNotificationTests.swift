@@ -64,6 +64,10 @@ final class PushNotificationTests: XCTestCase {
         return model
     }
 
+    func testNotificationPrivacyExplanation() {
+        XCTAssertEqual(PushNotificationsModel.privacyExplanation, "Approval requests and security alerts don't name items or people. Sharing invitations show who invited you and, for an organization, its name, even while Hisar is locked. To keep them off the lock screen, set Show Previews for Hisar to When Unlocked or Never in iOS Settings. Hisar's push relay and Apple see only the kind of notification; its details are encrypted for this phone.")
+    }
+
     func testTurningNotificationsOnAsksOnceThenRegistersTheTokenAsHex() async {
         let model = await createUnlockedModel(authorization: .notDetermined)
         XCTAssertEqual(registerCount, 0, "Hisar never asks for a token before the user turns notifications on")

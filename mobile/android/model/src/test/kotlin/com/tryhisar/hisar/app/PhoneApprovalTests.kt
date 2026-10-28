@@ -102,6 +102,27 @@ class PhoneApprovalTests {
     }
 
     @Test
+    fun testCommandLineRequestSaysHowLongItsApprovalLasts() {
+        val approval = decode(
+            """
+            [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
+              "kind":"cli","appName":"hisar in Terminal","purpose":"use Hisar","commandLine":"/Applications/Hisar.app/Contents/Helpers/hisar","terminalName":"ttys003",
+              "lifetime":"until 10 minutes after this terminal’s last command, or until Hisar locks"}]
+            """,
+        ).first()
+        assertEquals(listOf("App", "Program", "Terminal", "Lasts"), approval.allDetailRow.map { it.label })
+        assertEquals("Until 10 minutes after this terminal’s last command, or until Hisar locks", approval.lifetime)
+        assertEquals(approval.lifetime, approval.detailLine, "the card says how long approving lasts")
+        assertEquals("Approving also lets hisar in Terminal use Hisar without asking until then. It does not unlock Hisar on your Mac.", approval.approvalNote)
+        assertEquals("It never unlocks Hisar on your Mac.", approval.cardApprovalNote, "the card's Lasts says the rest")
+
+        val fromAnOlderMac = approval.copy(commandLineLifetime = "")
+        assertEquals(listOf("App", "Program", "Terminal"), fromAnOlderMac.allDetailRow.map { it.label })
+        assertEquals("Approving lets this one request continue; it does not unlock Hisar on your Mac.", fromAnOlderMac.approvalNote)
+        assertEquals("Approving answers this one request. It never unlocks Hisar on your Mac.", fromAnOlderMac.cardApprovalNote)
+    }
+
+    @Test
     fun testCodingAgentRequestShowsItsProject() {
         val approval = decode(
             """
@@ -394,6 +415,52 @@ class PhoneApprovalTests {
         assertTrue(approvals.allPendingApproval.value.isEmpty())
         approvals.refreshPendingApproval()
         assertTrue(approvals.allPendingApproval.value.isEmpty(), "finished requests are not shown again")
+        assertNull(model.notice.value, "background expiry and remote resolution are not reviewed expiry")
+    }
+
+    @Test
+    fun testReviewedApprovalExpiryAnnouncesAndClearsPassword() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.isBiometricAvailable = false
+        val model = createReviewingModel(harness, listOf(createApproval()))
+        val approvals = model.approvals
+        approvals.approvePendingApproval(isRemembered = false)
+        assertTrue(approvals.isApprovalPasswordRequired.value)
+        harness.currentDate = currentDate.plusSeconds(45)
+        approvals.removeAllExpiredApproval()
+        assertNull(approvals.presentedApproval.value)
+        assertFalse(approvals.isApprovalPasswordRequired.value)
+        assertEquals("This request expired. Start it again on your Mac if you still need it.", model.notice.value?.message)
+        model.showNotice("A later notice")
+        approvals.refreshPendingApproval()
+        assertEquals("A later notice", model.notice.value?.message, "refresh must not announce the same expiry again")
+    }
+
+    @Test
+    fun testRefreshAnnouncesReviewedApprovalExpiryBeforeTheTimer() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createReviewingModel(harness, listOf(createApproval()))
+        harness.currentDate = currentDate.plusSeconds(45)
+        harness.backend.allPendingApproval.clear()
+        model.approvals.refreshPendingApproval()
+        assertNull(model.approvals.presentedApproval.value)
+        assertTrue(model.approvals.allPendingApproval.value.isEmpty())
+        assertEquals("This request expired. Start it again on your Mac if you still need it.", model.notice.value?.message)
+        model.showNotice("A later notice")
+        model.approvals.removeAllExpiredApproval()
+        assertEquals("A later notice", model.notice.value?.message, "the timer must not announce the same expiry again")
+    }
+
+    @Test
+    fun testEarlyRemoteRemovalIsNotAnnouncedAsExpiry() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createReviewingModel(harness, listOf(createApproval()))
+        harness.backend.allPendingApproval.clear()
+        model.approvals.refreshPendingApproval()
+        assertNull(model.approvals.presentedApproval.value)
+        harness.currentDate = currentDate.plusSeconds(45)
+        model.approvals.removeAllExpiredApproval()
+        assertNull(model.notice.value)
     }
 
     @Test

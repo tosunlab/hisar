@@ -8,22 +8,24 @@ final class PrivacyShield {
 
     private var window: UIWindow?
 
-    func setVisible(_ isVisible: Bool) {
+    func setVisible(_ isVisible: Bool, theme: VaultTheme) {
         if isVisible {
-            showWindow()
+            showWindow(theme: theme)
         } else {
             window?.isHidden = true
             window = nil
         }
     }
 
-    private func showWindow() {
+    private func showWindow(theme: VaultTheme) {
         guard window == nil,
               let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
         let window = UIWindow(windowScene: scene)
         window.windowLevel = .alert + 1
-        let controller = UIHostingController(rootView: PrivacyCover())
-        controller.view.backgroundColor = .systemBackground
+        window.overrideUserInterfaceStyle = theme.userInterfaceStyle
+        window.tintColor = theme.palette.tint.uiColor
+        let controller = UIHostingController(rootView: PrivacyCover().applyTheme(theme))
+        controller.view.backgroundColor = theme.palette.groupedBackground.uiColor
         window.rootViewController = controller
         window.isHidden = false
         self.window = window

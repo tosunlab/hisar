@@ -19,9 +19,27 @@ class HisarPushService : PushService() {
     override fun onMessage(message: PushMessage, instance: String) {
         // A message the connector could not decrypt was not sent by a Hisar server, which always encrypts.
         if (!message.decrypted) return
-        val notification = PushKind.parseNotification(message.content.decodeToString()) ?: return
+        val content = message.content.decodeToString()
+        val notification = PushKind.parseNotification(content) ?: return
         if (notification.kind == PushKind.APPROVAL && (application as HisarApplication).foregroundActivity.isMainActivityStarted) return
-        HisarNotifications.postPush(this, notification)
+        if (notification.kind != PushKind.APPROVAL) {
+            HisarNotifications.postPush(this, notification)
+            return
+        }
+        // HisarKit blocks and must not run on the main thread; its signed preview names the Mac, the app and the request.
+        val backend = (application as BackendProvider).backend
+        thread(name = "approval-push") {
+            val approval = try {
+                backend.openApprovalPush(content)
+            } catch (_: Exception) {
+                null
+            }
+            if (approval != null) {
+                HisarNotifications.postApprovalPush(this, approval.bannerTitle, approval.summary)
+            } else {
+                HisarNotifications.postPush(this, notification)
+            }
+        }
     }
 
     override fun onNewEndpoint(endpoint: PushEndpoint, instance: String) {

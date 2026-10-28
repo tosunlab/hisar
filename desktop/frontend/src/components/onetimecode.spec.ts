@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { allTestVault, createApiMock, createItem, createStatus } from "../testing";
+import { computeAccessibleName } from "dom-accessibility-api";
+import { allTestVault, createApiMock, createItem, createServerItem, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -93,6 +94,30 @@ describe("one-time password in items", () => {
     wrapper.unmount();
   });
 
+  it("keeps login details in the same order as the phones", async () => {
+    store.selectedItem = createItem({
+      password: "login-password",
+      hasOneTimePassword: true,
+      fields: [{ name: "Recovery code", value: "recovery-value", concealed: true }],
+      androidApps: [{ packageName: "com.github.android", certificateSha256: "a".repeat(64) }],
+    });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
+    await flushPromises();
+    expect(wrapper.findAll(".field-card .field-label").map((label) => label.text())).toEqual([
+      "Username", "Password", "One-time code", "Recovery code", "Website", "Android app",
+    ]);
+    wrapper.unmount();
+  });
+
+  it("places the login setup key between password and websites in the editor", () => {
+    store.editorMode = "edit";
+    const wrapper = mount(ItemEditor);
+    const allFieldName = wrapper.findAll("input, textarea").map((field) => field.attributes("name"));
+    const passwordIndex = allFieldName.indexOf("password");
+    expect(allFieldName.slice(passwordIndex, passwordIndex + 3)).toEqual(["password", "oneTimePassword", "urls"]);
+    wrapper.unmount();
+  });
+
   it("saves a pasted setup key from the editor", async () => {
     api.saveItem.mockResolvedValue(createItem({ id: "github", hasOneTimePassword: true }));
     api.listAllItem.mockResolvedValue([]);
@@ -102,6 +127,26 @@ describe("one-time password in items", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
     expect(api.saveItem).toHaveBeenCalledWith("personal", expect.objectContaining({ id: "github", oneTimePassword: "jbsw y3dp ehpk 3pxp" }));
+    wrapper.unmount();
+  });
+
+  it.each(["", "server"])("conceals a saved %s setup key until its independent reveal action, including reopening", async (category) => {
+    store.editorMode = "edit";
+    store.selectedItem = (category === "server" ? createServerItem : createItem)({ oneTimePassword: "otpauth://totp/?secret=JBSWY3DPEHPK3PXP" });
+    let wrapper = mount(ItemEditor);
+    const field = () => wrapper.get('input[name="oneTimePassword"]');
+    expect(field().attributes("type")).toBe("password");
+    expect(field().element).toHaveProperty("value", store.selectedItem.oneTimePassword);
+    expect(computeAccessibleName(field().element)).toBe("One-time code setup key");
+    await wrapper.get('[aria-label="Show setup key"]').trigger("click");
+    expect(field().attributes("type")).toBe("text");
+    expect(wrapper.get('input[name="password"]').attributes("type")).toBe("password");
+    await wrapper.get('[aria-label="Hide setup key"]').trigger("click");
+    expect(field().attributes("type")).toBe("password");
+    await wrapper.get('[aria-label="Show setup key"]').trigger("click");
+    wrapper.unmount();
+    wrapper = mount(ItemEditor);
+    expect(field().attributes("type")).toBe("password");
     wrapper.unmount();
   });
 });

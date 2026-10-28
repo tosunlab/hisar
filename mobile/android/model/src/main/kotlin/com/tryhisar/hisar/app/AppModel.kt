@@ -3,6 +3,8 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.FavoriteItem
 import com.tryhisar.hisar.model.ItemDetail
+import com.tryhisar.hisar.model.MasterPasswordFeedback
+import com.tryhisar.hisar.model.PasswordStrength
 import com.tryhisar.hisar.model.PushKind
 import com.tryhisar.hisar.model.Organizations
 import com.tryhisar.hisar.model.RemovedVaultNotice
@@ -78,9 +80,6 @@ class AppModel(
     val isCheckingMinimumVersion: StateFlow<Boolean> = mutableIsCheckingMinimumVersion.asStateFlow()
     val notice: StateFlow<Notice?> = mutableNotice.asStateFlow()
 
-    /** An editor some other surface asks the app to open, such as AutoFill's save prompt; the Vaults tab shows it. */
-    val requestedEditor = MutableStateFlow<EditorRequest?>(null)
-
     /**
      * A Settings screen something outside the tab asks it to show: AutoFill for the system's Autofill service screen,
      * Devices for a tapped security alert. The Settings tab shows it and clears it.
@@ -100,7 +99,7 @@ class AppModel(
     val signIn = SignInModel(this, isPlainHttpAllowed)
     val lock = LockModel(this)
     val settings = SettingsModel(this)
-    val pendingRecovery = PendingRecoveryModel(this) { signIn.finishNewSecretKey() }
+    val pendingRecovery = PendingRecoveryModel(this) { signIn.offerBiometricUnlock() }
     val credentialImport = CredentialImportModel(this)
     val itemEditor = ItemEditorModel(this)
     val favorites = FavoritesModel(this)
@@ -108,8 +107,8 @@ class AppModel(
     val item = ItemModel(this)
     val vaults = VaultsModel(this)
     val invitations = InvitationsModel(this)
-    val navigation = VaultsNavigation(this, requestedEditor, selectedTab)
-    val sharing = SharingModel(this, vaults)
+    val navigation = VaultsNavigation(this, selectedTab, itemEditor)
+    val sharing = SharingModel(this, vaults, invitations)
     val organizations = OrganizationsModel(this, invitations)
     val approvals = ApprovalsModel(this, now)
     val notifications = NotificationsModel(this, notificationPlatform)
@@ -250,9 +249,9 @@ class AppModel(
         attempt { it.getStatus() }?.let(::applyStatus)
     }
 
-    override suspend fun refreshPendingRecovery() {
-        pendingRecovery.refresh()
-        if (pendingRecovery.allRecovery.value.isNotEmpty()) pendingRecovery.open()
+    override suspend fun refreshPendingRecovery(isOpening: Boolean) {
+        pendingRecovery.refresh(isOpening)
+        if (isOpening && pendingRecovery.allRecovery.value.isNotEmpty()) pendingRecovery.open()
     }
 
     suspend fun lock() {
@@ -357,6 +356,7 @@ class AppModel(
                     allPasskey = result.allPasskey ?: data.allPasskey,
                     allReceivedInvitation = result.shareInvitations?.allReceived ?: data.allReceivedInvitation,
                     allWaitingInvitation = result.shareInvitations?.allWaiting ?: data.allWaitingInvitation,
+                    allReviewInvitation = result.shareInvitations?.allRequiringReview ?: data.allReviewInvitation,
                     // Offline both fail; the last organizations keep naming the vault groups.
                     allOrganization = result.organizations?.allOrganization ?: data.allOrganization,
                     allOrganizationInvitation = result.organizations?.allInvitation ?: data.allOrganizationInvitation,
@@ -397,10 +397,17 @@ class AppModel(
     }
 
     suspend fun copySecretReference(vaultID: String, itemID: String, fieldName: String) {
-        perform(isBusyShown = false) { it.copySecretReference(vaultID, itemID, fieldName) } ?: return
+        val reference = perform(isBusyShown = false) { it.copySecretReference(vaultID, itemID, fieldName) } ?: return
         mutableCopyCount.update { it + 1 }
-        showNotice("Secret reference copied.")
+        showNotice("Copied $reference.")
     }
+
+    /** core/item's rating of a password for the strength meter, or the empty rating without a backend. */
+    suspend fun ratePassword(password: String): PasswordStrength = attempt { it.ratePassword(password) } ?: PasswordStrength()
+
+    /** core/item's rule for a new master password; a password it could not rate counts as refused. */
+    suspend fun checkMasterPassword(password: String): MasterPasswordFeedback =
+        attempt { it.checkMasterPassword(password) } ?: MasterPasswordFeedback(isBlocking = true)
 
     /** Copies a secret the app holds itself, such as a website or a generated password, as Go copies fields. */
     fun copyText(text: String, label: String) {

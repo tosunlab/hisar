@@ -5,6 +5,7 @@ import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github
 import { BrowserBridge, InviteLinkService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/core/app";
 import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/core/browserprotocol";
 import { Service as CommandLineService } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
+import type { MasterPasswordFeedback, PasswordStrength } from "../bindings/github.com/tryhisar/hisar/core/item";
 import type {
   Installation as CommandLineInstallation,
   LauncherApp,
@@ -14,6 +15,8 @@ import { Service as HarnessService } from "../bindings/github.com/tryhisar/hisar
 import type { Agent as BoundCodingAgent } from "../bindings/github.com/tryhisar/hisar/desktop/harness";
 import { Service as LoginItemService } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type { Status as LoginItemStatus } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
+import { Service as EmergencyKitReader } from "../bindings/github.com/tryhisar/hisar/desktop/kitreader";
+import type { AccountFields } from "../bindings/github.com/tryhisar/hisar/desktop/kitreader";
 import type {
   AccountDeletionPreview as BoundAccountDeletionPreview,
   AgentGrant,
@@ -227,7 +230,7 @@ function normalizeFavoriteItem(boundFavorite: BoundFavoriteItem): FavoriteItem {
   return { ...boundFavorite, item: normalizeItem(boundFavorite.item) };
 }
 
-export type { BrowserInstallation, BrowserPairingRequest, CommandLineInstallation, LauncherApp, PairedBrowser };
+export type { BrowserInstallation, BrowserPairingRequest, CommandLineInstallation, LauncherApp, MasterPasswordFeedback, PairedBrowser, PasswordStrength };
 
 export interface CommandLineStatus extends Omit<BoundCommandLineStatus, "allInstallation"> {
   allInstallation: CommandLineInstallation[];
@@ -337,6 +340,7 @@ const wailsApi = {
   setAutoLock: (seconds: number): Promise<Status> => Service.SetAutoLock(seconds),
   getTheme: (): Promise<Theme> => Service.GetTheme(),
   setTheme: (appearance: string, color: string): Promise<Theme> => Service.SetTheme(appearance, color),
+  openEmergencyKit: (): Promise<AccountFields | null> => EmergencyKitReader.Open(),
   signIn: (server: string, email: string, secretKey: string, password: string): Promise<Status> =>
     Service.SignIn(server, email, secretKey, password),
   signUp: (invite: string, email: string, name: string, password: string): Promise<SignUpResult> =>
@@ -381,6 +385,7 @@ const wailsApi = {
   deletePasskey: async (vaultID: string, itemID: string, credentialID: string): Promise<ItemDetail> =>
     normalizeItem(await Service.DeletePasskey(vaultID, itemID, credentialID)),
   generatePassword: (config: PasswordConfig): Promise<string> => Service.GeneratePassword(config),
+  ratePassword: (password: string): Promise<PasswordStrength> => Service.RatePassword(password),
   generateSSHKey: async (vaultID: string, title: string, keyType: SSHKeyType): Promise<ItemDetail> =>
     normalizeItem(await Service.GenerateSSHKey(vaultID, title, keyType)),
   importSSHKey: async (vaultID: string, title: string, privateKeyText: string, passphrase: string): Promise<ItemDetail> =>
@@ -484,11 +489,13 @@ const wailsApi = {
   saveNewAccountEmergencyKit: (): Promise<string> => Service.SaveNewAccountEmergencyKit(),
   saveEmergencyKit: (password: string): Promise<string> => Service.SaveEmergencyKit(password),
   forgetNewAccountSecretKey: (): Promise<void> => Service.ForgetNewAccountSecretKey(),
+  acknowledgeNewAccountRecovery: (): Promise<void> => Service.AcknowledgeNewAccountRecovery(),
   listPendingRecovery: async (): Promise<PendingRecoverySummary[]> => (await Service.ListPendingRecovery()) ?? [],
   resumePendingRecovery: (operationID: string, password: string, secretKey = "", priorSecretKey = ""): Promise<SignUpResult> => Service.ResumePendingRecoveryWithSecretKey(operationID, password, secretKey, priorSecretKey),
   savePendingRecoveryEmergencyKit: (operationID: string, password: string): Promise<string> => Service.SavePendingRecoveryEmergencyKit(operationID, password),
   acknowledgePendingRecovery: (operationID: string, password: string): Promise<void> => Service.AcknowledgePendingRecovery(operationID, password),
   discardPreparedRecovery: (operationID: string, password: string): Promise<void> => Service.DiscardPreparedRecovery(operationID, password),
+  checkMasterPassword: (password: string): Promise<MasterPasswordFeedback> => Service.CheckMasterPassword(password),
   changeMasterPassword: (currentPassword: string, newPassword: string): Promise<CredentialChangeResult> =>
     Service.ChangeMasterPassword(currentPassword, newPassword),
   replaceSecretKey: (password: string): Promise<CredentialChangeResult> => Service.ReplaceSecretKey(password),
@@ -548,13 +555,9 @@ const wailsApi = {
 export const api: typeof wailsApi = { ...wailsApi };
 
 export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  if (typeof error === "string" && error) {
-    return error;
-  }
-  return "Something went wrong";
+  const message = (error instanceof Error ? error.message : typeof error === "string" ? error : "").trim() || "Something went wrong";
+  const sentence = message[0].toUpperCase() + message.slice(1);
+  return /[.?!]$/.test(sentence) ? sentence : `${sentence}.`;
 }
 
 export function createEmptyAddress(): ItemAddress {

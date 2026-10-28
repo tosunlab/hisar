@@ -1,7 +1,22 @@
-import UIKit
 import XCTest
 
 final class HisarUITests: HisarUITestCase {
+    func testPasswordMismatchWaitsUntilConfirmationLosesFocus() {
+        app.launch()
+        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
+        let password = app.secureTextFields["sign-up-password"]
+        let repeated = app.secureTextFields["sign-up-repeated-password"]
+        type("a long master password", into: password)
+        type("a long", into: repeated)
+        XCTAssertFalse(app.staticTexts["The passwords do not match."].exists)
+        XCTAssertFalse(app.buttons["sign-in-submit"].isEnabled)
+        password.tap()
+        waitFor(app.staticTexts["The passwords do not match."])
+        repeated.tap()
+        typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6) + "a long master password", into: repeated, showing: "a long master password")
+        XCTAssertTrue(app.staticTexts["The passwords do not match."].waitForNonExistence(timeout: 30))
+    }
+
     func testAccountItemLockAndSignInFlow() throws {
         let inviteLink = try readEnvironment("HISAR_UI_TEST_INVITE_LINK")
         let email = "ios-ui@example.com"
@@ -15,7 +30,7 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("items")
         app.buttons["item-GitHub"].tap()
         let passwordNotice = app.staticTexts["Password copied. It clears in 90 seconds."]
-        let passwordRow = app.buttons["copy-password"]
+        let passwordRow = app.buttons.matching(identifier: "copy-password").firstMatch
         waitFor(passwordRow)
         XCTAssertEqual(passwordRow.value as? String, "Hidden")
         XCTAssertEqual(passwordRow.label, "Copy password")
@@ -44,10 +59,41 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("password-generator")
         app.buttons["generator-use"].tap()
         type("dev, work", into: app.textFields["editor-new-tag"])
+        for (index, name) in ["Recovery code", "Recovery code", "recovery CODE", "Password"].enumerated() {
+            app.buttons["Add field"].tap()
+            type(name, into: app.textFields["editor-field-\(index)-name"])
+            type("row-secret-\(index)", into: app.textFields["editor-field-\(index)-value"])
+            app.cells.containing(.textField, identifier: "editor-field-\(index)-name").buttons["Secret"].tap()
+        }
         app.buttons["editor-save"].tap()
         // The item under the editor shows the old password until the save finishes and the editor closes.
         XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
         XCTAssertNotEqual(passwordRow.value as? String, "ui-test-password-1", "the generated password replaced the old one")
+        let customRows = app.buttons.matching(identifier: "copy-recovery code")
+        for index in 0..<4 {
+            let copy = index < 3 ? customRows.element(boundBy: index) : app.buttons.matching(identifier: "copy-password").element(boundBy: 1)
+            copy.tap()
+            app.buttons["edit-item"].tap()
+            let title = app.textFields["editor-title"]
+            title.tap()
+            expectation(for: NSPredicate(format: "hasKeyboardFocus == true"), evaluatedWith: title)
+            waitForExpectations(timeout: 10)
+            typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "GitHub".count), into: title, showing: "")
+            title.press(forDuration: 1)
+            let paste = app.menuItems["Paste"]
+            waitFor(paste)
+            paste.tap()
+            XCTAssertEqual(title.value as? String, "row-secret-\(index)")
+            app.buttons["editor-cancel"].tap()
+            let discard = app.buttons["editor-discard"].firstMatch
+            waitForHittable(discard)
+            discard.tap()
+            waitFor(passwordRow)
+        }
+        app.buttons.matching(identifier: "reveal-recovery code").element(boundBy: 1).tap()
+        XCTAssertEqual(customRows.element(boundBy: 1).value as? String, "row-secret-1")
+        XCTAssertEqual(customRows.element(boundBy: 0).value as? String, "Hidden")
+        XCTAssertEqual(customRows.element(boundBy: 2).value as? String, "Hidden")
 
         app.buttons["copy-secret-reference"].tap()
         goBack()
@@ -91,7 +137,7 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.staticTexts["Notes copied. It clears in 90 seconds."])
         notesRow.press(forDuration: 1)
         copyNotesReference.tap()
-        waitFor(app.staticTexts["Secret reference copied."])
+        waitFor(app.staticTexts["Copied hisar://Personal/Recovery%20codes/notes."])
         goBack()
 
         choose("New credit card", from: "new-menu", under: "new-more")
@@ -173,11 +219,24 @@ final class HisarUITests: HisarUITestCase {
         type("2222", into: app.textFields["editor-server-port"])
         type("deploy", into: app.textFields["editor-username"])
         type("server-password-from-the-phone", into: app.secureTextFields["editor-password"])
+        type("JBSWY3DPEHPK3PXP", into: app.secureTextFields["editor-one-time-password"])
         saveScreenshot("add-server")
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "build.example.com:2222 · deploy")).firstMatch)
         XCTAssertEqual(app.buttons["copy-password"].value as? String, "Hidden", "the password is shown before it is revealed")
         saveScreenshot("server")
+        app.buttons["edit-item"].tap()
+        waitFor(app.secureTextFields["editor-one-time-password"])
+        app.buttons["Reveal setup key"].tap()
+        waitFor(app.textFields["editor-one-time-password"])
+        XCTAssertTrue(app.secureTextFields["editor-password"].exists)
+        app.buttons["Hide setup key"].tap()
+        waitFor(app.secureTextFields["editor-one-time-password"])
+        app.buttons["Reveal setup key"].tap()
+        app.buttons["editor-cancel"].tap()
+        app.buttons["edit-item"].tap()
+        waitFor(app.secureTextFields["editor-one-time-password"])
+        app.buttons["editor-cancel"].tap()
         goBack()
 
         choose("New database", from: "new-menu", under: "new-more")
@@ -297,6 +356,16 @@ final class HisarUITests: HisarUITestCase {
         let serverField = app.textFields["sign-in-server"]
         waitFor(serverField)
         XCTAssertEqual(serverField.value as? String, "https://eu.tryhisar.com")
+        XCTAssertTrue(app.staticTexts["Server"].exists)
+        XCTAssertTrue(app.staticTexts["Signs in to eu.tryhisar.com."].exists)
+        serverField.tap()
+        typeText("/hisar", into: serverField, showing: "https://eu.tryhisar.com/hisar")
+        XCTAssertTrue(app.staticTexts["Signs in to eu.tryhisar.com/hisar."].exists)
+        app.buttons["sign-in-use-default-server"].tap()
+        XCTAssertFalse(serverField.exists)
+        XCTAssertTrue(app.staticTexts["Signs in to eu.tryhisar.com."].exists)
+        useDifferentServerButton.tap()
+        XCTAssertEqual(serverField.value as? String, "https://eu.tryhisar.com")
         app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
         XCTAssertFalse(app.staticTexts["Enter the invite code you received, or sign up on a server that lets anyone join."].exists)
         XCTAssertTrue(app.textFields["sign-up-invite-link"].exists)
@@ -307,10 +376,12 @@ final class HisarUITests: HisarUITestCase {
     func testPrivacyCoverHidesContentInTheBackground() throws {
         app.launch()
         waitFor(app.segmentedControls["sign-in-mode"])
-        XCUIDevice.shared.press(.home)
-        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended, timeout: 10))
-        app.activate()
-        waitFor(app.segmentedControls["sign-in-mode"])
-        XCTAssertTrue(app.otherElements["privacy-cover"].waitForNonExistence(timeout: 5), "the cover goes away once the app is active")
+        for _ in 0..<2 {
+            XCUIDevice.shared.press(.home)
+            XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended, timeout: 10))
+            app.activate()
+            waitFor(app.segmentedControls["sign-in-mode"])
+            XCTAssertTrue(app.otherElements["privacy-cover"].waitForNonExistence(timeout: 5), "the cover goes away once the app is active")
+        }
     }
 }

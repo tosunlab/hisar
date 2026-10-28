@@ -65,6 +65,9 @@ class PhoneApprovalUITests : HisarUITestCase() {
         launchApp(backend).use {
             openSheet("preview-cli")
             assertEquals("Approve on Alper's MacBook Pro?", readText("phone-approval-title"))
+            assertEquals("Until 10 minutes after this terminal’s last command, or until Hisar locks", readText("phone-approval-row-Lasts"))
+            val note = readText("phone-approval-encryption-note")
+            assertTrue(note, "Approving also lets hisar in Terminal use Hisar without asking until then." in note)
             saveScreenshot("phone-approval-cli")
             tap("phone-approval-deny")
             checkResult(backend, "deny preview-cli", "Denied on your Mac")
@@ -197,6 +200,19 @@ class PhoneApprovalUITests : HisarUITestCase() {
         }
     }
 
+    @Test
+    fun testWaitingRequestCardShowsTheAppWarning() {
+        val backend = createBackend(createApproval("launcher-share"))
+        launchApp(backend).use {
+            val warning = "pending-approval-warning-preview-launcher-share"
+            assertEquals("Anyone with the link can read these until it expires or its views run out.", readText(warning))
+            assertTrue("the warning comes before Approve", top(hasTestTag(warning)) < top(hasTestTag("pending-approval-approve-preview-launcher-share")))
+            saveScreenshot("phone-approval-warning-card")
+            tap("pending-approval-approve-preview-launcher-share")
+            checkResult(backend, "approve preview-launcher-share", "Approved on your Mac")
+        }
+    }
+
     // Android only: a real request from a Mac (hisar-ui-test-mac) through the server, answered on this phone.
     @Test
     fun testApproveAndDenyRealRequestsFromTheMac() {
@@ -316,6 +332,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
                 "cli" -> PhoneApproval(
                     requestID = "preview-cli", requesterDeviceName = mac, expiresAt = expiresAt, kind = PhoneApproval.KIND_COMMAND_LINE,
                     appName = "hisar in Terminal", purpose = "use Hisar", commandLine = "/Applications/Hisar.app/Contents/Helpers/hisar", terminalName = "ttys003",
+                    commandLineLifetime = "until 10 minutes after this terminal’s last command, or until Hisar locks",
                 )
                 "forwarded" -> PhoneApproval(
                     requestID = "preview-forwarded", requesterDeviceName = mac, expiresAt = expiresAt, kind = PhoneApproval.KIND_SSH,

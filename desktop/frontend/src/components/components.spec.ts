@@ -91,6 +91,63 @@ describe("SignInView", () => {
     resetStore();
   });
 
+  it("keeps manual entry without an unsupported kit action on Linux", () => {
+    Object.defineProperty(navigator, "platform", { value: "Linux x86_64", configurable: true });
+    try {
+      const wrapper = mount(SignInView);
+      expect(wrapper.find('[data-testid="open-emergency-kit"]').exists()).toBe(false);
+      expect(wrapper.find('input[name="secretKey"]').exists()).toBe(true);
+      wrapper.unmount();
+    } finally {
+      Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
+    }
+  });
+
+  it("fills only account fields from a local kit and requires an explicit sign in", async () => {
+    api.openEmergencyKit.mockResolvedValue({ server: "https://kit.example", email: "kit@example.com", secretKey: "H1-IMPORTED" });
+    const wrapper = mount(SignInView, { attachTo: document.body });
+    await wrapper.get('input[name="password"]').setValue("do not keep this password");
+    await wrapper.get('[data-testid="open-emergency-kit"]').trigger("click");
+    await flushPromises();
+    expect((wrapper.get('input[name="email"]').element as HTMLInputElement).value).toBe("kit@example.com");
+    expect((wrapper.get('input[name="secretKey"]').element as HTMLInputElement).value).toBe("H1-IMPORTED");
+    expect((wrapper.get('input[name="password"]').element as HTMLInputElement).value).toBe("");
+    expect(wrapper.get('[data-testid="sign-in-server"]').text()).toBe("Signs in to kit.example.");
+    expect(document.activeElement).toBe(wrapper.get('input[name="password"]').element);
+    expect(api.signIn).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps manual details after cancelling the kit panel and displays a failed import", async () => {
+    api.openEmergencyKit.mockResolvedValue(null);
+    const wrapper = mount(SignInView);
+    await wrapper.get('input[name="email"]').setValue("manual@example.com");
+    await wrapper.get('[data-testid="open-emergency-kit"]').trigger("click");
+    await flushPromises();
+    expect((wrapper.get('input[name="email"]').element as HTMLInputElement).value).toBe("manual@example.com");
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    api.openEmergencyKit.mockRejectedValue(new Error("This PDF does not contain a valid Hisar Emergency Kit QR code."));
+    await wrapper.get('[data-testid="open-emergency-kit"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toContain("This PDF does not contain a valid Hisar Emergency Kit QR code.");
+    expect(api.signIn).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "alice@example.com"])("focuses the first empty sign-in field for remembered email %s", (email) => {
+    store.status.email = email;
+    const wrapper = mount(SignInView, { attachTo: document.body });
+    expect(document.activeElement).toBe(wrapper.get(`input[name="${email ? "secretKey" : "email"}"]`).element);
+    wrapper.unmount();
+  });
+
+  it("focuses the server when its disclosure opens", async () => {
+    const wrapper = mount(SignInView, { attachTo: document.body });
+    await wrapper.get('[data-testid="use-different-server"]').trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(wrapper.get('input[name="server"]').element);
+    wrapper.unmount();
+  });
+
   it("submits the sign in form", async () => {
     api.signIn.mockResolvedValue(createStatus("unlocked"));
     api.listAllVault.mockResolvedValue([]);
@@ -138,7 +195,7 @@ describe("SignInView", () => {
 
   it("points to the Emergency Kit for a lost Secret Key and offers no account recovery", () => {
     const wrapper = mount(SignInView);
-    expect(wrapper.find('[data-testid="secret-key-note"]').text()).toBe("Lost your Secret Key? It's on your Emergency Kit.");
+    expect(wrapper.find('[data-testid="secret-key-note"]').text()).toBe("Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.");
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(["Sign in", "Create account"]);
     expect(wrapper.text()).not.toMatch(/recover|admin/i);
   });
@@ -223,19 +280,23 @@ describe("SignInView", () => {
     expect(api.signIn).toHaveBeenCalledWith("http://127.0.0.1:8080", "alice@example.com", "H1-KEY", "master password");
   });
 
-  it("rates the new master password and blocks only clearly weak ones", async () => {
+  it("rates the new master password with the backend's rule and blocks only clearly weak ones", async () => {
     const wrapper = mount(SignInView);
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
     const submitButton = () => wrapper.find('button[type="submit"]');
     const feedback = () => wrapper.find('[data-testid="password-feedback"]');
     expect(wrapper.find('[data-testid="strength-meter"]').exists()).toBe(false);
 
     await wrapper.find('input[name="password"]').setValue("hunter2");
+    await flushPromises();
     expect(feedback().text()).toBe("Use at least 10 characters.");
     expect(submitButton().attributes("disabled")).toBeDefined();
 
     await wrapper.find('input[name="password"]').setValue("password1234");
     await wrapper.find('input[name="repeatedPassword"]').setValue("password1234");
+    await flushPromises();
+    expect(api.checkMasterPassword).toHaveBeenCalledWith("password1234");
     expect(wrapper.find('[data-testid="strength-meter"]').text()).toContain("Weak");
     expect(feedback().text()).toBe("This password is too easy to guess. Add a few more words or characters.");
     expect(submitButton().attributes("disabled")).toBeDefined();
@@ -244,15 +305,23 @@ describe("SignInView", () => {
 
     await wrapper.find('input[name="password"]').setValue("orange cactus harbor");
     await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor");
+    await flushPromises();
     expect(wrapper.find('[data-testid="strength-meter"]').text()).toContain("Weak");
     expect(feedback().text()).toBe("You can use it, but another word or a few more characters make it much harder to guess.");
     expect(submitButton().attributes("disabled")).toBeUndefined();
 
     await wrapper.find('input[name="password"]').setValue("orange cactus harbor lantern");
     await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor lantern");
+    await flushPromises();
     expect(wrapper.find('[data-testid="strength-meter"]').text()).toContain("Fair");
     expect(feedback().text()).toBe("A few random words you can remember make a strong master password.");
     expect(submitButton().attributes("disabled")).toBeUndefined();
+
+    api.checkMasterPassword.mockReturnValueOnce(new Promise(() => undefined));
+    await wrapper.find('input[name="password"]').setValue("orange cactus harbor lanterns");
+    await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor lanterns");
+    await flushPromises();
+    expect(submitButton().attributes("disabled")).toBeDefined();
   });
 
   it("turns a pasted invite link into its code and signs up with the link", async () => {
@@ -349,28 +418,61 @@ describe("SecretKeyView", () => {
     expect(wrapper.text()).not.toMatch(/admin/i);
   });
 
-  it("only continues after the user confirms saving the Secret Key", async () => {
+  it("only continues after the Emergency Kit was saved and the user confirms it", async () => {
     store.pendingSecretKey = "H1-ABC123-SECRET";
+    api.saveNewAccountEmergencyKit.mockResolvedValue("/Users/alice/Hisar Emergency Kit.pdf");
     const wrapper = mount(SecretKeyView);
     expect(wrapper.find('[data-testid="secret-key"]').attributes("aria-label")).toBe("H1-ABC123-SECRET");
-    const continueButton = wrapper.findAll("button").find((button) => button.text() === "Continue to Hisar")!;
+    const continueButton = wrapper.get('[data-testid="secret-key-continue"]');
     expect(continueButton.attributes("disabled")).toBeDefined();
-    await wrapper.find('input[name="hasSaved"]').setValue(true);
+    expect(wrapper.get('input[name="hasSaved"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.get('[data-testid="save-kit-hint"]').text()).toBe("Save the Emergency Kit to continue.");
+    await wrapper.get('[data-testid="save-emergency-kit"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="save-kit-hint"]').exists()).toBe(false);
+    expect(continueButton.attributes("disabled")).toBeDefined();
+    await wrapper.get('input[name="hasSaved"]').setValue(true);
     await continueButton.trigger("click");
+    await flushPromises();
+    expect(api.acknowledgeNewAccountRecovery).toHaveBeenCalled();
     expect(store.pendingSecretKey).toBe("");
     expect(store.isTouchIDOfferShown).toBe(false);
     expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
   });
 
+  it("stays unconfirmable when the save dialog is cancelled", async () => {
+    store.pendingSecretKey = "H1-ABC123-SECRET";
+    api.saveNewAccountEmergencyKit.mockResolvedValue("");
+    const wrapper = mount(SecretKeyView);
+    await wrapper.get('[data-testid="save-emergency-kit"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('input[name="hasSaved"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.get('[data-testid="secret-key-continue"]').attributes("disabled")).toBeDefined();
+  });
+
   it("offers Touch ID after the Secret Key when the Mac has it", async () => {
     store.pendingSecretKey = "H1-ABC123-SECRET";
     store.status = { ...createStatus("unlocked"), biometricAvailable: true };
+    api.saveNewAccountEmergencyKit.mockResolvedValue("/Users/alice/Hisar Emergency Kit.pdf");
     const wrapper = mount(SecretKeyView);
-    await wrapper.find('input[name="hasSaved"]').setValue(true);
-    await wrapper.findAll("button").find((button) => button.text() === "Continue to Hisar")!.trigger("click");
+    await wrapper.get('[data-testid="save-emergency-kit"]').trigger("click");
+    await flushPromises();
+    await wrapper.get('input[name="hasSaved"]').setValue(true);
+    await wrapper.get('[data-testid="secret-key-continue"]').trigger("click");
+    await flushPromises();
     expect(store.pendingSecretKey).toBe("");
     expect(store.isTouchIDOfferShown).toBe(true);
     expect(api.forgetNewAccountSecretKey).not.toHaveBeenCalled();
+  });
+
+  it("finishes later without acknowledging the sign-up", async () => {
+    store.pendingSecretKey = "H1-ABC123-SECRET";
+    const wrapper = mount(SecretKeyView);
+    await wrapper.get('[data-testid="secret-key-later"]').trigger("click");
+    await flushPromises();
+    expect(store.pendingSecretKey).toBe("");
+    expect(api.acknowledgeNewAccountRecovery).not.toHaveBeenCalled();
+    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
   });
 });
 
@@ -494,5 +596,24 @@ describe("PasswordGenerator", () => {
 
     await wrapper.findAll("button").find((button) => button.text() === "Use password")!.trigger("click");
     expect(wrapper.emitted("use")?.[0]).toEqual(["second-password"]);
+  });
+
+  it("keeps the same options in standalone mode and copies instead of selecting", async () => {
+    api.generatePassword.mockResolvedValue("standalone-password");
+    const wrapper = mount(PasswordGenerator, { props: { presentation: "standalone" } });
+    await flushPromises();
+    await wrapper.get('input[name="length"]').setValue(32);
+    await wrapper.get('input[name="digits"]').setValue(false);
+    await wrapper.get('input[name="symbols"]').setValue(false);
+    await flushPromises();
+    expect(api.generatePassword).toHaveBeenLastCalledWith({ length: 32, digits: false, symbols: false });
+    expect(wrapper.text()).not.toContain("Use password");
+    expect(wrapper.text()).not.toContain("Cancel");
+    await wrapper.findAll("button").find((button) => button.text() === "Copy")!.trigger("click");
+    expect(wrapper.emitted("copy")?.[0]).toEqual(["standalone-password"]);
+    expect(wrapper.emitted("use")).toBeUndefined();
+    await wrapper.findAll("button").find((button) => button.text() === "Close")!.trigger("click");
+    expect(wrapper.emitted("close")).toHaveLength(1);
+    wrapper.unmount();
   });
 });

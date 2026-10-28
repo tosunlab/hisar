@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
-import { countPendingInvitations, isSettingsWindow, loadSettingsData, loadSSHAgentStatus, store } from "../store";
+import { copyText, countPendingInvitations, isSettingsWindow, loadSettingsData, loadSSHAgentStatus, store } from "../store";
 import {
   allSettingsSection,
   findAllMatchingRowID,
@@ -10,6 +10,7 @@ import {
   type SettingsSection,
   type SettingsSectionID,
 } from "../settingsSections";
+import AccountDialog from "./AccountDialog.vue";
 import AccountSection from "./AccountSection.vue";
 import AppIcon from "./AppIcon.vue";
 import AppearanceSection from "./AppearanceSection.vue";
@@ -23,6 +24,7 @@ import ImportSection from "./ImportSection.vue";
 import OpenAtLoginSection from "./OpenAtLoginSection.vue";
 import OrganizationsSection from "./OrganizationsSection.vue";
 import PeopleSection from "./PeopleSection.vue";
+import PasswordGenerator from "./PasswordGenerator.vue";
 import SecuritySection from "./SecuritySection.vue";
 import SSHAgentSection from "./SSHAgentSection.vue";
 import UpdatesSection from "./UpdatesSection.vue";
@@ -30,6 +32,8 @@ import UpdatesSection from "./UpdatesSection.vue";
 const searchQuery = ref("");
 const selectedSectionID = ref<SettingsSectionID>(loadSelectedSectionID());
 const isInvitingPerson = ref(false);
+const isPasswordGeneratorOpen = ref(false);
+const isSavingEmergencyKit = ref(false);
 const searchInput = ref<HTMLInputElement | null>(null);
 const sectionList = ref<HTMLElement | null>(null);
 const sectionContent = ref<HTMLElement | null>(null);
@@ -73,6 +77,12 @@ function selectSection(sectionID: SettingsSectionID): void {
   }
   selectedSectionID.value = sectionID;
   saveSelectedSectionID(sectionID);
+}
+
+function showEmergencyKit(): void {
+  searchQuery.value = "";
+  selectSection("security");
+  isSavingEmergencyKit.value = true;
 }
 
 watch(allVisibleSection, (allSection) => {
@@ -202,9 +212,21 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
             <AppearanceSection />
             <OpenAtLoginSection />
             <UpdatesSection />
+            <section v-show="isRowVisible('password-generator')" class="settings-block" data-testid="password-generator-section">
+              <p class="section-label">Passwords</p>
+              <div class="settings-group">
+                <div class="setting">
+                  <div class="setting-text">
+                    <strong>Password generator</strong>
+                    <p class="muted">Generate a password without saving an item.</p>
+                  </div>
+                  <button data-testid="open-password-generator" @click="isPasswordGeneratorOpen = true">Password generator…</button>
+                </div>
+              </div>
+            </section>
           </div>
           <div v-show="displayedSection?.id === 'security'" data-testid="settings-page-security">
-            <SecuritySection />
+            <SecuritySection v-model:is-saving-emergency-kit="isSavingEmergencyKit" />
           </div>
           <div v-show="displayedSection?.id === 'ssh'" data-testid="settings-page-ssh">
             <SSHAgentSection />
@@ -230,7 +252,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
             <ExportSection />
           </div>
           <div v-show="displayedSection?.id === 'account'" data-testid="settings-page-account">
-            <AccountSection />
+            <AccountSection @save-emergency-kit="showEmergencyKit" />
           </div>
           <div v-show="displayedSection?.id === 'help'" data-testid="settings-page-help">
             <HelpSection />
@@ -238,6 +260,16 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
         </div>
       </div>
     </div>
+    <AccountDialog
+      v-if="isPasswordGeneratorOpen"
+      title="Password generator"
+      subtitle="Generate a password without saving an item."
+      icon="key"
+      data-testid="password-generator-dialog"
+      @close="isPasswordGeneratorOpen = false"
+    >
+      <PasswordGenerator presentation="standalone" @copy="copyText($event, 'Password')" @close="isPasswordGeneratorOpen = false" />
+    </AccountDialog>
   </div>
 </template>
 

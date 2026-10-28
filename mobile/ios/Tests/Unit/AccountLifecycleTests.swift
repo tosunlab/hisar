@@ -27,19 +27,47 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertTrue(condition(), message)
     }
 
+    private let goodFeedback = MasterPasswordFeedback(level: "good", label: "Good", bits: 60, message: "A few random words you can remember make a strong master password.")
+
     func testNewPasswordRules() {
-        XCTAssertNil(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "", repeatedPassword: ""))
-        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "short", repeatedPassword: ""), "Use at least 10 characters.")
-        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "old password", repeatedPassword: ""), "The new master password is the same as the current one.")
-        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "a new master"), "The passwords do not match.")
-        XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "", newPassword: "a new master password", repeatedPassword: "a new master password"))
-        XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: ""))
-        XCTAssertTrue(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "a new master password"))
+        XCTAssertNil(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "", repeatedPassword: "", feedback: goodFeedback))
+        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "short", repeatedPassword: "", feedback: goodFeedback), "Use at least 10 characters.")
+        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "old password", repeatedPassword: "", feedback: goodFeedback), "The new master password is the same as the current one.")
+        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "a new master", feedback: goodFeedback), "The passwords do not match.")
+        XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "", newPassword: "a new master password", repeatedPassword: "a new master password", feedback: goodFeedback))
+        XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "", feedback: goodFeedback))
+        XCTAssertTrue(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "a new master password", feedback: goodFeedback))
+    }
+
+    func testWeakMasterPasswordIsRefused() async {
+        let model = await createUnlockedModel()
+        let weakFeedback = await model.checkMasterPassword("password1234")
+        XCTAssertEqual(weakFeedback.strength, PasswordStrength(level: "weak", label: "Weak", bits: 8))
+        XCTAssertEqual(
+            AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "password1234", repeatedPassword: "password1234", feedback: weakFeedback),
+            "This password is too easy to guess. Add a few more words or characters."
+        )
+        XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "password1234", repeatedPassword: "password1234", feedback: weakFeedback))
+        XCTAssertFalse(AccountLifecycleLogic.isMasterPasswordAccepted("password1234", feedback: weakFeedback))
+
+        let allowedWeakFeedback = MasterPasswordFeedback(
+            level: "weak", label: "Weak", bits: 33, message: "You can use it, but another word or a few more characters make it much harder to guess."
+        )
+        XCTAssertTrue(AccountLifecycleLogic.isMasterPasswordAccepted("orange cactus harbor", feedback: allowedWeakFeedback))
+        XCTAssertEqual(AccountLifecycleLogic.describeMasterPasswordHint(feedback: allowedWeakFeedback), allowedWeakFeedback.message)
+        XCTAssertNil(AccountLifecycleLogic.describeMasterPasswordHint(feedback: goodFeedback))
+        XCTAssertFalse(AccountLifecycleLogic.isMasterPasswordAccepted("orange cactus harbor", feedback: nil), "refused until core has rated it")
     }
 
     func testUnknownSignedOutDeviceCount() {
         XCTAssertEqual(AccountLifecycleLogic.describeSignedOutDevices(-1), "Any other devices were signed out; their count could not be recovered.")
         XCTAssertEqual(AccountLifecycleLogic.describeSignedOutDevices(0), "No other devices were signed in.")
+    }
+
+    func testSignOutConfirmationExplainsLocalRemoval() {
+        XCTAssertEqual(AccountLifecycleLogic.signOutTitle, "Sign out of Hisar on this iPhone?")
+        XCTAssertEqual(AccountLifecycleLogic.signOutMessage, "Hisar removes this iPhone's saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.")
+        XCTAssertEqual(AccountLifecycleLogic.lockedSignOutMessage, AccountLifecycleLogic.signOutMessage + " If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit.")
     }
 
     func testEmailConfirmationIgnoresCaseAndSpaces() {
@@ -86,6 +114,18 @@ final class AccountLifecycleTests: XCTestCase {
         let signup = try JSONDecoder().decode(SignUpResult.self, from: Data(json.utf8))
         XCTAssertEqual(signup.pendingOperationId, "pending-1")
         XCTAssertEqual(signup.problems, result.problems)
+        for phase in ["awaiting-kit", "outcome-unknown", "manual-unlock", "needs-finishing"] {
+            let recovery = CredentialChangeResult(status: .signedOut, secretKey: "H1-NEW-SECRET", pendingOperationId: "pending-1", setupState: phase)
+            XCTAssertFalse(recovery.isWaitingOnlyForKit, phase)
+        }
+        for result in [
+            CredentialChangeResult(status: .signedOut, setupState: "delivery-pending"),
+            CredentialChangeResult(status: .signedOut, secretKey: "H1-NEW-SECRET", localError: "Local finishing failed.", setupState: "delivery-pending"),
+            CredentialChangeResult(status: .signedOut, secretKey: "H1-NEW-SECRET", keychainError: "Keychain failed.", setupState: "delivery-pending"),
+            CredentialChangeResult(status: .signedOut, secretKey: "H1-NEW-SECRET", setupState: "delivery-pending", problems: ["Recovery failed."]),
+        ] {
+            XCTAssertFalse(result.isWaitingOnlyForKit)
+        }
     }
 
     func testSigningOutKeepsTheServerForSigningBackIn() async {
@@ -113,13 +153,36 @@ final class AccountLifecycleTests: XCTestCase {
 
     func testReplaceSecretKeyWritesAndRemovesTheNewEmergencyKit() async throws {
         let model = await createUnlockedModel()
+        seedPendingRecovery(phase: "delivery-pending")
+        backend.allPendingRecovery[0].kind = "replace-secret-key"
+        backend.allPendingRecovery[0].problems = []
+        backend.pendingCredentialChangeResult = CredentialChangeResult(
+            status: backend.status, secretKey: "H1-NEW-SECRET", signedOutDeviceCount: 2,
+            pendingOperationId: "pending-1", setupState: "delivery-pending"
+        )
+        backend.pendingRecoverySecretKey = "H1-NEW-SECRET"
         let replaced = await model.replaceSecretKey(password: FakeBackend.password)
         let result = try XCTUnwrap(replaced)
-        XCTAssertNotEqual(result.secretKey, FakeBackend.secretKey)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: result.emergencyKitPath))
+        XCTAssertTrue(result.isWaitingOnlyForKit)
+        XCTAssertTrue(model.isNewSecretKeyShown)
+        XCTAssertFalse(model.isPendingRecoveryShown)
+        XCTAssertEqual(result.signedOutDeviceCount, 2)
+        XCTAssertTrue(result.emergencyKitPath.isEmpty)
+        let exported = try XCTUnwrap(model.pendingRecoveryExport)
+        XCTAssertEqual(exported.secretKey, result.secretKey)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: exported.path))
+        XCTAssertTrue(backend.allCallName.contains("exportPendingRecoveryEmergencyKit"))
+        XCTAssertFalse(backend.allCallName.contains("exportNewAccountEmergencyKit"))
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
         model.finishSecretKeyReplacement(result)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: result.emergencyKitPath))
-        await waitUntil({ backend.allCallName.contains("forgetNewAccountSecretKey") }, "the new Secret Key was not forgotten")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: exported.path))
+        XCTAssertNil(model.pendingRecoveryExport)
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
+        await model.exportPendingRecoveryKit(operationID: result.pendingOperationId, password: FakeBackend.password)
+        let acknowledged = await model.acknowledgePendingRecovery(operationID: result.pendingOperationId, password: FakeBackend.password)
+        XCTAssertTrue(acknowledged)
+        XCTAssertTrue(backend.allPendingRecovery.isEmpty)
+        XCTAssertNil(model.pendingRecoveryExport)
     }
 
     func testDeleteAccountCleanupErrorStillSignsOut() async {
@@ -293,6 +356,7 @@ final class AccountLifecycleTests: XCTestCase {
             pendingOperationId: "pending-1", setupState: "needs-finishing", problems: ["The keychain is unavailable."]
         )
         let result = await model.replaceSecretKey(password: FakeBackend.password)
+        XCTAssertFalse(result?.isWaitingOnlyForKit ?? true)
         XCTAssertEqual(result?.pendingOperationId, "pending-1")
         XCTAssertTrue(model.isPendingRecoveryShown)
         XCTAssertEqual(model.errorMessage, "The keychain is unavailable.")

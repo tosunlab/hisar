@@ -87,11 +87,13 @@ type serviceState struct {
 	lastAgentSignInID           uint64
 	// pushPlatform and pushToken are what an iPhone's OS gave for push notifications at this launch, pushPayloadKey
 	// the key its notification service extension opens push details with, and webPush the subscription an Android
-	// phone's UnifiedPush distributor gave; never saved.
+	// phone's UnifiedPush distributor gave; signedPushKey is the message key last registered while Hisar could sign
+	// it. Never saved.
 	pushPlatform        apitypes.PushPlatform
 	pushToken           string
 	pushPayloadKey      *apitypes.PushPayloadKey
 	webPush             *apitypes.WebPushSubscription
+	signedPushKey       string
 	isPushServerSending bool
 	pushErrorMessage    string
 }

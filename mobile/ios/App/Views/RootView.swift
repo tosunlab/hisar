@@ -3,6 +3,7 @@ import UIKit
 
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var isMotionReduced
 
     var body: some View {
         ZStack {
@@ -17,6 +18,7 @@ struct RootView: View {
                 LockView()
             case .unlocked:
                 MainTabView()
+                    .id("\(model.status.server)\n\(model.status.email)")
             case .updateRequired(let requirement):
                 UpdateRequiredView(requirement: requirement, isChecking: model.isCheckingMinimumVersion) {
                     await model.checkMinimumVersion()
@@ -38,7 +40,7 @@ struct RootView: View {
                 NoticeToast(message: noticeMessage)
                     .padding(.bottom, model.screen == .unlocked ? 84 : 24)
                     .allowsHitTesting(false)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(isMotionReduced ? .identity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
         .safeAreaInset(edge: .top) {
@@ -50,7 +52,7 @@ struct RootView: View {
                     .background(.regularMaterial)
             }
         }
-        .animation(.easeOut(duration: 0.2), value: model.noticeMessage)
+        .animation(isMotionReduced ? nil : .easeOut(duration: 0.2), value: model.noticeMessage)
         .sensoryFeedback(.success, trigger: model.copyCount)
         .sheet(item: Binding(get: { model.screen == .unlocked && model.newSecretKey == nil && !model.isPendingRecoveryShown ? model.presentedApproval : nil }, set: { if $0 == nil { model.closeApprovalSheet() } })) { approval in
             PhoneApprovalSheet(
@@ -113,6 +115,23 @@ struct MainTabView: View {
                 SearchView()
             }
         }
+        .safeAreaInset(edge: .top) {
+            if let message = model.editorRecoveryMessage {
+                VStack {
+                    Text(message)
+                    Button("Recover a copy") { model.recoverEditorCopy() }
+                        .disabled(!model.allVault.contains(where: AppModel.isWritableVault))
+                    Button("Discard draft", role: .destructive) { model.discardEditor() }
+                }
+                .padding()
+            }
+        }
+        .sheet(isPresented: $model.isRestoredEditorShown) {
+            if let draft = model.retainedEditor {
+                ItemEditorView(vaultID: draft.sourceVaultID, originalItem: draft.originalItem, newCategory: draft.item.category) { _, _ in }
+                    .environmentObject(model)
+            }
+        }
         .onChange(of: model.selectedTab) { _, _ in model.reportActivity() }
         // A notification tapped while Hisar was locked opens its screen once the tabs show, after unlocking.
         .onReceive(model.notifications.$openedKind) { kind in
@@ -126,9 +145,11 @@ struct MainTabView: View {
 }
 
 struct PrivacyCover: View {
+    @Environment(\.themePalette) private var palette
+
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+            palette.groupedBackground.color.ignoresSafeArea()
             LogoMark(size: 88)
         }
         .accessibilityIdentifier("privacy-cover")

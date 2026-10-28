@@ -1,35 +1,28 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from "vue";
+import { ref, useId } from "vue";
+import { useModalFocus } from "../modalFocus";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 
-const props = withDefaults(defineProps<{ title: string; subtitle: string; icon: IconName; isDanger?: boolean; isClosable?: boolean }>(), {
+const props = withDefaults(defineProps<{ title: string; subtitle?: string; icon: IconName; isDanger?: boolean; isClosable?: boolean }>(), {
   isDanger: false,
   isClosable: true,
 });
 const emit = defineEmits<{ close: [] }>();
 
-function closeOnEscape(event: KeyboardEvent): void {
-  if (event.key !== "Escape") {
-    return;
-  }
-  event.stopPropagation();
-  if (props.isClosable) {
-    emit("close");
-  }
-}
-
-onMounted(() => window.addEventListener("keydown", closeOnEscape, true));
-onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape, true));
+const panel = ref<HTMLElement | null>(null);
+const headingID = useId();
+const subtitleID = useId();
+useModalFocus(panel, () => { if (props.isClosable) emit("close"); });
 </script>
 
 <template>
   <div class="overlay" @click.self="isClosable && emit('close')">
-    <div class="panel" role="dialog" aria-modal="true" :aria-label="title">
+    <div ref="panel" class="panel" role="dialog" aria-modal="true" :aria-labelledby="headingID" :aria-describedby="subtitleID" :data-dialog-safe-action="isDanger || undefined" tabindex="-1">
       <div class="panel-header">
         <span class="panel-icon" :class="{ danger: isDanger }"><AppIcon :name="icon" /></span>
         <div class="panel-heading">
-          <h2>{{ title }}</h2>
-          <p class="muted">{{ subtitle }}</p>
+          <h2 :id="headingID">{{ title }}</h2>
+          <p v-if="subtitle" :id="subtitleID" class="muted">{{ subtitle }}</p>
         </div>
       </div>
       <slot />

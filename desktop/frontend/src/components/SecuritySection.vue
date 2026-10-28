@@ -16,7 +16,7 @@ const allAutoLockOption = [
 const isRowVisible = useSettingsRowVisibility();
 const isEnablingTouchID = ref(false);
 const touchIDPassword = ref("");
-const isSavingEmergencyKit = ref(false);
+const isSavingEmergencyKit = defineModel<boolean>("isSavingEmergencyKit", { default: false });
 const emergencyKitPassword = ref("");
 const isChangingMasterPassword = ref(false);
 const isReplacingSecretKey = ref(false);
@@ -139,7 +139,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
         <div class="setting">
           <div class="setting-text">
             <strong>Emergency Kit</strong>
-            <p class="muted">A printable PDF with your sign-in address, email and Secret Key, for signing in on a new device. It is the only way back in if you lose your devices.</p>
+            <p class="muted">A PDF with your server, email and Secret Key, and a space to write your master password. Print it or save it somewhere safe, away from your devices.</p>
           </div>
           <button v-if="!isSavingEmergencyKit" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save Emergency Kit…</button>
         </div>

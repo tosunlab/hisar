@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
@@ -13,11 +15,43 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 )
 
-const emergencyKitFileName = "Hisar Emergency Kit.pdf"
+func emergencyKitFileName(kit emergencykit.Kit) string {
+	server := kit.Server
+	if parsed, err := url.Parse(server); err == nil && parsed.Host != "" {
+		server = parsed.Host + parsed.EscapedPath()
+	}
+	return fmt.Sprintf("Hisar Emergency Kit - %s - %s - %s.pdf",
+		emergencyKitFilePart(kit.Email, "account"), emergencyKitFilePart(server, "server"),
+		kit.CreatedAt.UTC().Format("2006-01-02-150405.000000000"))
+}
+
+func emergencyKitFilePart(value, fallback string) string {
+	var part strings.Builder
+	part.Grow(48)
+	for _, character := range value {
+		if part.Len() >= 48 {
+			break
+		}
+		switch {
+		case character >= 'a' && character <= 'z', character >= 'A' && character <= 'Z',
+			character >= '0' && character <= '9', character == '.', character == '@', character == '_', character == '-':
+			part.WriteByte(byte(character))
+		default:
+			if part.Len() > 0 && !strings.HasSuffix(part.String(), "-") {
+				part.WriteByte('-')
+			}
+		}
+	}
+	if result := strings.Trim(part.String(), ".@_-"); result != "" {
+		return result
+	}
+	return fallback
+}
 
 var ErrNoNewAccountSecretKey = errors.New("the new account's Secret Key is no longer in memory; save the Emergency Kit from Settings")
 
 // SaveNewAccountEmergencyKit saves the kit right after sign up or replacing the Secret Key; it returns the saved path, or "" when cancelled.
+// After a sign-up it also records the kit as saved in the sign-up's pending operation, which AcknowledgeNewAccountRecovery requires.
 func (s *Service) SaveNewAccountEmergencyKit() (string, error) {
 	s.mutex.Lock()
 	kit, err := s.buildNewAccountEmergencyKit()
@@ -26,7 +60,16 @@ func (s *Service) SaveNewAccountEmergencyKit() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return s.writeEmergencyKit(kit, epoch)
+	signUp, _, signUpErr := s.newAccountRecovery()
+	path, err := s.writeEmergencyKit(kit, epoch)
+	if err != nil || path == "" || signUpErr != nil {
+		return path, err
+	}
+	signUp.KitSaved = true
+	if err := s.updatePendingRecovery(signUp); err != nil {
+		return "", fmt.Errorf("the Emergency Kit was saved, but Hisar could not record it; save it again: %w", err)
+	}
+	return path, nil
 }
 
 func (s *Service) buildNewAccountEmergencyKit() (emergencykit.Kit, error) {
@@ -112,8 +155,8 @@ func ExportNewSecretKeyEmergencyKitToDirectory(s *Service, replacement Credentia
 }
 
 // newAccountRecovery is the pending sign-up operation of the account whose Secret Key onboarding retains in memory. That
-// key is the proof, as the retained account unlock key is for the Face ID offer, so onboarding asks no password again;
-// lock, sign-out, an account switch and the end of onboarding drop it.
+// key is the proof, as the retained account unlock key is for the biometric offer, so the apps' "Save your Secret Key"
+// screens ask no password again; lock, sign-out, an account switch and the end of onboarding drop it.
 func (s *Service) newAccountRecovery() (*PendingRecoverySummary, emergencykit.Kit, error) {
 	s.mutex.Lock()
 	kit, err := s.buildNewAccountEmergencyKit()
@@ -137,8 +180,8 @@ func (s *Service) newAccountRecovery() (*PendingRecoverySummary, emergencykit.Ki
 }
 
 // ExportNewAccountEmergencyKitToDirectory saves the kit of the account just created on this device and records it as
-// saved in its pending sign-up operation, without the master password. A function rather than a method so the desktop
-// UI, which saves it through SaveNewAccountEmergencyKit, can't call it.
+// saved in its pending sign-up operation, without the master password. A function rather than a method: the desktop UI
+// saves it through SaveNewAccountEmergencyKit.
 func ExportNewAccountEmergencyKitToDirectory(s *Service, directory string) (EmergencyKitFile, error) {
 	entry, kit, err := s.newAccountRecovery()
 	if err != nil {
@@ -147,7 +190,7 @@ func ExportNewAccountEmergencyKitToDirectory(s *Service, directory string) (Emer
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return EmergencyKitFile{}, fmt.Errorf("could not save the Emergency Kit: %w", err)
 	}
-	path := filepath.Join(directory, emergencyKitFileName)
+	path := filepath.Join(directory, emergencyKitFileName(kit))
 	if err := s.savePendingEmergencyKit(entry, kit, path); err != nil {
 		return EmergencyKitFile{}, err
 	}
@@ -155,9 +198,9 @@ func ExportNewAccountEmergencyKitToDirectory(s *Service, directory string) (Emer
 }
 
 // AcknowledgeNewAccountRecovery ends the pending sign-up operation of the account just created once its kit was saved,
-// as AcknowledgePendingRecovery does with the master password. A function rather than a method so the desktop UI, which
-// acknowledges delivery with the password, can't call it.
-func AcknowledgeNewAccountRecovery(s *Service) error {
+// as AcknowledgePendingRecovery does with the master password. Only the retained new Secret Key proves it, so it fails
+// for any other pending operation, after a lock and once onboarding ended.
+func (s *Service) AcknowledgeNewAccountRecovery() error {
 	entry, _, err := s.newAccountRecovery()
 	if err != nil {
 		return err
@@ -173,7 +216,7 @@ func (s *Service) saveEmergencyKitToDirectory(kit emergencykit.Kit, directory st
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return EmergencyKitFile{}, fmt.Errorf("could not save the Emergency Kit: %w", err)
 	}
-	path := filepath.Join(directory, emergencyKitFileName)
+	path := filepath.Join(directory, emergencyKitFileName(kit))
 	if err := s.saveFile(path, document, epoch); err != nil {
 		return EmergencyKitFile{}, err
 	}
@@ -236,7 +279,7 @@ func (s *Service) writeEmergencyKit(kit emergencykit.Kit, epoch uint64) (string,
 	if err != nil {
 		return "", err
 	}
-	path, err := s.config.FileSaver.ChooseSavePath(emergencyKitFileName)
+	path, err := s.config.FileSaver.ChooseSavePath(emergencyKitFileName(kit))
 	if err != nil || path == "" {
 		return "", err
 	}

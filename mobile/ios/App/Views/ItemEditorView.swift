@@ -18,10 +18,13 @@ struct ItemEditorView: View {
     @State private var loadedItem = ItemDetail()
     @State private var isDiscardConfirmationShown = false
     @State private var isPasswordRevealed = false
+    @State private var isSetupKeyRevealed = false
     @State private var isGeneratorShown = false
     @State private var isIconPickerShown = false
     @State private var isDeleteConfirmationShown = false
     @State private var hasLoadedDraft = false
+    @State private var editorAccount: ItemEditorAccount?
+    @State private var openedLockCount = 0
     @State private var newTagText = ""
     @State private var isCardSecretRevealed = false
     @State private var cardDescription = CardDescription()
@@ -33,11 +36,13 @@ struct ItemEditorView: View {
     @State private var isOldAddressShown = false
     /// The brand of the number last checked: the type follows it until the user picks a different one.
     @State private var numberBrand = ""
+    @State private var isUnnamedFieldShown = false
+    @FocusState private var focusedFieldNameIndex: Int?
 
     private var isNew: Bool { originalItem == nil }
 
     private var hasChanges: Bool {
-        hasLoadedDraft && (buildIconPreviewItem() != loadedItem || !newTagText.isEmpty)
+        hasLoadedDraft && (buildIconPreviewItem() != loadedItem || !newTagText.isEmpty || chosenVaultID != vaultID)
     }
 
     private var allWritableVault: [VaultSummary] { model.allVault.filter(AppModel.isWritableVault) }
@@ -48,199 +53,226 @@ struct ItemEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                if let errorMessage = model.errorMessage {
+            ScrollViewReader { proxy in
+                Form {
+                    if let errorMessage = model.errorMessage {
+                        Section {
+                            ErrorBanner(message: errorMessage)
+                        }
+                    }
                     Section {
-                        ErrorBanner(message: errorMessage)
-                    }
-                }
-                Section {
-                    HStack(spacing: 12) {
-                        Button {
-                            isIconPickerShown = true
-                        } label: {
-                            AppItemIcon(item: buildIconPreviewItem(), size: 40)
-                                .overlay(alignment: .bottomTrailing) {
-                                    Image(systemName: "pencil.circle.fill")
-                                        .font(.caption)
-                                        .foregroundStyle(.themeSecondary, .background)
-                                        .offset(x: 4, y: 4)
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Change icon")
-                        .accessibilityIdentifier("editor-icon")
-                        TextField("Title", text: $draft.title)
-                            .accessibilityIdentifier("editor-title")
-                    }
-                    if isNew {
-                        Picker("Vault", selection: $chosenVaultID) {
-                            ForEach(allWritableVault) { vault in
-                                Text(vault.name).tag(vault.id)
+                        HStack(spacing: 12) {
+                            Button {
+                                isIconPickerShown = true
+                            } label: {
+                                AppItemIcon(item: buildIconPreviewItem(), size: 40)
+                                    .overlay(alignment: .bottomTrailing) {
+                                        Image(systemName: "pencil.circle.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.themeSecondary, .background)
+                                            .offset(x: 4, y: 4)
+                                    }
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Change icon")
+                            .accessibilityIdentifier("editor-icon")
+                            TextField("Title", text: $draft.title)
+                                .accessibilityIdentifier("editor-title")
                         }
-                        .accessibilityIdentifier("editor-vault")
-                    }
-                }
-                if draft.isSecureNote {
-                    Section("Note") {
-                        TextField("Recovery codes, door codes, account details…", text: $draft.notes, axis: .vertical)
-                            .lineLimit(8...30)
-                            .accessibilityIdentifier("editor-notes")
-                    }
-                    buildFieldSection()
-                } else if draft.isCreditCard {
-                    buildCardSections()
-                    buildFieldSection()
-                } else if draft.isIdentity {
-                    buildIdentitySections()
-                    buildFieldSection()
-                } else if draft.isAPICredential {
-                    buildAPICredentialSections()
-                    buildFieldSection()
-                } else if draft.isAddress {
-                    buildAddressSection("Address", bindAddress)
-                    buildFieldSection()
-                } else if draft.isSoftwareLicense {
-                    buildSoftwareLicenseSection()
-                    buildFieldSection()
-                } else if !draft.isSSHKey {
-                    if draft.isServer {
-                        buildServerSection()
-                    }
-                    if draft.isDatabase {
-                        buildDatabaseSection()
-                    }
-                    Section("Login") {
-                        TextField("Username or email", text: $draft.username)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            // Without content types iOS takes the username and password for a sign-in and, seconds after the
-                            // editor closes, offers to save them in Apple's Passwords. A one-time code type on both opts out.
-                            .textContentType(.oneTimeCode)
-                            .accessibilityIdentifier("editor-username")
-                        HStack {
-                            Group {
-                                if isPasswordRevealed {
-                                    TextField("Password", text: $draft.password)
-                                        .font(.system(.body, design: .monospaced))
-                                } else {
-                                    SecureField("Password", text: $draft.password, prompt: Text("Password").foregroundStyle(.themeSecondary))
+                        if isNew {
+                            Picker("Vault", selection: $chosenVaultID) {
+                                ForEach(allWritableVault) { vault in
+                                    Text(vault.name).tag(vault.id)
                                 }
                             }
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .textContentType(.oneTimeCode)
-                            .accessibilityIdentifier("editor-password")
-                            Button {
-                                isPasswordRevealed.toggle()
-                            } label: {
-                                Image(systemName: isPasswordRevealed ? "eye.slash" : "eye")
-                                    .iconButtonHitArea()
-                            }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.themeSecondary)
-                            .accessibilityLabel(isPasswordRevealed ? "Hide password" : "Reveal password")
-                            Button {
-                                isGeneratorShown = true
-                            } label: {
-                                Image(systemName: "wand.and.stars")
-                                    .iconButtonHitArea()
-                            }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.themeSecondary)
-                            .accessibilityLabel("Generate password")
-                            .accessibilityIdentifier("editor-generate-password")
+                            .accessibilityIdentifier("editor-vault")
                         }
                     }
-                    if !draft.isDatabase {
-                        Section("One-time code") {
-                            TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
-                                .font(.system(.body, design: .monospaced))
+                    if draft.isSecureNote {
+                        Section("Note") {
+                            TextField("Recovery codes, door codes, account details…", text: $draft.notes, axis: .vertical)
+                                .lineLimit(8...30)
+                                .accessibilityIdentifier("editor-notes")
+                        }
+                        buildFieldSection()
+                    } else if draft.isCreditCard {
+                        buildCardSections()
+                        buildFieldSection()
+                    } else if draft.isIdentity {
+                        buildIdentitySections()
+                        buildFieldSection()
+                    } else if draft.isAPICredential {
+                        buildAPICredentialSections()
+                        buildFieldSection()
+                    } else if draft.isAddress {
+                        buildAddressSection("Address", bindAddress)
+                        buildFieldSection()
+                    } else if draft.isSoftwareLicense {
+                        buildSoftwareLicenseSection()
+                        buildFieldSection()
+                    } else if !draft.isSSHKey {
+                        if draft.isServer {
+                            buildServerSection()
+                        }
+                        if draft.isDatabase {
+                            buildDatabaseSection()
+                        }
+                        Section("Login") {
+                            TextField("Username or email", text: $draft.username)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
-                                .accessibilityIdentifier("editor-one-time-password")
+                                // Without content types iOS takes the username and password for a sign-in and, seconds after the
+                                // editor closes, offers to save them in Apple's Passwords. A one-time code type on both opts out.
+                                .textContentType(.oneTimeCode)
+                                .accessibilityIdentifier("editor-username")
+                            HStack {
+                                Group {
+                                    if isPasswordRevealed {
+                                        TextField("Password", text: $draft.password)
+                                            .font(.system(.body, design: .monospaced))
+                                    } else {
+                                        SecureField("Password", text: $draft.password, prompt: Text("Password").foregroundStyle(.themeSecondary))
+                                    }
+                                }
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .textContentType(.oneTimeCode)
+                                .accessibilityIdentifier("editor-password")
+                                Button {
+                                    isPasswordRevealed.toggle()
+                                } label: {
+                                    Image(systemName: isPasswordRevealed ? "eye.slash" : "eye")
+                                        .iconButtonHitArea()
+                                }
+                                .buttonStyle(.borderless)
+                                .foregroundStyle(.themeSecondary)
+                                .accessibilityLabel(isPasswordRevealed ? "Hide password" : "Reveal password")
+                                Button {
+                                    isGeneratorShown = true
+                                } label: {
+                                    Image(systemName: "wand.and.stars")
+                                        .iconButtonHitArea()
+                                }
+                                .buttonStyle(.borderless)
+                                .foregroundStyle(.themeSecondary)
+                                .accessibilityLabel("Generate password")
+                                .accessibilityIdentifier("editor-generate-password")
+                            }
                         }
-                        Section(draft.isServer ? "Admin console" : "Websites") {
-                            ForEach(allURLText.indices, id: \.self) { index in
-                                TextField(draft.isServer ? "Admin console URL" : "Website", text: $allURLText[index], prompt: Text(verbatim: draft.isServer ? "https://console.example.com" : "https://example.com"))
-                                    .keyboardType(.URL)
+                        if !draft.isDatabase {
+                            Section("One-time code") {
+                                HStack {
+                                    Group {
+                                        if isSetupKeyRevealed {
+                                            TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
+                                        } else {
+                                            SecureField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
+                                        }
+                                    }
+                                    .font(.system(.body, design: .monospaced))
+                                    .textContentType(.oneTimeCode)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
-                                    .accessibilityIdentifier("editor-website-\(index)")
+                                    .accessibilityIdentifier("editor-one-time-password")
+                                    Button {
+                                        isSetupKeyRevealed.toggle()
+                                    } label: {
+                                        Image(systemName: isSetupKeyRevealed ? "eye.slash" : "eye")
+                                            .iconButtonHitArea()
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .foregroundStyle(.themeSecondary)
+                                    .accessibilityLabel(isSetupKeyRevealed ? "Hide setup key" : "Reveal setup key")
+                                }
                             }
-                            .onDelete { allURLText.remove(atOffsets: $0) }
-                            Button {
-                                allURLText.append("")
-                            } label: {
-                                Label("Add website", systemImage: "plus")
+                            Section(draft.isServer ? "Admin console" : "Websites") {
+                                ForEach(allURLText.indices, id: \.self) { index in
+                                    TextField(draft.isServer ? "Admin console URL" : "Website", text: $allURLText[index], prompt: Text(verbatim: draft.isServer ? "https://console.example.com" : "https://example.com"))
+                                        .keyboardType(.URL)
+                                        .textInputAutocapitalization(.never)
+                                        .autocorrectionDisabled()
+                                        .accessibilityIdentifier("editor-website-\(index)")
+                                }
+                                .onDelete { allURLText.remove(atOffsets: $0) }
+                                Button {
+                                    allURLText.append("")
+                                } label: {
+                                    Label("Add website", systemImage: "plus")
+                                }
                             }
                         }
+                        buildFieldSection()
                     }
-                    buildFieldSection()
-                }
-                if !draft.isSecureNote {
-                    Section("Notes") {
-                        TextField("Notes", text: $draft.notes, axis: .vertical)
-                            .lineLimit(3...10)
-                            .accessibilityIdentifier("editor-notes")
-                    }
-                }
-                buildTagSection()
-                if !isNew {
-                    Section {
-                        Button("Delete item", role: .destructive) {
-                            isDeleteConfirmationShown = true
+                    if !draft.isSecureNote {
+                        Section("Notes") {
+                            TextField("Notes", text: $draft.notes, axis: .vertical)
+                                .lineLimit(3...10)
+                                .accessibilityIdentifier("editor-notes")
                         }
-                        .frame(maxWidth: .infinity)
-                        .accessibilityIdentifier("editor-delete")
+                    }
+                    buildTagSection()
+                    if !isNew {
+                        Section {
+                            Button("Delete item", role: .destructive) {
+                                isDeleteConfirmationShown = true
+                            }
+                            .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("editor-delete")
+                        }
                     }
                 }
-            }
-            .navigationTitle(navigationTitle)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: cancel)
-                        .accessibilityIdentifier("editor-cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if model.isBusy {
-                        ProgressView()
-                    } else {
-                        Button("Save", action: save)
-                            .disabled(draft.title.trimmingCharacters(in: .whitespaces).isEmpty)
-                            .accessibilityIdentifier("editor-save")
+                .navigationTitle(navigationTitle)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel", action: cancel)
+                            .accessibilityIdentifier("editor-cancel")
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        if model.isBusy {
+                            ProgressView()
+                        } else {
+                            Button("Save") { save(scrollingWith: proxy) }
+                                .disabled(draft.title.trimmingCharacters(in: .whitespaces).isEmpty)
+                                .accessibilityIdentifier("editor-save")
+                        }
                     }
                 }
-            }
-            .confirmationDialog("Delete “\(draft.title)”?", isPresented: $isDeleteConfirmationShown, titleVisibility: .visible) {
-                Button("Delete", role: .destructive, action: delete)
-            } message: {
-                Text("It is deleted on every device that can see this vault.")
-            }
-            .confirmationDialog("Discard changes?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
-                Button("Discard", role: .destructive, action: close)
-                    .accessibilityIdentifier("editor-discard")
-                Button("Keep editing", role: .cancel) {}
-                    .accessibilityIdentifier("editor-keep-editing")
-            }
-            .background(SheetDismissAttemptObserver { isDiscardConfirmationShown = true })
-            .sheet(isPresented: $isGeneratorShown) {
-                PasswordGeneratorSheet { password in
-                    draft.password = password
-                    isPasswordRevealed = true
+                .confirmationDialog("Delete “\(draft.title)”?", isPresented: $isDeleteConfirmationShown, titleVisibility: .visible) {
+                    Button("Delete", role: .destructive, action: delete)
+                } message: {
+                    Text("It is deleted on every device that can see this vault.")
                 }
-                .environmentObject(model)
-            }
-            // Outside the Form: a sheet attached to a row inside it is rebuilt whenever the model or the draft changes, which
-            // resets the picker's color and drops a tap in flight.
-            .sheet(isPresented: $isIconPickerShown) {
-                IconPickerView(icon: $draft.icon, item: buildIconPreviewItem())
+                .confirmationDialog("Discard changes?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
+                    Button("Discard", role: .destructive, action: close)
+                        .accessibilityIdentifier("editor-discard")
+                    Button("Keep editing", role: .cancel) {}
+                        .accessibilityIdentifier("editor-keep-editing")
+                }
+                .background(SheetDismissAttemptObserver { isDiscardConfirmationShown = true })
+                .sheet(isPresented: $isGeneratorShown) {
+                    PasswordGeneratorSheet { password in
+                        draft.password = password
+                        isPasswordRevealed = true
+                    }
+                    .environmentObject(model)
+                }
+                // Outside the Form: a sheet attached to a row inside it is rebuilt whenever the model or the draft changes, which
+                // resets the picker's color and drops a tap in flight.
+                .sheet(isPresented: $isIconPickerShown) {
+                    IconPickerView(icon: $draft.icon, item: buildIconPreviewItem())
+                }
             }
         }
         .interactiveDismissDisabled(model.isBusy || hasChanges)
         .onAppear(perform: loadDraft)
+        .onChange(of: draft) { _, _ in retainDraft() }
+        .onChange(of: allURLText) { _, _ in retainDraft() }
+        .onChange(of: chosenVaultID) { _, _ in retainDraft() }
+        .onChange(of: newTagText) { _, _ in retainDraft() }
+        .onDisappear {
+            if model.status.isUnlocked && model.lockCount == openedLockCount { model.discardEditor() }
+        }
     }
 
     private func cancel() {
@@ -252,14 +284,31 @@ struct ItemEditorView: View {
     }
 
     private func close() {
+        hasLoadedDraft = false
+        model.discardEditor()
         model.clearError()
         dismiss()
     }
 
     private func loadDraft() {
         guard !hasLoadedDraft else { return }
+        editorAccount = ItemEditorAccount(model.status)
+        openedLockCount = model.lockCount
         hasLoadedDraft = true
         model.clearError()
+        if let kept = model.retainedEditor, kept.sourceVaultID == vaultID, kept.originalItem?.id == originalItem?.id {
+            draft = kept.item
+            allURLText = kept.allURLText
+            chosenVaultID = kept.chosenVaultID
+            newTagText = kept.newTagText
+            loadedItem = kept.loadedItem
+            isOldAddressShown = kept.isOldAddressShown
+            numberBrand = kept.numberBrand
+            if let card = draft.card {
+                cardDescription = CardDescription(brand: card.brand, last4: card.last4, numberWarning: card.numberWarning, expiryWarning: card.expiryWarning)
+            }
+            return
+        }
         chosenVaultID = vaultID
         if let originalItem {
             draft = originalItem
@@ -293,6 +342,17 @@ struct ItemEditorView: View {
             numberBrand = card.brand
         }
         loadedItem = buildIconPreviewItem()
+        retainDraft()
+    }
+
+    private func retainDraft() {
+        guard hasLoadedDraft, let editorAccount else { return }
+        model.retainEditor(ItemEditorSession(
+            account: editorAccount,
+            sourceVaultID: vaultID, originalItem: originalItem, item: draft,
+            allURLText: allURLText, chosenVaultID: chosenVaultID, newTagText: newTagText,
+            loadedItem: loadedItem, isOldAddressShown: isOldAddressShown, numberBrand: numberBrand
+        ))
     }
 
     /// The types the picker offers: the known brands, plus a type saved from elsewhere that is not one of them.
@@ -828,11 +888,28 @@ struct ItemEditorView: View {
             ForEach(draft.allField.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Name", text: $draft.allField[index].name)
+                        .focused($focusedFieldNameIndex, equals: index)
+                        .accessibilityIdentifier("editor-field-\(index)-name")
+                    if isUnnamedFieldShown && draft.allField[index].isNameMissing {
+                        Text("Enter a name for this field.")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("editor-field-name-error")
+                    }
+                    let nameWarning = ItemField.nameWarning(draft.allField, index: index)
+                    if !nameWarning.isEmpty {
+                        Text(nameWarning)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("editor-field-\(index)-name-warning")
+                    }
                     HStack {
                         if draft.allField[index].concealed {
                             SecureField("Value", text: $draft.allField[index].value)
+                                .accessibilityIdentifier("editor-field-\(index)-value")
                         } else {
                             TextField("Value", text: $draft.allField[index].value)
+                                .accessibilityIdentifier("editor-field-\(index)-value")
                         }
                         Button {
                             draft.allField[index].concealed.toggle()
@@ -846,6 +923,7 @@ struct ItemEditorView: View {
                         .accessibilityAddTraits(draft.allField[index].concealed ? .isSelected : [])
                     }
                 }
+                .id(fieldRowID(index))
             }
             .onDelete { draft.allField.remove(atOffsets: $0) }
             Button {
@@ -893,13 +971,26 @@ struct ItemEditorView: View {
         return item
     }
 
-    private func save() {
+    private func fieldRowID(_ index: Int) -> String {
+        "field-\(index)"
+    }
+
+    /// List creates offscreen rows lazily, so focus follows the scroll on the next main-loop turn.
+    private func save(scrollingWith proxy: ScrollViewProxy) {
         addTags()
+        if let unnamedIndex = draft.allField.firstIndex(where: \.isNameMissing) {
+            isUnnamedFieldShown = true
+            proxy.scrollTo(fieldRowID(unnamedIndex), anchor: .center)
+            DispatchQueue.main.async { focusedFieldNameIndex = unnamedIndex }
+            return
+        }
         var item = draft
         item.allURL = allURLText.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         let vaultID = chosenVaultID
         Task {
             if let savedItem = await model.saveItem(vaultID: vaultID, item: item) {
+                hasLoadedDraft = false
+                model.discardEditor()
                 loadedItem = buildIconPreviewItem()
                 finish(savedItem, vaultID)
                 dismiss()
@@ -911,6 +1002,8 @@ struct ItemEditorView: View {
         guard let originalItem else { return }
         Task {
             if await model.deleteItem(vaultID: vaultID, itemID: originalItem.id) {
+                hasLoadedDraft = false
+                model.discardEditor()
                 loadedItem = buildIconPreviewItem()
                 dismiss()
                 finish(nil, vaultID)

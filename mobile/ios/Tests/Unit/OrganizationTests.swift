@@ -154,7 +154,35 @@ final class OrganizationTests: XCTestCase {
         let onlyOnThisDevice = VaultSummary(id: "runbooks", name: "Runbooks", type: VaultSummary.typeOrganization, role: Member.vaultRoleOwner, itemCount: 0, organizationID: "acme")
         let elsewhere = VaultSummary(id: "other", name: "Other", type: VaultSummary.typeOrganization, role: Member.vaultRoleOwner, itemCount: 0, organizationID: "globex")
         let allGivable = OrganizationLogic.listAllGivableVault(organization: asAdmin, team: asAdmin.allTeam[1], allVault: [onlyOnThisDevice, elsewhere])
-        XCTAssertEqual(allGivable.map(\.displayName), ["Runbooks", "A vault you can't open"], "Deploy is already Platform's; another organization's vault is not offered")
+        XCTAssertEqual(allGivable.map(\.displayName), ["Runbooks", "A vault you can't open (Audit)"], "Deploy is already Platform's; another organization's vault is not offered")
+
+        var sameNamedMembers = asAdmin
+        sameNamedMembers.allMember[1].name = "Alex Morgan"
+        sameNamedMembers.allMember[2].name = "Alex Morgan"
+        var team = platform
+        team.allMember.append(TeamMember(accountID: "unknown", name: "Alex Morgan", email: "unknown@example.com"))
+        let allTeamMember = OrganizationLogic.listAllTeamMember(organization: sameNamedMembers, team: team)
+        XCTAssertEqual(allTeamMember, Array(sameNamedMembers.allMember[1...2]))
+        XCTAssertEqual(allTeamMember.map(\.email), ["alice@example.com", "bob@example.com"])
+        XCTAssertEqual(allTeamMember.map(\.securityCode), ["1111 2222", "3333 4444"])
+        XCTAssertEqual(allTeamMember.map(\.role), [OrganizationRole.admin, OrganizationRole.member])
+        XCTAssertTrue(allTeamMember[0].isCurrentUser)
+        XCTAssertFalse(allTeamMember[1].isCurrentUser)
+    }
+
+    func testUnopenedVaultChoicesShowTeamsAndDistinctIDs() {
+        let vaults = [
+            TeamVault(vaultID: "3fK9a2-1", name: "", role: Member.vaultRoleOwner, canOpen: false),
+            TeamVault(vaultID: "8rP4b7-2", name: "", role: Member.vaultRoleOwner, canOpen: false),
+        ]
+        let target = Team(id: "target", name: "Review")
+        let organization = Organization(id: "acme", name: "Acme", role: OrganizationRole.admin, isAdmin: true, allTeam: [
+            Team(id: "platform", name: "Platform", allVault: vaults),
+            Team(id: "ops", name: "Ops", allVault: vaults), target,
+        ])
+        let choices = OrganizationLogic.listAllGivableVault(organization: organization, team: target, allVault: [])
+        XCTAssertEqual(choices.map(\.displayName), ["A vault you can't open (Platform, Ops) · 3fK9a2", "A vault you can't open (Platform, Ops) · 8rP4b7"])
+        XCTAssertEqual(choices.map(\.canOpen), [false, false])
     }
 
     func testRefreshListsOrganizationsInvitationsAndWaitingKeysBeforeTheVaults() async {

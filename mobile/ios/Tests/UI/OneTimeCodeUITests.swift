@@ -23,6 +23,10 @@ final class OneTimeCodeUITests: HisarUITestCase {
 
     func testSetupKeyShowsCodeThatCopiesAndFills() throws {
         let inviteLink = try readEnvironment("HISAR_UI_TEST_ONE_TIME_CODE_INVITE_LINK")
+        if ProcessInfo.processInfo.environment["HISAR_UI_TEST_REDUCED_MOTION"] == "1" {
+            XCTAssertTrue(UIAccessibility.isReduceMotionEnabled)
+        }
+        app.launchArguments.removeAll { $0 == "-HisarUITest" }
         app.launch()
         _ = signUp(inviteLink: inviteLink, email: "ios-one-time-code@example.com", name: "iOS One-Time Code")
 
@@ -31,11 +35,11 @@ final class OneTimeCodeUITests: HisarUITestCase {
         type("Example", into: app.textFields["editor-title"])
         type("code-user", into: app.textFields["editor-username"])
         type("code-password-1", into: app.secureTextFields["editor-password"])
-        type("not a setup key!", into: app.textFields["editor-one-time-password"])
+        type("not a setup key!", into: app.secureTextFields["editor-one-time-password"])
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts["The one-time code is not a valid secret or otpauth:// link"])
         saveScreenshot("otp-editor-invalid")
-        let oneTimePasswordField = app.textFields["editor-one-time-password"]
+        let oneTimePasswordField = app.secureTextFields["editor-one-time-password"]
         oneTimePasswordField.tap()
         typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + Self.setupKey, into: oneTimePasswordField, showing: Self.setupKey)
         type("accounts.example.com", into: app.textFields["editor-website-0"])
@@ -63,6 +67,19 @@ final class OneTimeCodeUITests: HisarUITestCase {
         codeCell.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.95)).tap()
         waitFor(copyNotice)
         saveScreenshot("otp-copied")
+
+        app.buttons["edit-item"].tap()
+        waitFor(app.secureTextFields["editor-one-time-password"])
+        app.buttons["Reveal setup key"].tap()
+        waitFor(app.textFields["editor-one-time-password"])
+        XCTAssertTrue(app.secureTextFields["editor-password"].exists)
+        app.buttons["Hide setup key"].tap()
+        waitFor(app.secureTextFields["editor-one-time-password"])
+        app.buttons["Reveal setup key"].tap()
+        app.buttons["editor-cancel"].tap()
+        app.buttons["edit-item"].tap()
+        waitFor(app.secureTextFields["editor-one-time-password"])
+        app.buttons["editor-cancel"].tap()
 
         launchAutoFill(argument: "-HisarAutoFillOneTimeCodePreview")
         let codeLogin = app.buttons["autofill-login-Example"]

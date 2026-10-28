@@ -33,6 +33,9 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.services.storage.TestStorage
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import java.util.regex.Pattern
 import org.junit.After
 import org.junit.Rule
 
@@ -210,7 +213,11 @@ abstract class HisarUITestCase {
         scrollTo("sign-in-submit")
         saveScreenshot("create-account")
         tap("sign-in-submit")
-        val secretKey = finishPendingRecovery(email, MASTER_PASSWORD)
+        waitFor("new-secret-key", ACCOUNT_KEY_TIMEOUT)
+        val secretKey = readText("new-secret-key")
+        saveScreenshot("new-secret-key")
+        handOffEmergencyKit("new-secret-key-share-kit")
+        tapWhenEnabled("new-secret-key-done")
         if (isBiometricOfferExpected) {
             waitFor("biometric-offer-not-now", 10_000)
             return secretKey
@@ -223,6 +230,17 @@ abstract class HisarUITestCase {
         }
         waitFor("vault-Personal")
         return secretKey
+    }
+
+    /** Hands the Emergency Kit off as its owner would: opens the share sheet from [shareTag], then closes it. */
+    fun handOffEmergencyKit(shareTag: String) {
+        waitFor(shareTag, ACCOUNT_KEY_TIMEOUT)
+        tap(shareTag)
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val shareSheet = By.pkg(Pattern.compile("android|com\\.android\\.intentresolver"))
+        composeRule.waitUntil("the share sheet opens", 10_000) { device.hasObject(shareSheet) }
+        device.pressBack()
+        composeRule.waitUntil("the share sheet closes", 10_000) { !device.hasObject(shareSheet) }
     }
 
     data class PendingRecoveryKit(val recordTag: String, val secretKey: String, val phase: String, val processID: Int)
@@ -253,6 +271,7 @@ abstract class HisarUITestCase {
             tap(kit.recordTag)
             check(readText("pending-recovery-phase") == kit.phase) { "the prepared recovery changed across process restart" }
         }
+        handOffPendingRecoveryKit(password)
         type(password, "pending-recovery-password")
         tapWhenEnabled("pending-recovery-acknowledge")
         if (kit.phase == "awaiting-kit") {
@@ -261,6 +280,7 @@ abstract class HisarUITestCase {
             type(password, "pending-recovery-password")
             tapWhenEnabled("pending-recovery-resume")
             waitFor(hasTestTag("pending-recovery-phase") and hasText("delivery-pending"), ACCOUNT_KEY_TIMEOUT)
+            handOffPendingRecoveryKit(password)
             type(password, "pending-recovery-password")
             tapWhenEnabled("pending-recovery-acknowledge")
         }
@@ -269,6 +289,15 @@ abstract class HisarUITestCase {
         }
         if (exists(hasTestTag("pending-recovery-phase"))) tap("pending-recovery-later")
         return kit.secretKey
+    }
+
+    /** Acknowledging needs a handoff of the kit shown now; a resume or a new process clears it, so it is prepared again. */
+    private fun handOffPendingRecoveryKit(password: String) {
+        if (!exists(hasTestTag("pending-recovery-share-kit"))) {
+            type(password, "pending-recovery-password")
+            tapWhenEnabled("pending-recovery-export")
+        }
+        handOffEmergencyKit("pending-recovery-share-kit")
     }
 
     /** Signs in to the harness server with an account another device created. */
@@ -299,7 +328,7 @@ abstract class HisarUITestCase {
     }
 
     companion object {
-        const val MASTER_PASSWORD = "ui test master password"
+        const val MASTER_PASSWORD = "ui test orange cactus harbor"
 
         /** From launching the app to its first screen, while the process and the Go backend start; over 30 seconds when loaded. */
         const val APP_START_TIMEOUT = 60_000L

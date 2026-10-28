@@ -5,6 +5,7 @@ import com.tryhisar.hisar.model.ItemAddress
 import com.tryhisar.hisar.model.ItemCard
 import com.tryhisar.hisar.model.ItemDatabase
 import com.tryhisar.hisar.model.ItemDetail
+import com.tryhisar.hisar.model.ItemField
 import com.tryhisar.hisar.model.ItemIdentity
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,6 +16,21 @@ import kotlin.test.assertTrue
 /** What the editor shows and saves as the user types, as the iPhone editor does it. */
 class ItemEditorDraftTests {
     private fun openNew(category: String) = ItemEditorDraft.open(ItemDetail(category = category), isNew = true)
+
+    @Test
+    fun testCustomFieldNameWarningsPreserveDuplicateValues() {
+        val fields = listOf(
+            ItemField("Recovery code", "first", true),
+            ItemField("recovery CODE", "second", true),
+            ItemField("Password", "custom", true),
+        )
+        val draft = ItemEditorDraft.open(ItemDetail(title = "Login", allField = fields), isNew = true)
+        assertEquals("Secret references need a unique name.", draft.fieldNameWarning(0))
+        assertEquals("Secret references need a unique name.", draft.fieldNameWarning(1))
+        assertEquals("A secret reference with this name reaches the built-in field.", draft.fieldNameWarning(2))
+        assertTrue(draft.canSave)
+        assertEquals(fields, draft.buildItem().allField)
+    }
 
     @Test
     fun testNewItemsAreTitledByCategoryAndAnEditByItsAction() {
@@ -89,5 +105,22 @@ class ItemEditorDraftTests {
         val database = ItemEditorDraft.open(ItemDetail(id = "1", category = ItemDetail.CATEGORY_DATABASE, database = ItemDatabase(engine = "redis")), isNew = false)
         assertFalse(database.hasChanges)
         assertNull(openNew(ItemDetail.CATEGORY_LOGIN).original)
+    }
+
+    @Test
+    fun testAFieldValueNeedsAName() {
+        assertTrue(ItemField("", "recovery-code-1", concealed = true).isNameMissing)
+        assertTrue(ItemField(" \t\n", "recovery-code-1", concealed = false).isNameMissing)
+        assertFalse(ItemField("", "", concealed = false).isNameMissing, "an empty row is left out, not refused")
+        assertFalse(ItemField("Recovery code", "recovery-code-1", concealed = true).isNameMissing)
+        assertFalse(ItemField("PIN", "", concealed = false).isNameMissing)
+
+        val saved = ItemDetail(id = "1", title = "GitHub", allField = listOf(ItemField("Recovery code", "recovery-code-1", concealed = true)))
+        val draft = ItemEditorDraft.open(saved, isNew = false)
+            .withItem { it.copy(allField = listOf(ItemField("PIN", "1234", concealed = false), ItemField("", "", concealed = false), ItemField(" ", "recovery-code-1", concealed = true))) }
+        assertEquals(2, draft.unnamedFieldIndex, "Save stops on the field whose value would be lost")
+        assertTrue(draft.hasChanges, "the draft stays unsaved, so nothing typed is lost")
+        val named = draft.withItem { it.copy(allField = it.allField.mapIndexed { index, field -> if (index == 2) field.copy(name = "Recovery code") else field }) }
+        assertNull(named.unnamedFieldIndex)
     }
 }

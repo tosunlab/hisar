@@ -16,6 +16,14 @@ import kotlinx.coroutines.test.runTest
 class PushNotificationTests {
     private val currentDate: Instant = Instant.ofEpochSecond(1_800_000_000)
 
+    @Test
+    fun testNotificationPrivacyExplanation() {
+        assertEquals(
+            "Approval requests and security alerts don't name items or people. Sharing invitations show who invited you and, for an organization, its name, even while Hisar is locked. To keep them off the lock screen, hide sensitive notification content in Android's notification settings. Your UnifiedPush app sees only the kind of notification; its details are encrypted for this phone.",
+            NotificationsModel.privacyExplanation,
+        )
+    }
+
     private suspend fun TestScope.createUnlockedModel(harness: AppModelHarness, allApproval: List<PhoneApproval> = emptyList()): AppModel {
         harness.currentDate = currentDate
         harness.backend.seedSignedIn()

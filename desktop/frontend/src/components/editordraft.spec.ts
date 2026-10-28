@@ -17,7 +17,7 @@ vi.mock("../api", async () => {
 
 vi.mock("@wailsio/runtime", () => ({ Events: { On: () => () => undefined } }));
 
-const { store, lock, unlock } = await import("../store");
+const { store, lock, unlock, loadStatus } = await import("../store");
 const MainView = (await import("./MainView.vue")).default;
 const api = apiMock.current;
 
@@ -166,5 +166,74 @@ describe("Leaving the item editor", () => {
     expect(store.selectedItem?.id).toBe("github");
     expect((wrapper.find('input[name="title"]').element as HTMLInputElement).value).toBe("GitHub Enterprise");
     expect(store.editorDraft?.isDirty).toBe(true);
+  });
+});
+
+describe("SSH creation drafts", () => {
+  beforeEach(() => {
+    store.selectedItem = null;
+    store.editorMode = "create-ssh-key";
+  });
+
+  it.each(["generate", "import"])("guards Cancel and navigation and restores the %s draft after unlock", async (mode) => {
+    const wrapper = mount(MainView);
+    await wrapper.get('input[name="title"]').setValue("Production");
+    await wrapper.get('input[value="rsa"]').setValue();
+    if (mode === "import") {
+      await wrapper.get('[role="tab"][aria-selected="false"]').trigger("click");
+      await wrapper.get('textarea[name="privateKey"]').setValue("private-key-material");
+      await wrapper.get('input[name="passphrase"]').setValue("key-passphrase");
+    }
+    const expected = { ...store.editorDraft!.sshKey };
+    await wrapper.get(".ssh-key-form .ghost").trigger("click");
+    await flushPromises();
+    expect(dialog(wrapper).exists()).toBe(true);
+    await dialog(wrapper).get('[data-testid="keep-editing"]').trigger("click");
+    await wrapper.get('[data-testid="vault-work"]').trigger("click");
+    await flushPromises();
+    expect(dialog(wrapper).exists()).toBe(true);
+    await dialog(wrapper).get('[data-testid="keep-editing"]').trigger("click");
+    await lock();
+    await flushPromises();
+    expect(wrapper.find(".ssh-key-form").exists()).toBe(false);
+    await unlock("password");
+    await flushPromises();
+    expect(store.editorDraft?.sshKey).toEqual(expected);
+    expect(wrapper.get('input[name="title"]').element).toHaveProperty("value", "Production");
+    await wrapper.get(".ssh-key-form .ghost").trigger("click");
+    await flushPromises();
+    await dialog(wrapper).get('[data-testid="discard-draft"]').trigger("click");
+    await flushPromises();
+    expect(store.editorDraft).toBeNull();
+  });
+
+  it.each(["generate", "import"])("clears a saved %s draft", async (mode) => {
+    api.generateSSHKey.mockResolvedValue(createItem({ category: "ssh-key" }));
+    api.importSSHKey.mockResolvedValue(createItem({ category: "ssh-key" }));
+    const wrapper = mount(MainView);
+    await wrapper.get('input[name="title"]').setValue("Production");
+    if (mode === "import") {
+      await wrapper.get('[role="tab"][aria-selected="false"]').trigger("click");
+      await wrapper.get('textarea[name="privateKey"]').setValue("private-key-material");
+      await wrapper.get('input[name="passphrase"]').setValue("key-passphrase");
+    }
+    await wrapper.get(".ssh-key-form").trigger("submit");
+    await flushPromises();
+    expect(store.editorDraft).toBeNull();
+    expect(wrapper.find(".ssh-key-form").exists()).toBe(false);
+  });
+
+  it("forgets imported secrets on sign-out, including a locked draft", async () => {
+    const wrapper = mount(MainView);
+    await wrapper.get('[role="tab"][aria-selected="false"]').trigger("click");
+    await wrapper.get('textarea[name="privateKey"]').setValue("private-key-material");
+    await wrapper.get('input[name="passphrase"]').setValue("key-passphrase");
+    await lock();
+    api.getStatus.mockResolvedValue(createStatus("signed-out"));
+    await loadStatus();
+    await unlock("password");
+    await flushPromises();
+    expect(store.editorDraft).toBeNull();
+    expect(store.editorMode).toBe("view");
   });
 });

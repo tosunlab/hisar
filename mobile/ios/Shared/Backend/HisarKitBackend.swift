@@ -397,6 +397,14 @@ final class HisarKitBackend: VaultBackend {
         try callReturningText { hisar.generatePassword(length, isDigitIncluded: isDigitIncluded, isSymbolIncluded: isSymbolIncluded, error: $0) }
     }
 
+    func ratePassword(_ password: String) throws -> PasswordStrength {
+        try decode(PasswordStrength.self, from: callReturningText { hisar.ratePassword(password, error: $0) })
+    }
+
+    func checkMasterPassword(_ password: String) throws -> MasterPasswordFeedback {
+        try decode(MasterPasswordFeedback.self, from: callReturningText { hisar.checkMasterPassword(password, error: $0) })
+    }
+
     func listAllLoginForService(serviceIdentifier: String) throws -> [LoginMatch] {
         try decode([LoginMatch]?.self, from: callReturningText { hisar.listAllLogin(forService: serviceIdentifier, error: $0) }) ?? []
     }
@@ -593,6 +601,10 @@ final class HisarKitBackend: VaultBackend {
 
     func getPushSettings() throws -> PushSettings {
         try decode(PushSettings.self, from: callReturningText { hisar.getPushSettings($0) })
+    }
+
+    func getApprovalPushVerifier() throws -> ApprovalPushVerifier {
+        try decode(ApprovalPushVerifier.self, from: callReturningText { hisar.getApprovalPushVerifier($0) })
     }
 
     func getTheme() -> VaultTheme {

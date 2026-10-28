@@ -18,7 +18,7 @@ final class AccountLifecycleUITests: HisarUITestCase {
         dismissSavePasswordPrompt()
 
         openSettings("open-mac-approvals")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "Requests to use SSH keys, the command-line tool, coding agents and apps on your Mac appear here while Hisar is open and unlocked on both devices.")).firstMatch.exists)
         XCTAssertFalse(app.staticTexts["How requests appear"].exists)
         let macApprovalToggle = app.switches["mac-approval-toggle"]
         if macApprovalToggle.value as? String == "1" {
@@ -57,9 +57,21 @@ final class AccountLifecycleUITests: HisarUITestCase {
         app.buttons["replace-secret-key-submit"].tap()
         waitFor(secretKeyWarning)
         tapConfirmation(identifier: "replace-secret-key-confirm")
-        let newSecretKey = finishPendingRecovery(email: email, password: Self.newMasterPassword, restartAfterPreparingKit: true)
+        waitFor(app.navigationBars["Save your new Secret Key"], timeout: 60)
+        let newSecretKey = app.staticTexts["new-secret-key-value"].label
+        XCTAssertFalse(app.navigationBars["Account recovery"].exists)
+        waitFor(app.buttons["share-new-emergency-kit"])
         XCTAssertTrue(newSecretKey.hasPrefix("H1-"), newSecretKey)
         saveScreenshot("account-life-new-secret-key\(screenshotSuffix)")
+        let savedKit = app.buttons["replace-secret-key-done"]
+        XCTAssertEqual(savedKit.label, "I saved the new Emergency Kit")
+        XCTAssertFalse(savedKit.isEnabled)
+        handOffEmergencyKit(shareIdentifier: "share-new-emergency-kit")
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: savedKit)
+        waitForExpectations(timeout: 10)
+        savedKit.tap()
+        waitFor(app.buttons["open-replace-secret-key"])
+        openTab("Vaults")
 
         let passwordField = app.secureTextFields["unlock-password"]
         if passwordField.waitForExistence(timeout: 2) {
@@ -69,7 +81,8 @@ final class AccountLifecycleUITests: HisarUITestCase {
             app.buttons["unlock-submit"].tap()
         }
         waitFor(app.buttons["vault-Personal"], timeout: 60)
-        openSettings("open-account")
+        openTab("Settings")
+        waitFor(app.navigationBars["Account"])
         scrollTo(app.buttons["open-delete-account"])
         app.buttons["open-delete-account"].tap()
         saveScreenshot("account-life-delete-account-preview\(screenshotSuffix)")

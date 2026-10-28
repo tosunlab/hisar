@@ -118,7 +118,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
             FormSection(
                 header = "Invite by email",
                 footer = {
-                    Text("${VaultLogic.describeVaultRoleAbility(role)} They accept in Hisar, or create an account from the email first; your Hisar then shares the vault key with them.")
+                    Text("${VaultLogic.describeVaultRoleAbility(role)} They accept in Hisar, or create an account from the email first. For a new recipient, review their account after they accept before Hisar shares the vault key.")
                 },
             ) {
                 FormTextField(
@@ -133,6 +133,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
                         imeAction = ImeAction.Send,
                     ),
                     keyboardActions = KeyboardActions(onSend = { send() }),
+                    label = "Email",
                 )
                 RowDivider()
                 PickerRow("Role", role, Member.allVaultRole, VaultLogic::describeVaultRole, { role = it }, testTag = "share-role")
@@ -222,6 +223,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
                         ) {
                             SentInvitationRow(
                                 invitation, isVaultNameShown = false, testTag = "vault-invitation-${invitation.email}",
+                                model = model, onResent = { load() },
                                 onCancel = { invitationToCancel = invitation },
                                 onConfirm = { snapshot -> scope.launch { if (model.sharing.confirmShareRecipient(snapshot)) load() } },
                             )

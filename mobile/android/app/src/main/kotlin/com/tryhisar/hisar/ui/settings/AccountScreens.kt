@@ -66,6 +66,8 @@ import com.tryhisar.hisar.model.AccountDeletionPreview
 import com.tryhisar.hisar.model.AccountLifecycleLogic
 import com.tryhisar.hisar.model.CredentialChangeResult
 import com.tryhisar.hisar.model.EmergencyKitExport
+import com.tryhisar.hisar.model.MasterPasswordFeedback
+import com.tryhisar.hisar.model.PasswordStrength
 import com.tryhisar.hisar.ui.components.ClearSection
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormButtonRow
@@ -73,6 +75,7 @@ import com.tryhisar.hisar.ui.components.FormRow
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.LabeledRow
+import com.tryhisar.hisar.ui.components.PasswordStrengthMeter
 import com.tryhisar.hisar.ui.components.ProminentButton
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.theme.HisarTheme
@@ -160,12 +163,16 @@ private fun SecretKeyRow(secretKey: String, testTag: String) {
     }
 }
 
-/** Saving, printing and sending an Emergency Kit PDF to another app, the things the iPhone's share sheet offers for it. */
+/**
+ * Saving, printing and sending an Emergency Kit PDF to another app, the things the iPhone's share sheet offers for it.
+ * [onHandoff] runs once the file creator saved it, the print dialog opened or the share sheet opened.
+ */
 @Composable
-private fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String, printTestTag: String, shareTestTag: String) {
+internal fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String, printTestTag: String, shareTestTag: String, onHandoff: () -> Unit = {}) {
     val context = LocalContext.current
     val save = rememberFileSaver("application/pdf") { savedURI ->
         if (savedURI != null) {
+            onHandoff()
             model.showNotice("Emergency Kit saved", com.tryhisar.hisar.app.Notice.Action("Open") {
                 try {
                     context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(savedURI, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
@@ -175,10 +182,17 @@ private fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String,
             })
         } else model.errorMessage.value = SAVE_FAILED_MESSAGE
     }
-    val share = rememberFileSharer("application/pdf") { model.errorMessage.value = SHARE_FAILED_MESSAGE }
+    val share = rememberFileSharer("application/pdf", onFailure = { model.errorMessage.value = SHARE_FAILED_MESSAGE }, onShared = onHandoff)
     FormButtonRow("Save Emergency Kit", { save(File(path)) }, testTag = saveTestTag, icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
     RowDivider()
-    FormButtonRow("Print Emergency Kit", { printPdf(context, File(path), "Hisar Emergency Kit") }, testTag = printTestTag, icon = Icons.Outlined.Print, color = HisarTheme.colors.tint)
+    FormButtonRow(
+        "Print Emergency Kit",
+        {
+            printPdf(context, File(path), "Hisar Emergency Kit")
+            onHandoff()
+        },
+        testTag = printTestTag, icon = Icons.Outlined.Print, color = HisarTheme.colors.tint,
+    )
     RowDivider()
     FormButtonRow("Share Emergency Kit", { share(File(path)) }, testTag = shareTestTag, icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
 }
@@ -244,6 +258,7 @@ fun SecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                     isSecure = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { reveal() }),
+                    label = "Master password",
                 )
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }
@@ -276,27 +291,43 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
     var newPassword by remember { mutableStateOf("") }
     var repeatedPassword by remember { mutableStateOf("") }
     var isConfirmationShown by remember { mutableStateOf(false) }
-    val problem = AccountLifecycleLogic.describeNewPasswordProblem(currentPassword, newPassword, repeatedPassword)
-    val canSubmit = AccountLifecycleLogic.canChangePassword(currentPassword, newPassword, repeatedPassword) && !isBusy
+    var ratedPassword by remember { mutableStateOf("") }
+    var newPasswordFeedback by remember { mutableStateOf<MasterPasswordFeedback?>(null) }
+    val problem = AccountLifecycleLogic.describeNewPasswordProblem(currentPassword, newPassword, repeatedPassword, newPasswordFeedback)
+    val newPasswordProblem = AccountLifecycleLogic.describeNewPasswordProblem(currentPassword, newPassword, newPassword, newPasswordFeedback)
+    val canSubmit = AccountLifecycleLogic.canChangePassword(
+        currentPassword, newPassword, repeatedPassword, newPasswordFeedback.takeIf { ratedPassword == newPassword },
+    ) && !isBusy
     LaunchedEffect(Unit) { model.errorMessage.value = null }
+    LaunchedEffect(newPassword) {
+        val typedPassword = newPassword
+        val feedback = model.checkMasterPassword(typedPassword)
+        ratedPassword = typedPassword
+        newPasswordFeedback = feedback
+    }
 
     SettingsScreen("Change master password", onBack, isTitleInline = true) {
         FormSection(footer = { Text("Your Secret Key, your Emergency Kit and your items stay the same. Hisar never sends your master password to the server.") }) {
             WarningRow(Icons.Outlined.Devices, AccountLifecycleLogic.PASSWORD_CHANGE_WARNING, "change-password-warning")
         }
         FormSection(header = "Current master password") {
-            FormTextField(currentPassword, { currentPassword = it }, placeholder = "Current master password", testTag = "change-password-current", isSecure = true)
+            FormTextField(currentPassword, { currentPassword = it }, placeholder = "Current master password", testTag = "change-password-current", isSecure = true, label = "Current master password")
         }
         FormSection(
             header = "New master password",
             footer = {
-                problem?.let { Text(it, color = HisarTheme.colors.destructive, modifier = Modifier.testTag("change-password-problem")) }
+                PasswordStrengthMeter(newPasswordFeedback?.strength ?: PasswordStrength())
+                val hint = AccountLifecycleLogic.describeMasterPasswordHint(newPasswordFeedback)
+                when {
+                    problem != null -> Text(problem, color = HisarTheme.colors.destructive, modifier = Modifier.testTag("change-password-problem"))
+                    hint != null -> Text(hint)
+                }
                 Text("A forgotten master password can't be recovered by anyone, including Hisar.")
             },
         ) {
-            FormTextField(newPassword, { newPassword = it }, placeholder = "At least 10 characters", testTag = "change-password-new", isSecure = true)
+            FormTextField(newPassword, { newPassword = it }, placeholder = "At least 10 characters", testTag = "change-password-new", isSecure = true, label = "New master password", errorMessage = newPasswordProblem)
             RowDivider()
-            FormTextField(repeatedPassword, { repeatedPassword = it }, placeholder = "Repeat new master password", testTag = "change-password-repeated", isSecure = true)
+            FormTextField(repeatedPassword, { repeatedPassword = it }, placeholder = "Repeat new master password", testTag = "change-password-repeated", isSecure = true, label = "Repeat new master password", errorMessage = problem.takeIf { newPasswordProblem == null })
         }
         errorMessage?.let { FormSection { ErrorBanner(it) } }
         ClearSection {
@@ -378,7 +409,7 @@ fun ReplaceSecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                 WarningRow(Icons.Outlined.FindReplace, AccountLifecycleLogic.SECRET_KEY_REPLACEMENT_WARNING, "replace-secret-key-warning")
             }
             FormSection(header = "Master password") {
-                FormTextField(password, { password = it }, placeholder = "Master password", testTag = "replace-secret-key-password", isSecure = true)
+                FormTextField(password, { password = it }, placeholder = "Master password", testTag = "replace-secret-key-password", isSecure = true, label = "Master password")
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }
             ClearSection {
@@ -449,11 +480,12 @@ fun DeleteAccountScreen(model: AppModel, onBack: () -> Unit) {
             header = "Confirm",
             footer = { Text("Enter your master password and type ${status.email} to confirm. Hisar checks your master password without sending it to the server.") },
         ) {
-            FormTextField(password, { password = it }, placeholder = "Master password", testTag = "delete-account-password", isSecure = true)
+            FormTextField(password, { password = it }, placeholder = "Master password", testTag = "delete-account-password", isSecure = true, label = "Master password")
             RowDivider()
             FormTextField(
                 typedEmail, { typedEmail = it }, placeholder = status.email, testTag = "delete-account-email",
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false),
+                label = "Email",
             )
         }
         errorMessage?.let { FormSection { ErrorBanner(it) } }
@@ -607,17 +639,20 @@ fun PendingRecoveryScreen(model: AppModel) {
                     FormTextField(
                         secretKey, { secretKey = it }, placeholder = "Secret Key from saved Emergency Kit",
                         testTag = "pending-recovery-input-secret-key", isSecure = true,
+                        label = "Secret Key",
                     )
                     if (recovery.kind != "signup") {
                         FormTextField(
                             priorSecretKey, { priorSecretKey = it }, placeholder = "Previous Secret Key, if requested",
                             testTag = "pending-recovery-input-prior-secret-key", isSecure = true,
+                            label = "Previous Secret Key",
                         )
                     }
                 }
                 FormTextField(
                     password, { password = it }, placeholder = "Master password for this recovery",
                     testTag = "pending-recovery-password", isSecure = true,
+                    label = "Master password",
                 )
                 FormButtonRow(
                     if (recovery.phase == "manual-unlock") "Sign in with saved Emergency Kit" else "Resume account setup",
@@ -645,9 +680,12 @@ fun PendingRecoveryScreen(model: AppModel) {
                     testTag = "pending-recovery-export",
                     enabled = password.isNotEmpty() && !isBusy && recovery.phase != "outcome-unknown",
                 )
+                var isKitHandedOff by remember(recovery.operationId, export) { mutableStateOf(false) }
                 export?.let {
                     SecretKeyRow(it.secretKey, "pending-recovery-secret-key")
-                    EmergencyKitRows(model, it.path, "pending-recovery-save-kit", "pending-recovery-print-kit", "pending-recovery-share-kit")
+                    EmergencyKitRows(model, it.path, "pending-recovery-save-kit", "pending-recovery-print-kit", "pending-recovery-share-kit") {
+                        isKitHandedOff = true
+                    }
                 }
                 FormButtonRow(
                     "I saved the new Emergency Kit",
@@ -659,9 +697,12 @@ fun PendingRecoveryScreen(model: AppModel) {
                         scope.launch { model.pendingRecovery.acknowledge(recovery.operationId, entered) }
                     },
                     testTag = "pending-recovery-acknowledge",
-                    enabled = password.isNotEmpty() && !isBusy && recovery.kitSaved &&
+                    enabled = password.isNotEmpty() && !isBusy && recovery.kitSaved && isKitHandedOff &&
                         (recovery.phase == "delivery-pending" || recovery.phase == "awaiting-kit"),
                 )
+                if (!isKitHandedOff && (recovery.phase == "delivery-pending" || recovery.phase == "awaiting-kit")) {
+                    FormRow { Text("Save, print or share the Emergency Kit first.", Modifier.testTag("pending-recovery-handoff-hint"), color = HisarTheme.colors.secondaryLabel) }
+                }
                 if (recovery.phase == "awaiting-kit" || recovery.phase == "prepared") {
                     FormButtonRow(
                         "Discard uncommitted setup", { isDiscardConfirmationShown = true }, testTag = "pending-recovery-discard",

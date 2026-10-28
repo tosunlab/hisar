@@ -25,7 +25,9 @@ import type {
   ItemDetail,
   LauncherApp,
   LoginItemStatus,
+  MasterPasswordFeedback,
   PasswordConfig,
+  PasswordStrength,
   ShareInvitations,
   ShareLink,
   ShareLinkField,
@@ -753,6 +755,26 @@ function exportPreviewData(request: ExportRequest): Promise<ExportResult> {
 
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 
+// signUpPreview answers as core does after a clean sign-up: the account is open and its pending record waits for the kit.
+function signUpPreview(): Promise<SignUpResult> {
+  previewState = "unlocked";
+  previewRecovery = [...previewRecovery.filter((entry) => entry.operationId !== "preview-signup"), {
+    operationId: "preview-signup",
+    kind: "signup",
+    origin: "https://eu.tryhisar.com",
+    accountId: "preview-account",
+    email: "alper@tryhisar.com",
+    name: "Alper",
+    phase: "delivery-pending",
+    kitSaved: false,
+    manualUnlock: false,
+    problems: [],
+    keychainProtected: true,
+    revision: 1,
+  }];
+  return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "preview-signup", setupState: "delivery-pending", problems: [] });
+}
+
 function createPreviewTerminalRequester(): Pick<
   ApprovalEvent,
   "requesterKind" | "appName" | "appIconURL" | "appPath" | "appSignature" | "appSigner" | "appWarning" | "allChainProcess"
@@ -936,6 +958,7 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     timeoutMilliseconds: 60_000,
     terminalName: coverage === "terminal-session" ? "ttys003" : "",
     coverage,
+    lifetime: "",
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("cliPassword") === "1",
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
@@ -957,6 +980,22 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
   };
 }
 
+// applyPreviewLifetime words a command-line request's lifetime as describeCommandLineLifetime in desktop/agent does,
+// once &app= has named the app.
+function applyPreviewLifetime(event: ApprovalEvent): ApprovalEvent {
+  if (event.kind !== "command-line") {
+    return event;
+  }
+  switch (event.coverage) {
+    case "app":
+      return { ...event, lifetime: `until 10 minutes after the last request from ${event.appName}, or until Hisar locks` };
+    case "connection":
+      return { ...event, lifetime: "for this connection only, at most until 10 minutes after its last request or until Hisar locks" };
+    default:
+      return { ...event, lifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks" };
+  }
+}
+
 // createPreviewSSHApproval is "Terminal wants to push to git.tryhisar.com"; the parameters below change it.
 function createPreviewSSHApproval(): ApprovalEvent {
   const isLocked = previewParameter.get("approvalLocked") === "1" || previewParameter.get("approvalPassword") === "1";
@@ -967,6 +1006,7 @@ function createPreviewSSHApproval(): ApprovalEvent {
     kind: "ssh-key",
     terminalName: "",
     coverage: "",
+    lifetime: "",
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("approvalPassword") === "1",
     ...createPreviewTerminalRequester(),
@@ -1045,7 +1085,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
       allSecretName: ["Work › Postgres staging › password", "Work › Stripe › api key"],
       allGrantDuration,
       grantDuration: "once",
-      grantScope: "A longer choice covers only these secrets.",
+      grantScope: "A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again.",
       isConnectionApproval: false,
     };
   }
@@ -1120,17 +1160,22 @@ function createPreviewHarnessApproval(kind: string): ApprovalEvent {
     workingDirectory: "~/Chore/hisarapp-core",
     allSecretName: ["Agents › Deploy token › password"],
     allGrantDuration: ["once", "hour", "day", "always"],
-    grantScope: "A longer choice covers only this secret.",
+    grantScope: "A longer choice lets omp in Tern run any command with this secret, in any folder, without asking again.",
   };
 }
 
 // createPreviewSignInApproval: &approval=sign-in (Hermes signs in to tosunlab.com in Google Chrome with one login), &logins=2 (the user
-// picks one), &agentLocked=1 (Hisar unlocks first, before it lists logins), &noTouchID=1 (the master password approves).
+// picks one; any larger number lists that many), &agentLocked=1 (Hisar unlocks first, before it lists logins), &noTouchID=1 (the master
+// password approves).
 function createPreviewSignInApproval(): ApprovalEvent {
   const isLocked = previewParameter.get("agentLocked") === "1";
   const allLogin = [{ vaultName: "Agents", title: "Tosun Lab", username: "user@example.com" }];
-  if (previewParameter.get("logins") === "2") {
+  const loginCount = Number(previewParameter.get("logins") ?? "1");
+  if (loginCount >= 2) {
     allLogin.push({ vaultName: "Agents", title: "Tosun Lab admin", username: "ops@example.com" });
+  }
+  for (let index = 3; index <= loginCount; index++) {
+    allLogin.push({ vaultName: "Agents", title: `Tosun Lab ${index}`, username: `user${index}@example.com` });
   }
   return {
     ...createPreviewHarnessApproval("run"),
@@ -1168,7 +1213,7 @@ function createPreviewSignInApproval(): ApprovalEvent {
 // plus &approvalLocked=1 (Touch ID unlocks), &approvalPassword=1 (master password unlocks), &compact=1, &forwarded=1, &noTouchID=1,
 // &phone=1 (the account's smart device can approve too).
 function listAllPreviewApproval(): ApprovalEvent[] {
-  return listAllPreviewApprovalWithoutApp().map(applyPreviewApp);
+  return listAllPreviewApprovalWithoutApp().map(applyPreviewApp).map(applyPreviewLifetime);
 }
 
 function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {
@@ -1484,7 +1529,27 @@ function continuePreviewImport(): Promise<ImportProgress> {
   );
 }
 
+// The preview has no Go backend, so it rates by length and two common patterns; the app rates with core/item.
+function ratePreviewPassword(password: string): PasswordStrength {
+  const bits = /password|1234/i.test(password) ? 8 : password.length * 3;
+  if (password === "") return { level: "", label: "", bits: 0 };
+  if (bits < 40) return { level: "weak", label: "Weak", bits };
+  if (bits < 60) return { level: "fair", label: "Fair", bits };
+  if (bits < 90) return { level: "good", label: "Good", bits };
+  return { level: "strong", label: "Strong", bits };
+}
+
+function checkPreviewMasterPassword(password: string): MasterPasswordFeedback {
+  const strength = ratePreviewPassword(password);
+  const feedback = { ...strength, message: "A few random words you can remember make a strong master password.", isBlocking: false };
+  if (password !== "" && password.length < 10) return { ...feedback, message: "Use at least 10 characters.", isBlocking: true };
+  if (password !== "" && strength.bits < 28) return { ...feedback, message: "This password is too easy to guess. Add a few more words or characters.", isBlocking: true };
+  if (strength.level === "weak") return { ...feedback, message: "You can use it, but another word or a few more characters make it much harder to guess." };
+  return feedback;
+}
+
 export const previewApi = {
+  openEmergencyKit: () => Promise.reject(new Error("Opening an Emergency Kit requires the Mac app.")),
   listAllImportFormat: () =>
     resolveAfterDelay([
       { id: "1pux", name: "1Password export (.1pux)" },
@@ -1524,14 +1589,8 @@ export const previewApi = {
     previewState = "unlocked";
     return resolveAfterDelay(previewStatus());
   },
-  signUp: (): Promise<SignUpResult> => {
-    previewState = "unlocked";
-    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "", setupState: "", problems: [] });
-  },
-  signUpWithoutInvite: (): Promise<SignUpResult> => {
-    previewState = "unlocked";
-    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "", setupState: "", problems: [] });
-  },
+  signUp: signUpPreview,
+  signUpWithoutInvite: signUpPreview,
   unlock: () => {
     previewState = "unlocked";
     return resolveAfterDelay(previewStatus());
@@ -1664,6 +1723,7 @@ export const previewApi = {
     vault.readIssues = vault.readIssues?.filter((issue) => issue.itemId);
     return resolveAfterDelay(buildPreviewVaultSummary(vault));
   },
+  ratePassword: (password: string) => Promise.resolve(ratePreviewPassword(password)),
   generatePassword: (config: PasswordConfig) => {
     const alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ" + (config.digits ? "23456789" : "") + (config.symbols ? "!@#$%^&*-_=+?" : "");
     const allRandom = crypto.getRandomValues(new Uint32Array(config.length || 24));
@@ -2082,10 +2142,20 @@ export const previewApi = {
   cancelApprovalTouchID: () => Promise.resolve(),
   cancelTouchIDPrompt: () => Promise.resolve(),
   hasNativeTouchIDView: false,
-  saveNewAccountEmergencyKit: () => resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
+  saveNewAccountEmergencyKit: () => {
+    previewRecovery = previewRecovery.map((entry) => entry.operationId === "preview-signup" ? { ...entry, kitSaved: true } : entry);
+    return resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf");
+  },
   saveEmergencyKit: (password: string) =>
     password.length < 4 ? Promise.reject(new Error("incorrect email, master password or Secret Key")) : resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
   forgetNewAccountSecretKey: () => Promise.resolve(),
+  acknowledgeNewAccountRecovery: () => {
+    if (!previewRecovery.some((entry) => entry.operationId === "preview-signup" && entry.kitSaved)) {
+      return Promise.reject(new Error("finish setup and save the Emergency Kit before acknowledging delivery"));
+    }
+    previewRecovery = previewRecovery.filter((entry) => entry.operationId !== "preview-signup");
+    return resolveAfterDelay(undefined);
+  },
   listPendingRecovery: () => resolveAfterDelay(previewRecovery.map((entry) => ({ ...entry }))),
   resumePendingRecovery: (_operationID: string, password: string): Promise<SignUpResult> => {
     if (password.length < 4) return Promise.reject(new Error("The password could not open this preview recovery operation."));
@@ -2100,6 +2170,7 @@ export const previewApi = {
     previewRecovery = [];
     return Promise.resolve();
   },
+  checkMasterPassword: (password: string) => Promise.resolve(checkPreviewMasterPassword(password)),
   changeMasterPassword: (currentPassword: string) =>
     currentPassword.length < 4
       ? Promise.reject(new Error("the master password is not correct"))

@@ -15,6 +15,7 @@ import type {
   ItemDetail,
   LauncherApp,
   LoginItemStatus,
+  MasterPasswordFeedback,
   Organization,
   OrganizationInvitation,
   OrganizationMember,
@@ -263,6 +264,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     kind: "ssh-key",
     terminalName: "",
     coverage: "",
+    lifetime: "",
     isUnlockRequired: false,
     isPasswordUnlock: false,
     requesterKind: "app",
@@ -362,7 +364,7 @@ export function createAgentRunApprovalEvent(overrides: Partial<ApprovalEvent> = 
     allSecretName: ["Work › Stripe › api key", "Work › Postgres staging › password"],
     allGrantDuration: ["once", "hour"],
     grantDuration: "once",
-    grantScope: "A longer choice covers only these secrets.",
+    grantScope: "A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again.",
     isConnectionApproval: false,
     ...overrides,
   });
@@ -482,6 +484,7 @@ export function createCommandLineApprovalEvent(overrides: Partial<ApprovalEvent>
     isRememberable: false,
     terminalName: "ttys003",
     coverage: "terminal-session",
+    lifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks",
     ...overrides,
   });
 }
@@ -581,7 +584,7 @@ export function createReceivedShareInvitation(overrides: Partial<ReceivedShareIn
     role: "editor",
     invitedByName: "Carol",
     invitedByEmail: "carol@example.com",
-    expiresAt: "2026-10-18T09:00:00Z",
+    expiresAt: new Date(Date.now() + 7 * 86400_000).toISOString(),
     ...overrides,
   };
 }
@@ -595,7 +598,7 @@ export function createSentShareInvitation(overrides: Partial<SentShareInvitation
     recipientName: "",
     role: "reader",
     state: "pending",
-    expiresAt: "2026-10-18T09:00:00Z",
+    expiresAt: new Date(Date.now() + 7 * 86400_000).toISOString(),
     acceptedAt: "",
     requiresConfirmation: false,
     recipientId: "",
@@ -660,7 +663,7 @@ export function createOrganizationInvitation(overrides: Partial<OrganizationInvi
     role: "member",
     invitedByName: "Ada",
     invitedByEmail: "ada@example.com",
-    expiresAt: "2026-10-18T09:00:00Z",
+    expiresAt: new Date(Date.now() + 7 * 86400_000).toISOString(),
     ...overrides,
   };
 }
@@ -694,6 +697,27 @@ export function createVaultActions(overrides: Partial<VaultActions> = {}): Vault
     targetVaults: [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 2 }],
     ...overrides,
   };
+}
+
+const masterPasswordAdvice = "A few random words you can remember make a strong master password.";
+
+// core/item's ratings (strength_test.go) of the passwords the specs check; any other password rates Strong.
+const allTestMasterPasswordFeedback: Record<string, MasterPasswordFeedback> = {
+  "": { level: "", label: "", bits: 0, message: masterPasswordAdvice, isBlocking: false },
+  hunter2: { level: "weak", label: "Weak", bits: 36, message: "Use at least 10 characters.", isBlocking: true },
+  password1234: { level: "weak", label: "Weak", bits: 8, message: "This password is too easy to guess. Add a few more words or characters.", isBlocking: true },
+  "orange cactus harbor": {
+    level: "weak",
+    label: "Weak",
+    bits: 33,
+    message: "You can use it, but another word or a few more characters make it much harder to guess.",
+    isBlocking: false,
+  },
+  "orange cactus harbor lantern": { level: "fair", label: "Fair", bits: 44, message: masterPasswordAdvice, isBlocking: false },
+};
+
+function checkTestMasterPassword(password: string): MasterPasswordFeedback {
+  return allTestMasterPasswordFeedback[password] ?? { level: "strong", label: "Strong", bits: 100, message: masterPasswordAdvice, isBlocking: false };
 }
 
 export function createApiMock() {
@@ -737,6 +761,10 @@ export function createApiMock() {
     describeCard: vi.fn().mockResolvedValue({ brand: "", last4: "", numberWarning: "", expiryWarning: "" }),
     deletePasskey: vi.fn(),
     generatePassword: vi.fn(),
+    ratePassword: vi.fn(async (password: string) => {
+      const { level, label, bits } = checkTestMasterPassword(password);
+      return { level, label, bits };
+    }),
     generateSSHKey: vi.fn(),
     importSSHKey: vi.fn(),
     listAllPerson: vi.fn().mockResolvedValue([]),
@@ -821,12 +849,14 @@ export function createApiMock() {
     hasNativeTouchIDView: false,
     saveNewAccountEmergencyKit: vi.fn(),
     saveEmergencyKit: vi.fn(),
+    checkMasterPassword: vi.fn(async (password: string) => checkTestMasterPassword(password)),
     changeMasterPassword: vi.fn(),
     replaceSecretKey: vi.fn(),
     previewAccountDeletion: vi.fn(),
     deleteAccount: vi.fn(),
     dismissSignedOutReason: vi.fn(),
     forgetNewAccountSecretKey: vi.fn().mockResolvedValue(undefined),
+    acknowledgeNewAccountRecovery: vi.fn().mockResolvedValue(undefined),
     listPendingRecovery: vi.fn().mockResolvedValue([]),
     resumePendingRecovery: vi.fn(),
     savePendingRecoveryEmergencyKit: vi.fn(),
@@ -858,6 +888,7 @@ export function createApiMock() {
     setOpenAtLogin: vi.fn(),
     openLoginItemSettings: vi.fn().mockResolvedValue(undefined),
     listAllImportFormat: vi.fn().mockResolvedValue([]),
+    openEmergencyKit: vi.fn().mockResolvedValue(null),
     chooseImportFile: vi.fn(),
     openImportFile: vi.fn(),
     previewImport: vi.fn(),

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
   api,
   createEmptyAddress,
@@ -12,6 +12,7 @@ import {
   createEmptySoftwareLicense,
   type CardDescription,
   type ItemDetail,
+  type ItemField,
 } from "../api";
 import {
   addressCategory,
@@ -20,6 +21,7 @@ import {
   apiCredentialCategory,
   creditCardCategory,
   databaseCategory,
+  customFieldNameWarning,
   describeAPICredentialExpiry,
   describeServerPort,
   identityCategory,
@@ -138,6 +140,7 @@ onBeforeUnmount(() => {
   store.editorDraft = null;
 });
 const isPasswordVisible = ref(false);
+const isSetupKeyVisible = ref(false);
 const isGeneratorOpen = ref(store.editorMode === "create");
 const isIconPickerOpen = ref(false);
 // websiteIconURL is the website whose icon Automatic shows, from the URLs as typed.
@@ -284,9 +287,22 @@ function handleTagKey(event: KeyboardEvent): void {
   }
 }
 
+const hasTriedSaving = ref(false);
+
+function isMissingName(field: ItemField): boolean {
+  return field.name.trim() === "" && field.value !== "";
+}
+
 async function submitItem(): Promise<void> {
   addTag();
   draft.urls = parseURLText();
+  hasTriedSaving.value = true;
+  const unnamedIndex = draft.fields.findIndex(isMissingName);
+  if (unnamedIndex >= 0) {
+    await nextTick();
+    form.value?.querySelector<HTMLInputElement>(`input[name="fieldName${unnamedIndex}"]`)?.focus();
+    return;
+  }
   await saveItem({ ...draft });
 }
 
@@ -651,6 +667,24 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
       </label>
       <PasswordGenerator v-if="isGeneratorOpen" @use="usePassword" @close="isGeneratorOpen = false" />
       <label v-if="!isDatabase">
+        <span>One-time code setup key</span>
+        <span class="row">
+          <input
+            v-model="draft.oneTimePassword"
+            name="oneTimePassword"
+            aria-label="One-time code setup key"
+            class="monospace"
+            :type="isSetupKeyVisible ? 'text' : 'password'"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Setup key or otpauth:// link"
+          />
+          <button type="button" class="icon-button" :aria-label="isSetupKeyVisible ? 'Hide setup key' : 'Show setup key'" @click="isSetupKeyVisible = !isSetupKeyVisible">
+            <AppIcon :name="isSetupKeyVisible ? 'eyeOff' : 'eye'" />
+          </button>
+        </span>
+      </label>
+      <label v-if="!isDatabase" class="last">
         <span>{{ isServer ? "Admin console URL" : "Websites" }}</span>
         <textarea
           v-model="urlText"
@@ -659,23 +693,19 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           :placeholder="isServer ? 'https://console.example.com' : 'https://example.com (one per line)'"
         ></textarea>
       </label>
-      <label v-if="!isDatabase" class="last">
-        <span>One-time code setup key</span>
-        <input
-          v-model="draft.oneTimePassword"
-          name="oneTimePassword"
-          class="monospace"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Setup key or otpauth:// link"
-        />
-      </label>
     </section>
 
     <section v-if="!isSSHKey" class="card editor-card">
       <p class="section-label">Other fields</p>
       <div v-for="(field, index) in draft.fields" :key="index" class="custom-field">
-        <input v-model="field.name" :name="`fieldName${index}`" placeholder="Name" aria-label="Field name" />
+        <input
+          v-model="field.name"
+          :name="`fieldName${index}`"
+          placeholder="Name"
+          aria-label="Field name"
+          :aria-invalid="hasTriedSaving && isMissingName(field)"
+          :aria-describedby="hasTriedSaving && isMissingName(field) ? `fieldNameError${index}` : undefined"
+        />
         <input
           v-model="field.value"
           :name="`fieldValue${index}`"
@@ -687,6 +717,10 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           <input v-model="field.concealed" type="checkbox" /> <span>Secret</span>
         </label>
         <button type="button" class="ghost icon-button" aria-label="Remove field" @click="removeField(index)"><AppIcon name="close" /></button>
+        <small v-if="hasTriedSaving && isMissingName(field)" :id="`fieldNameError${index}`" class="hint field-error" data-testid="field-name-error">
+          Enter a name for this field.
+        </small>
+        <small v-if="customFieldNameWarning(draft.fields, index)" class="field-warning" :data-testid="`field-name-warning-${index}`">{{ customFieldNameWarning(draft.fields, index) }}</small>
       </div>
       <button type="button" class="ghost add-field" @click="addField"><AppIcon name="plus" /> Add field</button>
     </section>
@@ -862,6 +896,17 @@ button.active {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.field-error {
+  grid-column: 1 / 3;
+  margin-top: -4px;
+  color: var(--color-danger-text);
+}
+
+.custom-field .field-warning {
+  grid-column: 1 / -1;
+  color: var(--color-warning);
 }
 
 .concealed {

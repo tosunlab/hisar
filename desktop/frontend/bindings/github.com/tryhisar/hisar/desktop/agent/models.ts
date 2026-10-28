@@ -42,9 +42,11 @@ export interface ApprovalEvent {
 
     /**
      * Coverage is what approving a command-line or launcher request covers: clisocket's terminal-session, app or
-     * connection.
+     * connection. Lifetime is how long a command-line approval of it lasts, "until 10 minutes after …", which the dialog
+     * and the phones show after "Lasts".
      */
     "coverage": string;
+    "lifetime": string;
     "isUnlockRequired": boolean;
     "isPasswordUnlock": boolean;
     "isPhoneApproval": boolean;

@@ -102,7 +102,7 @@ struct SettingsView: View {
                 Section {
                     NavigationLink(value: SettingsDestination.people) {
                         Label("People", systemImage: "person.2")
-                            .badge(model.receivedInvitationCount)
+                            .badge(model.peopleInvitationCount)
                     }
                     .accessibilityIdentifier("open-people")
                     NavigationLink(value: SettingsDestination.organizations) {
@@ -147,12 +147,12 @@ struct SettingsView: View {
             }
             .applyThemedListStyle()
             .navigationTitle("Settings")
-            .confirmationDialog("Sign out of Hisar on this iPhone?", isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
+            .confirmationDialog(AccountLifecycleLogic.signOutTitle, isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     Task { await model.signOut() }
                 }
             } message: {
-                Text("You will need your Secret Key and master password to sign in again.")
+                Text(AccountLifecycleLogic.signOutMessage)
             }
             .task {
                 isAutoFillEnabled = await AutoFillSettings.checkIsEnabled()
@@ -651,7 +651,7 @@ struct MacApprovalsView: View {
                 }
                 .accessibilityIdentifier("mac-approval-toggle")
             } footer: {
-                Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")
+                Text("Requests to use SSH keys, the command-line tool, coding agents and apps on your Mac appear here while Hisar is open and unlocked on both devices.")
             }
         }
         .applyThemedListStyle()
@@ -665,7 +665,7 @@ struct NotificationSettingsView: View {
 
     static func describe(_ kind: PushKind) -> (title: String, detail: String, systemImage: String) {
         switch kind {
-        case .approval: ("Approval requests", "Your Mac asks this iPhone to approve an SSH key, the command-line tool or an app.", "laptopcomputer.and.iphone")
+        case .approval: ("Approval requests", "Your Mac asks this iPhone to approve an SSH key, the command-line tool, a coding agent or an app.", "laptopcomputer.and.iphone")
         case .security: ("Security alerts", "A new device signed in, or your master password or Secret Key changed.", "lock.shield")
         case .sharing: ("Sharing", "Someone invited you to a vault or an organization.", "person.2")
         }
@@ -728,7 +728,7 @@ struct NotificationSettingsView: View {
         if notifications.authorization == .allowed && !notifications.settings.isServerSending {
             return "The Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
         }
-        return "A notification only says what kind of thing happened, never what or who it is about. Open and unlock Hisar to see the details. Hisar's push relay, Apple and the Hisar server see when a notification is sent, but not what it is about."
+        return PushNotificationsModel.privacyExplanation
     }
 }
 

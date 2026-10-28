@@ -119,8 +119,19 @@ internal fun ItemDetailContent(
     }
     if (item.allField.isNotEmpty()) {
         RowsSection(header = "Other fields") {
-            item.allField.forEach { field ->
-                row { FieldRow(actions, field.name, field.name, field.value, field.concealed, isCustom = true) }
+            item.allField.forEachIndexed { index, field ->
+                row {
+                    SecretFieldRow(
+                        label = field.name,
+                        value = field.value,
+                        isConcealed = field.concealed,
+                        isRevealed = actions.isCustomRevealed(index),
+                        toggleReveal = { actions.toggleCustomReveal(index) },
+                        copy = { actions.copyText(field.value, field.name) },
+                        copyReference = { actions.copyReference(field.name) },
+                        actionLabel = field.name,
+                    )
+                }
             }
         }
     }
@@ -180,7 +191,7 @@ internal fun ItemDetailContent(
         }
     }
     item.referenceFieldName?.let { referenceField ->
-        FormSection(footer = { Text("A hisar:// reference to the $referenceField, for hisar run and hisar read. Touch and hold a field for its own reference.") }) {
+        FormSection(footer = { Text("For hisar run and hisar read on your Mac.") }) {
             FormButtonRow("Copy secret reference", onClick = { actions.copyReference(referenceField) }, testTag = "copy-secret-reference", icon = Icons.Outlined.Terminal)
         }
     }
