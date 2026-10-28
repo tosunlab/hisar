@@ -129,6 +129,8 @@ The icon picker keeps the last completed icon while a photo is preparing. **Done
 **Cancel preparation**, selecting another icon, or dismissing the sheet cancels the pending photo.
 An older photo or its error cannot replace a newer choice.
 
+`FaceIDUITests` posts matching-face notifications every 500 ms on a background timer, starting before the action that requests authentication. Slow XCTest permission and accessibility queries must not delay the simulated face. The timer stops when that step finishes, and authentication errors still fail the test.
+
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,
 or denied) is driven through a debug-only preview with a made-up request: launch with `-HisarApprovalPreview ssh` (or
