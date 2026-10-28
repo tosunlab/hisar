@@ -5,6 +5,7 @@ import java.io.File
 import java.util.UUID
 import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.encodeToByteString
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 
@@ -1234,6 +1235,25 @@ open class FakeBackend : VaultBackend {
 
     override fun getPushSettings(): PushSettings = pushSettingsValue
 
+    /** When false, the fake rejects every approval push, as Go does for an expired or wrongly signed preview. */
+    var isApprovalPushValid = true
+
+    override fun openApprovalPush(message: String): PhoneApproval? {
+        record("openApprovalPush")
+        if (!isApprovalPushValid) return null
+        val preview = try {
+            backendJson.decodeFromString(FakeApprovalPushMessage.serializer(), message).approval?.preview
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        val previewJson = Base64URL.decode(preview)?.toByteArray()?.decodeToString() ?: return null
+        return try {
+            backendJson.decodeFromString(PhoneApproval.serializer(), previewJson)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     override fun setWebsiteIconsEnabled(isEnabled: Boolean) {
         record("setWebsiteIconsEnabled")
         isWebsiteIconsEnabledValue = isEnabled
@@ -1481,3 +1501,10 @@ open class FakeBackend : VaultBackend {
         )
     }
 }
+
+/** The approval push envelope the fake reads, mirroring what the Mac encrypts: a signed, base64url preview. */
+@Serializable
+private data class FakeApprovalPushMessage(val approval: FakeApprovalPushPart? = null)
+
+@Serializable
+private data class FakeApprovalPushPart(val preview: String = "", val signature: String = "")

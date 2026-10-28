@@ -188,6 +188,12 @@ interface VaultBackend {
     fun setPushKindEnabled(kind: PushKind, isEnabled: Boolean)
     fun getPushSettings(): PushSettings
 
+    /**
+     * The approval preview a push carries, if the account signed it and it has not expired; null otherwise, so the
+     * notification keeps the kind's own sentence. Go verifies the signature; the fields map onto a [PhoneApproval].
+     */
+    fun openApprovalPush(message: String): PhoneApproval?
+
     /** Links a login to an Android app, so AutoFill offers it there; linking it again changes nothing. */
     fun addAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail
 

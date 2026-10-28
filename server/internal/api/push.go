@@ -10,6 +10,14 @@ func (s *Server) handleGetPushConfig(c fiber.Ctx) error {
 	return c.JSON(s.service.GetPushConfig())
 }
 
+func (s *Server) handleListPushKeys(c fiber.Ctx) error {
+	keys, err := s.service.ListPushKeys(c.Context(), s.getActor(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(keys)
+}
+
 func (s *Server) handleSetDevicePush(c fiber.Ctx) error {
 	var registration apitypes.PushRegistration
 	if err := decodeBody(c, &registration); err != nil {

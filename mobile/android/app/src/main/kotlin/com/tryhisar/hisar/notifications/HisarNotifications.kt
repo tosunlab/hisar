@@ -94,6 +94,38 @@ object HisarNotifications {
         post(context, getChannel(kind), kind.ordinal + 1, kind, getText(context, kind), notification.detailText())
     }
 
+    /**
+     * Posts the notification for an approval push whose signed preview opened: its [title] and [body] name the Mac, the
+     * app and the request in full, with the kind's own sentence on a lock screen set to hide content.
+     */
+    fun postApprovalPush(context: Context, title: String, body: String) {
+        val manager = NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled()) return
+        val channel = getChannel(PushKind.APPROVAL)
+        val builder = NotificationCompat.Builder(context, channel)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().setBigContentTitle(title).bigText(body))
+            .setContentIntent(createOpenIntent(context, PushKind.APPROVAL))
+            .setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPublicVersion(
+                NotificationCompat.Builder(context, channel)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setContentTitle(context.getString(R.string.app_name))
+                    .setContentText(getText(context, PushKind.APPROVAL))
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .build(),
+            )
+        try {
+            manager.notify(PushKind.APPROVAL.ordinal + 1, builder.build())
+        } catch (_: SecurityException) {
+            // The user took the permission back between the check and the post.
+        }
+    }
+
     fun isDistributorInstalled(context: Context): Boolean = UnifiedPush.getDistributors(context).any { it != context.packageName }
 
     /**

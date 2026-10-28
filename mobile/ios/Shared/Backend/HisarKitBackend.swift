@@ -595,6 +595,10 @@ final class HisarKitBackend: VaultBackend {
         try decode(PushSettings.self, from: callReturningText { hisar.getPushSettings($0) })
     }
 
+    func getApprovalPushVerifier() throws -> ApprovalPushVerifier {
+        try decode(ApprovalPushVerifier.self, from: callReturningText { hisar.getApprovalPushVerifier($0) })
+    }
+
     func getTheme() -> VaultTheme {
         (try? decode(VaultTheme.self, from: hisar.getTheme())) ?? .standard
     }

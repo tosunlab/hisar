@@ -203,6 +203,8 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 		s.mutex.Unlock()
 		return nil, err
 	}
+	// The keyset is wiped when Hisar locks, so the preview is signed now; the phones' keys come from the network after.
+	pushPreview := createApprovalPushPreview(s.unlockedSession.Keyset, s.unlockedSession.AccountID, request)
 	relay.mutex.Lock()
 	relay.tracker.Add(request.RequestID, sealedRequest, request.ExpiresAt)
 	relay.decidesByRequestID[request.RequestID] = decide
@@ -212,7 +214,11 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 	postedChannel := make(chan bool, 1)
 	finishedChannel := make(chan struct{})
 	go func() {
-		isPosted := postPhoneApproval(apiClient, &apitypes.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt}, finishedChannel)
+		ctx, cancel := context.WithTimeout(context.Background(), phoneApprovalRequestTimeout)
+		allPushMessage := buildApprovalPushMessages(ctx, apiClient, pushPreview)
+		cancel()
+		createRequest := &apitypes.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt, AllPushMessage: allPushMessage}
+		isPosted := postPhoneApproval(apiClient, createRequest, finishedChannel)
 		if !isPosted {
 			s.forgetPhoneApproval(request.RequestID)
 		}
