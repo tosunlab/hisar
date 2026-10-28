@@ -232,6 +232,8 @@ struct EmergencyKitBanner: View {
             model.openEmergencyKit()
         } label: {
             Text(kit.savedBy.isEmpty ? "Save Emergency Kit" : "Continue to confirmation")
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
         }
