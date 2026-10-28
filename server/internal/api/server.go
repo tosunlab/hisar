@@ -205,6 +205,7 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Use(s.requireMinimumVersion)
 	apiGroup.Get("/version-check", s.limitVersionCheckRate, handleCheckVersion)
 	apiGroup.Get("/auth/prelogin", s.limitRate, s.handlePrelogin)
+	apiGroup.Get("/auth/register/policy", s.limitVersionCheckRate, s.handleRegistrationPolicy)
 	apiGroup.Post("/auth/register/start", s.limitRate, s.handleRegisterStart)
 	apiGroup.Post("/auth/register/finish", s.limitRate, s.handleRegisterFinish)
 	apiGroup.Post("/auth/login/start", s.limitRate, refuseLegacyAuthentication)
