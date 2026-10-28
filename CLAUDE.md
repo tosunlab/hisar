@@ -135,6 +135,9 @@ only Android calls:
 
 `cmd/hisar-ui-test-mac` plays the user's Mac in the Android phone approval UI test, which `scripts/test-android-ui.sh`
 starts it for: it signs up, sends the phone real approval requests, and saves each answer it verified in the Personal vault.
+`cmd/hisar-ui-test-partner` plays the sharing and organization partner of both phones' UI tests once
+`scripts/ui-test-partner.sh` set it up on the CLI: it unlocks once and answers every 2 seconds, so the run never derives
+the partner's keys again.
 
 ### mobile/android
 

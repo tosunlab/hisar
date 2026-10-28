@@ -1,6 +1,6 @@
 import XCTest
 
-// scripts/test-ios-ui.sh runs a partner on the command line: the admin of Northwind, whose team Platform has Deploy as
+// scripts/test-ios-ui.sh runs a partner (scripts/ui-test-partner.sh): the admin of Northwind, whose team Platform has Deploy as
 // editor and Audit as reader. It adds the joining account to Platform once it joined, removes it again once it saved
 // "Remove me" in Deploy, accepts every organization invitation and writes "Seen by partner" into Runbooks once it reads it.
 final class OrganizationUITests: HisarUITestCase {

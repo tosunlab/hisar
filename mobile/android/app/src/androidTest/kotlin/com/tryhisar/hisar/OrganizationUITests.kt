@@ -9,7 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-// scripts/test-android-ui.sh runs a partner on the command line: the admin of Northwind, whose team Platform has Deploy as
+// scripts/test-android-ui.sh runs a partner (scripts/ui-test-partner.sh): the admin of Northwind, whose team Platform has Deploy as
 // editor and Audit as reader. It adds the joining account to Platform once it joined, removes it again once it saved
 // "Remove me" in Deploy, accepts every organization invitation and writes "Seen by partner" into Runbooks once it reads it.
 @RunWith(AndroidJUnit4::class)
