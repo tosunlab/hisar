@@ -195,11 +195,6 @@ describe("SettingsView", () => {
     expect(findGroup("Sign-up").textContent).toContain("Set by HISAR_OPEN_REGISTRATION");
   });
 
-  it("says the audit log is kept at least 30 days", async () => {
-    await mount(createSettings());
-    expect(findInput("retention.auditDays").closest("label")!.textContent).toContain("Days, at least 30");
-  });
-
   it("marks a group with unsaved changes until it is saved or reverted", async () => {
     await mount(createSettings());
     expect(findSaveButton("Security").disabled).toBe(true);

@@ -16,7 +16,7 @@ on pushes to `main`: a merge was already tested as its pull request. A new push 
 `TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
 binaries, the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed), the desktop frontend
 (typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pull request changes the desktop app or what it builds from, as below), the extension (tests, Chromium end-to-end tests, zip, and Firefox end-to-end tests on Firefox 140 and 153),
-the share link page in Chromium against the server, the docs site (typecheck, build, and its image built and served once), the admin dashboard (typecheck, tests, the `admin/src/themes.css`
+the share link page in Chromium against the server, the docs site (host typecheck, then its image built and served once), the admin dashboard (typecheck, tests, the `admin/src/themes.css`
 freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
 `core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
 release APKs, lint and the JVM tests in one job, and the instrumented tests on x86_64 API 36 emulators against a local server in
@@ -25,6 +25,15 @@ two more, split by the test classes' measured run times in `scripts/ui-test-part
 `core/`, `go.work` or the workflow, and not while the pull request has the label `skip-android`, for changes whose Android build
 and tests already passed locally with `make build-android-aar build-android test-android test-android-ui`; add the label before
 pushing).
+
+The extension job installs dependencies once. Its Chromium tests build the Chrome and Firefox outputs, then the job lints
+the Firefox output and packages both without rebuilding. The Chrome ZIP contains the output used by those browser tests.
+The standalone `make test-extension`, `make test-extension-end-to-end` and `make build-extension` commands still install
+their own dependencies.
+
+The docs job typechecks on the host and builds the site only inside `docs/Dockerfile`. It boots that image and checks the
+home page and CLI page. Local `make test-docs` still typechecks and builds; `make build-docs` and the docs release workflow
+also keep their builds.
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
 (HisarKit, Xcode project check, unit tests, then UI tests against a local server in three jobs that run the one build, split by
