@@ -3,11 +3,15 @@ package com.tryhisar.hisar.ui.item
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.filled.Add
@@ -18,8 +22,12 @@ import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -362,10 +370,21 @@ fun SoftwareLicenseSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -
     }
 }
 
+class FieldNameFocus {
+    val focusRequester = FocusRequester()
+    val bringIntoViewRequester = BringIntoViewRequester()
+}
+
 /** Custom fields: each with its name, its value, hidden when secret, and the Secret switch; its button or a swipe removes one. */
 @Composable
-fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit) {
+fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit, nameFocus: (Int) -> FieldNameFocus) {
     val allField = draft.item.allField
+    val keyboardBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(draft.isUnnamedFieldShown, draft.unnamedFieldIndex, keyboardBottom) {
+        if (draft.isUnnamedFieldShown) {
+            draft.unnamedFieldIndex?.let { nameFocus(it).bringIntoViewRequester.bringIntoView() }
+        }
+    }
     fun update(index: Int, transform: (ItemField) -> ItemField) =
         onChange(draft.withItem { item -> item.copy(allField = item.allField.toMutableList().apply { set(index, transform(get(index))) }) })
     FormSection(header = "Other fields") {
@@ -374,7 +393,20 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
             SwipeToDeleteRow(onDelete = remove) {
                 Row(Modifier.padding(vertical = 4.dp).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        EditorField(field.name, { value -> update(index) { it.copy(name = value) } }, "Name", "editor-field-$index-name", textStyle = HisarType.footnote, label = "Name")
+                        Column(Modifier.bringIntoViewRequester(nameFocus(index).bringIntoViewRequester)) {
+                            EditorField(
+                                field.name, { value -> update(index) { it.copy(name = value) } }, "Name", "editor-field-$index-name",
+                                modifier = Modifier.focusRequester(nameFocus(index).focusRequester), textStyle = HisarType.footnote, label = "Name",
+                            )
+                            if (draft.isUnnamedFieldShown && field.isNameMissing) {
+                                Text(
+                                    "Enter a name for this field.",
+                                    color = HisarTheme.colors.destructive,
+                                    style = HisarType.footnote,
+                                    modifier = Modifier.padding(start = 16.dp, bottom = 4.dp).testTag("editor-field-$index-name-error"),
+                                )
+                            }
+                        }
                         val nameWarning = draft.fieldNameWarning(index)
                         if (nameWarning.isNotEmpty()) Warning(nameWarning, "editor-field-$index-name-warning")
                         EditorField(

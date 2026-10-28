@@ -141,7 +141,9 @@ data class VaultSummary(
 }
 
 @Serializable
-data class ItemField(val name: String, val value: String, val concealed: Boolean)
+data class ItemField(val name: String, val value: String, val concealed: Boolean) {
+    val isNameMissing: Boolean get() = name.isBlank() && value.isNotEmpty()
+}
 
 @Serializable
 data class ItemDetail(

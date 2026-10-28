@@ -64,6 +64,10 @@ still inside the list's visible bounds.
 On an emulator, the biometric tests enroll fingerprints through the emulator console, with the token in
 `~/.emulator_console_auth_token`.
 
+The script builds both APKs before running instrumentation. It uses `--no-daemon` and
+`-Pkotlin.compiler.execution.strategy=in-process` for each Gradle invocation so the build's Gradle and Kotlin JVMs
+exit before tests start. Keeping those JVMs alive alongside the emulator can exhaust the CI runner's host memory.
+
 `IosTestParityTest` fails when an iPhone test has no Android test of the same name, a rename or a reason. Port an iPhone
 test under its Swift name and delete its line from
 `android/model/src/test/resources/ios-test-parity-expected-missing.txt`, which lists the tests not ported yet.

@@ -167,6 +167,11 @@ struct ItemField: Codable, Hashable {
     var name: String
     var value: String
     var concealed: Bool
+
+    var isNameMissing: Bool {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !value.isEmpty
+    }
+
     private static let builtInReferenceNames: Set<String> = ["username", "password", "url", "notes", "one-time code", "public key", "fingerprint", "connection string"]
 
     static func nameWarning(_ fields: [ItemField], index: Int) -> String {
