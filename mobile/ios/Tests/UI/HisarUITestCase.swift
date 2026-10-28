@@ -162,7 +162,7 @@ class HisarUITestCase: XCTestCase {
         let lists = app.collectionViews
         let list = lists.element(boundBy: max(0, lists.count - 1))
         for _ in 0..<8 {
-            if element.waitForExistence(timeout: 1) && element.isHittable {
+            if element.waitForExistence(timeout: 1) && element.isHittable && isClearOfTabBar(element) {
                 return
             }
             guard list.exists else { break }
@@ -172,6 +172,13 @@ class HisarUITestCase: XCTestCase {
                 withVelocity: .slow, thenHoldForDuration: 0.1)
         }
         waitFor(element, file: file, line: line)
+    }
+
+    // The tab bar floats over the end of the list. A row partly under it still counts as hittable, but a tap there goes to
+    // the bar: in job 122902965203 the Add member menu under it never opened.
+    private func isClearOfTabBar(_ element: XCUIElement) -> Bool {
+        let tabBar = app.tabBars.firstMatch
+        return !(tabBar.exists && tabBar.isHittable) || element.frame.maxY <= tabBar.frame.minY
     }
 
     // On a slow simulator the keyboard focus comes a moment after the tap, and typing before it fails, so it waits for the focus
