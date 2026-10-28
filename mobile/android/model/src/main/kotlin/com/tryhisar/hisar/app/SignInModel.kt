@@ -6,6 +6,7 @@ import com.tryhisar.hisar.model.InviteLink
 import com.tryhisar.hisar.model.SignInLink
 import com.tryhisar.hisar.model.SignUpResult
 import com.tryhisar.hisar.model.VaultLogic
+import com.tryhisar.hisar.model.SignUpPolicy
 import com.tryhisar.hisar.model.trimmingWhitespacesAndNewlines
 import java.io.File
 import java.util.UUID
@@ -14,11 +15,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** What covers the app right after sign-up, until the new account's owner has saved the Secret Key. */
+/** The account's kit presentation contains no portable secret. Core owns its authorization. */
 sealed interface NewAccountStep {
-    data class SaveSecretKey(val secretKey: String) : NewAccountStep
+    data object SaveSecretKey : NewAccountStep
 
     data object BiometricOffer : NewAccountStep
+}
+
+sealed interface SignUpPolicyState {
+    data object Checking : SignUpPolicyState
+    data class Ready(val policy: SignUpPolicy) : SignUpPolicyState
+    data class Failed(val server: String, val message: String) : SignUpPolicyState
+
+    val requiresInvitation: Boolean get() = this is Ready && policy.mode in listOf("invite", "setup")
+    val showsInviteField: Boolean get() = this is Ready && policy.mode != "open"
+    fun showsAccountFields(hasInvitation: Boolean): Boolean = hasInvitation || this is Ready && !requiresInvitation
 }
 
 /**
@@ -28,6 +39,12 @@ sealed interface NewAccountStep {
 class SignInModel(private val context: ModelContext, private val isPlainHttpAllowed: Boolean) {
     private val mutableNewAccountStep = MutableStateFlow<NewAccountStep?>(null)
     val newAccountStep: StateFlow<NewAccountStep?> = mutableNewAccountStep.asStateFlow()
+    val signUpPolicy = MutableStateFlow<SignUpPolicyState>(SignUpPolicyState.Checking)
+    val isInvitationRequiredAfterSubmit = MutableStateFlow(false)
+    val interruptedKitOperationID = MutableStateFlow<String?>(null)
+    private var policyGeneration = 0L
+    private var policyServer = ""
+    private var kitEpoch = 0L
 
     /** A link the sign-in form takes in, then clears: from the Emergency Kit's QR code or a hisar://sign-in link. */
     val pendingSignInLink = MutableStateFlow<SignInLink?>(null)
@@ -44,11 +61,60 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
     /** Why a scanned QR code filled nothing in. */
     val scannerMessage = MutableStateFlow<String?>(null)
 
-    // Locking and signing out make the backend forget the new Secret Key, so the cover must not keep showing it.
     init {
-        context.addStatusListener { _, current ->
-            if (!current.isUnlocked) mutableNewAccountStep.value = null
+        context.addStatusListener { previous, current ->
+            val sameAccount = previous.email == current.email && previous.server == current.server
+            if (previous.isUnlocked && !current.isUnlocked || !sameAccount) {
+                kitEpoch++
+                interruptedKitOperationID.value = if (sameAccount && current.isSignedIn &&
+                    mutableNewAccountStep.value == NewAccountStep.SaveSecretKey
+                ) previous.emergencyKit?.operationId else null
+                mutableNewAccountStep.value = null
+            }
+            if (!current.isSignedIn) interruptedKitOperationID.value = null
+            if (!previous.isUnlocked && current.isUnlocked) {
+                val interrupted = interruptedKitOperationID.value
+                if (interrupted != null && interrupted == current.emergencyKit?.operationId) {
+                    mutableNewAccountStep.value = NewAccountStep.SaveSecretKey
+                }
+                interruptedKitOperationID.value = null
+            }
         }
+    }
+
+    suspend fun checkSignUpPolicy(server: String) {
+        val canonical = canonicalServer(server)
+        policyServer = canonical
+        val generation = ++policyGeneration
+        signUpPolicy.value = SignUpPolicyState.Checking
+        context.errorMessage.value = null
+        val answer = context.attempt {
+            try {
+                Result.success(it.getSignUpPolicy(canonical))
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Result.failure(error)
+            }
+        } ?: return
+        if (generation != policyGeneration || canonical != policyServer) return
+        signUpPolicy.value = answer.fold(
+            onSuccess = {
+                if (canonicalServer(it.server) != canonical) return
+                SignUpPolicyState.Ready(it)
+            },
+            onFailure = {
+                SignUpPolicyState.Failed(canonical, it.message ?: "Hisar can't reach ${describeServer(canonical)}. Check your internet connection and the server address.")
+            },
+        )
+        if (answer.isFailure) context.refreshStatus()
+    }
+
+    fun invalidateSignUpPolicy() {
+        policyGeneration++
+        signUpPolicy.value = SignUpPolicyState.Checking
+        isInvitationRequiredAfterSubmit.value = false
+        context.errorMessage.value = null
     }
 
     suspend fun signIn(server: String, email: String, secretKey: String, password: String): Boolean = context.runInModel {
@@ -62,6 +128,7 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
         val newStatus = context.perform { it.signIn(trimmedServer, trimmedEmail, formattedSecretKey, password) } ?: return@runInModel false
         context.applyStatus(newStatus)
         context.refreshAll()
+        context.refreshPendingRecovery(isOpening = false)
         true
     }
 
@@ -89,7 +156,15 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
             context.errorMessage.value = PLAIN_HTTP_SERVER_REFUSAL
             return@runInModel false
         }
-        val result = context.perform { it.signUpWithoutInvite(trimmedServer, trimmedEmail, trimmedName, password) } ?: return@runInModel false
+        val result = context.perform { it.signUpWithoutInvite(trimmedServer, trimmedEmail, trimmedName, password) }
+        if (result == null) {
+            if (context.errorMessage.value?.contains("Sign-ups are not open") == true) {
+                isInvitationRequiredAfterSubmit.value = true
+                checkSignUpPolicy(trimmedServer)
+                context.errorMessage.value = "Sign-ups on ${describeServer(trimmedServer)} need an invitation now. Ask someone with an account there to invite you."
+            }
+            return@runInModel false
+        }
         finishSignUp(result)
     }
 
@@ -102,40 +177,80 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
             context.errorMessage.value = result.problems.takeIf { it.isNotEmpty() }?.joinToString("\n")
             return true
         }
-        mutableNewAccountStep.value = NewAccountStep.SaveSecretKey(result.secretKey)
         context.applyStatus(result.status)
+        mutableNewAccountStep.value = NewAccountStep.SaveSecretKey
         context.refreshAll()
         context.refreshPendingRecovery(isOpening = false)
         return true
     }
 
-    /**
-     * Writes the new account's Emergency Kit into a folder of its own and records it as saved, from the Secret Key the
-     * backend keeps until onboarding ends; the screen deletes the folder when it leaves.
-     */
     suspend fun exportNewAccountEmergencyKit(): EmergencyKitExport? {
         val directory = File(System.getProperty("java.io.tmpdir"), "${SettingsModel.HANDOFF_FOLDER_NAME}/EmergencyKit-${UUID.randomUUID()}")
-        return context.perform(isBusyShown = false) { it.exportNewAccountEmergencyKit(directory) }
+        val epoch = kitEpoch
+        var published = false
+        try {
+            val result = context.perform(isBusyShown = false) { it.exportNewAccountEmergencyKit(directory) } ?: return null
+            if (epoch != kitEpoch || !context.status.value.isUnlocked) return null
+            published = true
+            return result
+        } finally {
+            if (!published) directory.deleteRecursively()
+        }
+    }
+
+    fun openEmergencyKit() {
+        if (!context.status.value.isUnlocked || context.status.value.emergencyKit == null) return
+        mutableNewAccountStep.value = NewAccountStep.SaveSecretKey
+    }
+
+    fun closeEmergencyKitGate() {
+        mutableNewAccountStep.value = null
+        interruptedKitOperationID.value = null
+    }
+
+    suspend fun authorizeEmergencyKit(password: String? = null): Boolean {
+        val epoch = kitEpoch
+        context.perform {
+            if (password == null) it.authorizeNewAccountEmergencyKitWithBiometric()
+            else it.authorizeNewAccountEmergencyKit(password)
+        } ?: return false
+        if (epoch != kitEpoch) return false
+        context.refreshStatus()
+        return context.status.value.emergencyKit?.isAuthorized == true
+    }
+
+    suspend fun recordEmergencyKitDelivery(export: EmergencyKitExport, method: String): Boolean {
+        context.perform(isBusyShown = false) { it.recordNewAccountEmergencyKitDelivery(export.exportId, method) } ?: return false
+        context.refreshStatus()
+        context.refreshPendingRecovery(isOpening = false)
+        return true
+    }
+
+    suspend fun hideEmergencyKitReminder() {
+        context.attempt { it.hideEmergencyKitReminder() }
+        context.refreshStatus()
     }
 
     /** "I saved my Emergency Kit": ends the sign-up's pending record, then offers biometric unlock. */
     suspend fun finishNewSecretKey(): Boolean = context.runInModel {
         context.perform { it.acknowledgeNewAccountRecovery() } ?: return@runInModel false
+        context.refreshStatus()
         context.refreshPendingRecovery(isOpening = false)
         offerBiometricUnlock()
         true
     }
 
-    /** "Finish later": the sign-up's record stays for Finish account recovery, which then asks the master password. */
     suspend fun postponeNewSecretKey() {
-        dismissNewSecretKey()
+        context.perform { it.postponeNewAccountEmergencyKit() } ?: return
+        context.refreshStatus()
         context.refreshPendingRecovery(isOpening = false)
+        offerBiometricUnlock()
     }
 
     /** Offers biometric unlock when the device has it and it is off, else closes the cover. */
     fun offerBiometricUnlock() {
         val status = context.status.value
-        if (status.biometricAvailable && !status.biometricEnabled) {
+        if (status.biometricOfferAvailable) {
             context.errorMessage.value = null
             mutableNewAccountStep.value = NewAccountStep.BiometricOffer
         } else {
@@ -143,14 +258,16 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
         }
     }
 
-    /** Closes the cover and has the backend forget the new account's Secret Key, which it kept for this offer. */
+    /** Ends the offer without ending an owed kit's authorization. */
     fun dismissNewSecretKey() {
         mutableNewAccountStep.value = null
-        context.scope.launch { context.attempt { it.forgetNewAccountSecretKey() } }
+        context.scope.launch { context.attempt { it.forgetNewAccountSecretKey() }; context.refreshStatus() }
     }
 
     suspend fun turnOnBiometricUnlockFromOffer(): Boolean = context.runInModel {
+        val epoch = kitEpoch
         val newStatus = context.perform { it.enableNewAccountBiometricUnlock() } ?: return@runInModel false
+        if (epoch != kitEpoch || !context.status.value.isUnlocked) return@runInModel false
         context.applyStatus(newStatus)
         dismissNewSecretKey()
         context.showNotice("Biometric unlock is on")
@@ -211,6 +328,12 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
     private fun isRefusedAsPlainHttp(address: String): Boolean = !isPlainHttpAllowed && address.startsWith("http://", ignoreCase = true)
 
     companion object {
+        fun shouldShowWelcome(status: com.tryhisar.hisar.model.VaultStatus, hasPendingRecovery: Boolean, hasIncomingLink: Boolean): Boolean =
+            !status.isSignedIn && status.server.isEmpty() && !hasPendingRecovery && !hasIncomingLink
+        fun canonicalServer(server: String): String {
+            val value = server.trim().trimEnd('/').ifEmpty { DEFAULT_SERVER }
+            return if ("://" in value) value else "https://$value"
+        }
         const val DEFAULT_SERVER = "https://eu.tryhisar.com"
         const val PLAIN_HTTP_SERVER_REFUSAL = "This server's address starts with http://, so the connection would not be encrypted. Hisar signs in only over https://."
         const val PLAIN_HTTP_INVITE_REFUSAL = "This invite link starts with http://, so the connection would not be encrypted. Hisar creates accounts only over https://."

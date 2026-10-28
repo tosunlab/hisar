@@ -172,16 +172,34 @@ private fun SecretKeyRow(secretKey: String, testTag: String) {
     }
 }
 
-/**
- * Saving, printing and sending an Emergency Kit PDF to another app, the things the iPhone's share sheet offers for it.
- * [onHandoff] runs once the file creator saved it, the print dialog opened or the share sheet opened.
- */
+/** Delivery is confirmed only by a SAF write or a non-null target from this PDF's chooser. */
 @Composable
-internal fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String, printTestTag: String, shareTestTag: String, onHandoff: () -> Unit = {}, isSaveProminent: Boolean = false) {
+internal fun EmergencyKitRows(
+    model: AppModel,
+    path: String,
+    saveTestTag: String,
+    printTestTag: String,
+    shareTestTag: String,
+    onHandoff: (String) -> Unit = {},
+    isSaveProminent: Boolean = false,
+    onMessage: (String) -> Unit = { model.errorMessage.value = it },
+) {
     val context = LocalContext.current
-    val save = rememberFileSaver("application/pdf") { savedURI ->
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    fun prepareHandoff() {
+        focus.clearFocus(force = true)
+        keyboard?.hide()
+    }
+    val save = rememberFileSaver("application/pdf", onResult = {
+        when (it) {
+            FileSaveResult.Cancelled -> onMessage("The Emergency Kit wasn't saved.")
+            FileSaveResult.Failed -> onMessage(SAVE_FAILED_MESSAGE)
+            is FileSaveResult.Saved -> Unit
+        }
+    }) { savedURI ->
         if (savedURI != null) {
-            onHandoff()
+            onHandoff("file")
             model.showNotice("Emergency Kit saved", com.tryhisar.hisar.app.Notice.Action("Open") {
                 try {
                     context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(savedURI, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
@@ -189,25 +207,32 @@ internal fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String
                     model.errorMessage.value = "No app on this device can open PDF files."
                 }
             })
-        } else model.errorMessage.value = SAVE_FAILED_MESSAGE
+        }
     }
-    val share = rememberFileSharer("application/pdf", onFailure = { model.errorMessage.value = SHARE_FAILED_MESSAGE }, onShared = onHandoff)
+    val share = rememberFileSharer(
+        "application/pdf",
+        onFailure = { onMessage(SHARE_FAILED_MESSAGE) },
+        onShared = { onMessage("Hisar can't tell whether the other app kept the kit. Save it to a file to finish.") },
+        onTargetChosen = { component -> if (component != null) onHandoff("share") },
+    )
     if (isSaveProminent) {
-        FormRow { ProminentButton("Save Emergency Kit", { save(File(path)) }, testTag = saveTestTag) }
+        FormRow { ProminentButton("Save Emergency Kit", { prepareHandoff(); save(File(path)) }, testTag = saveTestTag) }
     } else {
-    FormButtonRow("Save Emergency Kit", { save(File(path)) }, testTag = saveTestTag, icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
+        FormButtonRow("Save Emergency Kit", { prepareHandoff(); save(File(path)) }, testTag = saveTestTag, icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
     }
     RowDivider()
     FormButtonRow(
         "Print Emergency Kit",
         {
-            printPdf(context, File(path), "Hisar Emergency Kit")
-            onHandoff()
+            prepareHandoff()
+            printPdf(context, File(path), "Hisar Emergency Kit") {
+                onMessage("Hisar can't tell whether the other app kept the kit. Save it to a file to finish.")
+            }
         },
         testTag = printTestTag, icon = Icons.Outlined.Print, color = HisarTheme.colors.tint,
     )
     RowDivider()
-    FormButtonRow("Share Emergency Kit", { share(File(path)) }, testTag = shareTestTag, icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
+    FormButtonRow("Share Emergency Kit", { prepareHandoff(); share(File(path)) }, testTag = shareTestTag, icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
 }
 
 @Composable
@@ -261,6 +286,11 @@ fun SecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                 SecretKeyRow(shown.secretKey, "secret-key-value")
                 RowDivider()
                 CopySecretKeyRow(model, shown.secretKey, "copy-secret-key")
+            }
+            if (shown.qrCode.isNotEmpty()) {
+                FormSection(footer = { Text("Scan this with Hisar on your new device. Anyone with this code and your master password can open your vaults.") }) {
+                    com.tryhisar.hisar.ui.signin.EmergencyKitQRCode(shown.qrCode)
+                }
             }
             FormSection(
                 header = "Emergency Kit",
@@ -452,7 +482,10 @@ fun ReplaceSecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                 scope.launch {
                     model.settings.replaceSecretKey(enteredPassword)?.let {
                         password = ""
-                        if (it.pendingOperationId.isEmpty()) result = it else onBack()
+                        if (it.pendingOperationId.isEmpty()) result = it else {
+                            onBack()
+                            model.signIn.openEmergencyKit()
+                        }
                     }
                 }
             },
@@ -617,7 +650,6 @@ fun PendingRecoveryScreen(model: AppModel) {
     var secretKey by remember { mutableStateOf("") }
     var priorSecretKey by remember { mutableStateOf("") }
     var isDiscardConfirmationShown by remember { mutableStateOf(false) }
-    var isKitHandedOff by remember(selectedID, export) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     fun clearFactors() {
         password = ""
@@ -721,15 +753,17 @@ fun PendingRecoveryScreen(model: AppModel) {
                 FormSection(header = "Emergency Kit") {
                     EmergencyKitRows(
                         model, it.path, "pending-recovery-save-kit", "pending-recovery-print-kit", "pending-recovery-share-kit",
-                        onHandoff = { isKitHandedOff = true }, isSaveProminent = !isKitHandedOff,
+                        onHandoff = { method -> scope.launch { model.pendingRecovery.recordDelivery(it.exportId, method) } },
+                        isSaveProminent = recovery.savedBy.isEmpty(),
+                        onMessage = { message -> model.errorMessage.value = message },
                     )
-                    if (!isKitHandedOff) {
-                        FormRow { Text("Save, print or share the Emergency Kit first.", Modifier.testTag("pending-recovery-handoff-hint")) }
+                    if (recovery.savedBy.isEmpty()) {
+                        FormRow { Text("Save or share the Emergency Kit first.", Modifier.testTag("pending-recovery-handoff-hint")) }
                     }
                 }
             }
             FormSection {
-                if (isKitHandedOff && recovery.phase in listOf("delivery-pending", "awaiting-kit")) {
+                if (recovery.savedBy.isNotEmpty() && recovery.phase in listOf("delivery-pending", "awaiting-kit")) {
                     FormRow { ProminentButton(
                         "I saved my Emergency Kit",
                         {

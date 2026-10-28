@@ -53,9 +53,11 @@ class LockModel(private val context: ModelContext) {
         val newStatus = context.perform { it.signOut() }
         if (newStatus == null) {
             context.refreshStatus()
+            context.refreshPendingRecovery(isOpening = false)
             return@runInModel false
         }
         context.applyStatus(newStatus)
+        context.refreshPendingRecovery(isOpening = false)
         true
     }
 

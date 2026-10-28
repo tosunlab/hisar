@@ -172,13 +172,16 @@ jobs:
         run: cat server.log || true
 
   desktop-frontend:
-    name: Desktop frontend typecheck, tests and bundle check
+    name: Desktop frontend typecheck, tests, Chromium layout and bundle check
     needs: changes
     if: needs.changes.outputs.isDesktopChanged == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    container: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install make
+        run: bash scripts/ci-apt-install.sh make
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24

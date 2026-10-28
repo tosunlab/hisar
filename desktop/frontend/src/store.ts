@@ -148,15 +148,15 @@ export const store = reactive({
   searchQuery: "",
   // selectedTag narrows the list to the items carrying it; "" shows every item.
   selectedTag: "",
-  pendingSecretKey: "",
-  isTouchIDOfferShown: false,
+  onboardingStep: "" as "" | "kit" | "biometric",
+  interruptedKitOperationID: "",
   biometricResetReminder: null as { server: string; email: string } | null,
   pendingRecovery: [] as PendingRecoverySummary[],
   isRecoveryOpen: false,
   recoveryEpoch: 0,
   recoveryPasswordRejected: false,
   recoveryFactor: null as { operationId: string; secretKey: string } | null,
-  pendingInvite: "",
+  pendingInvite: null as InviteLink | null,
   errorMessage: "",
   noticeMessage: "",
   // noticeKind is "error" for a failed copy, whose sentence shows where the copy was asked for.
@@ -292,7 +292,7 @@ function clearAllVaultData(): void {
   if (store.browserStatus) store.browserStatus.pendingPairing = null;
   resetImport();
   forgetWebsiteIcons();
-  store.isTouchIDOfferShown = false;
+  store.onboardingStep = "";
   store.isSettingsOpen = false;
   store.isSharingOpen = false;
   store.sharingErrors = {};
@@ -341,26 +341,34 @@ let browserPairingGeneration = 0;
 let draftKeptForUnlock: EditorDraft | null = null;
 let draftToRestore: EditorDraft | null = null;
 
-// clearLockedVaultData also hides a new Secret Key not yet confirmed: the session that made it ended.
 function clearLockedVaultData(): void {
+  if (store.onboardingStep === "kit") store.interruptedKitOperationID = store.status.emergencyKit?.operationId ?? "";
   if (store.editorDraft) {
     draftKeptForUnlock = store.editorDraft;
   }
   sessionGeneration++;
   store.recoveryEpoch++;
   store.recoveryFactor = null;
-  store.pendingSecretKey = "";
-  store.isTouchIDOfferShown = false;
+  store.onboardingStep = "";
   clearAllVaultData();
 }
 
 async function applyStatus(status: Status): Promise<void> {
+  const previous = store.status;
+  if (status.state !== "unlocked") clearLockedVaultData();
+  if (previous.server !== status.server || previous.email !== status.email || status.state === "signed-out") {
+    store.interruptedKitOperationID = "";
+  }
   const reminder = store.biometricResetReminder;
   if (status.state === "signed-out" || (reminder && (reminder.server !== status.server || reminder.email !== status.email)) || status.biometricEnabled) {
     store.biometricResetReminder = null;
   }
   store.status = status;
   if (status.state === "unlocked" && !status.updateRequired) {
+    if (store.interruptedKitOperationID) {
+      if (store.interruptedKitOperationID === status.emergencyKit?.operationId) store.onboardingStep = "kit";
+      store.interruptedKitOperationID = "";
+    }
     await loadAllVault();
     await restoreKeptDraft();
     if (settingsSectionAfterUnlock) {
@@ -369,7 +377,6 @@ async function applyStatus(status: Status): Promise<void> {
       await openSettings(sectionID);
     }
   } else if (status.state !== "unlocked") {
-    clearLockedVaultData();
     if (status.state === "signed-out") {
       draftKeptForUnlock = null;
       draftToRestore = null;
@@ -389,15 +396,16 @@ export async function loadStatus(): Promise<void> {
   await loadPendingRecovery();
 }
 
-// loadPendingRecovery opens the recovery screen when operations appear where there were none, as at launch, and keeps
-// Finish later for the operations already listed, as the iPhone and Android apps do. It never covers the Secret Key
-// screen, which acknowledges the new account's own record, and the sign-up's own refreshes pass isOpening false.
+export function needsAttentionRecovery(): PendingRecoverySummary[] {
+  return store.pendingRecovery.filter((record) => record.operationId !== store.status.emergencyKit?.operationId);
+}
+
 export async function loadPendingRecovery(isOpening = true): Promise<void> {
   try {
-    const hadNone = store.pendingRecovery.length === 0;
+    const hadNone = needsAttentionRecovery().length === 0;
     store.pendingRecovery = await api.listPendingRecovery();
-    if (store.pendingRecovery.length === 0) store.isRecoveryOpen = false;
-    else if (isOpening && hadNone && !store.pendingSecretKey) store.isRecoveryOpen = true;
+    if (needsAttentionRecovery().length === 0) store.isRecoveryOpen = false;
+    else if (isOpening && hadNone && !store.onboardingStep) store.isRecoveryOpen = true;
   } catch (error) {
     store.errorMessage = getErrorMessage(error);
   }
@@ -412,6 +420,10 @@ export async function resumePendingRecovery(operationID: string, password: strin
       await applyStatus(result.status);
     }
     if (generation !== sessionGeneration) return false;
+    if (result.status.emergencyKit && result.status.state === "unlocked") {
+      store.isRecoveryOpen = false;
+      store.onboardingStep = "kit";
+    }
     const warnings = [store.errorMessage, ...(result.problems ?? [])].filter(Boolean);
     await loadPendingRecovery();
     if (generation !== sessionGeneration) return false;
@@ -434,14 +446,10 @@ export async function acknowledgePendingRecovery(operationID: string, password: 
     await api.acknowledgePendingRecovery(operationID, password);
     return true;
   });
+  if (generation !== sessionGeneration) return false;
   if (result) {
     await loadPendingRecovery();
     if (operation?.phase === "delivery-pending") store.isRecoveryOpen = false;
-    if (generation === sessionGeneration && operation?.kind === "signup" && operation.phase === "delivery-pending" && store.status.state === "unlocked"
-      && store.status.email === operation.email && store.status.server === operation.origin
-      && store.status.biometricAvailable && !store.status.biometricEnabled) {
-      store.isTouchIDOfferShown = true;
-    }
   }
   return result === true;
 }
@@ -493,7 +501,7 @@ export function openInviteLink(link: InviteLink | null): void {
     return;
   }
   if (store.status.state === "signed-out") {
-    store.pendingInvite = link.invite;
+    store.pendingInvite = link;
     return;
   }
   if (!link.invitation) {
@@ -544,10 +552,8 @@ export function signUpWithoutInvite(server: string, email: string, name: string,
   return finishSignUp(() => api.signUpWithoutInvite(server, email, name, password));
 }
 
-// isWaitingOnlyForKit is a sign-up that finished and waits only for its Emergency Kit: the Secret Key screen saves and
-// acknowledges it, as on the iPhone and Android. Every other pending result opens recovery.
 function isWaitingOnlyForKit(result: SignUpResult): boolean {
-  return result.setupState === "delivery-pending" && result.secretKey !== "" && (result.problems ?? []).length === 0;
+  return !!result.status.emergencyKit;
 }
 
 async function finishSignUp(request: () => Promise<SignUpResult>): Promise<boolean> {
@@ -567,7 +573,7 @@ async function finishSignUp(request: () => Promise<SignUpResult>): Promise<boole
       store.errorMessage = [store.errorMessage, ...(result.problems ?? [])].filter(Boolean).join(" ");
       return true;
     }
-    store.pendingSecretKey = result.secretKey;
+    store.onboardingStep = result.status.emergencyKit ? "kit" : "";
     store.isRecoveryOpen = false;
     await applyStatus(result.status);
     if (generation !== sessionGeneration) return false;
@@ -585,28 +591,67 @@ export async function confirmSecretKeySaved(): Promise<boolean> {
     return true;
   });
   if (!isAcknowledged || generation !== sessionGeneration) return false;
+  const status = await api.getStatus();
+  if (generation !== sessionGeneration) return false;
+  store.status = status;
   await loadPendingRecovery(false);
   if (generation !== sessionGeneration) return false;
-  store.pendingSecretKey = "";
-  if (store.status.biometricAvailable && !store.status.biometricEnabled) {
-    store.isTouchIDOfferShown = true;
-    return true;
-  }
-  api.forgetNewAccountSecretKey().catch(() => undefined);
+  finishKitScreen();
   return true;
 }
 
-// postponeSecretKey is Finish later: the sign-up's record stays for the recovery reminder, which then needs the master
-// password, and the retained Secret Key is dropped.
 export async function postponeSecretKey(): Promise<void> {
-  store.pendingSecretKey = "";
+  const generation = sessionGeneration;
+  const postponed = await runAction(async () => {
+    await api.postponeNewAccountEmergencyKit();
+    return await api.getStatus();
+  });
+  if (!postponed || generation !== sessionGeneration) return;
+  store.status = postponed;
+  finishKitScreen();
+}
+
+function finishKitScreen(): void {
+  store.interruptedKitOperationID = "";
+  store.onboardingStep = store.status.biometricOfferAvailable ? "biometric" : "";
+  if (!store.onboardingStep) void api.forgetNewAccountSecretKey().catch(() => undefined);
+}
+
+export function openEmergencyKit(): void {
+  if (store.status.state !== "unlocked" || !store.status.emergencyKit) return;
   store.errorMessage = "";
-  await api.forgetNewAccountSecretKey().catch(() => undefined);
-  await loadPendingRecovery(false);
+  store.isRecoveryOpen = false;
+  store.isSettingsOpen = false;
+  store.onboardingStep = "kit";
+}
+
+export function closeEmergencyKit(): void {
+  store.onboardingStep = "";
+  store.interruptedKitOperationID = "";
+  store.errorMessage = "";
+}
+
+export async function hideEmergencyKitReminder(): Promise<void> {
+  const generation = sessionGeneration;
+  await api.hideEmergencyKitReminder();
+  const status = await api.getStatus();
+  if (generation === sessionGeneration) store.status = status;
+}
+
+export async function authorizeEmergencyKit(password?: string): Promise<boolean> {
+  const generation = sessionGeneration;
+  const status = await runAction(async () => {
+    if (password === undefined) await api.authorizeNewAccountEmergencyKitWithBiometric();
+    else await api.authorizeNewAccountEmergencyKit(password);
+    return await api.getStatus();
+  });
+  if (!status || generation !== sessionGeneration) return false;
+  store.status = status;
+  return !!status.emergencyKit?.isAuthorized;
 }
 
 function finishTouchIDOffer(): void {
-  store.isTouchIDOfferShown = false;
+  store.onboardingStep = "";
   store.errorMessage = "";
   api.forgetNewAccountSecretKey().catch(() => undefined);
 }
@@ -645,7 +690,13 @@ function showSavedNotice(savedPath: string | undefined): boolean {
 }
 
 export async function saveNewAccountEmergencyKit(): Promise<boolean> {
-  return showSavedNotice(await runAction(() => api.saveNewAccountEmergencyKit()));
+  const generation = sessionGeneration;
+  const path = await runAction(() => api.saveNewAccountEmergencyKit());
+  if (generation !== sessionGeneration) return false;
+  const status = await api.getStatus();
+  if (generation !== sessionGeneration) return false;
+  store.status = status;
+  return showSavedNotice(path);
 }
 
 export async function saveEmergencyKit(password: string): Promise<boolean> {
@@ -781,6 +832,16 @@ export async function replaceSecretKey(password: string): Promise<CredentialChan
     return undefined;
   }
   if (result) {
+    if (result.status.emergencyKit) {
+      store.status = result.status;
+      store.errorMessage = [result.keychainError, result.localError].filter(Boolean).join(" ");
+      if (isSettingsWindow) {
+        await openFromSettings("recovery");
+      } else {
+        store.onboardingStep = "kit";
+      }
+      return result;
+    }
     if (result.pendingOperationId) {
       // Pending recovery covers the main window, which owns it: the Settings window hands it there and closes, so its
       // dialog never shows this change as finished.
@@ -802,9 +863,6 @@ export async function replaceSecretKey(password: string): Promise<CredentialChan
   return result;
 }
 
-export async function finishSecretKeyReplacement(): Promise<void> {
-  await api.forgetNewAccountSecretKey().catch(() => undefined);
-}
 
 export async function loadAccountDeletionPreview(): Promise<AccountDeletionPreview | undefined> {
   return runAction(() => api.previewAccountDeletion());
@@ -1405,8 +1463,9 @@ export async function openSettings(sectionID = ""): Promise<void> {
 
 // openPendingRecovery shows the recovery a Secret Key replacement left, such as one made in the Settings window.
 async function openPendingRecovery(): Promise<void> {
-  await loadPendingRecovery();
-  store.isRecoveryOpen = store.pendingRecovery.length > 0;
+  await loadStatus();
+  if (store.status.emergencyKit) openEmergencyKit();
+  else store.isRecoveryOpen = needsAttentionRecovery().length > 0;
 }
 
 const mainWindowActions: Record<MainWindowAction, () => Promise<void>> = {

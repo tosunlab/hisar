@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -62,7 +63,7 @@ class QrScannerTests {
     @Before
     fun showSignIn() {
         InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(targetContext.packageName, Manifest.permission.CAMERA)
-        runBlocking(Dispatchers.Main) { model.start { FakeBackend() } }
+        runBlocking(Dispatchers.Main) { model.start { FakeBackend().apply { status = status.copy(server = SignInModel.DEFAULT_SERVER) } } }
         composeRule.setContent {
             HisarTheme {
                 Box(Modifier.fillMaxSize().exposeTestTags()) { SignInScreen(model) }
@@ -113,8 +114,8 @@ class QrScannerTests {
             openScanner()
             composeRule.runOnUiThread { model.signIn.openScannedEmergencyKit(checkNotNull(scanned)) }
             composeRule.waitUntil(10_000) { !exists("scanner") }
-            composeRule.assertFieldText("sign-in-email", "alper+kit@tryhisar.com")
-            composeRule.assertFieldText("sign-in-secret-key", "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M")
+            composeRule.onNodeWithText("alper+kit@tryhisar.com on hisar.example/a?x=one+two&y=%20").assertExists()
+            composeRule.onNodeWithTag("sign-in-secret-key").assertDoesNotExist()
         }
         saveScreenshot("plain-text-and-legacy-kit")
     }
@@ -126,6 +127,12 @@ class QrScannerTests {
         backend.signUp(requireArgument("HISAR_UI_TEST_QR_SCANNER_INVITE_LINK"), email, "Android QR Scanner", MASTER_PASSWORD)
         val server = backend.getStatus().server
         val kit = backend.exportEmergencyKit(MASTER_PASSWORD, createTemporaryDirectory("emergency-kit"))
+        assertTrue("the verified export also carries an in-memory QR", kit.qrCode.isNotEmpty())
+        val qrBytes = android.util.Base64.decode(kit.qrCode, android.util.Base64.DEFAULT)
+        val qr = android.graphics.BitmapFactory.decodeByteArray(qrBytes, 0, qrBytes.size)
+        var scannedQR: String? = null
+        QrCodeAnalyzer { scannedQR = it }.analyze(BitmapImageProxy(qr))
+        assertEquals(SignInLink(server, email, kit.secretKey), SignInLink.parse(checkNotNull(scannedQR)))
         val page = renderFirstPage(File(kit.emergencyKitPath))
         TestStorage().openOutputFile("android-emergency-kit-page.png").use { page.compress(Bitmap.CompressFormat.PNG, 100, it) }
 
@@ -137,8 +144,8 @@ class QrScannerTests {
         openScanner()
         composeRule.runOnUiThread { model.signIn.openScannedEmergencyKit(text) }
         composeRule.waitUntil(10_000) { !exists("scanner") }
-        composeRule.assertFieldText("sign-in-email", email)
-        composeRule.assertFieldText("sign-in-secret-key", kit.secretKey)
+        composeRule.onNodeWithText("$email on ${SignInModel.describeServer(server)}").assertExists()
+        composeRule.onNodeWithTag("sign-in-secret-key").assertDoesNotExist()
         assertTrue(composeRule.onAllNodesWithText("Signs in to ${SignInModel.describeServer(server)}.").fetchSemanticsNodes().isNotEmpty())
         saveScreenshot("scanner-filled-sign-in")
     }

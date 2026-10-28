@@ -11,6 +11,7 @@ import type {
   BrowserStatus,
   CommandLineStatus,
   Device,
+  EmergencyKitStatus,
   ExportOptions,
   ExportRequest,
   ExportResult,
@@ -51,6 +52,7 @@ import type {
   WaitingVaultKeys,
 } from "./api";
 import { getDomain } from "./util";
+import { canonicalServer } from "./signupPolicy";
 
 const previewParameter = new URLSearchParams(window.location.search);
 
@@ -73,6 +75,15 @@ let previewRecovery: PendingRecoverySummary[] = previewParameter.has("recovery")
       revision: 1,
     }]
   : [];
+
+let previewKit: EmergencyKitStatus | undefined = previewParameter.has("emergencyKit") || previewParameter.has("secretKey") ? {
+  operationId: "preview-signup", kind: previewParameter.get("kitKind") ?? "signup",
+  savedBy: previewParameter.get("savedBy") ?? "", postponedAt: "2026-10-01T00:00:00Z",
+  reminder: previewParameter.get("emergencyKit") ?? "new",
+  isAuthorized: previewParameter.get("kitAuthorized") !== "0",
+  isReminderHidden: false,
+} : undefined;
+let previewBiometricOffer = previewParameter.has("touchIdOffer");
 
 const allPreviewVault: VaultSummary[] = [
   { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 },
@@ -311,8 +322,8 @@ const previewMinimumVersion = previewParameter.get("updateRequired");
 const previewUpdateRequired = previewMinimumVersion ? { currentVersion: "0.1.0", minimumVersion: previewMinimumVersion, updateURL: "https://tryhisar.com/download" } : null;
 const previewStatus = (): Status => ({
   state: previewState,
-  server: "https://eu.tryhisar.com",
-  email: previewState === "signed-out" ? previewSignedOutEmail : "alper@tryhisar.com",
+  server: previewParameter.get("fresh") === "1" && previewState === "signed-out" ? "" : "https://eu.tryhisar.com",
+  email: previewParameter.get("email") ?? (previewParameter.get("fresh") === "1" && previewState === "signed-out" ? "" : previewState === "signed-out" ? previewSignedOutEmail : "alper@tryhisar.com"),
   name: "Alper",
   biometricAvailable: true,
   biometricEnabled: isPreviewBiometricEnabled,
@@ -321,6 +332,8 @@ const previewStatus = (): Status => ({
   autoLockSeconds: previewAutoLockSeconds,
   signedOutReason: previewState === "signed-out" ? previewSignedOutReason : "",
   updateRequired: previewUpdateRequired,
+  emergencyKit: previewState === "signed-out" || !previewKit ? undefined : { ...previewKit },
+  biometricOfferAvailable: previewBiometricOffer && !isPreviewBiometricEnabled,
 });
 let isPreviewSSHConfigured = new URLSearchParams(window.location.search).get("sshConfigured") === "1";
 let isPreviewCompactApproval = new URLSearchParams(window.location.search).get("compact") === "1";
@@ -759,6 +772,8 @@ const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((
 // signUpPreview answers as core does after a clean sign-up: the account is open and its pending record waits for the kit.
 function signUpPreview(): Promise<SignUpResult> {
   previewState = "unlocked";
+  previewKit = { operationId: "preview-signup", kind: "signup", savedBy: "", postponedAt: "", reminder: "new", isAuthorized: true, isReminderHidden: false };
+  previewBiometricOffer = true;
   previewRecovery = [...previewRecovery.filter((entry) => entry.operationId !== "preview-signup"), {
     operationId: "preview-signup",
     kind: "signup",
@@ -1599,12 +1614,37 @@ export const previewApi = {
   },
   signUp: signUpPreview,
   signUpWithoutInvite: signUpPreview,
+  getSignUpPolicy: (server: string) => previewParameter.get("policy") === "error"
+    ? Promise.reject(new Error(`Hisar can't reach ${server.replace(/^https:\/\//, "")}. Check your internet connection and the server address.`))
+    : resolveAfterDelay({ server: canonicalServer(server), host: server.replace(/^https:\/\//, ""), mode: previewParameter.get("policy") ?? "open" }),
+  authorizeNewAccountEmergencyKit: (password: string) => {
+    if (password.length < 10) return Promise.reject(new Error("The master password is incorrect."));
+    if (previewKit) previewKit.isAuthorized = true;
+    return Promise.resolve();
+  },
+  authorizeNewAccountEmergencyKitWithBiometric: () => {
+    if (previewKit) previewKit.isAuthorized = true;
+    return Promise.resolve();
+  },
+  revealNewAccountSecretKey: () => previewKit?.isAuthorized
+    ? Promise.resolve({ secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", qrPayload: "", qrCode: "" })
+    : Promise.reject(new Error("Unlock Hisar to save your Emergency Kit.")),
+  postponeNewAccountEmergencyKit: () => {
+    if (previewKit && !previewKit.postponedAt) previewKit.postponedAt = new Date().toISOString();
+    return Promise.resolve();
+  },
+  hideEmergencyKitReminder: () => {
+    if (previewKit) previewKit.isReminderHidden = true;
+    return Promise.resolve();
+  },
   unlock: () => {
     previewState = "unlocked";
+    if (previewKit) previewKit.isAuthorized = true;
     return resolveAfterDelay(previewStatus());
   },
   lock: () => {
     previewState = "locked";
+    if (previewKit) { previewKit.isAuthorized = false; previewKit.isReminderHidden = false; }
     return resolveAfterDelay(previewStatus());
   },
   signOut: () => {
@@ -2105,6 +2145,7 @@ export const previewApi = {
           return;
         }
         previewState = "unlocked";
+        if (previewKit) previewKit.isAuthorized = false;
         resolve(previewStatus());
       }, 1500);
     }),
@@ -2158,6 +2199,7 @@ export const previewApi = {
   hasNativeTouchIDView: false,
   saveNewAccountEmergencyKit: () => {
     previewRecovery = previewRecovery.map((entry) => entry.operationId === "preview-signup" ? { ...entry, kitSaved: true } : entry);
+    if (previewKit) previewKit.savedBy = "file";
     return resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf");
   },
   saveEmergencyKit: (password: string) =>
@@ -2165,12 +2207,13 @@ export const previewApi = {
   revealSecretKey: (password: string) => password.length < 4
     ? Promise.reject(new Error("incorrect email, master password or Secret Key"))
     : resolveAfterDelay({"qrCode":"iVBORw0KGgoAAAANSUhEUgAAAUAAAAFAAQMAAAD3XjfpAAAABlBMVEX///8AAABVwtN+AAAEG0lEQVR42uyaQW7srBKFP8sDhiyBnZiNWWlHvTF7JyyBIQPL56kK5yb3zt7gl5pWyIx8aglTVJ06wO/4Hb/jPxtBkg4ddWGqs7b01Jmg5ZbbwmT/rW8IFgh7UF3iFZ8ybC5BQW0JqlOFeSRQCju5TrogqqycqDRa1lGn+tBzMPDQHo/6EVVJz3ImFe0NlngMCUqXbWElSVJLYW+Ei+ltQQhHmyRtEJ/aOAmlZV0O/h3hrw56SmmL7/Wzrr7XBgaf/Df3vDYIwNSmmusHa5SvGqRmk/wzXhwMhRzUptpnV4/HoDsas1Tn+n4gtNwmzz2PunpdkEB7m3TFHaLGAYNaDhdg8yePMuuE1DwAtH//3hBg0c6ko2Z91pU1bUDzT2Fw/V71ACBg2SNL+qywQiKpBOnwTfz8g70XaLttkkTSZoFb5gIeACYpLbuOA6awh8tElz5lVeHkTCTQ0YjX9ykcAQwKe5taVs8eD19zKF3X10kb8zggKSgcMgX5Kd9AfU024qGNlfcDQ5G1Lnv0nHlXBYkcrnD5Xm/jgH7g5GJ4iyezNlQa0CYdUh0KNPHR++NKPOOGJxSv16ZIvFSMA/qKvT3bmCWLx9Qc9fbzU+cbgiRTjy3XXgBmPQXyaKYn0oHAIO3BwvbwAqeyJmj2NzXiUSeNBBa4Q9djNJ3prgq558c4FOgqSvU+iUk6aelWI3KF/I5gEJYzD5vrLWlS/zxL3HnUdRzQq8Khi+wFwMwCqSVwhewd2zhgX7VtY/2AuKWNk4Z3NNiqtY0EGuSn8IobD0lnMkzqEfm96ncCFdTAciZgLanb3LffM3WHdRyw5XDLf9kpPJPU0l0VLh71MRJIJrtY9KrAmkC9nwEgPkcCwx4OS/bRwaQiqZD15ZGevB9IcifOnQFt0fTj3G1F9QYgbuOAlkjNLIhWmmX2FV6vMZub6WenOQIIbWFx3fusD0l3P2Pt5/FXc/by4H0XZBcQk82mExKY3NduKUXnm4JtAQ/cp9up9L226YUfTtzrg6G0+0KsPqwusKa5tAT0VX98B+7rg9DwWWtdTD+enL3TzHaxpM+vEjcEmMjhIltCkSrMApV+S6aLj+/++q1AiaWbbqzxWUhz8YOZGz+fcowABgXpCjsAcJ9C6FWBHy3AACCpQa8KH1H9kQ2to14VWAcCcSV1RXOvt3j23I/va3cBzrcE78wj86niaS1pain0VwQ7H39uKgYA70dfO0uU3FYsBjbuJzo/+pkBwK9HX93o7u9S3CpYwFc9FKj7FsgTfY9HU8hAlnT9vBp6L3APh9/4AWYWKBi8M9Xl78umMUAWsmRPOcpcvswCj2jVRx0IBF8g1jbHM7lDivaWG+S//fCXB/88+tKFv3X1dQeRG/Fbo7wX+Dt+x+/4P8b/BgDJaaF9o90vAgAAAABJRU5ErkJggg==","qrPayload":"HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL3ByZXZpZXcuaGlzYXIudGVzdCIsImVtYWlsIjoicHJldmlld0BleGFtcGxlLmNvbSIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ","secretKey":"H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"}),
-  forgetNewAccountSecretKey: () => Promise.resolve(),
+  forgetNewAccountSecretKey: () => { previewBiometricOffer = false; return Promise.resolve(); },
   acknowledgeNewAccountRecovery: () => {
-    if (!previewRecovery.some((entry) => entry.operationId === "preview-signup" && entry.kitSaved)) {
+    if (!previewKit?.savedBy) {
       return Promise.reject(new Error("finish setup and save the Emergency Kit before acknowledging delivery"));
     }
     previewRecovery = previewRecovery.filter((entry) => entry.operationId !== "preview-signup");
+    previewKit = undefined;
     return resolveAfterDelay(undefined);
   },
   listPendingRecovery: () => resolveAfterDelay(previewRecovery.map((entry) => ({ ...entry }))),
@@ -2192,10 +2235,11 @@ export const previewApi = {
     currentPassword.length < 4
       ? Promise.reject(new Error("the master password is not correct"))
       : resolveAfterDelay({ status: previewStatus(), secretKey: "", signedOutDeviceCount: 2, keychainError: "", localError: "" }),
-  replaceSecretKey: (password: string) =>
-    password.length < 4
-      ? Promise.reject(new Error("the master password is not correct"))
-      : resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-8RW2N-QHT4M-0ZKXD-71BJE-P3SV6A", signedOutDeviceCount: 2, keychainError: "", localError: "" }),
+  replaceSecretKey: (password: string) => {
+    if (password.length < 4) return Promise.reject(new Error("the master password is not correct"));
+    previewKit = { operationId: "preview-replacement", kind: "replace-secret-key", savedBy: "", postponedAt: "", reminder: "new", isAuthorized: true, isReminderHidden: false };
+    return resolveAfterDelay({ status: previewStatus(), secretKey: "", signedOutDeviceCount: 2, keychainError: "", localError: "", pendingOperationId: previewKit.operationId, setupState: "delivery-pending" });
+  },
   previewAccountDeletion: () =>
     resolveAfterDelay({
       email: "alper@tryhisar.com",

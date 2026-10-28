@@ -42,7 +42,7 @@ function resetStore(): void {
     selectedItem: null,
     editorMode: "view",
     searchQuery: "",
-    pendingSecretKey: "",
+    onboardingStep: "",
     errorMessage: "",
     noticeMessage: "",
     isBusy: false,

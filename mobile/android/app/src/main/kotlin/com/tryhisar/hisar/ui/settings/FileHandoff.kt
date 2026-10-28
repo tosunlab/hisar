@@ -58,13 +58,13 @@ fun rememberFileSaver(
 ): (File) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var pendingFile by remember { mutableStateOf<File?>(null) }
+    var pendingSave by remember { mutableStateOf<PendingFileSave?>(null) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(mimeType)) { uri ->
-        val file = pendingFile
-        pendingFile = null
-        if (file == null) return@rememberLauncherForActivityResult
+        val pending = pendingSave ?: return@rememberLauncherForActivityResult
+        pendingSave = null
+        val file = pending.file
         if (uri == null) {
-            onResult(FileSaveResult.Cancelled)
+            pending.onResult(FileSaveResult.Cancelled)
             return@rememberLauncherForActivityResult
         }
         scope.launch {
@@ -79,15 +79,21 @@ fun rememberFileSaver(
                     false
                 }
             }
-            onResult(if (isSaved) FileSaveResult.Saved(uri) else FileSaveResult.Failed)
-            onFinish(uri.takeIf { isSaved })
+            pending.onResult(if (isSaved) FileSaveResult.Saved(uri) else FileSaveResult.Failed)
+            pending.onFinish(uri.takeIf { isSaved })
         }
     }
     return { file ->
-        pendingFile = file
+        pendingSave = PendingFileSave(file, onResult, onFinish)
         launcher.launch(file.name)
     }
 }
+
+private class PendingFileSave(
+    val file: File,
+    val onResult: (FileSaveResult) -> Unit,
+    val onFinish: (Uri?) -> Unit,
+)
 
 /** Reports the activity the chooser opened, not whether it kept the file. System actions can report null. */
 class FileShareReceiver : BroadcastReceiver() {

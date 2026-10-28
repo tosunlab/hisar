@@ -35,6 +35,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.services.storage.TestStorage
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiSelector
 import java.util.regex.Pattern
 import org.junit.After
 import org.junit.Rule
@@ -202,9 +203,15 @@ abstract class HisarUITestCase {
 
     /** With [isBiometricOfferExpected], it stops at the biometric offer after the Secret Key; otherwise it declines any offer. */
     fun signUp(inviteLink: String, email: String, name: String, isBiometricOfferExpected: Boolean = false): String {
-        waitFor("sign-in-mode", APP_START_TIMEOUT)
+        waitFor(hasTestTag("sign-in-mode") or hasTestTag("welcome-create-account"), APP_START_TIMEOUT)
         saveScreenshot("sign-in")
-        composeRule.onNode(hasText("Create account") and hasAnyAncestor(hasTestTag("sign-in-mode"))).performClick()
+        if (exists(hasTestTag("welcome-create-account"))) tap("welcome-create-account")
+        else composeRule.onNode(hasText("Create account") and hasAnyAncestor(hasTestTag("sign-in-mode"))).performClick()
+        val invitation = requireNotNull(com.tryhisar.hisar.model.InviteLink.parseInvitation(inviteLink, com.tryhisar.hisar.app.SignInModel.DEFAULT_SERVER))
+        tap("sign-up-use-different-server")
+        scrollTo("sign-up-server")
+        composeRule.onNode(hasTestTag("sign-up-server")).performTextReplacement(invitation.server)
+        Espresso.closeSoftKeyboard()
         type(inviteLink, "sign-up-invite-link")
         type(email, "sign-up-email")
         type(name, "sign-up-name")
@@ -216,7 +223,7 @@ abstract class HisarUITestCase {
         waitFor("new-secret-key", ACCOUNT_KEY_TIMEOUT)
         val secretKey = readText("new-secret-key")
         saveScreenshot("new-secret-key")
-        handOffEmergencyKit("new-secret-key-share-kit")
+        saveEmergencyKit("new-secret-key-save-kit")
         tapWhenEnabled("new-secret-key-done")
         if (isBiometricOfferExpected) {
             waitFor("biometric-offer-not-now", 10_000)
@@ -232,15 +239,20 @@ abstract class HisarUITestCase {
         return secretKey
     }
 
-    /** Hands the Emergency Kit off as its owner would: opens the share sheet from [shareTag], then closes it. */
-    fun handOffEmergencyKit(shareTag: String) {
-        waitFor(shareTag, ACCOUNT_KEY_TIMEOUT)
-        tap(shareTag)
+    /** Writes the Emergency Kit to a location chosen in the system file creator. */
+    fun saveEmergencyKit(saveTag: String) {
+        waitFor(saveTag, ACCOUNT_KEY_TIMEOUT)
+        tap(saveTag)
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-        val shareSheet = By.pkg(Pattern.compile("android|com\\.android\\.intentresolver"))
-        composeRule.waitUntil("the share sheet opens", 10_000) { device.hasObject(shareSheet) }
-        device.pressBack()
-        composeRule.waitUntil("the share sheet closes", 10_000) { !device.hasObject(shareSheet) }
+        val documents = By.pkg(Pattern.compile("com\\.android\\.documentsui|com\\.google\\.android\\.documentsui"))
+        composeRule.waitUntil("the file creator opens", 10_000) { device.hasObject(documents) }
+        requireNotNull(device.wait(androidx.test.uiautomator.Until.findObject(By.desc("Show roots")), 10_000)).click()
+        val downloads = device.findObject(UiSelector().resourceId("android:id/title").text("Downloads"))
+        check(downloads.waitForExists(10_000)) { "Downloads appears in the file creator" }
+        check(downloads.click()) { "Downloads opens in the file creator" }
+        requireNotNull(device.wait(androidx.test.uiautomator.Until.findObject(By.clazz("android.widget.EditText")), 10_000)).text = "Hisar-test-${System.nanoTime()}.pdf"
+        requireNotNull(device.wait(androidx.test.uiautomator.Until.findObject(By.res(Pattern.compile(".*:id/button1")).enabled(true)), 10_000)).click()
+        composeRule.waitUntil("the file creator closes", 10_000) { !device.hasObject(documents) }
     }
 
     data class PendingRecoveryKit(val recordTag: String, val secretKey: String, val phase: String, val processID: Int)
@@ -283,7 +295,7 @@ abstract class HisarUITestCase {
             tapWhenEnabled("pending-recovery-export")
             waitFor("pending-recovery-share-kit", ACCOUNT_KEY_TIMEOUT)
         }
-        handOffEmergencyKit("pending-recovery-share-kit")
+        saveEmergencyKit("pending-recovery-save-kit")
         tapWhenEnabled("pending-recovery-acknowledge")
         if (kit.phase == "Save and confirm your new Emergency Kit before Hisar sends this change.") {
             waitFor(hasTestTag("pending-recovery-phase") and hasText("Your Emergency Kit is confirmed saved. Continue to send this change."), ACCOUNT_KEY_TIMEOUT)
@@ -293,7 +305,7 @@ abstract class HisarUITestCase {
             type(password, "pending-recovery-password")
             tapWhenEnabled("pending-recovery-export")
             waitFor("pending-recovery-share-kit", ACCOUNT_KEY_TIMEOUT)
-            handOffEmergencyKit("pending-recovery-share-kit")
+            saveEmergencyKit("pending-recovery-save-kit")
             tapWhenEnabled("pending-recovery-acknowledge")
         }
         composeRule.waitUntil("recovery delivery is acknowledged", ACCOUNT_KEY_TIMEOUT) {

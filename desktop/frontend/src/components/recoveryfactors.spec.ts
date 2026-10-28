@@ -7,8 +7,10 @@ import PendingRecoveryView from "./PendingRecoveryView.vue";
 
 vi.mock("../store", async () => {
   const { reactive } = await vi.importActual<typeof Vue>("vue");
+  const state = reactive({ status: { state: "signed-out", email: "", server: "" }, pendingRecovery: [] as PendingRecoverySummary[], recoveryEpoch: 0, recoveryFactor: null, isBusy: false, errorMessage: "", isRecoveryOpen: true });
   return {
-    store: reactive({ status: { state: "signed-out", email: "", server: "" }, pendingRecovery: [], recoveryEpoch: 0, recoveryFactor: null, isBusy: false, errorMessage: "", isRecoveryOpen: true }),
+    store: state,
+    needsAttentionRecovery: () => state.pendingRecovery,
     resumePendingRecovery: vi.fn(),
     savePendingRecoveryKit: vi.fn(),
     acknowledgePendingRecovery: vi.fn(),

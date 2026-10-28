@@ -20,18 +20,20 @@ class DeepLinkUITests {
     fun testSignInLinkFillsTheSignInForm() {
         val link = "hisar://sign-in?server=https%3A%2F%2Fhisar.example.com&email=alice%40example.com&secretKey=H1-ABC123-AAAAA"
         launchApp(FakeBackend(), link).use {
-            composeRule.waitForTag("sign-in-email")
-            composeRule.assertFieldText("sign-in-email", "alice@example.com")
-            composeRule.assertFieldText("sign-in-secret-key", "H1-ABC123-AAAAA")
+            composeRule.waitForTag("sign-in-kit-card")
+            composeRule.onNodeWithText("alice@example.com on hisar.example.com").assertExists()
+            composeRule.onNodeWithTag("sign-in-secret-key").assertDoesNotExist()
             assertTrue("the server stays behind its button, named in the footer", composeRule.isTagShown("sign-in-use-different-server"))
         }
     }
 
     @Test
     fun testInviteLinkOpensCreateAccountWithTheInvite() {
-        launchApp(FakeBackend(), "hisar://invite/abc?server=https%3A%2F%2Fhisar.example.com").use {
-            composeRule.waitForTag("sign-up-invite-link")
-            composeRule.assertFieldText("sign-up-invite-link", "https://hisar.example.com/invite/abc")
+        launchApp(FakeBackend(), "hisar://invite/abc?server=https%3A%2F%2Fhisar.example.com&email=Alice%40Example.com").use {
+            composeRule.waitForTag("invitation-card")
+            composeRule.onNodeWithText("Invitation for alice@example.com\non hisar.example.com").assertExists()
+            composeRule.onNodeWithTag("sign-up-bound-email").assertExists()
+            composeRule.onNodeWithTag("sign-up-email").assertDoesNotExist()
         }
     }
 
