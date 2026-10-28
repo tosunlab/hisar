@@ -140,6 +140,7 @@ An older photo or its error cannot replace a newer choice.
 UI tests wait for the Files picker's **Save** button to become tappable before renaming an Emergency Kit.
 They wait for the filename field to disappear after saving, before continuing in Hisar.
 Visible formatted input and live search are entered one character at a time, with each field update observed before the next character.
+Replacing a search query uses the native clear control, waits for it to disappear, and enters the new query through the same synchronized helper.
 
 `FaceIDUITests` checks that cancelling authentication leaves Hisar locked, focuses the master password field, and shows no error banner.
 `FavoritesUITests` injects its one-shot refresh failure only when the item list requests a manual refresh.

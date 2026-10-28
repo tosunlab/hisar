@@ -182,8 +182,11 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.buttons["copy-password"])
         goBack()
         XCTAssertEqual(tagSearch.value as? String, "git")
-        tagSearch.tap()
-        tagSearch.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "absent")
+        let clearQuery = tagSearch.buttons["Clear text"]
+        waitForHittable(clearQuery)
+        clearQuery.tap()
+        XCTAssertTrue(clearQuery.waitForNonExistence(timeout: 10))
+        type("absent", into: tagSearch)
         XCTAssertTrue(app.buttons["item-GitHub"].waitForNonExistence(timeout: 10))
         app.buttons["Close"].tap()
         goBack()
