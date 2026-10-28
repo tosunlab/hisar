@@ -145,6 +145,8 @@ Formatted fields wait for each character's update before typing the next one. Cu
 inside Hisar because iOS does not grant the test runner access to the app's clipboard.
 Back navigation first selects the frontmost navigation bar, then its back button. A global `BackButton` query can
 select a covered stack's button instead of the visible sheet's back button.
+Scrolling to a row continues until the row ends above the floating tab bar. A row partly under the bar counts as
+hittable, but taps there go to the bar. Switching between Sign in and Create account taps the mode until it is selected.
 
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.
@@ -169,7 +171,7 @@ An older photo or its error cannot replace a newer choice.
 
 UI tests wait for the Files picker's **Save** button to become tappable before renaming an Emergency Kit.
 They wait for the filename field to disappear after saving, before continuing in Hisar.
-Visible formatted input and live search are entered one character at a time, with each field update observed before the next character.
+Formatted input, concealed card numbers included, and live search are entered one character at a time, with each field update observed before the next character. A concealed field is checked by its count of dots.
 Replacing a search query uses the native clear control, waits for it to disappear, and enters the new query through the same synchronized helper.
 
 `FaceIDUITests` checks that cancelling authentication leaves Hisar locked, focuses the master password field, and shows no error banner.
@@ -184,6 +186,8 @@ Returning from another app keeps the interface responsive while Hisar clears its
 The sharing sheet updates its presenting UIKit controller's busy-dismissal policy directly. Updating SwiftUI's
 `interactiveDismissDisabled` preference can recreate the sheet on iOS 27 and discard its form state after an
 invitation succeeds. The UI test checks that the success message and chosen role survive the response.
+Removing a member returns to the members through the sheet's own navigation path. Once a reload drops that member,
+the member page's dismiss action can belong to a replaced view and close the whole sheet.
 
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,
