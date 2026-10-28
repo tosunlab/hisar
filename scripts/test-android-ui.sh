@@ -127,6 +127,9 @@ UI_TEST_VALUES+=(
 # The cross-device test signs in to an account whose other device is the command line, which signs up here.
 # answer_as_other_device then plays that device: each step runs once the phone did what the step waits for, through the
 # server. The phone saves the notes "Ready for a favorite" and "Ready to be signed out" once it watches for those steps.
+# The other device is the standalone CLI; a Hisar app running on this machine must not answer it or start.
+(cd "$ROOT" && go build -o bin/hisar ./cli/cmd/hisar)
+export HISAR_STANDALONE=1 HISAR_NO_LAUNCH=1
 CROSS_DEVICE_EMAIL="android-cross-device-$(date +%s)-$RANDOM@example.com"
 CROSS_DEVICE_PASSWORD=cross-device-master-password
 CROSS_DEVICE_NEW_PASSWORD=cross-device-new-master-password

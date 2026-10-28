@@ -1,26 +1,30 @@
-// Command hisar-ui-test-partner plays the partner of the iPhone and Android UI tests once scripts/ui-test-partner.sh has
-// set the partner up on the standalone CLI. It unlocks the partner's account once, as the partner's own Hisar would, and
-// then answers every 2 seconds: it accepts every share invitation the partner gets, confirms and completes every share
-// the partner sent, accepts every organization invitation, and gives team members the keys of the partner's vaults and
-// those vaults a new key once someone lost access. For the organization tests it adds the joining account to Northwind's
-// team Platform once it joined Northwind, removes it again once it saved "Remove me" in Deploy, and writes "Seen by
-// partner" into Contoso's Runbooks once it reads Pager there.
+// Command hisar-ui-test-partner plays the partner of the iPhone and Android UI tests for scripts/ui-test-partner.sh. It
+// signs up from an invite and sets up what the tests expect: the vault Infrastructure with one login, shared with the
+// banner account before it exists, and the organization Northwind, whose team Owners (the partner alone) owns the vaults
+// Deploy and Audit, given to the team Platform as editor and reader, with the joining account invited. It then writes the
+// ready file and answers every 2 seconds, unlocked as the partner's own Hisar would be: it accepts every share invitation
+// the partner gets, confirms and completes every share the partner sent, accepts every organization invitation, and gives
+// team members the keys of the partner's vaults and those vaults a new key once someone lost access. For the organization
+// tests it adds the joining account to Northwind's team Platform once it joined Northwind, removes it again once it saved
+// "Remove me" in Deploy, and writes "Seen by partner" into Contoso's Runbooks once it reads Pager there.
 //
-// Unlocking derives the account's keys with Argon2id (64 MiB, 24 passes, 4 lanes), about a second of CPU, so a partner
-// that unlocked on every pass added that work every 5 to 6 seconds to the runner the simulator shares.
+// The account's keys are derived once, at sign-up, with Argon2id (64 MiB, 24 passes, 4 lanes), about a second of CPU. A
+// partner on the command line derived them on every pass, every 5 to 6 seconds, on the runner the simulator shares.
 package main
 
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
+	"os"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
-	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/invitelink"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/session"
@@ -35,37 +39,99 @@ type partner struct {
 }
 
 func main() {
-	statePath := flag.String("state", "", "the partner's CLI state file (required)")
+	invite := flag.String("invite", "", "the invite link the partner signs up with (required)")
+	email := flag.String("email", "", "the partner's email (required)")
+	name := flag.String("name", "", "the partner's name (required)")
 	password := flag.String("password", "", "the partner's master password (required)")
-	secretKeyText := flag.String("secret-key", "", "the partner's Secret Key (required)")
-	joinEmail := flag.String("join-email", "", "the account that joins Northwind (required)")
+	shareEmail := flag.String("share-email", "", "the account Infrastructure is shared with (required)")
+	joinEmail := flag.String("join-email", "", "the account invited to Northwind (required)")
+	readyPath := flag.String("ready-file", "", "the file written once the partner is set up (required)")
 	flag.Parse()
-	if *statePath == "" || *password == "" || *secretKeyText == "" || *joinEmail == "" {
-		log.Fatal("-state, -password, -secret-key and -join-email are required")
+	if *invite == "" || *email == "" || *name == "" || *password == "" || *shareEmail == "" || *joinEmail == "" || *readyPath == "" {
+		log.Fatal("-invite, -email, -name, -password, -share-email, -join-email and -ready-file are required")
 	}
-	state, err := localstate.Load(*statePath)
-	if err != nil {
-		log.Fatal(err)
+	server, token, ok := invitelink.Parse(*invite)
+	if !ok {
+		log.Fatalf("invalid invite link %q", *invite)
 	}
-	secretKey, err := crypt.ParseSecretKey(*secretKeyText)
-	if err != nil {
-		log.Fatal(err)
-	}
-	client := apiclient.New(state.Server)
-	client.Token = state.Token
 	ctx := context.Background()
-	unlocked, err := session.Unlock(ctx, client, nil, []byte(*password), secretKey)
+	signedUp, _, err := session.SignUp(ctx, apiclient.New(server), token, *email, *name, []byte(*password), apitypes.DeviceInfo{Name: "UI test partner", Platform: "go"})
 	if err != nil {
-		log.Fatalf("unlocking the partner: %v", err)
+		log.Fatalf("signing up the partner: %v", err)
 	}
-	unlocked.SeqStore = state
-	unlocked.MemberVerifier = state.CheckMemberPin
-	log.Print("unlocked; answering as the partner")
-	answerer := &partner{session: unlocked, joinEmail: *joinEmail}
+	state := &localstate.State{Pins: map[string][]byte{}, Seqs: map[string]int64{}}
+	signedUp.SeqStore = state
+	signedUp.MemberVerifier = state.CheckMemberPin
+	if err := setUp(ctx, signedUp, *shareEmail, *joinEmail); err != nil {
+		log.Fatalf("setting up the partner: %v", err)
+	}
+	if err := os.WriteFile(*readyPath, nil, 0o600); err != nil {
+		log.Fatal(err)
+	}
+	log.Print("set up; answering as the partner")
+	answerer := &partner{session: signedUp, joinEmail: *joinEmail}
 	for {
 		answerer.answer(ctx)
 		time.Sleep(2 * time.Second)
 	}
+}
+
+func setUp(ctx context.Context, s *session.Session, shareEmail, joinEmail string) error {
+	infrastructure, err := s.CreateVault(ctx, "Infrastructure", apitypes.VaultShared)
+	if err != nil {
+		return fmt.Errorf("creating Infrastructure: %w", err)
+	}
+	if err := saveLogin(ctx, s, infrastructure, "Staging database", "deploy", "https://staging.example.com", "staging-database-password"); err != nil {
+		return err
+	}
+	if err := s.InviteToVault(ctx, infrastructure, shareEmail, apitypes.VaultEditor); err != nil {
+		return fmt.Errorf("sharing Infrastructure with %s: %w", shareEmail, err)
+	}
+	northwind, err := s.Client.CreateOrganization(ctx, &apitypes.CreateOrganizationRequest{Name: "Northwind"})
+	if err != nil {
+		return fmt.Errorf("creating Northwind: %w", err)
+	}
+	owners, err := s.Client.CreateTeam(ctx, northwind.ID, &apitypes.CreateTeamRequest{Name: "Owners"})
+	if err != nil {
+		return fmt.Errorf("creating the team Owners: %w", err)
+	}
+	platform, err := s.Client.CreateTeam(ctx, northwind.ID, &apitypes.CreateTeamRequest{Name: "Platform"})
+	if err != nil {
+		return fmt.Errorf("creating the team Platform: %w", err)
+	}
+	if err := s.Client.AddTeamMember(ctx, northwind.ID, owners.ID, s.AccountID); err != nil {
+		return fmt.Errorf("joining the team Owners: %w", err)
+	}
+	for _, organizationVault := range []struct{ name, title, username, url, password, role string }{
+		{"Deploy", "Release signing", "release", "https://deploy.example.com", "release-signing-password", apitypes.VaultEditor},
+		{"Audit", "Audit log", "auditor", "https://audit.example.com", "audit-log-password", apitypes.VaultReader},
+	} {
+		vault, err := s.CreateOrganizationVault(ctx, organizationVault.name, northwind.ID, owners.ID)
+		if err != nil {
+			return fmt.Errorf("creating %s: %w", organizationVault.name, err)
+		}
+		if err := saveLogin(ctx, s, vault, organizationVault.title, organizationVault.username, organizationVault.url, organizationVault.password); err != nil {
+			return err
+		}
+		if err := s.Client.GiveVaultToTeam(ctx, northwind.ID, platform.ID, vault.ID, &apitypes.GrantTeamVaultRequest{Role: organizationVault.role}); err != nil {
+			return fmt.Errorf("giving %s to Platform: %w", organizationVault.name, err)
+		}
+	}
+	if _, err := s.Client.InviteToOrganization(ctx, northwind.ID, &apitypes.OrganizationInvitationRequest{Email: joinEmail, Role: apitypes.OrganizationRoleMember}); err != nil {
+		return fmt.Errorf("inviting %s to Northwind: %w", joinEmail, err)
+	}
+	return nil
+}
+
+func saveLogin(ctx context.Context, s *session.Session, vault *session.Vault, title, username, url, password string) error {
+	login := &item.Item{
+		Overview: item.Overview{Category: item.CategoryLogin, Title: title, Username: username, URLs: []string{url}},
+		Details:  item.Details{Password: password},
+	}
+	if _, err := s.SaveItem(ctx, vault, login); err != nil {
+		return fmt.Errorf("saving %q to %s: %w", title, vault.Name, err)
+	}
+	return nil
 }
 
 func (p *partner) answer(ctx context.Context) {
