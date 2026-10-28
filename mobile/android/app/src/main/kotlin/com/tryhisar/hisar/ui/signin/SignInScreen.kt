@@ -188,8 +188,8 @@ fun SignInScreen(model: AppModel) {
         if (model.isBusy.value || isPolicyBlocking || isWaitingForPasswordRating) return
         val problems = linkedMapOf<CredentialField, String>()
         if (mode == SignInMode.CREATE_ACCOUNT && requiresInvitation && parsedInvitation == null) problems[CredentialField.INVITE] = "Enter an invite link or code."
-        if (mode == SignInMode.CREATE_ACCOUNT && name.isBlank()) problems[CredentialField.NAME] = "Enter your name."
         if (email.isBlank()) problems[CredentialField.EMAIL] = "Enter your email."
+        if (mode == SignInMode.CREATE_ACCOUNT && name.isBlank()) problems[CredentialField.NAME] = "Enter your name."
         if (mode == SignInMode.SIGN_IN && secretKey.isBlank()) problems[CredentialField.SECRET_KEY] = "Enter your Secret Key."
         val currentFeedback = passwordFeedback.takeIf { ratedPassword == password }
         if (mode == SignInMode.CREATE_ACCOUNT) {
@@ -351,14 +351,14 @@ fun SignInScreen(model: AppModel) {
                 }
             }
             if (canShowAccountFields) {
-                ClearSection { Text("Name, email and both master password fields are required.", style = HisarType.footnote) }
+                ClearSection { Text("Email, name and both master password fields are required.", style = HisarType.footnote) }
                 FormSection(header = "You") {
-                    field(CredentialField.NAME, name, { name = it }, "Name", "sign-up-name", "Your name")
-                    RowDivider()
                     if (invitation?.email?.isNotEmpty() == true) {
                         FormRow(Modifier.testTag("sign-up-bound-email")) { Text(email) }
                         FormRow { Text("This invitation is for this address.") }
                     } else field(CredentialField.EMAIL, email, { email = it }, "Email", "sign-up-email", "you@example.com")
+                    RowDivider()
+                    field(CredentialField.NAME, name, { name = it }, "Name", "sign-up-name", "Your name")
                 }
                 FormSection(header = "Master password", footer = {
                     PasswordStrengthMeter(passwordFeedback?.strength ?: PasswordStrength())

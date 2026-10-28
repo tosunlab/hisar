@@ -128,7 +128,7 @@ final class SignUpForm: ObservableObject {
             errors[.password] = "Use a master password with at least 10 characters."
         } else if let feedback, feedback.isBlocking { errors[.password] = feedback.message }
         if password != repeatedPassword { errors[.repeatedPassword] = "The master passwords don't match." }
-        return [.invite, .name, .email, .password, .repeatedPassword].first { errors[$0] != nil }
+        return [.invite, .email, .name, .password, .repeatedPassword].first { errors[$0] != nil }
     }
 
     func submit(using model: AppModel) async -> Bool {

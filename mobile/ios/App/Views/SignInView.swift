@@ -159,7 +159,7 @@ struct SignInView: View {
             if form.needsInvitation && form.invitation == nil { focusedField = .invite }
         }
         .onChange(of: form.invitation) { _, invitation in
-            if invitation != nil { focusedField = .name }
+            if invitation != nil { focusedField = form.boundEmail == nil ? .email : .name }
         }
         .onChange(of: model.pendingSignInLink) { _, _ in applyPendingSignInLink() }
         .onChange(of: model.pendingInviteLink) { _, _ in applyPendingInviteLink() }
@@ -312,10 +312,8 @@ struct SignInView: View {
         if form.showsAccountFields {
             Section("You") {
                 Text("All fields are required.").font(.footnote)
-                TextField("Name", text: $form.name, prompt: Text("Your name"))
-                    .textContentType(.name).focused($focusedField, equals: .name)
-                    .accessibilityLabel("Name, required").accessibilityIdentifier("sign-up-name")
-                fieldError(form.errors[.name])
+                // With the email right above the master password, iOS takes this form for a website sign-up and offers to
+                // generate the master password and keep it in Passwords. The name between them stops that.
                 if let boundEmail = form.boundEmail {
                     Text(boundEmail).accessibilityIdentifier("sign-up-bound-email")
                     Text("This invitation is for this address.").font(.footnote)
@@ -326,6 +324,10 @@ struct SignInView: View {
                         .accessibilityLabel("Email, required").accessibilityIdentifier("sign-up-email")
                     fieldError(form.errors[.email])
                 }
+                TextField("Name", text: $form.name, prompt: Text("Your name"))
+                    .textContentType(.name).focused($focusedField, equals: .name)
+                    .accessibilityLabel("Name, required").accessibilityIdentifier("sign-up-name")
+                fieldError(form.errors[.name])
             }
             Section("Master password") {
                 CredentialField("Master password, required", text: $form.password, prompt: "At least 10 characters")
