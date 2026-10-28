@@ -82,7 +82,6 @@ func signUpTestAccount(t *testing.T, ctx context.Context, server *Server, baseUR
 
 func TestEventStream(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
-	server.config.EventHeartbeatInterval = 100 * time.Millisecond
 	ctx := context.Background()
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)

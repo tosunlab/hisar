@@ -7,9 +7,12 @@
 # - iOS (macos-26): the "Test Suite '<class>' passed ... in N (M) seconds" lines, M, of the 14 green "iPhone UI tests" jobs of
 #   macOS and iOS runs 39851893409, 39871406706, 39874975576, 39899514473, 39902774426, 39905934704 and 39909260176.
 #   WideLayoutUITests: one run on a Mac's iPhone 17 Pro simulator on 2026-10-27 (118 s), until CI has run it.
-# - Android (ubuntu-latest, API 36 emulator): the testcase times in the JUnit XML of 69 android-reports-<part> artifacts of
-#   48 CI runs from 2026-10-22 and 2026-10-23, passing tests only, the median per test added up per class. Classes under
-#   half a second, and those only API 37 runs, are left out.
+# - Android (ubuntu-latest, API 36 emulator): each test's wall time, from its "TestRunner: started" logcat line to the next
+#   test's, so the orchestrator's 2.3 s between tests counts too; the median per test added up per class. From the 14
+#   android-reports-<part> artifacts of CI runs 40595449825, 40599404870, 40661846716, 40611285397, 40611314192,
+#   40645082873, 40645263609 and 40665680491 (2026-10-27 and 28). ui.AccountLifecycleUITests, ui.BiometricUITests,
+#   ui.item.ItemEditorFieldNameTests and platform.BiometricEnrollmentTests are estimates from classes like them, until CI
+#   has measured them.
 # Measure again when a part grows well past the others.
 IOS_UI_TEST_SECONDS=(
   HisarUITests=417 OrganizationUITests=226 FavoritesUITests=176 SharingUITests=173 AccountLifecycleUITests=143
@@ -17,14 +20,23 @@ IOS_UI_TEST_SECONDS=(
 )
 # Classes of the package com.tryhisar.hisar.
 ANDROID_UI_TEST_SECONDS=(
-  PhoneApprovalUITests=121 AccountItemFlowUITests=118 autofill.AutofillServiceUITests=110 OrganizationUITests=91
-  passkey.PasskeyUITests=81 ui.VaultsScreenUITests=79 SharingUITests=78 ui.item.ItemEditorUITests=78
-  ui.AccountLifecycleUITests=48 platform.ClipboardAdapterTests=46 CrossDeviceSyncUITests=44 autofill.OneTimeCodeUITests=43
-  ui.RootScreenUITests=43 FavoritesUITests=42 ui.EditorFieldHygieneTests=41 ui.item.ItemDetailScreenTests=35
-  ui.item.ItemDetailUITests=34 ui.CredentialImportUITests=26 autofill.AutoFillUITests=21 ui.signin.QrScannerTests=20
-  ui.DeepLinkUITests=16 ui.InvitationMenuUITests=16 autofill.AutoFillSettingsUITests=12 backend.HisarKitBackendTests=12
-  ProviderScreenshotTests=10 ui.DevicesUITests=8 ui.signin.SignInStateTests=7 HarnessServerTests=5
-  platform.TrustedCertificatesTests=3 passkey.CredentialCompletionTests=1
+  autofill.AutofillServiceUITests=260 passkey.PasskeyUITests=221 ui.VaultsScreenUITests=176
+  AccountItemFlowUITests=136 PhoneApprovalUITests=129 FileHandoffUITests=115 SharingUITests=100
+  ui.item.ItemDetailScreenTests=99 OrganizationUITests=96 AutoLockUITests=93 ui.item.ItemEditorUITests=86
+  platform.ClipboardAdapterTests=66 ui.CredentialImportUITests=58 CrossDeviceSyncUITests=54
+  VaultManagementUITests=52 ui.RootScreenUITests=52 FavoritesUITests=50 autofill.OneTimeCodeUITests=50
+  ui.AccountLifecycleUITests=50 ui.signin.QrScannerTests=47 ui.EditorFieldHygieneTests=46
+  ui.item.ItemDetailUITests=46 PrivacyUITests=40 ui.BiometricUITests=40
+  ui.item.PasswordGeneratorSheetUITests=38 ui.item.ItemDetailClipboardTests=36
+  ui.settings.CredentialImportCancellationUITests=31 ui.DevicesUITests=30 ui.FieldAccessibilityTests=24
+  autofill.AutoFillUITests=21 ui.DeepLinkUITests=21 ui.signin.SignInStateTests=21 ui.InvitationMenuUITests=19
+  autofill.AutoFillSettingsUITests=18 ProviderScreenshotTests=16 backend.HisarKitBackendTests=16
+  ui.sharing.ModalSheetBarTests=16 passkey.CredentialCompletionTests=15
+  ui.item.PasswordGeneratorControlTests=14 ui.UpdateRequiredScreenTests=9 platform.BiometricEnrollmentTests=8
+  ui.item.ItemEditorFieldNameTests=7 ui.settings.PendingRecoveryStateTests=7 ui.approvals.ApprovalDetailTests=5
+  HarnessServerTests=4 platform.TrustedCertificatesTests=4 platform.KeystoreSecretKeyStoreTests=3
+  platform.BiometricKeystoreTests=2 platform.StateDirectoryTests=2 ui.item.IconPhotoConverterTests=2
+  autofill.DatasetsTests=1 passkey.CredentialEntriesTests=1 ui.settings.PasswordCharacterRuntimeTests=1
 )
 
 # ui_test_part PART COUNT CLASS=SECONDS... sets UI_TEST_PART_CLASSES. For a part below COUNT, these are the classes it runs;

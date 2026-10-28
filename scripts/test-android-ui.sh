@@ -7,28 +7,41 @@
 # (testAccountItemLockAndSignInFlow) or both (HisarUITests#testAccountItemLockAndSignInFlow), or "smoke" for the set the
 # older Android versions run (a smoke test this checkout lacks is named and left out). A name that matches
 # no test, or a run in which no test ran, fails. HISAR_UI_TEST_SCREENSHOT_DIRECTORY receives the screenshots the tests save.
-# ANDROID_UI_TEST_PART=1 or 2 runs one of two parts of similar length, for two CI jobs, as scripts/ui-test-parts.sh splits the
-# classes; part 2 also runs every class new to its table.
+# ANDROID_UI_TEST_PART=1, 2 or 3 runs one of three parts of similar length, for three CI jobs, as scripts/ui-test-parts.sh
+# splits the classes; part 3 also runs every class new to its table.
+#
+# --build-apks only builds the debug and test APKs, with no device. CI runs it in the background while the emulator boots
+# and sets ANDROID_UI_TEST_APK_BUILD to the file its exit status goes to (its output beside it, in that name plus .log); the
+# tests then wait for that build instead of building.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 : "${ANDROID_HOME:?set ANDROID_HOME to the Android SDK}"
 ADB=$ANDROID_HOME/platform-tools/adb
+# The emulator's host process grows with every test (scripts/ui-test-parts.sh), and a Gradle daemon and the Kotlin compiler's
+# daemon keep the gigabytes they built with until they exit. So every Gradle here compiles in its own process and exits when
+# it is done, and the first one only builds the APKs, so that the one that runs the tests never holds a build's memory.
+GRADLE=(./gradlew --console=plain --no-daemon -Pkotlin.compiler.execution.strategy=in-process)
+build_apks() { (cd "$ROOT/mobile/android" && "${GRADLE[@]}" assembleDebug assembleDebugAndroidTest); }
+if [ "${1:-}" = --build-apks ]; then
+  build_apks
+  exit
+fi
 SMOKE_TESTS=HisarKitBackendTests,KeystoreSecretKeyStoreTests,BiometricKeystoreTests,ClipboardAdapterTests,testAccountItemLockAndSignInFlow,testBiometricUnlockAfterTurningItOn,AutofillServiceUITests#testWebViewFormFillsAfterUnlock,testRegisterPasskeyThenSignInWithIt,HarnessServerTests,testAppSwitcherHidesAnOpenSheet
-# The runner matches tests_regex against package.Class#test: part 1 names its classes, and part 2 leaves out those of part 1.
+# The runner matches tests_regex against package.Class#test: parts 1 and 2 name their classes, and part 3 leaves out theirs.
 source "$ROOT/scripts/ui-test-parts.sh"
 TESTS_REGEX=
 case "${ANDROID_UI_TEST_PART:-}" in
   "") ;;
-  1)
-    ui_test_part 1 2 "${ANDROID_UI_TEST_SECONDS[@]}"
+  1 | 2)
+    ui_test_part "$ANDROID_UI_TEST_PART" 3 "${ANDROID_UI_TEST_SECONDS[@]}"
     TESTS_REGEX="^com\\.tryhisar\\.hisar\\.($(IFS='|'; echo "${UI_TEST_PART_CLASSES[*]//./\\.}"))#"
     ;;
-  2)
-    ui_test_part 2 2 "${ANDROID_UI_TEST_SECONDS[@]}"
+  3)
+    ui_test_part 3 3 "${ANDROID_UI_TEST_SECONDS[@]}"
     TESTS_REGEX="^(?!com\\.tryhisar\\.hisar\\.($(IFS='|'; echo "${UI_TEST_PART_CLASSES[*]//./\\.}"))#)"
     ;;
-  *) echo "ANDROID_UI_TEST_PART is 1 or 2" >&2; exit 1 ;;
+  *) echo "ANDROID_UI_TEST_PART is 1, 2 or 3" >&2; exit 1 ;;
 esac
 if [ -n "${ANDROID_UI_TEST_PART:-}" ] && [ -n "${ANDROID_UI_TESTS:-}" ]; then
   echo "set ANDROID_UI_TESTS or ANDROID_UI_TEST_PART, not both" >&2
@@ -254,11 +267,13 @@ fi
 OUTPUT=$ROOT/mobile/android/app/build/outputs/connected_android_test_additional_output
 RESULTS=$ROOT/mobile/android/app/build/outputs/androidTest-results/connected
 rm -rf "$OUTPUT" "$RESULTS"
-# The emulator's host process grows with every test (scripts/ui-test-parts.sh), and a Gradle daemon and the Kotlin compiler's
-# daemon keep the gigabytes they built with until they exit. So every Gradle here compiles in its own process and exits when
-# it is done, and the first one only builds the APKs, so that the one that runs the tests never holds a build's memory.
-GRADLE=(./gradlew --console=plain --no-daemon -Pkotlin.compiler.execution.strategy=in-process)
-(cd "$ROOT/mobile/android" && "${GRADLE[@]}" assembleDebug assembleDebugAndroidTest)
+if [ -n "${ANDROID_UI_TEST_APK_BUILD:-}" ]; then
+  while [ ! -s "$ANDROID_UI_TEST_APK_BUILD" ]; do sleep 2; done
+  cat "$ANDROID_UI_TEST_APK_BUILD.log"
+  [ "$(cat "$ANDROID_UI_TEST_APK_BUILD")" = 0 ] || { echo "the background build of HisarKit.aar and the APKs failed" >&2; exit 1; }
+else
+  build_apks
+fi
 STATUS=0
 if "$RECOVERY_ONLY"; then
   (cd "$ROOT/mobile/android" && "${GRADLE[@]}" installDebug installDebugAndroidTest) || STATUS=$?
