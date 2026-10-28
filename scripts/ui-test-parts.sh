@@ -3,28 +3,37 @@
 # length. ui_test_part takes the classes longest first and gives each to the part with the least time so far. The last part
 # runs every class the other parts do not, so a class missing from a table, such as a new one, runs there.
 #
-# The seconds are each class's median on GitHub's runners, measured on 2026-10-23:
-# - iOS (macos-26): the "Test Suite '<class>' passed ... in N (M) seconds" lines, M, of the 14 green "iPhone UI tests" jobs of
-#   macOS and iOS runs 39851893409, 39871406706, 39874975576, 39899514473, 39902774426, 39905934704 and 39909260176.
-#   WideLayoutUITests: one run on a Mac's iPhone 17 Pro simulator on 2026-10-27 (118 s), until CI has run it.
-# - Android (ubuntu-latest, API 36 emulator): the testcase times in the JUnit XML of 69 android-reports-<part> artifacts of
-#   48 CI runs from 2026-10-22 and 2026-10-23, passing tests only, the median per test added up per class. Classes under
-#   half a second, and those only API 37 runs, are left out.
+# The seconds are each class's median on GitHub's runners, measured on 2026-10-28:
+# - iOS (macos-26): the "Test Suite '<class>' passed ... in N (M) seconds" lines, M, of the 18 green "iPhone UI tests" jobs of
+#   macOS and iOS runs 40626545185, 40650695972, 40668395926, 40670276097, 40684250269 and 40694450582. HisarUITests,
+#   AccountLifecycleUITests and PhoneApprovalUITests less the tests and steps removed after those runs, as XCTest timed them.
+# - Android (ubuntu-latest, API 36 emulator): the testcase times in the JUnit XML of the android-reports-<part> artifacts of
+#   runs 40292805327, 40363444054, 40375877157, 40611285397, 40611314192, 40661846716 and 40665680491, passing tests only, the
+#   median per test added up per class, plus 2.114 s per test, the median gap the test orchestrator leaves between two
+#   tests. ui.AccountLifecycleUITests is its two process-restart phases; a test with no passing time counts as its class's
+#   median test, or every test's median, and a test only API 37 runs as the gap alone.
 # Measure again when a part grows well past the others.
 IOS_UI_TEST_SECONDS=(
-  HisarUITests=417 OrganizationUITests=226 FavoritesUITests=176 SharingUITests=173 AccountLifecycleUITests=143
-  AutoFillUITests=132 WideLayoutUITests=118 PasskeyUITests=109 PhoneApprovalUITests=107 OneTimeCodeUITests=95 FaceIDUITests=83
+  HisarUITests=838 OrganizationUITests=397 SharingUITests=349 AccountLifecycleUITests=295 OneTimeCodeUITests=246
+  FaceIDUITests=228 FavoritesUITests=228 WideLayoutUITests=220 PasskeyUITests=171 PhoneApprovalUITests=102
 )
 # Classes of the package com.tryhisar.hisar.
 ANDROID_UI_TEST_SECONDS=(
-  PhoneApprovalUITests=121 AccountItemFlowUITests=118 autofill.AutofillServiceUITests=110 OrganizationUITests=91
-  passkey.PasskeyUITests=81 ui.VaultsScreenUITests=79 SharingUITests=78 ui.item.ItemEditorUITests=78
-  ui.AccountLifecycleUITests=48 platform.ClipboardAdapterTests=46 CrossDeviceSyncUITests=44 autofill.OneTimeCodeUITests=43
-  ui.RootScreenUITests=43 FavoritesUITests=42 ui.EditorFieldHygieneTests=41 ui.item.ItemDetailScreenTests=35
-  ui.item.ItemDetailUITests=34 ui.CredentialImportUITests=26 autofill.AutoFillUITests=21 ui.signin.QrScannerTests=20
-  ui.DeepLinkUITests=16 ui.InvitationMenuUITests=16 autofill.AutoFillSettingsUITests=12 backend.HisarKitBackendTests=12
-  ProviderScreenshotTests=10 ui.DevicesUITests=8 ui.signin.SignInStateTests=7 HarnessServerTests=5
-  platform.TrustedCertificatesTests=3 passkey.CredentialCompletionTests=1
+  autofill.AutofillServiceUITests=265 passkey.PasskeyUITests=202 ui.VaultsScreenUITests=147 AccountItemFlowUITests=135
+  FileHandoffUITests=109 AutoLockUITests=92 PhoneApprovalUITests=87 ui.item.ItemEditorUITests=85 OrganizationUITests=84
+  SharingUITests=84 ui.AccountLifecycleUITests=79 ui.item.ItemDetailScreenTests=71 platform.ClipboardAdapterTests=61
+  ui.EditorFieldHygieneTests=55 VaultManagementUITests=51 FavoritesUITests=49 CrossDeviceSyncUITests=47
+  autofill.OneTimeCodeUITests=47 PrivacyUITests=38 ui.item.ItemDetailUITests=38 ui.RootScreenUITests=37
+  ui.item.PasswordGeneratorSheetUITests=37 ui.signin.QrScannerTests=37
+  ui.settings.CredentialImportCancellationUITests=30 ui.CredentialImportUITests=22 ui.FieldAccessibilityTests=22
+  ui.DeepLinkUITests=20 ui.signin.SignInStateTests=20 autofill.AutoFillSettingsUITests=18
+  backend.HisarKitBackendTests=18 ui.item.PasswordGeneratorControlTests=18 passkey.CredentialCompletionTests=17
+  ui.InvitationMenuUITests=17 ProviderScreenshotTests=14 ui.sharing.ModalSheetBarTests=10 ui.DevicesUITests=9
+  ui.item.ItemEditorFieldNameTests=9 ui.UpdateRequiredScreenTests=8 platform.TrustedCertificatesTests=7
+  ui.settings.PendingRecoveryStateTests=7 ui.approvals.ApprovalDetailTests=5 platform.BiometricEnrollmentTests=4
+  platform.BiometricKeystoreTests=4 platform.KeystoreSecretKeyStoreTests=4 platform.StateDirectoryTests=4
+  autofill.DatasetsTests=2 passkey.CredentialEntriesTests=2 ui.BiometricUITests=2 ui.item.IconPhotoConverterTests=2
+  ui.settings.PasswordCharacterRuntimeTests=2
 )
 
 # ui_test_part PART COUNT CLASS=SECONDS... sets UI_TEST_PART_CLASSES. For a part below COUNT, these are the classes it runs;
