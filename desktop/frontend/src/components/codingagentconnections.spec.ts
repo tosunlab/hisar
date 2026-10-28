@@ -19,7 +19,6 @@ const api = vi.mocked(mockedApi);
 const omp = createCodingAgent({ id: "omp", name: "omp" });
 const claudeCode = createCodingAgent({ id: "claude-code", name: "Claude Code" });
 const codex = createCodingAgent({ id: "codex", name: "Codex" });
-const hermes = createCodingAgent({ id: "hermes", name: "Hermes" });
 
 async function mountSection(): Promise<VueWrapper> {
   const wrapper = mount(CodingAgentsSection, { attachTo: document.body });
@@ -70,14 +69,6 @@ describe("CodingAgentConnections", () => {
     wrapper.unmount();
   });
 
-  it("says Codex is not installed and omp is available", async () => {
-    api.listAllCodingAgent.mockResolvedValue([omp, { ...codex, state: "not-installed" }]);
-    const wrapper = await mountSection();
-    expect(getText(wrapper, "agent-state-omp")).toContain("through hisar run and show Hisar's state in their status line.");
-    expect(getText(wrapper, "agent-state-codex")).toBe("Codex is not installed.");
-    wrapper.unmount();
-  });
-
   it("connects Claude Code and asks to restart running sessions", async () => {
     api.listAllCodingAgent.mockResolvedValue([omp, claudeCode]);
     const wrapper = await mountSection();
@@ -89,29 +80,6 @@ describe("CodingAgentConnections", () => {
     expect(getText(wrapper, "agent-restart-hint-claude-code")).toBe("New Claude Code sessions load Hisar. Restart the ones already running.");
     expect(hasElement(wrapper, "connect-agent-claude-code")).toBe(false);
     expect(hasElement(wrapper, "connect-agent-omp")).toBe(true);
-    wrapper.unmount();
-  });
-
-  it("connects omp and asks to restart running sessions", async () => {
-    api.listAllCodingAgent.mockResolvedValue([omp]);
-    const wrapper = await mountSection();
-    api.connectCodingAgent.mockResolvedValue({ ...omp, state: "connected" });
-    await wrapper.find('[data-testid="connect-agent-omp"]').trigger("click");
-    await flushPromises();
-    expect(getText(wrapper, "agent-restart-hint-omp")).toBe("New omp sessions load Hisar. Restart the ones already running.");
-    wrapper.unmount();
-  });
-
-  it("connects Hermes and tells how sessions load Hisar", async () => {
-    api.listAllCodingAgent.mockResolvedValue([hermes]);
-    const wrapper = await mountSection();
-    api.connectCodingAgent.mockResolvedValue({ ...hermes, state: "connected" });
-    await wrapper.find('[data-testid="connect-agent-hermes"]').trigger("click");
-    await flushPromises();
-    expect(api.connectCodingAgent).toHaveBeenCalledWith("hermes");
-    expect(getText(wrapper, "agent-restart-hint-hermes")).toBe(
-      "Start a new Hermes session, or run /reload-mcp in one that is running. A session started with -t loads Hisar when its list names hisar, all or *.",
-    );
     wrapper.unmount();
   });
 

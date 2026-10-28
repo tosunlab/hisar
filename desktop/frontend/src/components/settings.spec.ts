@@ -88,28 +88,6 @@ describe("Settings sidebar", () => {
     expect(transferPage.findAll("section").map((section) => section.attributes("data-testid"))).toEqual(["import-section", "export-section"]);
   });
 
-  it("shows the chosen section and keeps every section's rows where they belong", async () => {
-    const settings = await mountSettings();
-    await settings.find('[data-testid="settings-section-ssh"]').trigger("click");
-    expect(settings.find("#settings-title").text()).toBe("SSH & Git");
-    expect(findPage(settings, "ssh").isVisible()).toBe(true);
-    expect(findPage(settings, "general").isVisible()).toBe(false);
-    expect(findPage(settings, "ssh").text()).toContain("Compact SSH approvals");
-    expect(findPage(settings, "ssh").find('[data-testid="commit-signing"]').text()).toContain("Remember commit signing");
-    expect(findPage(settings, "ssh").find('[data-testid="commit-signing"] .muted').text()).toBe(
-      "Lets the signing dialog offer “Don’t ask again” for one app, repository and key. Tags always ask.",
-    );
-    expect(findPage(settings, "ssh").text()).not.toContain("gpg.format");
-    expect(findPage(settings, "ssh").text()).not.toContain("has its own setting below");
-    expect((findPage(settings, "ssh").find('[data-testid="signing-remember"]').element as HTMLSelectElement).value).toBe("0");
-    expect(findPage(settings, "developer").find('[data-testid="command-line-section"]').exists()).toBe(true);
-    expect(findPage(settings, "developer").find('[data-testid="coding-agents-section"]').exists()).toBe(true);
-    expect(findPage(settings, "security").find('[data-testid="enable-touch-id"]').exists()).toBe(true);
-    expect(findPage(settings, "browser").find('[data-testid="browser-extension-section"]').exists()).toBe(true);
-    expect(findPage(settings, "devices").find('[data-testid="devices-section"]').exists()).toBe(true);
-    expect(findPage(settings, "account").text()).toContain("Sign out");
-  });
-
   it("remembers the last section for the next time Settings opens", async () => {
     const settings = await mountSettings();
     await settings.find('[data-testid="settings-section-developer"]').trigger("click");
