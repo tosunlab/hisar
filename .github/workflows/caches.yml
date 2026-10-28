@@ -48,14 +48,36 @@ jobs:
         run: |
           scripts/install-android-sdk.sh --build-only
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # android-build's HisarKit.aar and the instrumented tests' one (HISAR_FAST_TEST_KDF) share a path, so each is restored
+      # and saved explicitly, before the other replaces it.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: hisarkit
         with:
           path: mobile/build/HisarKit.aar
-          key: hisarkit-android-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'scripts/install-android-sdk.sh') }}
+          key: hisarkit-android-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'mobile/fast-test-kdf.sh', 'scripts/install-android-sdk.sh') }}
       - if: steps.hisarkit.outputs.cache-hit != 'true'
         run: make build-android-aar
+      - if: steps.hisarkit.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/build/HisarKit.aar
+          key: ${{ steps.hisarkit.outputs.cache-primary-key }}
       - run: make build-android
+      - run: rm mobile/build/HisarKit.aar
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: hisarkit-fast-test-kdf
+        with:
+          path: mobile/build/HisarKit.aar
+          key: hisarkit-android-fast-test-kdf-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'mobile/fast-test-kdf.sh', 'scripts/install-android-sdk.sh') }}
+      - if: steps.hisarkit-fast-test-kdf.outputs.cache-hit != 'true'
+        env:
+          HISAR_FAST_TEST_KDF: "1"
+        run: make build-android-aar
+      - if: steps.hisarkit-fast-test-kdf.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/build/HisarKit.aar
+          key: ${{ steps.hisarkit-fast-test-kdf.outputs.cache-primary-key }}
       # The instrumented test jobs build with other Gradle flags, so their configuration cache entry is its own.
       - name: Build the instrumented tests' APKs as their jobs do
         run: ./scripts/test-android-ui.sh --build-apks
@@ -73,14 +95,16 @@ jobs:
         id: hisarkit
         with:
           path: mobile/build/HisarKit.xcframework
-          key: hisarkit-ios-${{ env.XCODE_PATH }}-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-framework.sh') }}
+          key: hisarkit-ios-fast-test-kdf-${{ env.XCODE_PATH }}-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-framework.sh', 'mobile/fast-test-kdf.sh') }}
       - if: steps.hisarkit.outputs.cache-hit != 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
           cache-dependency-path: "**/go.sum"
       - if: steps.hisarkit.outputs.cache-hit != 'true'
-        name: Build HisarKit with the iPhone app's Xcode
+        name: Build ios-build's HisarKit with the iPhone app's Xcode
+        env:
+          HISAR_FAST_TEST_KDF: "1"
         run: |
           sudo xcode-select -s "$XCODE_PATH"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
