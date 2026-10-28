@@ -40,9 +40,8 @@ function resetStore(): void {
     allVault: [],
     allItem: [],
     selectedItem: null,
-    pendingSecretKey: "",
-    pendingInvite: "",
-    isTouchIDOfferShown: false,
+    onboardingStep: "",
+    pendingInvite: null,
     errorMessage: "",
     noticeMessage: "",
     isBusy: false,
@@ -127,9 +126,9 @@ describe("Invite links", () => {
     api.takePendingInvite.mockResolvedValue(inviteLink("https://hisar.example.com/invite/abc_DEF-123", { server: "https://hisar.example.com" }));
     const wrapper = mount(App);
     await flushPromises();
-    expect(wrapper.find("h1").text()).toBe("Create your account");
-    expect((wrapper.find('input[name="inviteCode"]').element as HTMLInputElement).value).toBe("abc_DEF-123");
-    expect(wrapper.find('[data-testid="invite-server"]').text()).toBe("Server: hisar.example.com");
+    expect(wrapper.find("h1").text()).toBe("Create account");
+    expect(wrapper.find('[data-testid="invitation-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="invite-server"]').text()).toBe("on hisar.example.com");
   });
 
   it("fills in an invite that arrives while the app is open", async () => {
@@ -139,15 +138,15 @@ describe("Invite links", () => {
     await flushPromises();
     allListener.current.get("invite-link")?.({ data: inviteLink("xyz789", { server: "https://eu.tryhisar.com" }) });
     await flushPromises();
-    expect((wrapper.find('input[name="inviteCode"]').element as HTMLInputElement).value).toBe("xyz789");
-    expect(wrapper.find('[data-testid="invite-server"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="invitation-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="invite-server"]').text()).toBe("on eu.tryhisar.com");
     await wrapper.find('input[name="name"]').setValue("Ada");
     await wrapper.find('input[name="email"]').setValue("ada@example.com");
     await wrapper.find('input[name="password"]').setValue("correct horse battery staple");
     await wrapper.find('input[name="repeatedPassword"]').setValue("correct horse battery staple");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
-    expect(api.signUp).toHaveBeenCalledWith("xyz789", "ada@example.com", "Ada", "correct horse battery staple");
+    expect(api.signUp).toHaveBeenCalledWith("https://eu.tryhisar.com/invite/xyz789", "ada@example.com", "Ada", "correct horse battery staple");
   });
 
   it("says to sign out first when someone is signed in", async () => {
@@ -155,7 +154,7 @@ describe("Invite links", () => {
     api.takePendingInvite.mockResolvedValue(inviteLink("abc"));
     mount(App);
     await flushPromises();
-    expect(store.pendingInvite).toBe("");
+    expect(store.pendingInvite).toBeNull();
     expect(store.noticeMessage).toBe("You're signed in as alice@example.com. Sign out to create an account with this invite.");
   });
 
@@ -167,7 +166,7 @@ describe("Invite links", () => {
     await flushPromises();
     expect(store.isSettingsOpen).toBe(true);
     expect(loadSelectedSectionID()).toBe("organizations");
-    expect(store.pendingInvite).toBe("");
+    expect(store.pendingInvite).toBeNull();
   });
 
   it("shows a share invitation in Settings → People after the unlock", async () => {

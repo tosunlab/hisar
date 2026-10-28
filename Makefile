@@ -69,8 +69,9 @@ install-wails:
 generate-themes:
 	node scripts/themes/generate.ts
 
+# Needs Playwright's Chromium: cd desktop/frontend && npx playwright install chromium
 test-desktop-frontend:
-	cd desktop/frontend && npm ci --no-audit --no-fund && npm run typecheck && npm test && npm run check:bundle
+	cd desktop/frontend && npm ci --no-audit --no-fund && npm run typecheck && npm test && npm run test:end-to-end && npm run check:bundle
 
 build-desktop:
 	cd desktop && wails3 build

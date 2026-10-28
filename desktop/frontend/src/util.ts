@@ -1,4 +1,5 @@
 import type { IconName } from "./components/AppIcon.vue";
+import type { EmergencyKitStatus } from "./api";
 
 export const touchIDConsent = "Touch ID unlocks Hisar after it locks, so you type your master password less often. Any fingerprint set up for your account on this Mac can unlock Hisar. Hisar still asks for your master password when it starts and at least every 14 days. Changing these fingerprints turns off Touch ID unlock until you turn it on again with your master password. You can change this later in Settings, Security.";
 
@@ -79,12 +80,18 @@ export function getThisDeviceName(): string {
   return isMacPlatform() ? "this Mac" : "this computer";
 }
 
-export function getSignOutCopy(isLocked: boolean): { title: string; message: string } {
+export function getSignOutCopy(isLocked: boolean, kit?: EmergencyKitStatus | null): { title: string; message: string } {
   const device = getThisDeviceName();
-  const message = `Hisar removes ${device}'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.`;
+  let message = `Hisar removes ${device}'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.`;
+  if (kit) {
+    message = `You haven't ${kit.savedBy ? "confirmed" : "saved"} this account's Emergency Kit yet. ${message} The protected unfinished setup stays on ${device}. Don't rely on it as your only recovery copy.`;
+    if (isLocked) message += ` Cancel, unlock Hisar and finish ${kit.savedBy ? "confirming" : "saving"} your Emergency Kit.`;
+  } else if (isLocked) {
+    message += " If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Security.";
+  }
   return {
     title: `Sign out of Hisar on ${device}?`,
-    message: isLocked ? `${message} If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Security.` : message,
+    message,
   };
 }
 

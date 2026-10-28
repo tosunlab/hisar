@@ -1,15 +1,21 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import { signOut, store } from "../store";
+import { computed, nextTick, ref } from "vue";
+import { openFromSettings, signOut, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 import { getSignOutCopy } from "../util";
 import DeleteAccountDialog from "./DeleteAccountDialog.vue";
 
 const emit = defineEmits<{ saveEmergencyKit: [] }>();
-const signOutCopy = getSignOutCopy(false);
+const signOutCopy = computed(() => getSignOutCopy(false, store.status.emergencyKit));
 const isRowVisible = useSettingsRowVisibility();
 const isConfirmingSignOut = ref(false);
 const isDeletingAccount = ref(false);
+const cancelSignOutButton = ref<HTMLButtonElement | null>(null);
+async function confirmSignOut(): Promise<void> {
+  isConfirmingSignOut.value = true;
+  await nextTick();
+  cancelSignOutButton.value?.focus();
+}
 </script>
 
 <template>
@@ -22,14 +28,14 @@ const isDeletingAccount = ref(false);
             <strong>{{ store.status.name || store.status.email }}</strong>
             <p class="muted">{{ store.status.email }} · {{ store.status.server }}</p>
           </div>
-          <button v-if="!isConfirmingSignOut" class="danger" @click="isConfirmingSignOut = true">Sign out</button>
+          <button v-if="!isConfirmingSignOut" class="danger" @click="confirmSignOut">Sign out</button>
         </div>
         <div v-if="isConfirmingSignOut" class="card confirm" data-testid="settings-sign-out-confirmation">
           <h3>{{ signOutCopy.title }}</h3>
           <p>{{ signOutCopy.message }}</p>
           <div class="row">
-            <button class="ghost" @click="isConfirmingSignOut = false">Cancel</button>
-            <button data-testid="sign-out-save-emergency-kit" @click="isConfirmingSignOut = false; emit('saveEmergencyKit')">Save Emergency Kit…</button>
+            <button ref="cancelSignOutButton" class="ghost" @click="isConfirmingSignOut = false">Cancel</button>
+            <button data-testid="sign-out-save-emergency-kit" @click="isConfirmingSignOut = false; store.status.emergencyKit ? openFromSettings('recovery') : emit('saveEmergencyKit')">Save Emergency Kit…</button>
             <button class="danger-solid" data-testid="settings-confirm-sign-out" @click="signOut">Sign out</button>
           </div>
         </div>

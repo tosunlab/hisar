@@ -74,7 +74,7 @@ async function applyAccountDialogParameter(dialog: string | null): Promise<void>
     if (dialog === "replace-secret-key-done") {
       await typeIntoInput('input[name="replaceSecretKeyPassword"]', "current master password");
       await clickElement('[data-testid="confirm-replace-secret-key"]');
-      await waitForElement('[data-testid="new-secret-key"]');
+      await waitForElement('[data-testid="save-emergency-kit"]');
     }
   } else if (dialog === "delete-account" || dialog === "delete-account-filled") {
     await clickElement('[data-testid="delete-account"]');
@@ -247,10 +247,12 @@ async function applyShareLinkParameter(parameter: URLSearchParams): Promise<void
 export async function applyPreviewParameter(): Promise<void> {
   const parameter = new URLSearchParams(window.location.search);
   if (parameter.get("secretKey") === "1") {
-    store.pendingSecretKey = "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M";
+    await waitForUnlocked();
+    store.onboardingStep = "kit";
   }
   if (parameter.get("touchIdOffer") === "1") {
-    store.isTouchIDOfferShown = true;
+    await waitForUnlocked();
+    store.onboardingStep = "biometric";
   }
   if (parameter.get("settings") === "1") {
     const sectionID = parameter.get("invite")
