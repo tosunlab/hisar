@@ -24,11 +24,21 @@
   <p class="note">Create your account with <strong data-testid="invitee-email">{{.Email}}</strong>. The invite works once and expires on {{.ExpiresOn}}.</p>
 
   <section class="step" aria-labelledby="install-title">
+{{if .PhoneInstallation.URL}}
+    <h2 id="install-title">1. Open Hisar</h2>
+    <a class="button primary" href="{{.DeepLink}}" data-testid="open-in-hisar">Open in Hisar</a>
+    <p class="note">Need Hisar? See how to build and install it on your phone.</p>
+    <a class="button secondary" href="{{.PhoneInstallation.URL}}" rel="noopener noreferrer" data-testid="phone-installation">{{.PhoneInstallation.Label}}</a>
+    <a class="button secondary" href="{{.DownloadURL}}" rel="noopener noreferrer" data-testid="other-downloads">Other downloads</a>
+    <a class="button secondary" href="{{.DownloadURL}}" rel="noopener noreferrer" data-testid="download">Download for Mac</a>
+    <a class="button secondary" href="{{.LinuxDownloadURL}}" rel="noopener noreferrer" data-testid="download-linux">Download for Linux</a>
+{{else}}
     <h2 id="install-title">1. Get Hisar</h2>
     <a class="button primary" href="{{.DownloadURL}}" rel="noopener noreferrer" data-testid="download">Download for Mac</a>
     <a class="button secondary" href="{{.LinuxDownloadURL}}" rel="noopener noreferrer" data-testid="download-linux">Download for Linux</a>
     <a class="button secondary" href="{{.DeepLink}}" data-testid="open-in-hisar">Open in Hisar</a>
     <p class="note">Already installed? Open in Hisar fills in the invite for you, on a Mac, an iPhone or an Android phone.</p>
+{{end}}
   </section>
 
   <section class="step" aria-labelledby="code-title">
