@@ -30,7 +30,8 @@ class OtherFieldEditorTests {
         var draft by mutableStateOf(ItemEditorDraft.open(ItemDetail(title = "Recovery", allField = listOf(
             ItemField("Recovery code", "first", true), ItemField("Recovery code", "second", true),
         )), isNew = true))
-        composeRule.setContent { HisarTheme { Column { OtherFieldsSection(draft, { draft = it }) } } }
+        val allNameFocus = mutableMapOf<Int, FieldNameFocus>()
+        composeRule.setContent { HisarTheme { Column { OtherFieldsSection(draft, { draft = it }, { allNameFocus.getOrPut(it) { FieldNameFocus() } }) } } }
         composeRule.onAllNodesWithContentDescription("Reveal Recovery code")[0].performClick()
         composeRule.onNodeWithTag("editor-field-0-value").assertTextEquals("first")
         composeRule.onNodeWithTag("editor-field-1-value").assertTextEquals("\u2022".repeat("second".length))

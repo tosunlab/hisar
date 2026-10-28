@@ -25,12 +25,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-09T12:00:10Z"));
+  const selectedItem = createItem({ id: "github", hasOneTimePassword: true, oneTimePassword: "otpauth://totp/?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" });
   Object.assign(store, {
     status: createStatus("unlocked"),
     allVault: allTestVault.map((vault) => ({ ...vault })),
     selectedVaultID: "personal",
     listVaultID: "personal",
-    selectedItem: createItem({ id: "github", hasOneTimePassword: true, oneTimePassword: "otpauth://totp/?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" }),
+    allItem: [selectedItem],
+    selectedItem,
     editorMode: "view",
     errorMessage: "",
     noticeMessage: "",

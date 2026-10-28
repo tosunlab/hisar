@@ -54,7 +54,6 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -70,8 +69,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.SentShareInvitation
-import com.tryhisar.hisar.app.AppModel
-import kotlinx.coroutines.launch
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.backendJson
 import com.tryhisar.hisar.ui.components.ClearSection
