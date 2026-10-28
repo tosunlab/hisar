@@ -101,7 +101,7 @@ final class SharingUITests: HisarUITestCase {
         waitFor(app.staticTexts["member-security-code"])
         saveLightAndDarkScreenshot("sharing-member")
         chooseRole("Editor", in: app.buttons["member-role"])
-        app.navigationBars["iOS Partner"].buttons.element(boundBy: 0).tap()
+        goBack()
         waitFor(findText(containing: "Editor"))
 
         findElement("vault-member-\(partnerEmail)").tap()

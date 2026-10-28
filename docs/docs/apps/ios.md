@@ -109,6 +109,8 @@ to become tappable again. A missing system activity cell requires searching the 
 accessibility tree and can exhaust a wait after the sheet has already closed. The confirmation must still become enabled.
 Formatted fields wait for each character's update before typing the next one. Custom-field clipboard checks paste
 inside Hisar because iOS does not grant the test runner access to the app's clipboard.
+Back navigation first selects the frontmost navigation bar, then its back button. A global `BackButton` query can
+select a covered stack's button instead of the visible sheet's back button.
 
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.

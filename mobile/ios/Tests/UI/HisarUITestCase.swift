@@ -84,7 +84,8 @@ class HisarUITestCase: XCTestCase {
 
     // A tap while a late Save Password sheet covers the app is lost, so the button is tappable first.
     func goBack(file: StaticString = #filePath, line: UInt = #line) {
-        let backButton = app.navigationBars.buttons["BackButton"].exists ? app.navigationBars.buttons["BackButton"] : app.navigationBars.buttons.element(boundBy: 0)
+        let navigationBar = app.navigationBars.firstMatch
+        let backButton = navigationBar.buttons["BackButton"].exists ? navigationBar.buttons["BackButton"] : navigationBar.buttons.element(boundBy: 0)
         waitForHittable(backButton, file: file, line: line)
         backButton.tap()
     }
