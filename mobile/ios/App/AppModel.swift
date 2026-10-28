@@ -88,6 +88,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var isHisarExportImport = false
     private var startedRefreshCount: UInt64 = 0
     private var shownRefresh: UInt64 = 0
+    #if DEBUG
+    private var hasFailedManualRefreshForUITest = false
+    #endif
     private var startedApprovalListCount: UInt64 = 0
     private var shownApprovalList: UInt64 = 0
     @Published private(set) var allPendingRecovery: [PendingRecovery] = []
@@ -650,7 +653,18 @@ final class AppModel: ObservableObject {
     /// Lists one vault again. Its summary takes the healthy count and the records that did not open from this listing,
     /// so a record that stopped opening is disclosed even though the item list hides it.
     func refreshVault(vaultID: String, onFailure: ((String) -> Void)? = nil) async {
-        guard let allItem = await perform(isBusyShown: false, onFailure: onFailure, { try $0.listAllItem(vaultID: vaultID) }) else {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        let shouldFailForUITest = onFailure != nil && !hasFailedManualRefreshForUITest
+            && arguments.contains("-HisarUITest") && arguments.contains("-HisarBrowseFailure-refresh")
+        if shouldFailForUITest { hasFailedManualRefreshForUITest = true }
+        #endif
+        guard let allItem = await perform(isBusyShown: false, onFailure: onFailure, { backend in
+            #if DEBUG
+            if shouldFailForUITest { throw BackendError(message: "This action couldn't reach the Hisar server. Try again.") }
+            #endif
+            return try backend.listAllItem(vaultID: vaultID)
+        }) else {
             refreshStatus()
             return
         }

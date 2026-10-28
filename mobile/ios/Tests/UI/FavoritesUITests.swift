@@ -90,19 +90,22 @@ final class FavoritesUITests: HisarUITestCase {
         waitFor(app.staticTexts["Removed from Favorites."])
         XCTAssertTrue(aws.exists)
 
-        app.swipeDown()
+        let list = app.collectionViews.firstMatch
+        list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)).press(
+            forDuration: 0.05, thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)),
+            withVelocity: .slow, thenHoldForDuration: 1)
         waitFor(app.buttons["browse-refresh-retry"])
         XCTAssertTrue(aws.exists, "a failed refresh keeps the readable list")
         choose("rename-vault", from: "vault-actions")
-        let renameField = app.textFields["rename-vault-name"]
+        let renameField = app.alerts["Rename vault"].textFields["Vault name"]
         renameField.tap()
         renameField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: (renameField.value as? String)?.count ?? 0) + "My passwords")
-        app.buttons["rename-vault-confirm"].tap()
+        app.alerts["Rename vault"].buttons["rename-vault-confirm"].firstMatch.tap()
         waitFor(app.alerts["Rename vault"])
         app.alerts.buttons["refusal-ok"].firstMatch.tap()
         choose("rename-vault", from: "vault-actions")
-        XCTAssertEqual(app.textFields["rename-vault-name"].value as? String, "My passwords")
-        app.buttons["rename-vault-confirm"].tap()
+        XCTAssertEqual(renameField.value as? String, "My passwords")
+        app.alerts["Rename vault"].buttons["rename-vault-confirm"].firstMatch.tap()
         waitFor(app.navigationBars["My passwords"])
         XCTAssertTrue(app.buttons["browse-refresh-retry"].exists, "a successful rename does not erase the refresh failure")
         app.buttons["browse-refresh-retry"].tap()

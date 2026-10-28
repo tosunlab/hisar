@@ -10,15 +10,14 @@ final class HisarKitBackend: VaultBackend {
     private let browseFailureLock = NSLock()
     private var browseFailureCalls: [String: Int] = [:]
 
-    private func failBrowseActionForUITest(_ action: String, key: String? = nil, skipping: Int = 0) throws {
+    private func failBrowseActionForUITest(_ action: String) throws {
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("-HisarUITest"), arguments.contains("-HisarBrowseFailure-\(action)") else { return }
         let call = browseFailureLock.withLock {
-            let key = key ?? action
-            browseFailureCalls[key, default: 0] += 1
-            return browseFailureCalls[key, default: 0]
+            browseFailureCalls[action, default: 0] += 1
+            return browseFailureCalls[action, default: 0]
         }
-        if call == skipping + 1 { throw BackendError(message: "This action couldn't reach the Hisar server. Try again.") }
+        if call == 1 { throw BackendError(message: "This action couldn't reach the Hisar server. Try again.") }
     }
     #endif
 
@@ -358,9 +357,6 @@ final class HisarKitBackend: VaultBackend {
     }
 
     func listAllItem(vaultID: String) throws -> [ItemDetail] {
-        #if DEBUG
-        try failBrowseActionForUITest("refresh", key: vaultID, skipping: 1)
-        #endif
         return try decode([ItemDetail]?.self, from: callReturningText { hisar.listAllItem(vaultID, error: $0) }) ?? []
     }
 
