@@ -55,7 +55,8 @@ func (service *SettingsWindowService) TakeOpenRequest() (string, bool) {
 }
 
 // Hide closes the Settings window and drops a request it has not taken. Its page reloads while hidden, so a closed
-// Settings window holds nothing of the vault.
+// Settings window holds nothing of the vault. It loads settingsWindowURL again rather than calling Reload: on Linux Wails'
+// Reload loads the bare "wails://", which drops ?window=settings and so would load the main window's page.
 func (service *SettingsWindowService) Hide() {
 	if service.window == nil {
 		return
@@ -65,7 +66,7 @@ func (service *SettingsWindowService) Hide() {
 	service.mutex.Unlock()
 	application.InvokeAsync(func() {
 		service.window.Hide()
-		service.window.Reload()
+		service.window.SetURL(settingsWindowURL)
 	})
 }
 

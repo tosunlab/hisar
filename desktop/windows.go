@@ -52,6 +52,9 @@ func mainWindowOptions() application.WebviewWindowOptions {
 	}
 }
 
+// settingsWindowURL is the Settings window's page: main.ts mounts SettingsWindow for ?window=settings.
+const settingsWindowURL = "/?window=settings"
+
 // settingsWindowOptions is Settings in its own window, hidden until Settings opens and reused.
 func settingsWindowOptions() application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
@@ -64,7 +67,7 @@ func settingsWindowOptions() application.WebviewWindowOptions {
 		Hidden:           true,
 		InitialPosition:  application.WindowCentered,
 		BackgroundColour: application.NewRGB(13, 14, 16),
-		URL:              "/?window=settings",
+		URL:              settingsWindowURL,
 	}
 }
 
