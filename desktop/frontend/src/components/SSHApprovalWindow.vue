@@ -17,7 +17,7 @@ import {
   setSignInLogin,
 } from "../approval";
 import { startThemeSync } from "../theme";
-import { getThisDeviceName } from "../util";
+import { biometricScanPrefix, getThisDeviceName, tryBiometricAgain } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ApprovalQueue from "./ApprovalQueue.vue";
@@ -291,7 +291,7 @@ const signInNote = computed(() =>
   isSignIn.value ? `Hisar enters the username, password and one-time code and submits them. ${approval.value?.agentName} gets no password or one-time code from Hisar.` : "",
 );
 
-const touchIDLabel = computed(() => (approval.value?.isUnlockRequired ? "Touch ID to unlock and approve" : "Touch ID to approve"));
+const touchIDLabel = computed(() => (approval.value?.isUnlockRequired ? `${biometricScanPrefix()} to unlock and approve` : `${biometricScanPrefix()} to approve`));
 const passwordButtonLabel = computed(() => (approval.value?.isUnlockRequired ? "Unlock" : "Approve"));
 const approveButtonLabel = computed(() => {
   if (isForwarded.value) {
@@ -506,9 +506,9 @@ onBeforeUnmount(() => {
                 <div ref="promptSlot" class="prompt-slot small">
                   <AppIcon v-if="!api.hasNativeTouchIDView" name="fingerprint" :size="20" />
                 </div>
-                <span>{{ isSigning ? "Touch ID to sign" : `Touch ID to approve ${approval.rememberPeriod || "for 1 hour"}` }}</span>
+                <span>{{ isSigning ? `${biometricScanPrefix()} to sign` : `${biometricScanPrefix()} to approve ${approval.rememberPeriod || "for 1 hour"}` }}</span>
               </div>
-              <button v-else class="link" data-testid="authorize-approval" @click.stop="startAuthorizing">Try Touch ID again</button>
+              <button v-else class="link" data-testid="authorize-approval" @click.stop="startAuthorizing">{{ tryBiometricAgain() }}</button>
               <button class="compact-deny" data-testid="deny-approval" @click.stop="deny">Deny</button>
             </div>
             <ApprovalQueue :requests="queuedApprovals" @deny="denyApproval" @resize="fitWindow" />

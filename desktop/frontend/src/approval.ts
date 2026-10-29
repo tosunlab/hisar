@@ -64,7 +64,7 @@ export function failApproval(requestID: string, message: string): void {
     return;
   }
   approvalStore.isAuthorizing = false;
-  if (!(approvalStore.isPasswordChosen && message.startsWith("Touch ID"))) {
+  if (!(approvalStore.isPasswordChosen && (message.startsWith("Touch ID") || message.startsWith("Fingerprint")))) {
     approvalStore.failureMessage = message;
   }
 }

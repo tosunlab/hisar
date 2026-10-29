@@ -26,6 +26,9 @@ type Status struct {
 	BiometricEnabled    bool   `json:"biometricEnabled"`
 	BiometricReady      bool   `json:"biometricReady"`
 	BiometricSetupError string `json:"biometricSetupError,omitempty"`
+	// BiometricUnavailableReason says why biometric unlock is unavailable when the platform can tell ("No fingerprint is
+	// enrolled…"); empty when it is available or the platform cannot say.
+	BiometricUnavailableReason string `json:"biometricUnavailableReason,omitempty"`
 	// IsOffline: the server could not be reached, so vaults and items come from this device's encrypted cache.
 	IsOffline bool `json:"isOffline"`
 	// AutoLockSeconds is how long Hisar stays unlocked without activity.
@@ -103,6 +106,19 @@ type BiometricKeyPreparer interface {
 type BiometricKeyMigrator interface {
 	IsKeyProtected(accountID string) bool
 	MigrateKey(accountID string, sealedUnlockKey []byte) error
+}
+
+// BiometricSessionKeyStore is a Biometric whose keys last only as long as the process, so nothing that opens the vault
+// is at rest: Linux, where no keyring item can require the fingerprint. HasKey must not prompt. Until a password unlock
+// seals the account unlock key with a new key, biometric unlock waits for the master password, as it does after every
+// launch anyway.
+type BiometricSessionKeyStore interface {
+	HasKey(accountID string) bool
+}
+
+// BiometricAvailabilityReporter says why the biometric check is unavailable, in a sentence the user can act on.
+type BiometricAvailabilityReporter interface {
+	GetUnavailableReason() string
 }
 
 type VaultSummary struct {

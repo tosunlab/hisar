@@ -919,6 +919,12 @@ export interface Status {
     "biometricSetupError"?: string;
 
     /**
+     * BiometricUnavailableReason says why biometric unlock is unavailable when the platform can tell ("No fingerprint is
+     * enrolled…"); empty when it is available or the platform cannot say.
+     */
+    "biometricUnavailableReason"?: string;
+
+    /**
      * IsOffline: the server could not be reached, so vaults and items come from this device's encrypted cache.
      */
     "isOffline": boolean;

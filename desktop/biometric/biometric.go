@@ -1,4 +1,5 @@
-// Package biometric provides Touch ID checks, an in-window Touch ID prompt and keychain storage on macOS.
+// Package biometric provides Touch ID checks, an in-window Touch ID prompt and keychain storage on macOS, and fingerprint
+// checks through fprintd on Linux, whose unlock keys stay in memory.
 package biometric
 
 import (
@@ -8,9 +9,9 @@ import (
 )
 
 var (
-	ErrUnavailable = errors.New("Touch ID is not available on this Mac")
-	ErrCancelled   = errors.New("Touch ID was cancelled")
-	ErrKeyNotFound = errors.New("Touch ID key not found in the keychain")
+	ErrUnavailable = errors.New(unavailableMessage)
+	ErrCancelled   = errors.New(cancelledMessage)
+	ErrKeyNotFound = errors.New(keyNotFoundMessage)
 )
 
 // PromptFrame is where the in-window Touch ID view goes, in window content coordinates with a top-left origin.
@@ -26,6 +27,7 @@ type Biometric struct {
 	service        string
 	windowProvider func() unsafe.Pointer
 	promptFrame    *PromptFrame
+	platform       platformBiometric
 }
 
 // Create returns a Biometric storing keys as generic passwords under the given keychain service name.

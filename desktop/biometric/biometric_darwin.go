@@ -19,6 +19,17 @@ import (
 	"github.com/tryhisar/hisar/core/app"
 )
 
+// Name is what Hisar's sentences call the check: "Touch ID unlock is not available on this device".
+const Name = "Touch ID"
+
+const (
+	unavailableMessage = "Touch ID is not available on this Mac"
+	cancelledMessage   = "Touch ID was cancelled"
+	keyNotFoundMessage = "Touch ID key not found in the keychain"
+)
+
+type platformBiometric struct{}
+
 const (
 	resultSuccess     = 0
 	resultCancelled   = 2
@@ -33,10 +44,10 @@ func (biometric *Biometric) IsAvailable() bool {
 // Authenticate blocks until the user passes or cancels Touch ID; it must not be called on the main thread.
 func (biometric *Biometric) Authenticate(reason string) error {
 	window, frame := biometric.getPromptTarget()
-	return authenticateInWindow(reason, window, frame, PromptSizeSmall)
+	return biometric.authenticateInWindow(reason, window, frame, PromptSizeSmall)
 }
 
-func authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFrame, size PromptSize) error {
+func (biometric *Biometric) authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFrame, size PromptSize) error {
 	embed := C.int(0)
 	var x, y, width, height C.double
 	if window != nil && frame != nil {

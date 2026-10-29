@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { api, type ExportOptions } from "../api";
 import { exportAllData, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
+import { exportWithBiometric, useBiometricInstead } from "../util";
 import AppIcon from "./AppIcon.vue";
 import CredentialField from "./CredentialField.vue";
 
@@ -154,10 +155,10 @@ onMounted(async () => {
         />
         </CredentialField>
         <button class="primary" type="submit" :disabled="!canExport" data-testid="export-submit">
-          {{ isPasswordNeeded ? "Export…" : "Export with Touch ID…" }}
+          {{ isPasswordNeeded ? "Export…" : exportWithBiometric() }}
         </button>
         <button v-if="exportOptions.isBiometricAvailable" class="link" type="button" :disabled="store.isBusy" data-testid="export-switch-authentication" @click="authentication = isPasswordNeeded ? 'biometric' : 'password'">
-          {{ isPasswordNeeded ? "Use Touch ID instead" : "or use your master password" }}
+          {{ isPasswordNeeded ? useBiometricInstead() : "or use your master password" }}
         </button>
       </div>
     </form>

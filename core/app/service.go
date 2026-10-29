@@ -233,6 +233,9 @@ func (s *Service) buildStatus() Status {
 		status.State = StateLocked
 	}
 	status.BiometricAvailable = s.config.Biometric != nil && s.config.Biometric.IsAvailable()
+	if reporter, ok := s.config.Biometric.(BiometricAvailabilityReporter); ok && !status.BiometricAvailable {
+		status.BiometricUnavailableReason = reporter.GetUnavailableReason()
+	}
 	status.BiometricEnabled = len(s.state.BiometricUnlock) > 0
 	status.BiometricReady = status.State == StateLocked && s.isBiometricReady()
 	status.BiometricSetupError = s.biometricSetupError

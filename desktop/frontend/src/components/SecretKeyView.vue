@@ -2,7 +2,7 @@
 import { computed, onUnmounted, ref, watch } from "vue";
 import { api, getErrorMessage } from "../api";
 import { authorizeEmergencyKit, closeEmergencyKit, confirmSecretKeySaved, postponeSecretKey, saveNewAccountEmergencyKit, store } from "../store";
-import { getThisDeviceName } from "../util";
+import { continueWithBiometric, getThisDeviceName } from "../util";
 import AppIcon from "./AppIcon.vue";
 import CredentialField from "./CredentialField.vue";
 import HisarLogo from "./HisarLogo.vue";
@@ -55,7 +55,7 @@ async function saveKit(): Promise<void> {
             <button class="primary full-width" :disabled="store.isBusy">Continue</button>
           </form>
           <template v-else>
-            <button class="primary full-width" :disabled="store.isBusy" @click="authorize(true)">Continue with Touch ID</button>
+            <button class="primary full-width" :disabled="store.isBusy" @click="authorize(true)">{{ continueWithBiometric() }}</button>
             <button class="ghost full-width" :disabled="store.isBusy" @click="usesPassword = true">Use master password</button>
           </template>
           <button class="ghost full-width" :disabled="store.isBusy" @click="closeEmergencyKit">Cancel</button>

@@ -47,6 +47,9 @@ func (s *Service) isBiometricReady() bool {
 	if migrator, ok := s.config.Biometric.(BiometricKeyMigrator); ok && !migrator.IsKeyProtected(s.state.AccountID) {
 		return false
 	}
+	if store, ok := s.config.Biometric.(BiometricSessionKeyStore); ok && !store.HasKey(s.state.AccountID) {
+		return false
+	}
 	if !s.hasPasswordUnlockSinceLaunch && !s.config.IsBiometricAllowedAfterLaunch {
 		return false
 	}
@@ -75,6 +78,35 @@ func (s *Service) recordPasswordUnlock() {
 	now := s.config.Now()
 	s.biometricClock = biometricPasswordClock{highestObserved: now, deadline: now.Add(s.config.BiometricPasswordInterval)}
 	s.state.LastPasswordUnlockAt = now.UTC()
+	s.state.Save()
+}
+
+// needsSessionBiometricKey reports a biometric unlock whose key, kept only by this process, is gone: the next password
+// unlock seals the account unlock key again (rearmSessionBiometricKey).
+func (s *Service) needsSessionBiometricKey() bool {
+	store, ok := s.config.Biometric.(BiometricSessionKeyStore)
+	return ok && len(s.state.BiometricUnlock) > 0 && s.state.AccountID != "" && !store.HasKey(s.state.AccountID)
+}
+
+// rearmSessionBiometricKey needs s.mutex and an unlock of the account the state holds: it seals accountUnlockKey with a
+// new key the platform keeps for this process only, so biometric unlock works again until Hisar quits. Biometric unlock
+// stays on but waits for the next password unlock when that fails.
+func (s *Service) rearmSessionBiometricKey(accountUnlockKey []byte) {
+	if !s.needsSessionBiometricKey() || len(accountUnlockKey) == 0 {
+		return
+	}
+	wrappingKey := crypt.GenerateKey()
+	defer clear(wrappingKey)
+	sealed, err := crypt.Seal(wrappingKey, accountUnlockKey, buildBiometricContext(s.state.AccountID))
+	if err != nil {
+		return
+	}
+	if err := s.config.Biometric.StoreKey(s.state.AccountID, wrappingKey); err != nil {
+		s.biometricSetupError = fmt.Sprintf("could not save the %s key: %v", s.config.BiometricName, err)
+		return
+	}
+	s.biometricSetupRevision++
+	s.state.BiometricUnlock = sealed
 	s.state.Save()
 }
 

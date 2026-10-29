@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { api } from "../api";
 import { loadShareAwaitingUnlockQuietly, signOut, store, unlock, unlockWithBiometric } from "../store";
-import { describePerson, getSignOutCopy } from "../util";
+import { biometricReauthReason, biometricUnavailableNow, biometricWaitingStatus, describePerson, getSignOutCopy, unlockWithBiometric as unlockWithBiometricLabel } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import PendingRecoveryReminder from "./PendingRecoveryReminder.vue";
@@ -136,8 +136,8 @@ onBeforeUnmount(() => {
               type="button"
               class="touch-id-button"
               :class="{ waiting: isWaitingForTouchID }"
-              aria-label="Unlock with Touch ID"
-              title="Unlock with Touch ID"
+              :aria-label="unlockWithBiometricLabel()"
+              :title="unlockWithBiometricLabel()"
               data-testid="use-touch-id"
               @click="startTouchID"
             >
@@ -147,12 +147,12 @@ onBeforeUnmount(() => {
             </button>
           </label>
           <p v-if="store.status.biometricEnabled && !store.status.biometricReady && !store.status.biometricSetupError" class="muted" data-testid="biometric-password-reason">
-            {{ store.status.biometricAvailable ? "Enter your master password to use Touch ID again. Hisar requires it after starting and at least every 14 days." : "Touch ID isn't available right now. Enter your master password." }}
+            {{ store.status.biometricAvailable ? biometricReauthReason() : biometricUnavailableNow() }}
           </p>
           <button class="primary" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Unlocking…" : "Unlock" }}</button>
         </form>
         <p class="muted status" aria-live="polite" data-testid="unlock-status">
-          {{ isWaitingForTouchID ? "Touch ID is waiting. Or type your master password." : "" }}
+          {{ isWaitingForTouchID ? biometricWaitingStatus() : "" }}
         </p>
         <button class="link" @click="isHelpShown = true">Can't find your Secret Key?</button>
 

@@ -57,7 +57,7 @@ import {
   type WaitingVaultKeys,
 } from "./api";
 import { isSettingsSectionID, saveSelectedSectionID } from "./settingsSections";
-import { allAddressKey, describeAgentSession, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress, isApplicationCommand } from "./util";
+import { allAddressKey, biometricUnlockOffNotice, biometricUnlockOnNotice, describeAgentSession, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress, isApplicationCommand } from "./util";
 import { forgetWebsiteIcons } from "./websiteicons";
 
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
@@ -665,7 +665,7 @@ export async function acceptTouchIDOffer(): Promise<boolean> {
     if (generation !== sessionGeneration) return false;
     store.status = status;
     finishTouchIDOffer();
-    if (!store.status.biometricSetupError) showNotice("Touch ID unlock is on");
+    if (!store.status.biometricSetupError) showNotice(biometricUnlockOnNotice());
     return true;
   } catch (error) {
     if (generation !== sessionGeneration) return false;
@@ -753,7 +753,7 @@ export async function enableBiometricUnlock(password: string): Promise<boolean> 
   if (status) {
     store.status = status;
     store.biometricResetReminder = null;
-    if (!status.biometricSetupError) showNotice("Touch ID unlock is on");
+    if (!status.biometricSetupError) showNotice(biometricUnlockOnNotice());
   }
   return status !== undefined;
 }
@@ -764,7 +764,7 @@ export async function disableBiometricUnlock(): Promise<void> {
   if (generation !== sessionGeneration) return;
   if (status) {
     store.status = status;
-    showNotice("Touch ID unlock is off");
+    showNotice(biometricUnlockOffNotice());
   }
 }
 

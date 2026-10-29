@@ -1,8 +1,18 @@
-//go:build !darwin || !cgo
+//go:build !linux && (!darwin || !cgo)
 
 package biometric
 
 import "unsafe"
+
+const Name = "Touch ID"
+
+const (
+	unavailableMessage = "Touch ID is not available on this Mac"
+	cancelledMessage   = "Touch ID was cancelled"
+	keyNotFoundMessage = "Touch ID key not found in the keychain"
+)
+
+type platformBiometric struct{}
 
 func (biometric *Biometric) IsAvailable() bool                           { return false }
 func (biometric *Biometric) Authenticate(reason string) error            { return ErrUnavailable }
@@ -15,6 +25,6 @@ func (biometric *Biometric) PrepareLoadKey(accountID string) error       { retur
 
 func moveActivePrompt(frame PromptFrame) {}
 
-func authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFrame, size PromptSize) error {
+func (biometric *Biometric) authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFrame, size PromptSize) error {
 	return ErrUnavailable
 }
