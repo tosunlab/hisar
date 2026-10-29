@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -15,8 +17,11 @@ import (
 	"time"
 )
 
-// maximumIconSize keeps a theme's oversized file out of the approval window.
-const maximumIconSize = 512 << 10
+const (
+	// maximumIconSize keeps a theme's oversized file out of the approval window.
+	maximumIconSize = 512 << 10
+	pngSignature    = "\x89PNG\r\n\x1a\n"
+)
 
 // desktopApps names the Linux app behind a process from its desktop entry: the nearest process in the chain whose
 // executable an entry starts, or else the systemd unit the desktop started the process in ("app-<desktop ID>-<n>.scope",
@@ -29,10 +34,16 @@ type desktopApps struct {
 	dataDirectories []string
 	lookPath        func(file string) (string, error)
 
-	mutex      sync.Mutex
-	entries    []desktopEntry
-	readAt     time.Time
-	iconsByKey map[string]string
+	mutex   sync.Mutex
+	entries []desktopEntry
+	// stamps are the desktop entry files entries were read from, with their sizes and modification times.
+	stamps []fileStamp
+}
+
+type fileStamp struct {
+	path             string
+	size             int64
+	modificationTime time.Time
 }
 
 type desktopEntry struct {
@@ -142,43 +153,59 @@ func (apps *desktopApps) describe(entry desktopEntry) App {
 	return App{Name: entry.name, IconURL: apps.getIconURL(entry.icon)}
 }
 
-// listEntries reads every application's desktop entry again once the applications directories change. An entry in an
-// earlier data directory hides one with the same ID in a later one, as the specification says.
+// listEntries reads the applications' desktop entries again whenever a file was added, removed or rewritten in any
+// applications directory. An entry in an earlier data directory hides one with the same ID in a later one, as the
+// specification says.
 func (apps *desktopApps) listEntries() []desktopEntry {
-	latest := time.Time{}
-	for _, directory := range apps.dataDirectories {
-		if info, err := os.Stat(filepath.Join(directory, "applications")); err == nil && info.ModTime().After(latest) {
-			latest = info.ModTime()
-		}
-	}
+	paths, stamps := apps.listEntryFiles()
 	apps.mutex.Lock()
 	defer apps.mutex.Unlock()
-	if apps.entries != nil && apps.readAt.Equal(latest) {
+	if apps.entries != nil && slices.Equal(apps.stamps, stamps) {
 		return apps.entries
 	}
 	entries := []desktopEntry{}
 	isSeenByID := map[string]bool{}
+	for _, path := range paths {
+		if isSeenByID[path.id] {
+			continue
+		}
+		isSeenByID[path.id] = true
+		if parsed, isApp := apps.readEntry(path.path); isApp {
+			parsed.id, parsed.path = path.id, path.path
+			entries = append(entries, parsed)
+		}
+	}
+	apps.entries, apps.stamps = entries, stamps
+	return entries
+}
+
+type entryFile struct {
+	id   string
+	path string
+}
+
+// listEntryFiles lists every .desktop file of the applications directories, in precedence order, with its desktop ID
+// (the path below applications/, "/" written as "-").
+func (apps *desktopApps) listEntryFiles() ([]entryFile, []fileStamp) {
+	files, stamps := []entryFile{}, []fileStamp{}
 	for _, directory := range apps.dataDirectories {
 		applications := filepath.Join(directory, "applications")
 		filepath.WalkDir(applications, func(path string, entry fs.DirEntry, err error) error {
 			if err != nil || entry.IsDir() || !strings.HasSuffix(path, ".desktop") {
 				return nil
 			}
-			relative, _ := filepath.Rel(applications, path)
-			id := strings.TrimSuffix(strings.ReplaceAll(relative, string(filepath.Separator), "-"), ".desktop")
-			if isSeenByID[id] {
+			// Flatpak exports its entries as symbolic links, so the stamp is the file's, not the link's.
+			info, err := os.Stat(path)
+			if err != nil {
 				return nil
 			}
-			isSeenByID[id] = true
-			if parsed, isApp := apps.readEntry(path); isApp {
-				parsed.id, parsed.path = id, path
-				entries = append(entries, parsed)
-			}
+			relative, _ := filepath.Rel(applications, path)
+			files = append(files, entryFile{id: strings.TrimSuffix(strings.ReplaceAll(relative, string(filepath.Separator), "-"), ".desktop"), path: path})
+			stamps = append(stamps, fileStamp{path: path, size: info.Size(), modificationTime: info.ModTime()})
 			return nil
 		})
 	}
-	apps.entries, apps.readAt, apps.iconsByKey = entries, latest, map[string]string{}
-	return entries
+	return files, stamps
 }
 
 // readEntry reads an application's [Desktop Entry] group. One hidden, for a terminal, or without a name is no app to
@@ -270,74 +297,67 @@ func splitExec(line string) []string {
 }
 
 // getIconURL finds an entry's icon as a data URL: an absolute path, or a name in the icon themes and pixmaps of every
-// data directory, hicolor first. The largest PNG of at least DialogIconSize wins, then an SVG, then the largest PNG.
+// data directory, hicolor first. The smallest PNG of at least DialogIconSize pixels wins, then an SVG, then the largest
+// PNG, each PNG measured by its own header. It is looked up at every request, so a theme update shows at once.
 func (apps *desktopApps) getIconURL(icon string) string {
 	if icon == "" {
 		return ""
 	}
-	apps.mutex.Lock()
-	iconURL, isCached := apps.iconsByKey[icon]
-	apps.mutex.Unlock()
-	if isCached {
-		return iconURL
+	if filepath.IsAbs(icon) {
+		return readIconURL(icon)
 	}
-	path := icon
-	if !filepath.IsAbs(icon) {
-		path = apps.findIconFile(icon)
-	}
-	iconURL = readIconURL(path)
-	apps.mutex.Lock()
-	if apps.iconsByKey == nil {
-		apps.iconsByKey = map[string]string{}
-	}
-	apps.iconsByKey[icon] = iconURL
-	apps.mutex.Unlock()
-	return iconURL
+	return readIconURL(apps.findIconFile(icon))
 }
 
+// iconCategories are the theme directories that hold application icons: apps, and Adwaita's legacy.
+var iconCategories = []string{"apps", "legacy"}
+
+// findIconFile looks name up by path, never by walking a theme: <theme>/<size>/<category>/ (hicolor and Adwaita,
+// 48x48 or scalable) and <theme>/<category>/<size>/ (Breeze), then pixmaps/.
 func (apps *desktopApps) findIconFile(name string) string {
 	bestPNG, bestPNGSize, svg := "", 0, ""
-	consider := func(path string, size int) {
-		switch filepath.Ext(path) {
-		case ".svg":
-			if svg == "" {
-				svg = path
-			}
-		case ".png":
-			isBetter := bestPNG == "" ||
-				(size >= DialogIconSize && (bestPNGSize < DialogIconSize || size < bestPNGSize)) ||
-				(size < DialogIconSize && bestPNGSize < DialogIconSize && size > bestPNGSize)
-			if isBetter {
-				bestPNG, bestPNGSize = path, size
-			}
+	consider := func(path string) {
+		if svg == "" && strings.HasSuffix(path, ".svg") && isRegularFile(path) {
+			svg = path
+			return
+		}
+		size := readPNGWidth(path)
+		if size <= 0 {
+			return
+		}
+		isBetter := bestPNG == "" ||
+			(size >= DialogIconSize && (bestPNGSize < DialogIconSize || size < bestPNGSize)) ||
+			(size < DialogIconSize && bestPNGSize < DialogIconSize && size > bestPNGSize)
+		if isBetter {
+			bestPNG, bestPNGSize = path, size
 		}
 	}
 	for _, directory := range apps.dataDirectories {
 		iconsDirectory := filepath.Join(directory, "icons")
-		themes, _ := os.ReadDir(iconsDirectory)
-		themeNames := []string{}
-		for _, theme := range themes {
-			if theme.IsDir() {
-				themeNames = append(themeNames, theme.Name())
-			}
-		}
-		slices.SortStableFunc(themeNames, func(first, second string) int {
-			return boolToInt(second == "hicolor") - boolToInt(first == "hicolor")
-		})
-		for _, theme := range themeNames {
+		for _, theme := range listThemes(iconsDirectory) {
 			themeDirectory := filepath.Join(iconsDirectory, theme)
-			filepath.WalkDir(themeDirectory, func(path string, entry fs.DirEntry, err error) error {
-				if err == nil && !entry.IsDir() && strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())) == name {
-					relative, _ := filepath.Rel(themeDirectory, path)
-					consider(path, getIconDirectorySize(relative))
+			entries, _ := os.ReadDir(themeDirectory)
+			for _, entry := range entries {
+				switch {
+				case !entry.IsDir():
+				case slices.Contains(iconCategories, entry.Name()):
+					sizes, _ := os.ReadDir(filepath.Join(themeDirectory, entry.Name()))
+					for _, size := range sizes {
+						for _, extension := range []string{".png", ".svg"} {
+							consider(filepath.Join(themeDirectory, entry.Name(), size.Name(), name+extension))
+						}
+					}
+				default:
+					for _, category := range iconCategories {
+						for _, extension := range []string{".png", ".svg"} {
+							consider(filepath.Join(themeDirectory, entry.Name(), category, name+extension))
+						}
+					}
 				}
-				return nil
-			})
+			}
 		}
 		for _, extension := range []string{".png", ".svg"} {
-			if path := filepath.Join(directory, "pixmaps", name+extension); isRegularFile(path) {
-				consider(path, 0)
-			}
+			consider(filepath.Join(directory, "pixmaps", name+extension))
 		}
 	}
 	if bestPNG != "" && bestPNGSize >= DialogIconSize {
@@ -349,17 +369,33 @@ func (apps *desktopApps) findIconFile(name string) string {
 	return bestPNG
 }
 
-// getIconDirectorySize reads an icon's size from its path in the theme: 128x128 or 128x128@2 (hicolor, Adwaita) or 48
-// (Breeze), 0 for none.
-func getIconDirectorySize(path string) int {
-	for _, part := range strings.Split(filepath.Dir(path), string(filepath.Separator)) {
-		part, _, _ = strings.Cut(part, "@")
-		width, _, _ := strings.Cut(part, "x")
-		if size, err := strconv.Atoi(width); err == nil {
-			return size
+// listThemes lists the icon themes of a data directory, hicolor first, then the others by name.
+func listThemes(iconsDirectory string) []string {
+	entries, _ := os.ReadDir(iconsDirectory)
+	themes := []string{}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			themes = append(themes, entry.Name())
 		}
 	}
-	return 0
+	slices.SortStableFunc(themes, func(first, second string) int {
+		return boolToInt(second == "hicolor") - boolToInt(first == "hicolor")
+	})
+	return themes
+}
+
+// readPNGWidth is a PNG's width from its IHDR chunk, 0 for a file that is no PNG.
+func readPNGWidth(path string) int {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+	header := make([]byte, 24)
+	if _, err := io.ReadFull(file, header); err != nil || !bytes.HasPrefix(header, []byte(pngSignature)) || string(header[12:16]) != "IHDR" {
+		return 0
+	}
+	return int(binary.BigEndian.Uint32(header[16:20]))
 }
 
 func readIconURL(path string) string {
@@ -375,7 +411,7 @@ func readIconURL(path string) string {
 		return ""
 	}
 	switch {
-	case bytes.HasPrefix(data, []byte("\x89PNG\r\n\x1a\n")):
+	case bytes.HasPrefix(data, []byte(pngSignature)):
 		return "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)
 	case filepath.Ext(path) == ".svg":
 		return "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString(data)

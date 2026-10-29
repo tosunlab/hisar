@@ -2,6 +2,7 @@ package appinfo
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,9 +10,16 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
-const pngHeader = "\x89PNG\r\n\x1a\n"
+// createPNG is the start of a PNG width pixels square, with a marker after its header to tell the files apart.
+func createPNG(width int, marker string) string {
+	header := []byte(pngSignature + "\x00\x00\x00\x0dIHDR")
+	header = binary.BigEndian.AppendUint32(header, uint32(width))
+	header = binary.BigEndian.AppendUint32(header, uint32(width))
+	return string(header) + marker
+}
 
 // linuxDesktop is a fake Linux machine: /proc with each process's cgroup, desktop entries and icon themes in two data
 // directories (the user's first), and the programs on PATH.
@@ -49,10 +57,10 @@ func createLinuxDesktop(t *testing.T) *linuxDesktop {
 		"[Desktop Entry]\nType=Application\nName=Visual Studio Code\nExec=\""+filepath.Join(desktop.bin, "code")+"\" --unity-launch %F\nIcon=vscode\n")
 	desktop.write(filepath.Join(desktop.systemData, "icons/hicolor/scalable/apps/org.gnome.Terminal.svg"), "<svg/>")
 	desktop.write(filepath.Join(desktop.systemData, "icons/breeze/apps/48/utilities-terminal.svg"), "<svg/>")
-	desktop.write(filepath.Join(desktop.systemData, "icons/hicolor/48x48/apps/utilities-terminal.png"), pngHeader+"48")
-	desktop.write(filepath.Join(desktop.systemData, "icons/hicolor/256x256/apps/utilities-terminal.png"), pngHeader+"256")
-	desktop.write(filepath.Join(desktop.systemData, "icons/hicolor/512x512/apps/utilities-terminal.png"), pngHeader+"512")
-	desktop.write(filepath.Join(desktop.systemData, "pixmaps/vscode.png"), pngHeader+"pixmap")
+	desktop.write(filepath.Join(desktop.systemData, "icons/hicolor/48x48/apps/utilities-terminal.png"), createPNG(48, "48"))
+	desktop.write(filepath.Join(desktop.systemData, "icons/hicolor/256x256/apps/utilities-terminal.png"), createPNG(256, "256"))
+	desktop.write(filepath.Join(desktop.systemData, "icons/hicolor/512x512/apps/utilities-terminal.png"), createPNG(512, "512"))
+	desktop.write(filepath.Join(desktop.systemData, "pixmaps/vscode.png"), createPNG(64, "pixmap"))
 	return desktop
 }
 
@@ -71,7 +79,11 @@ func (desktop *linuxDesktop) setCgroup(pid int, path string) {
 }
 
 func (desktop *linuxDesktop) resolve(tree fakeProcessTree, pid int) Requester {
-	apps := &desktopApps{
+	return NewResolver(System{ProcessReader: tree.createReader(), FindDesktopApp: desktop.createApps().find}).Resolve(pid)
+}
+
+func (desktop *linuxDesktop) createApps() *desktopApps {
+	return &desktopApps{
 		procDirectory: desktop.procDirectory, dataDirectories: []string{desktop.userData, desktop.systemData},
 		lookPath: func(file string) (string, error) {
 			if path := filepath.Join(desktop.bin, file); isRegularFile(path) {
@@ -80,7 +92,6 @@ func (desktop *linuxDesktop) resolve(tree fakeProcessTree, pid int) Requester {
 			return "", errors.New("not found")
 		},
 	}
-	return NewResolver(System{ProcessReader: tree.createReader(), FindDesktopApp: apps.find}).Resolve(pid)
 }
 
 func (desktop *linuxDesktop) program(name string) string { return filepath.Join(desktop.bin, name) }
@@ -109,7 +120,7 @@ func TestSSHInKonsoleNamesKonsoleWithItsIcon(t *testing.T) {
 	if requester.Kind != RequesterKindDesktopApp || requester.Name != "Konsole" || requester.App.Path != "" {
 		t.Fatalf("requester: %+v", requester)
 	}
-	if icon := decodeIcon(t, requester.App.IconURL); icon != "data:image/png;base64,"+pngHeader+"256" {
+	if icon := decodeIcon(t, requester.App.IconURL); icon != "data:image/png;base64,"+createPNG(256, "256") {
 		t.Errorf("icon = %q, want the smallest PNG of at least 128 pixels", icon)
 	}
 	if names := listProgramNames(requester.ChainProcesses); !slices.Equal(names, []string{"ssh", "zsh"}) {
@@ -159,7 +170,7 @@ func TestNearestAppInTheChainWinsOverTheUnit(t *testing.T) {
 		70: {path: desktop.program("code"), parentPID: 60},
 		60: {path: desktop.program("konsole"), parentPID: 1},
 	}, 90)
-	if requester.Name != "Visual Studio Code" || decodeIcon(t, requester.App.IconURL) != "data:image/png;base64,"+pngHeader+"pixmap" {
+	if requester.Name != "Visual Studio Code" || decodeIcon(t, requester.App.IconURL) != "data:image/png;base64,"+createPNG(64, "pixmap") {
 		t.Errorf("Visual Studio Code started from Konsole: %+v", requester)
 	}
 }
@@ -211,5 +222,68 @@ func TestSplitExec(t *testing.T) {
 		if got := splitExec(line); !slices.Equal(got, want) {
 			t.Errorf("splitExec(%q) = %q, want %q", line, got, want)
 		}
+	}
+}
+
+// A theme with only small icons and a full-size pixmap, as older apps install them: the pixmap is measured by its
+// header, so it wins over the theme's 48 pixels, and over the Breeze and Adwaita layouts' SVGs of other themes.
+func TestLargePixmapWinsOverSmallThemeIcons(t *testing.T) {
+	desktop := createLinuxDesktop(t)
+	desktop.write(filepath.Join(desktop.systemData, "applications/legacy.desktop"), "[Desktop Entry]\nType=Application\nName=Legacy\nExec=xterm\nIcon=legacy\n")
+	desktop.write(filepath.Join(desktop.systemData, "icons/hicolor/16x16/apps/legacy.png"), createPNG(16, "16"))
+	desktop.write(filepath.Join(desktop.systemData, "icons/hicolor/48x48/apps/legacy.png"), createPNG(48, "48"))
+	desktop.write(filepath.Join(desktop.systemData, "icons/Adwaita/16x16/legacy/legacy.png"), createPNG(16, "adwaita"))
+	desktop.write(filepath.Join(desktop.systemData, "pixmaps/legacy.png"), createPNG(256, "pixmap"))
+	requester := desktop.resolve(fakeProcessTree{90: {path: desktop.program("xterm"), parentPID: 1}}, 90)
+	if icon := decodeIcon(t, requester.App.IconURL); icon != "data:image/png;base64,"+createPNG(256, "pixmap") {
+		t.Errorf("icon = %q, want the 256-pixel pixmap", icon)
+	}
+}
+
+func TestBreezeAndAdwaitaLayoutsAreFound(t *testing.T) {
+	desktop := createLinuxDesktop(t)
+	desktop.write(filepath.Join(desktop.systemData, "applications/a.desktop"), "[Desktop Entry]\nType=Application\nName=A\nExec=xterm\nIcon=only-in-adwaita\n")
+	desktop.write(filepath.Join(desktop.systemData, "icons/Adwaita/256x256/legacy/only-in-adwaita.png"), createPNG(256, "adwaita"))
+	requester := desktop.resolve(fakeProcessTree{90: {path: desktop.program("xterm"), parentPID: 1}}, 90)
+	if icon := decodeIcon(t, requester.App.IconURL); icon != "data:image/png;base64,"+createPNG(256, "adwaita") {
+		t.Errorf("Adwaita icon = %q", icon)
+	}
+	// Konsole's utilities-terminal is in hicolor as PNG and in Breeze as apps/48/utilities-terminal.svg; without the
+	// PNGs the Breeze SVG is found.
+	for _, size := range []string{"48x48", "256x256", "512x512"} {
+		os.Remove(filepath.Join(desktop.systemData, "icons/hicolor", size, "apps/utilities-terminal.png"))
+	}
+	konsole := desktop.resolve(fakeProcessTree{90: {path: desktop.program("konsole"), parentPID: 1}}, 90)
+	if icon := decodeIcon(t, konsole.App.IconURL); icon != "data:image/svg+xml;base64,<svg/>" {
+		t.Errorf("Breeze icon = %q", icon)
+	}
+}
+
+// One resolver sees every change: an entry rewritten in place, one added to a directory older than another, and an
+// icon replaced in its theme.
+func TestChangedEntriesAndIconsAreReadAgain(t *testing.T) {
+	desktop := createLinuxDesktop(t)
+	apps := desktop.createApps()
+	tree := fakeProcessTree{90: {path: desktop.program("konsole"), parentPID: 1}}
+	resolver := NewResolver(System{ProcessReader: tree.createReader(), FindDesktopApp: apps.find})
+	if name := resolver.Resolve(90).Name; name != "Konsole" {
+		t.Fatalf("name = %q", name)
+	}
+	entryPath := filepath.Join(desktop.systemData, "applications/org.kde.konsole.desktop")
+	desktop.write(entryPath, "[Desktop Entry]\nType=Application\nName=Konsole Terminal\nExec=konsole\nIcon=utilities-terminal\n")
+	if name := resolver.Resolve(90).Name; name != "Konsole Terminal" {
+		t.Errorf("after rewriting the entry in place: %q", name)
+	}
+	desktop.write(filepath.Join(desktop.userData, "applications/org.kde.konsole.desktop"), "[Desktop Entry]\nType=Application\nName=My Konsole\nExec=konsole\n")
+	userApplications := filepath.Join(desktop.userData, "applications")
+	old := time.Now().Add(-24 * time.Hour)
+	os.Chtimes(userApplications, old, old)
+	if name := resolver.Resolve(90).Name; name != "My Konsole" {
+		t.Errorf("after adding an entry to the user's older directory: %q", name)
+	}
+	os.Remove(filepath.Join(desktop.userData, "applications/org.kde.konsole.desktop"))
+	desktop.write(filepath.Join(desktop.systemData, "icons/hicolor/256x256/apps/utilities-terminal.png"), createPNG(256, "new"))
+	if icon := decodeIcon(t, resolver.Resolve(90).App.IconURL); icon != "data:image/png;base64,"+createPNG(256, "new") {
+		t.Errorf("after replacing the icon: %q", icon)
 	}
 }
