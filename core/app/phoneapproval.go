@@ -28,11 +28,11 @@ var (
 	errPhoneApprovalUnavailable = errors.New("phone approval is not available")
 )
 
-// phoneApprovalRelay is the backend's part of phone approvals: the requests this device posted and what it knows about its devices.
+// phoneApprovalRelay is the backend's part of phone approvals: the requests this device posted and whether the account
+// has a phone. This device's own ID is the state's DeviceID.
 type phoneApprovalRelay struct {
 	mutex              sync.Mutex
 	isRequester        bool
-	ownDeviceID        string
 	hasPhoneDevice     bool
 	deviceRefreshedAt  time.Time
 	isRefreshing       bool
@@ -67,7 +67,7 @@ func (s *Service) forgetPhoneApprovalSession() {
 	}
 	clear(relay.decidesByRequestID)
 	relay.tracker.RemoveAll()
-	relay.ownDeviceID, relay.hasPhoneDevice, relay.deviceRefreshedAt = "", false, time.Time{}
+	relay.hasPhoneDevice, relay.deviceRefreshedAt = false, time.Time{}
 	relay.mutex.Unlock()
 	if len(requestIDs) == 0 || s.unlockedSession == nil {
 		return
@@ -94,7 +94,7 @@ func (s *Service) startPhoneApprovalDeviceRefresh(apiClient *apiclient.Client) {
 	go s.refreshPhoneApprovalDevice(apiClient)
 }
 
-// refreshPhoneApprovalDevice learns this device's ID and whether the account has a phone.
+// refreshPhoneApprovalDevice learns this device's ID, which the state keeps, and whether the account has a phone.
 func (s *Service) refreshPhoneApprovalDevice(apiClient *apiclient.Client) (string, error) {
 	return s.refreshPhoneApprovalDeviceWithin(apiClient, phoneApprovalRequestTimeout)
 }
@@ -115,27 +115,33 @@ func (s *Service) refreshPhoneApprovalDeviceWithin(apiClient *apiclient.Client, 
 	if s.unlockedSession == nil || s.unlockedSession.Client != apiClient {
 		return "", ErrLocked
 	}
-	relay.ownDeviceID, relay.hasPhoneDevice = "", false
+	ownDeviceID := ""
+	relay.hasPhoneDevice = false
 	for _, device := range devices {
 		switch {
 		case device.Current:
-			relay.ownDeviceID = device.ID
+			ownDeviceID = device.ID
 		case apitypes.IsPhonePlatform(device.Platform):
 			relay.hasPhoneDevice = true
 		}
 	}
 	relay.deviceRefreshedAt = s.config.Now()
-	if relay.ownDeviceID == "" {
+	if ownDeviceID == "" {
 		return "", errors.New("this device is missing from the account's devices")
 	}
-	return relay.ownDeviceID, nil
+	if s.state.DeviceID != ownDeviceID {
+		s.state.DeviceID = ownDeviceID
+		if err := s.state.Save(); err != nil {
+			log.Printf("saving this device's ID: %v", err)
+		}
+	}
+	return ownDeviceID, nil
 }
 
 func (s *Service) getOwnDeviceID(apiClient *apiclient.Client) (string, error) {
-	relay := s.phoneApprovals
-	relay.mutex.Lock()
-	ownDeviceID := relay.ownDeviceID
-	relay.mutex.Unlock()
+	s.mutex.Lock()
+	ownDeviceID := s.state.DeviceID
+	s.mutex.Unlock()
 	if ownDeviceID != "" {
 		return ownDeviceID, nil
 	}
@@ -157,8 +163,7 @@ func (phoneApprover *PhoneApprover) IsPhoneApprovalAvailable() bool {
 	}
 	apiClient := s.unlockedSession.Client
 	s.mutex.Unlock()
-	relay := s.phoneApprovals
-	isAvailable, isStale := relay.getDeviceAvailability(s.config.Now())
+	isAvailable, isStale := s.getPhoneApprovalAvailability()
 	switch {
 	case isAvailable && isStale:
 		s.startPhoneApprovalDeviceRefresh(apiClient)
@@ -167,14 +172,17 @@ func (phoneApprover *PhoneApprover) IsPhoneApprovalAvailable() bool {
 		return isAvailable
 	}
 	s.refreshPhoneApprovalDeviceWithin(apiClient, phoneApprovalDeviceCheckTimeout)
-	isAvailable, _ = relay.getDeviceAvailability(s.config.Now())
+	isAvailable, _ = s.getPhoneApprovalAvailability()
 	return isAvailable
 }
 
-func (relay *phoneApprovalRelay) getDeviceAvailability(now time.Time) (isAvailable, isStale bool) {
+func (s *Service) getPhoneApprovalAvailability() (isAvailable, isStale bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	relay := s.phoneApprovals
 	relay.mutex.Lock()
 	defer relay.mutex.Unlock()
-	return relay.hasPhoneDevice && relay.ownDeviceID != "", now.Sub(relay.deviceRefreshedAt) > phoneApprovalDeviceRefreshInterval
+	return relay.hasPhoneDevice && s.state.DeviceID != "", s.config.Now().Sub(relay.deviceRefreshedAt) > phoneApprovalDeviceRefreshInterval
 }
 
 // StartPhoneApproval seals the dialog's request to the account and posts it; it stays answerable until the dialog's
@@ -183,10 +191,7 @@ func (relay *phoneApprovalRelay) getDeviceAvailability(now time.Time) (isAvailab
 func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Description, expiresAt time.Time, posted func(isSent bool), decide func(answer approval.AcceptedAnswer)) (func(), error) {
 	s := phoneApprover.service
 	s.mutex.Lock()
-	relay := s.phoneApprovals
-	relay.mutex.Lock()
-	ownDeviceID := relay.ownDeviceID
-	relay.mutex.Unlock()
+	ownDeviceID := s.state.DeviceID
 	if !s.isUnlocked() || s.state.IsPhoneApprovalDisabled || ownDeviceID == "" {
 		s.mutex.Unlock()
 		return nil, errPhoneApprovalUnavailable
@@ -205,6 +210,7 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 	}
 	// The keyset is wiped when Hisar locks, so the preview is signed now; the phones' keys come from the network after.
 	pushPreview := createApprovalPushPreview(s.unlockedSession.Keyset, s.unlockedSession.AccountID, request)
+	relay := s.phoneApprovals
 	relay.mutex.Lock()
 	relay.tracker.Add(request.RequestID, sealedRequest, request.ExpiresAt)
 	relay.decidesByRequestID[request.RequestID] = decide
@@ -311,7 +317,7 @@ func (s *Service) acceptPhoneApprovalAnswer(apiClient *apiclient.Client, request
 		return
 	}
 	relay.mutex.Lock()
-	accepted, err := relay.tracker.AcceptAnswer(s.unlockedSession.Keyset, s.unlockedSession.AccountID, requestID, stored.SealedAnswer, relay.ownDeviceID, s.config.Now())
+	accepted, err := relay.tracker.AcceptAnswer(s.unlockedSession.Keyset, s.unlockedSession.AccountID, requestID, stored.SealedAnswer, s.state.DeviceID, s.config.Now())
 	decide := relay.decidesByRequestID[requestID]
 	if err == nil {
 		delete(relay.decidesByRequestID, requestID)

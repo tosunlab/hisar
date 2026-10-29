@@ -429,7 +429,9 @@ func getCachedItem(t *testing.T, service *Service, vaultID, itemID string) item.
 	return *cachedItem
 }
 
-func startRegistrationServerWithVaults(t *testing.T) string {
+// startRegistrationServerWithVaults signs up on the in-memory API; the new session is the device api.devices names
+// current.
+func startRegistrationServerWithVaults(t *testing.T) (string, *fakeAPIServer) {
 	t.Helper()
 	configuration := pake.NewConfig()
 	privateKey, publicKey := configuration.KeyGen()
@@ -483,12 +485,18 @@ func startRegistrationServerWithVaults(t *testing.T) string {
 			AccountID: finishRequest.AccountID, Email: finishRequest.Email, Name: finishRequest.Name,
 			Salt: finishRequest.Salt, Argon2: finishRequest.Argon2, EncKeyset: finishRequest.EncKeyset, PublicKeys: finishRequest.PublicKeys,
 		}
+		deviceID := ""
+		for _, device := range api.devices {
+			if device.Current {
+				deviceID = device.ID
+			}
+		}
 		api.mutex.Unlock()
-		writeJSON(writer, http.StatusOK, apitypes.SessionResponse{Token: "new-token", AccountID: finishRequest.AccountID})
+		writeJSON(writer, http.StatusOK, apitypes.SessionResponse{Token: "new-token", AccountID: finishRequest.AccountID, DeviceID: deviceID})
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
-	return server.URL
+	return server.URL, api
 }
 
 func reviewedImportScope(t *testing.T, service *Service, vaultID string) string {

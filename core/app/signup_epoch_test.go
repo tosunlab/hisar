@@ -24,7 +24,7 @@ func TestLateSignUpNeverUndoesLockSignOutOrAccountSwitch(t *testing.T) {
 	for _, intent := range []string{"lock", "sign-out", "account switch"} {
 		t.Run(intent, func(t *testing.T) {
 			s := createUnlockedTestService(t).service
-			server := startRegistrationServerWithVaults(t)
+			server, _ := startRegistrationServerWithVaults(t)
 			paused := newPause()
 			s.serverTransport = pauseRegistrationTransport{pause: paused}
 			type outcome struct {

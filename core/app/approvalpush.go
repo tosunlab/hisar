@@ -53,7 +53,7 @@ func buildApprovalPushMessages(ctx context.Context, client *apiclient.Client, pr
 		authSecret, authErr := decodeBase64URL(key.Auth)
 		signature, signatureErr := decodeBase64URL(key.Signature)
 		if publicKeyErr != nil || authErr != nil || signatureErr != nil ||
-			crypt.VerifyPushKey(preview.signingPublicKey, preview.accountID, key.DeviceID, publicKey, authSecret, signature) != nil {
+			!isPushKeySigned(preview, key.DeviceID, publicKey, authSecret, signature) {
 			log.Printf("phone approval: a phone's push key does not carry the account's signature; it gets no preview")
 			continue
 		}
@@ -67,6 +67,13 @@ func buildApprovalPushMessages(ctx context.Context, client *apiclient.Client, pr
 		}
 	}
 	return allMessage
+}
+
+// isPushKeySigned checks the account's signature over a phone's key and device ID. iPhone 0.1.16 signs its key over an
+// empty device ID; that signature still binds the key to the account, so the phone gets previews until it updates.
+func isPushKeySigned(preview approvalPushPreview, deviceID string, publicKey, authSecret, signature []byte) bool {
+	return crypt.VerifyPushKey(preview.signingPublicKey, preview.accountID, deviceID, publicKey, authSecret, signature) == nil ||
+		crypt.VerifyPushKey(preview.signingPublicKey, preview.accountID, "", publicKey, authSecret, signature) == nil
 }
 
 // ApprovalPushVerifier is what a phone's notification checks an approval preview with while Hisar is locked: the
