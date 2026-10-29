@@ -15,6 +15,7 @@ func GetProcessWorkingDirectory(pid int) (string, error) {
 func setPlatformProcessFunction(system *System) {
 	system.ListProcessIDs = listProcessIDs
 	system.GetSSHRemoteHost = getSSHRemoteHost
+	system.FindDesktopApp = newSystemDesktopApps().find
 }
 
 func listProcessIDs() ([]int, error) {

@@ -111,12 +111,14 @@ const phoneNote = computed(() => {
   return approval.value?.isTooLongForPhone ? "This request is too long to approve on your phone." : "";
 });
 
+// isAppRequester is an app approvals are remembered for; a Linux desktop app ("desktop-app") is only named, so its
+// requests are remembered for the program.
 const isAppRequester = computed(() => !approval.value?.requesterKind || approval.value.requesterKind === "app");
 
-// inlineAppName is the app inside a sentence: "iTerm2", or "a background process".
+// inlineAppName is the app inside a sentence: "iTerm2" or "Konsole", or "a background process".
 const inlineAppName = computed(() => {
   const appName = approval.value?.appName ?? "";
-  if (isAppRequester.value || /^[A-Z]{2}/.test(appName)) {
+  if (isAppRequester.value || approval.value?.requesterKind === "desktop-app" || /^[A-Z]{2}/.test(appName)) {
     return appName;
   }
   return appName.charAt(0).toLowerCase() + appName.slice(1);

@@ -1017,6 +1017,22 @@ describe("SSHApprovalWindow app attribution", () => {
     wrapper.unmount();
   });
 
+  it("names a Linux app from its desktop entry with its icon, and remembers only the program", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    const konsole = { requesterKind: "desktop-app", appName: "Konsole", appIconURL: "data:image/png;base64,Konsole", appSignature: "", appSigner: "", appPath: "" };
+    sendEvent("ssh-approval", createApprovalEvent(konsole));
+    await flushPromises();
+    expect(wrapper.find("h1").text()).toBe("Konsole wants to push to git.tryhisar.com");
+    expect(wrapper.find('[data-testid="app-icon"]').attributes("src")).toBe("data:image/png;base64,Konsole");
+    expect(wrapper.find('[data-testid="approval-signer"]').exists()).toBe(false);
+    expect(wrapper.find(".remember").text()).toBe("Approve SSH requests from ssh with this key for up to 1 hour Any host. Ends when Hisar locks.");
+    sendEvent("ssh-approval-closed", "request-1");
+    sendEvent("ssh-approval", createCommandLineApprovalEvent({ ...konsole, coverage: "connection" }));
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("hisar in Konsole wants to use Hisar");
+    wrapper.unmount();
+  });
+
   it("names the app that creates a share link", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent(

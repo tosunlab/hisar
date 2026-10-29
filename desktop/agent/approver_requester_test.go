@@ -137,6 +137,26 @@ func TestRequesterWithoutAnApp(t *testing.T) {
 	}
 }
 
+// A Linux app its desktop entry names shows with its name and icon, but it is no app identity: Touch ID names the
+// program in it, as for a process without an app, and nothing is scoped to the app.
+func TestDesktopAppIsShownButNotAnIdentity(t *testing.T) {
+	emitter := createFakeEmitter()
+	biometric := &fakeBiometric{isAvailable: true}
+	requester := appinfo.Requester{Kind: appinfo.RequesterKindDesktopApp, Name: "Konsole", App: appinfo.App{Name: "Konsole", IconURL: "data:image/png;base64,Konsole"}}
+	approver := createRequesterApprover(emitter, requesterApproverOption{requester: requester, biometric: biometric})
+	resultChannel := startApproval(approver, context.Background(), sshagent.ApprovalRequest{ClientPID: 70, ClientName: "ssh", DestinationHost: "github.com"})
+	event := waitForApprovalEvent(t, emitter)
+	if event.AppName != "Konsole" || event.RequesterKind != appinfo.RequesterKindDesktopApp || event.AppIconURL != "data:image/png;base64,Konsole" ||
+		event.AppPath != "" || event.AppSignature != "" || event.AppSigner != "" || event.AppWarning != "" {
+		t.Errorf("event: %+v", event)
+	}
+	approver.Respond(event.RequestID, true, false)
+	waitForResult(t, resultChannel)
+	if reasons := biometric.listReasons(); len(reasons) != 1 || reasons[0] != `allow "ssh in Konsole" to sign in to github.com` {
+		t.Errorf("Touch ID reason %q", reasons)
+	}
+}
+
 func TestCommandLineAndAgentNameTheirApp(t *testing.T) {
 	emitter := createFakeEmitter()
 	phone := createFakePhone()

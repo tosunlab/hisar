@@ -67,6 +67,10 @@ func applyRequester(event *ApprovalEvent, requester appinfo.Requester) {
 	event.RequesterKind = requester.Kind
 	event.AppName = requester.Name
 	event.ChainProcesses = buildChainProcesses(requester.ChainProcesses)
+	if requester.Kind == appinfo.RequesterKindDesktopApp {
+		event.AppIconURL = requester.App.IconURL
+		return
+	}
 	if requester.Kind != appinfo.RequesterKindApp {
 		return
 	}
@@ -75,6 +79,8 @@ func applyRequester(event *ApprovalEvent, requester appinfo.Requester) {
 	event.AppSigner, event.AppWarning = describeAppSignature(requester.App)
 }
 
+// isAppRequester reports an app the request is remembered for. A Linux desktop app is only named: requests from it are
+// remembered for the program, as from a process without an app.
 func isAppRequester(event ApprovalEvent) bool {
 	return event.RequesterKind == "" || event.RequesterKind == appinfo.RequesterKindApp
 }
@@ -87,9 +93,9 @@ func lowerFirstLetter(text string) string {
 	return string(unicode.ToLower(first)) + text[size:]
 }
 
-// describeInlineAppName is the app inside a sentence: "iTerm2", or "a background process".
+// describeInlineAppName is the app inside a sentence: "iTerm2" or "Konsole", or "a background process".
 func describeInlineAppName(event ApprovalEvent) string {
-	if isAppRequester(event) {
+	if isAppRequester(event) || event.RequesterKind == appinfo.RequesterKindDesktopApp {
 		return event.AppName
 	}
 	return lowerFirstLetter(event.AppName)
