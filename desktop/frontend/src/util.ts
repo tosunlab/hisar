@@ -172,6 +172,18 @@ export function biometricUnavailableSetting(): string {
     : "Unlocking with a fingerprint is not available on this computer; Hisar unlocks with your master password.";
 }
 
+// biometricSetupPending is the Security row's text while biometric unlock still needs the master password to set up.
+export function biometricSetupPending(): string {
+  return isMacPlatform()
+    ? "Touch ID protection is pending. Unlock with your master password until setup is complete."
+    : "Fingerprint unlock needs your master password to set up again. Your master password still unlocks Hisar.";
+}
+
+// fingerprintScanPrompt is shown on Linux while a biometric request waits with no system prompt of its own.
+export function fingerprintScanPrompt(): string {
+  return "Scan your finger…";
+}
+
 // thisDevice is how the UI names the computer it runs on: "this Mac", or "this computer" on Linux.
 export function getThisDeviceName(): string {
   return isMacPlatform() ? "this Mac" : "this computer";

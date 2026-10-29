@@ -37,14 +37,15 @@ var (
 )
 
 // fingerprintDevice is the default fprintd device of the user's session, or a fake in tests. Errors carry fprintd's D-Bus
-// error name (dbusErrorName).
+// error name (dbusErrorName). Every call ends when its context does.
 type fingerprintDevice interface {
-	ListEnrolledFingers() ([]string, error)
-	Claim() error
-	Release() error
+	ListEnrolledFingers(ctx context.Context) ([]string, error)
+	Claim(ctx context.Context) error
+	Release(ctx context.Context) error
 	// VerifyStart starts a scan of any enrolled finger; its results arrive on statuses until one is done.
-	VerifyStart() error
-	VerifyStop() error
+	VerifyStart(ctx context.Context) error
+	VerifyStop(ctx context.Context) error
+	// Statuses are the device's VerifyStatus signals, only those fprintd itself sent.
 	Statuses() <-chan verifyStatus
 	Close()
 }
@@ -57,48 +58,71 @@ type verifyStatus struct {
 // openFingerprintDevice opens the default device; an error names why there is none.
 type openFingerprintDevice func(ctx context.Context) (fingerprintDevice, error)
 
+const (
+	// availabilityTimeout bounds the check that a status may wait on, the first one only.
+	availabilityTimeout = time.Second
+	// callTimeout bounds each call of a scan, and the Release and VerifyStop after one ends.
+	callTimeout = 5 * time.Second
+	// maximumScanDuration gives the reader back to fprintd's other users (sudo, the desktop's lock screen) when nobody
+	// scans: fprintd lets one program claim it at a time.
+	maximumScanDuration = time.Minute
+)
+
 // fingerprintReader checks fingerprints through fprintd and keeps the biometric unlock keys in memory only: no keyring
 // item can require a fingerprint on Linux, and Hisar asks for the master password after every start anyway.
 type fingerprintReader struct {
 	open openFingerprintDevice
 	now  func() time.Time
+	// scanDuration is maximumScanDuration, shorter in tests.
+	scanDuration time.Duration
 
 	mutex             sync.Mutex
 	keysByAccountID   map[string][]byte
 	checkedAt         time.Time
 	unavailableReason string
+	isChecking        bool
 	cancelVerify      context.CancelFunc
 	verifyMutex       sync.Mutex
 }
 
 func newFingerprintReader(open openFingerprintDevice) *fingerprintReader {
-	return &fingerprintReader{open: open, now: time.Now, keysByAccountID: map[string][]byte{}}
+	return &fingerprintReader{open: open, now: time.Now, scanDuration: maximumScanDuration, keysByAccountID: map[string][]byte{}}
 }
 
-// getUnavailableReason checks fprintd at most every availabilityLifetime: "" when a reader has an enrolled finger.
+// getUnavailableReason is "" when a reader has an enrolled finger. Hisar's status asks under its service mutex, so
+// only the first check waits, for at most availabilityTimeout; after availabilityLifetime the last answer stands while
+// one check in the background asks fprintd again.
 func (reader *fingerprintReader) getUnavailableReason() string {
 	reader.mutex.Lock()
-	if !reader.checkedAt.IsZero() && reader.now().Sub(reader.checkedAt) < availabilityLifetime {
-		defer reader.mutex.Unlock()
-		return reader.unavailableReason
-	}
-	reader.mutex.Unlock()
-	reason := reader.checkAvailability()
-	reader.mutex.Lock()
 	defer reader.mutex.Unlock()
-	reader.checkedAt, reader.unavailableReason = reader.now(), reason
-	return reason
+	if reader.checkedAt.IsZero() {
+		reader.mutex.Unlock()
+		reason := reader.checkAvailability()
+		reader.mutex.Lock()
+		reader.checkedAt, reader.unavailableReason = reader.now(), reason
+		return reason
+	}
+	if reader.now().Sub(reader.checkedAt) >= availabilityLifetime && !reader.isChecking {
+		reader.isChecking = true
+		go func() {
+			reason := reader.checkAvailability()
+			reader.mutex.Lock()
+			defer reader.mutex.Unlock()
+			reader.checkedAt, reader.unavailableReason, reader.isChecking = reader.now(), reason, false
+		}()
+	}
+	return reader.unavailableReason
 }
 
 func (reader *fingerprintReader) checkAvailability() string {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), availabilityTimeout)
 	defer cancel()
 	device, err := reader.open(ctx)
 	if err != nil {
 		return describeUnavailable(err)
 	}
 	defer device.Close()
-	fingers, err := device.ListEnrolledFingers()
+	fingers, err := device.ListEnrolledFingers(ctx)
 	if err != nil {
 		return describeUnavailable(err)
 	}
@@ -122,12 +146,19 @@ func describeUnavailable(err error) string {
 	return "Hisar could not reach fprintd, the fingerprint service, so fingerprint unlock is not available."
 }
 
-// verify claims the reader, scans until a finger matches, fingerprintAttempts fingers do not, or cancel ends it, and
-// releases the reader.
+// withCallTimeout runs one call of a scan under ctx and callTimeout.
+func withCallTimeout(ctx context.Context, call func(context.Context) error) error {
+	callContext, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
+	return call(callContext)
+}
+
+// verify claims the reader, scans until a finger matches, fingerprintAttempts fingers do not, cancel ends it or
+// maximumScanDuration passes, and releases the reader. Cancel also ends a call fprintd has not answered yet.
 func (reader *fingerprintReader) verify() error {
 	reader.verifyMutex.Lock()
 	defer reader.verifyMutex.Unlock()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), reader.scanDuration)
 	reader.mutex.Lock()
 	reader.cancelVerify = cancel
 	reader.mutex.Unlock()
@@ -138,26 +169,30 @@ func (reader *fingerprintReader) verify() error {
 		cancel()
 	}()
 
-	openContext, cancelOpen := context.WithTimeout(ctx, 5*time.Second)
-	device, err := reader.open(openContext)
-	cancelOpen()
+	var device fingerprintDevice
+	err := withCallTimeout(ctx, func(callContext context.Context) error {
+		var err error
+		device, err = reader.open(callContext)
+		return err
+	})
 	if err != nil {
-		return reader.unavailableError(err)
+		return reader.endedOrUnavailable(ctx, err)
 	}
 	defer device.Close()
-	if err := device.Claim(); err != nil {
+	if err := withCallTimeout(ctx, device.Claim); err != nil {
 		if dbusErrorName(err) == fprintErrorAlreadyInUse {
 			return errFingerprintInUse
 		}
-		return reader.unavailableError(err)
+		return reader.endedOrUnavailable(ctx, err)
 	}
-	defer device.Release()
+	// The scan's own context may have ended: the reader is given back with a deadline of its own.
+	defer withCallTimeout(context.Background(), device.Release)
 	for noMatchCount := 0; ; {
-		if err := device.VerifyStart(); err != nil {
-			return reader.unavailableError(err)
+		if err := withCallTimeout(ctx, device.VerifyStart); err != nil {
+			return reader.endedOrUnavailable(ctx, err)
 		}
 		result, err := waitForVerifyResult(ctx, device)
-		device.VerifyStop()
+		withCallTimeout(context.Background(), device.VerifyStop)
 		switch {
 		case err != nil:
 			return err
@@ -174,6 +209,15 @@ func (reader *fingerprintReader) verify() error {
 			return errors.New("Fingerprint check failed (" + result + "). Use your master password.")
 		}
 	}
+}
+
+// endedOrUnavailable is ErrCancelled when the scan was cancelled or ran out of time during a call, else the call's
+// error as unavailableError gives it.
+func (reader *fingerprintReader) endedOrUnavailable(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ErrCancelled
+	}
+	return reader.unavailableError(err)
 }
 
 // waitForVerifyResult waits for the scan's final result. A retry result ("verify-retry-scan", "verify-swipe-too-short",

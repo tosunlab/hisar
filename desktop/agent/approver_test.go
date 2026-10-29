@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -240,7 +239,7 @@ func TestApproveRetriesAfterFailedTouchID(t *testing.T) {
 	approver.Respond(approvalEvent.RequestID, true, true)
 	select {
 	case failed := <-emitter.failedEventChannel:
-		if failed.RequestID != approvalEvent.RequestID || !strings.Contains(failed.Message, "Touch ID") {
+		if failed.RequestID != approvalEvent.RequestID || failed.Message != errTouchIDFailed.Error() {
 			t.Errorf("failed event = %+v", failed)
 		}
 	case <-time.After(5 * time.Second):

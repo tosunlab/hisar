@@ -30,6 +30,9 @@ const (
 
 type platformBiometric struct{}
 
+// GetKeyPreparer is the Biometric itself: its prompt must come before the keychain operation it authorizes.
+func (biometric *Biometric) GetKeyPreparer() app.BiometricKeyPreparer { return biometric }
+
 const (
 	resultSuccess     = 0
 	resultCancelled   = 2

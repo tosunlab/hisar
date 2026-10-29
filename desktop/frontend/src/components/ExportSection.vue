@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { api, type ExportOptions } from "../api";
 import { exportAllData, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { exportWithBiometric, useBiometricInstead } from "../util";
+import { exportWithBiometric, fingerprintScanPrompt, isMacPlatform, useBiometricInstead } from "../util";
 import AppIcon from "./AppIcon.vue";
 import CredentialField from "./CredentialField.vue";
 
@@ -17,6 +17,7 @@ const repeatedPassphrase = ref("");
 const masterPassword = ref("");
 const resultMessage = ref("");
 const authentication = ref<"biometric" | "password">("biometric");
+const isWaitingForFingerprint = ref(false);
 const isPasswordNeeded = computed(() => authentication.value === "password" || !exportOptions.value.isBiometricAvailable);
 const validationAnnouncement = ref("");
 const isPassphraseTooShort = computed(() => format.value === "encrypted" && passphrase.value !== "" && [...passphrase.value].length < exportOptions.value.minPassphraseLength);
@@ -53,12 +54,18 @@ async function submitExport(): Promise<void> {
     return;
   }
   resultMessage.value = "";
+  const waitingFingerprint = !isPasswordNeeded.value && !isMacPlatform();
+  if (waitingFingerprint) isWaitingForFingerprint.value = true;
   const result = await exportAllData({
     format: format.value,
     passphrase: format.value === "encrypted" ? passphrase.value : "",
     password: isPasswordNeeded.value ? masterPassword.value : "",
   });
   masterPassword.value = "";
+  if (waitingFingerprint) {
+    isWaitingForFingerprint.value = false;
+    if (store.errorMessage.startsWith("Fingerprint check was cancelled")) store.errorMessage = "";
+  }
   if (!result) {
     try {
       exportOptions.value = await api.getExportOptions();
@@ -72,6 +79,10 @@ async function submitExport(): Promise<void> {
   const itemText = result.itemCount === 1 ? "1 item" : `${result.itemCount} items`;
   const vaultText = result.vaultCount === 1 ? "1 vault" : `${result.vaultCount} vaults`;
   resultMessage.value = `${result.warning ? result.warning + " " : ""}Exported ${itemText} from ${vaultText} to ${result.path}.`;
+}
+
+function cancelFingerprint(): void {
+  api.cancelTouchIDPrompt().catch(() => undefined);
 }
 
 onMounted(async () => {
@@ -160,6 +171,8 @@ onMounted(async () => {
         <button v-if="exportOptions.isBiometricAvailable" class="link" type="button" :disabled="store.isBusy" data-testid="export-switch-authentication" @click="authentication = isPasswordNeeded ? 'biometric' : 'password'">
           {{ isPasswordNeeded ? useBiometricInstead() : "or use your master password" }}
         </button>
+        <p v-if="isWaitingForFingerprint" class="muted" role="status" data-testid="export-fingerprint-waiting">{{ fingerprintScanPrompt() }}</p>
+        <button v-if="isWaitingForFingerprint" class="link" type="button" data-testid="export-cancel-fingerprint" @click="cancelFingerprint">Cancel</button>
       </div>
     </form>
     <p v-if="resultMessage" class="result" role="status" data-testid="export-result">

@@ -217,7 +217,9 @@ func (s *Service) enableBiometricUnlock(password string, isNewAccount bool) (Sta
 }
 
 // storeBiometricUnlock needs biometricMutex, but never the service mutex while waiting on the OS. isStored reports that
-// the keychain now holds the new key, even when err is set.
+// the keychain now holds the new key, even when err is set. A key the platform keeps in memory only
+// (BiometricSessionKeyStore) is stored without a prompt: no OS store needs the finger to take it, and the master
+// password the setup took already proves who is there.
 func (s *Service) storeBiometricUnlock(setup biometricSetup, accountUnlockKey []byte, reason string) (sealed []byte, isStored bool, err error) {
 	check := func() error {
 		s.mutex.Lock()
@@ -227,7 +229,7 @@ func (s *Service) storeBiometricUnlock(setup biometricSetup, accountUnlockKey []
 	if err := check(); err != nil {
 		return nil, false, err
 	}
-	if reason != "" {
+	if _, isSessionKey := s.config.Biometric.(BiometricSessionKeyStore); reason != "" && !isSessionKey {
 		if preparer := s.config.BiometricKeyPreparer; preparer != nil {
 			if err := preparer.PrepareStoreKey(setup.accountID); err != nil {
 				return nil, false, fmt.Errorf("could not create the biometric unlock key: %w", err)

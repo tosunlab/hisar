@@ -2,7 +2,7 @@
 import { computed, onUnmounted, ref, watch } from "vue";
 import { api, getErrorMessage } from "../api";
 import { authorizeEmergencyKit, closeEmergencyKit, confirmSecretKeySaved, postponeSecretKey, saveNewAccountEmergencyKit, store } from "../store";
-import { continueWithBiometric, getThisDeviceName } from "../util";
+import { continueWithBiometric, fingerprintScanPrompt, getThisDeviceName, isMacPlatform } from "../util";
 import AppIcon from "./AppIcon.vue";
 import CredentialField from "./CredentialField.vue";
 import HisarLogo from "./HisarLogo.vue";
@@ -14,6 +14,7 @@ const secretKey = ref("");
 const password = ref("");
 const usesPassword = ref(!store.status.biometricEnabled);
 const wasCancelled = ref(false);
+const isWaitingForFingerprint = ref(false);
 let revealGeneration = 0;
 const savedMessage = computed(() => ({ file: "Emergency Kit saved.", print: "Emergency Kit sent to the printer.", share: "Emergency Kit shared." }[kit.value?.savedBy ?? ""] ?? ""));
 watch(() => [kit.value?.operationId, kit.value?.isAuthorized, store.recoveryEpoch, store.status.state, store.status.server, store.status.email], async () => {
@@ -31,8 +32,17 @@ onUnmounted(() => { revealGeneration++; secretKey.value = ""; password.value = "
 
 async function authorize(biometric = false): Promise<void> {
   if (store.isBusy) return;
+  const waitingFingerprint = biometric && !isMacPlatform();
+  if (waitingFingerprint) isWaitingForFingerprint.value = true;
   await authorizeEmergencyKit(biometric ? undefined : password.value);
   password.value = "";
+  if (waitingFingerprint) {
+    isWaitingForFingerprint.value = false;
+    if (store.errorMessage.startsWith("Fingerprint check was cancelled")) store.errorMessage = "";
+  }
+}
+function cancelFingerprint(): void {
+  api.cancelTouchIDPrompt().catch(() => undefined);
 }
 async function saveKit(): Promise<void> {
   wasCancelled.value = false;
@@ -54,11 +64,15 @@ async function saveKit(): Promise<void> {
             <label><span>Master password</span><CredentialField><input v-model="password" name="kitPassword" type="password" autocomplete="current-password" required /></CredentialField></label>
             <button class="primary full-width" :disabled="store.isBusy">Continue</button>
           </form>
+          <template v-else-if="isWaitingForFingerprint">
+            <p class="muted" role="status" data-testid="fingerprint-waiting">{{ fingerprintScanPrompt() }}</p>
+            <button class="ghost full-width" data-testid="cancel-fingerprint" @click="cancelFingerprint">Cancel</button>
+          </template>
           <template v-else>
             <button class="primary full-width" :disabled="store.isBusy" @click="authorize(true)">{{ continueWithBiometric() }}</button>
             <button class="ghost full-width" :disabled="store.isBusy" @click="usesPassword = true">Use master password</button>
           </template>
-          <button class="ghost full-width" :disabled="store.isBusy" @click="closeEmergencyKit">Cancel</button>
+          <button v-if="!isWaitingForFingerprint" class="ghost full-width" :disabled="store.isBusy" @click="closeEmergencyKit">Cancel</button>
         </template>
         <template v-else>
           <p class="subtitle">{{ kit.kind === 'replace-secret-key' ? 'Your Secret Key changed, so your old Emergency Kit no longer works. Save the new one.' : "Hisar created a Secret Key for your account. You need it and your master password to sign in on a new device. You don't need to remember it." }}</p>

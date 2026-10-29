@@ -105,3 +105,17 @@ func TestStatusSaysWhyBiometricUnlockIsUnavailable(t *testing.T) {
 		t.Fatalf("status once available: %+v", status)
 	}
 }
+
+// The master password turns it on without a scan: a key kept in memory needs no finger to be stored, and nothing on
+// screen would ask for one.
+func TestSessionBiometricKeyIsStoredWithoutAScan(t *testing.T) {
+	const password = "correct horse battery"
+	fixture := createUnlockedTestService(t)
+	prepareTestApprovalUnlock(t, fixture, password)
+	platform := &sessionKeyBiometric{fakeBiometric: createFakeBiometric()}
+	platform.setAuthenticateError(errors.New("nobody scanned"))
+	fixture.service.config.Biometric = platform
+	if status, err := fixture.service.EnableBiometricUnlock(password); err != nil || !status.BiometricEnabled || !platform.HasKey(fixture.accountID) {
+		t.Fatalf("enable: %+v %v", status, err)
+	}
+}

@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { api } from "../api";
 import { loadShareAwaitingUnlockQuietly, signOut, store, unlock, unlockWithBiometric } from "../store";
-import { biometricReauthReason, biometricUnavailableNow, biometricWaitingStatus, describePerson, getSignOutCopy, unlockWithBiometric as unlockWithBiometricLabel } from "../util";
+import { biometricReauthReason, biometricUnavailableNow, biometricWaitingStatus, describePerson, getSignOutCopy, isMacPlatform, unlockWithBiometric as unlockWithBiometricLabel } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import PendingRecoveryReminder from "./PendingRecoveryReminder.vue";
@@ -74,14 +74,26 @@ async function submitUnlock(): Promise<void> {
 
 const layoutObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(sendPromptFrame);
 
+// On Linux the fingerprint reader must not be claimed while the window is unfocused, and fprintd shows no prompt of its
+// own, so Hisar starts the scan only while focused and stops it on blur. The Mac starts it immediately.
+function resumeFingerprintOnFocus(): void {
+  if (store.status.biometricReady && !isWaitingForTouchID.value) {
+    startTouchID();
+  }
+}
+
 onMounted(() => {
   loadShareAwaitingUnlockQuietly();
   window.addEventListener("focus", loadShareAwaitingUnlockQuietly);
   window.addEventListener("resize", sendPromptFrame);
   layoutObserver?.observe(document.body);
   passwordInput.value?.focus();
-  if (store.status.biometricReady) {
+  if (store.status.biometricReady && (isMacPlatform() || document.hasFocus())) {
     startTouchID();
+  }
+  if (!isMacPlatform()) {
+    window.addEventListener("blur", cancelTouchID);
+    window.addEventListener("focus", resumeFingerprintOnFocus);
   }
 });
 
@@ -90,6 +102,10 @@ onBeforeUnmount(() => {
   store.allShareAwaitingUnlock = [];
   window.removeEventListener("resize", sendPromptFrame);
   layoutObserver?.disconnect();
+  if (!isMacPlatform()) {
+    window.removeEventListener("blur", cancelTouchID);
+    window.removeEventListener("focus", resumeFingerprintOnFocus);
+  }
   cancelTouchID();
   api.clearTouchIDPromptFrame().catch(() => undefined);
 });

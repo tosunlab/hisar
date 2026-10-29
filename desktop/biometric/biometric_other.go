@@ -2,7 +2,11 @@
 
 package biometric
 
-import "unsafe"
+import (
+	"unsafe"
+
+	"github.com/tryhisar/hisar/core/app"
+)
 
 const Name = "Touch ID"
 
@@ -13,6 +17,9 @@ const (
 )
 
 type platformBiometric struct{}
+
+// GetKeyPreparer is the Biometric itself: its prompt must come before the keychain operation it authorizes.
+func (biometric *Biometric) GetKeyPreparer() app.BiometricKeyPreparer { return biometric }
 
 func (biometric *Biometric) IsAvailable() bool                           { return false }
 func (biometric *Biometric) Authenticate(reason string) error            { return ErrUnavailable }

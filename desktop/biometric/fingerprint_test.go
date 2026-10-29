@@ -16,17 +16,20 @@ type fakeFingerprintDevice struct {
 	fingers    []string
 	listError  error
 	claimError error
-	scans      [][]verifyStatus
-	startCount int
-	isClaimed  bool
-	stopCount  int
-	statuses   chan verifyStatus
-	closeCount int
-	openCount  int
+	// isClaimStalled makes Claim wait for its context, as fprintd does behind another program's claim.
+	isClaimStalled bool
+	claimStarted   chan struct{}
+	scans          [][]verifyStatus
+	startCount     int
+	isClaimed      bool
+	stopCount      int
+	statuses       chan verifyStatus
+	closeCount     int
+	openCount      int
 }
 
 func createFakeDevice(scans ...[]verifyStatus) *fakeFingerprintDevice {
-	return &fakeFingerprintDevice{fingers: []string{"right-index-finger"}, scans: scans, statuses: make(chan verifyStatus, 16)}
+	return &fakeFingerprintDevice{fingers: []string{"right-index-finger"}, scans: scans, statuses: make(chan verifyStatus, 16), claimStarted: make(chan struct{}, 1)}
 }
 
 func (device *fakeFingerprintDevice) open(context.Context) (fingerprintDevice, error) {
@@ -36,21 +39,28 @@ func (device *fakeFingerprintDevice) open(context.Context) (fingerprintDevice, e
 	return device, nil
 }
 
-func (device *fakeFingerprintDevice) ListEnrolledFingers() ([]string, error) {
+func (device *fakeFingerprintDevice) ListEnrolledFingers(context.Context) ([]string, error) {
+	device.mutex.Lock()
+	defer device.mutex.Unlock()
 	return device.fingers, device.listError
 }
 
-func (device *fakeFingerprintDevice) Claim() error {
+func (device *fakeFingerprintDevice) Claim(ctx context.Context) error {
+	if device.isClaimStalled {
+		device.claimStarted <- struct{}{}
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	device.isClaimed = device.claimError == nil
 	return device.claimError
 }
 
-func (device *fakeFingerprintDevice) Release() error {
+func (device *fakeFingerprintDevice) Release(context.Context) error {
 	device.isClaimed = false
 	return nil
 }
 
-func (device *fakeFingerprintDevice) VerifyStart() error {
+func (device *fakeFingerprintDevice) VerifyStart(context.Context) error {
 	device.mutex.Lock()
 	defer device.mutex.Unlock()
 	if device.startCount < len(device.scans) {
@@ -62,7 +72,7 @@ func (device *fakeFingerprintDevice) VerifyStart() error {
 	return nil
 }
 
-func (device *fakeFingerprintDevice) VerifyStop() error {
+func (device *fakeFingerprintDevice) VerifyStop(context.Context) error {
 	device.stopCount++
 	return nil
 }
@@ -165,19 +175,69 @@ func TestFingerprintUnavailableReasons(t *testing.T) {
 	}
 }
 
-// The status asks many times a second, so fprintd is asked again only after availabilityLifetime.
-func TestFingerprintAvailabilityIsAskedAtMostEveryTenSeconds(t *testing.T) {
+// The status asks many times a second under Hisar's service mutex: fprintd is asked again only after
+// availabilityLifetime, and then in the background while the last answer stands.
+func TestFingerprintAvailabilityIsAskedAtMostEveryTenSecondsInTheBackground(t *testing.T) {
 	device := createFakeDevice()
 	reader := newFingerprintReader(device.open)
+	var nowMutex sync.Mutex
 	now := time.Unix(1_700_000_000, 0)
-	reader.now = func() time.Time { return now }
+	reader.now = func() time.Time {
+		nowMutex.Lock()
+		defer nowMutex.Unlock()
+		return now
+	}
 	for range 5 {
 		reader.getUnavailableReason()
 	}
+	nowMutex.Lock()
 	now = now.Add(availabilityLifetime)
+	nowMutex.Unlock()
+	device.mutex.Lock()
 	device.fingers = nil
-	if reason := reader.getUnavailableReason(); !strings.Contains(reason, "No fingerprint is enrolled") || device.openCount != 2 {
-		t.Errorf("after %v: %q, %d opens", availabilityLifetime, reason, device.openCount)
+	device.mutex.Unlock()
+	if reason := reader.getUnavailableReason(); reason != "" {
+		t.Errorf("the stale answer did not stand while fprintd is asked again: %q", reason)
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		if reason := reader.getUnavailableReason(); strings.Contains(reason, "No fingerprint is enrolled") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the background check never answered")
+		}
+	}
+	device.mutex.Lock()
+	defer device.mutex.Unlock()
+	if device.openCount != 2 {
+		t.Errorf("fprintd was asked %d times, want 2", device.openCount)
+	}
+}
+
+// A call fprintd does not answer, such as a Claim behind another program, ends with Cancel, and a scan nobody makes
+// ends after its time, so the reader goes back to fprintd's other users.
+func TestFingerprintCheckEndsDuringAStalledCallOrWithoutAFinger(t *testing.T) {
+	device := createFakeDevice()
+	device.isClaimStalled = true
+	reader := newFingerprintReader(device.open)
+	result := make(chan error, 1)
+	go func() { result <- reader.verify() }()
+	<-device.claimStarted
+	reader.cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, ErrCancelled) {
+			t.Errorf("cancel during Claim: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancel did not end a stalled Claim")
+	}
+
+	device = createFakeDevice()
+	reader = newFingerprintReader(device.open)
+	reader.scanDuration = 50 * time.Millisecond
+	if err := reader.verify(); !errors.Is(err, ErrCancelled) || device.isClaimed {
+		t.Errorf("a scan nobody made: %v, claimed %v", err, device.isClaimed)
 	}
 }
 

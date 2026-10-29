@@ -3,7 +3,7 @@ import { onBeforeUnmount, ref, watch } from "vue";
 import { api, getErrorMessage, type RevealedSecretKey } from "../api";
 import { copyText, disableBiometricUnlock, enableBiometricUnlock, saveEmergencyKit, setAutoLock, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { biometricConsent, biometricUnavailableSetting, biometricUnlockObject, isMacPlatform, unlockWithBiometric } from "../util";
+import { biometricConsent, biometricSetupPending, biometricUnavailableSetting, biometricUnlockObject, isMacPlatform, unlockWithBiometric } from "../util";
 import ChangeMasterPasswordDialog from "./ChangeMasterPasswordDialog.vue";
 import ReplaceSecretKeyDialog from "./ReplaceSecretKeyDialog.vue";
 import CredentialField from "./CredentialField.vue";
@@ -106,7 +106,7 @@ onBeforeUnmount(clearSecretKey);
             <p class="muted">
               {{
                 store.status.biometricSetupError
-                  ? "Touch ID protection is pending. Unlock with your master password until setup is complete."
+                  ? biometricSetupPending()
                   : store.status.biometricAvailable
                     ? biometricConsent()
                     : store.status.biometricUnavailableReason
