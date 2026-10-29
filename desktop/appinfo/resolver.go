@@ -9,7 +9,10 @@ import (
 )
 
 const (
-	RequesterKindApp         = "app"
+	RequesterKindApp = "app"
+	// RequesterKindDesktopApp is a Linux app named by its desktop entry: shown with its name and icon, but never an
+	// approval's identity, so its App has no Path and approvals are remembered for the program, as without an app.
+	RequesterKindDesktopApp  = "desktop-app"
 	RequesterKindSSHSession  = "ssh-session"
 	RequesterKindMultiplexer = "multiplexer"
 	RequesterKindBackground  = "background"
@@ -61,6 +64,9 @@ type System struct {
 	GetSSHRemoteHost          func(pid int) (string, error)
 	GetModificationTime       func(path string) (time.Time, error)
 	GetBundleModificationTime func(path string) (time.Time, error)
+	// FindDesktopApp names the Linux app behind a chain from desktop entries, with how many of the processes run
+	// before it.
+	FindDesktopApp func(processes []Process) (App, int, bool)
 }
 
 // Requester is who a request comes from: the app responsible for it, or what stands in for one, and the process chain.
@@ -130,6 +136,12 @@ func (resolver *Resolver) Resolve(pid int) Requester {
 				return resolver.buildAppRequester(requester, bundlePath, chainProcesses)
 			}
 			requester.Kind, requester.Name, requester.ChainProcesses = RequesterKindMultiplexer, multiplexerName, chainProcesses
+			return requester
+		}
+	}
+	if resolver.system.FindDesktopApp != nil {
+		if app, index, isFound := resolver.system.FindDesktopApp(processes); isFound {
+			requester.Kind, requester.Name, requester.App, requester.ChainProcesses = RequesterKindDesktopApp, app.Name, app, buildChain(processes, index)
 			return requester
 		}
 	}

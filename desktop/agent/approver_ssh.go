@@ -108,7 +108,7 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 func (approver *Approver) buildSSHPhoneDescription(event ApprovalEvent, signingRememberDuration time.Duration) approval.Description {
 	description := approval.Description{
 		Kind:              approval.KindSSH,
-		AppName:           event.AppName,
+		AppName:           describePhoneRequester(event),
 		AppIcon:           approver.getPhoneAppIcon(event),
 		AppWarning:        event.AppWarning,
 		Purpose:           strings.TrimSpace(event.Action + " " + event.Target),
@@ -151,6 +151,15 @@ func (approver *Approver) buildSSHPhoneDescription(event ApprovalEvent, signingR
 		}
 	}
 	return description
+}
+
+// describePhoneRequester is who the phone's title and push preview name. Neither shows the process chain, so a Linux
+// app named by its desktop entry, whose Name= any program could have written, never stands alone: "ssh in Konsole".
+func describePhoneRequester(event ApprovalEvent) string {
+	if event.RequesterKind == appinfo.RequesterKindDesktopApp && event.ClientName != "" {
+		return event.ClientName + " in " + event.AppName
+	}
+	return event.AppName
 }
 
 func (approver *Approver) getSSHRememberDuration() time.Duration {

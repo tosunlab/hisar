@@ -817,7 +817,7 @@ const allPreviewSigningChainProcess = [
 ];
 
 // applyPreviewApp: &app=iterm (a commit signed in iTerm2), =vscode (Visual Studio Code's git), =unsigned (an "iTerm2" without a signature),
-// =background or =ssh (no app), with &appIcon=<url> for the icon.
+// =konsole (a Linux app its desktop entry names), =background or =ssh (no app), with &appIcon=<url> for the icon.
 function applyPreviewApp(event: ApprovalEvent): ApprovalEvent {
   const appIconURL = previewParameter.get("appIcon") ?? "";
   const allPreviewSigningChain =
@@ -856,6 +856,8 @@ function applyPreviewApp(event: ApprovalEvent): ApprovalEvent {
       };
     case "background":
       return { ...event, requesterKind: "background", appName: "A background process", appIconURL: "", appPath: "", appSignature: "", appSigner: "", allChainProcess: [...allPreviewSigningChain, { name: "nightly-release", commandLine: "/Users/developer/bin/nightly-release" }] };
+    case "konsole":
+      return { ...event, requesterKind: "desktop-app", appName: "Konsole", appIconURL, appPath: "", appSignature: "", appSigner: "", allChainProcess: [...allPreviewSigningChain, { name: "zsh", commandLine: "-zsh" }] };
     case "ssh":
       return { ...event, requesterKind: "ssh-session", appName: "An SSH session from 192.0.2.10", appIconURL: "", appPath: "", appSignature: "", appSigner: "", allChainProcess: [...allPreviewSigningChain, { name: "zsh", commandLine: "-zsh" }] };
   }
