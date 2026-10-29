@@ -10,7 +10,7 @@ import AppNotice from "./components/AppNotice.vue";
 import OrganizationAlert from "./components/OrganizationAlert.vue";
 import SettingsPanel from "./components/SettingsPanel.vue";
 
-// The macOS Settings window shows Settings only. Go keeps the section it was asked to open at until this page takes it,
+// The Settings window shows Settings only. Go keeps the section it was asked to open at until this page takes it,
 // so a request made while the page reloads, or while Hisar is locked, still opens it; the event only wakes the page. Go
 // hides the window when Hisar locks or signs out, and its page reloads whenever it closes. Items, removed-vault notices
 // and pending recovery belong to the main window: actions that need them hand off to it. Closing Settings here hides the

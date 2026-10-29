@@ -7,8 +7,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// SettingsWindowService opens Settings in its own window, as Mac apps do. On Linux there is no Settings window and Settings
-// stays an overlay in the main window, so window is nil there and Show reports false.
+// SettingsWindowService opens Settings in its own window, on macOS and Linux alike. window is nil only before main creates
+// it, and Show then reports false, so the page opens Settings as an overlay in the main window.
 //
 // The service keeps the section Settings was asked to open at until the window's page takes it: the page may be reloading
 // when asked, and while Hisar is locked Settings waits for the unlock. The event it sends only wakes the page.

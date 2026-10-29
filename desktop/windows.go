@@ -52,7 +52,7 @@ func mainWindowOptions() application.WebviewWindowOptions {
 	}
 }
 
-// settingsWindowOptions is Settings in its own window on macOS, hidden until Settings opens and reused.
+// settingsWindowOptions is Settings in its own window, hidden until Settings opens and reused.
 func settingsWindowOptions() application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Name:             "settings",

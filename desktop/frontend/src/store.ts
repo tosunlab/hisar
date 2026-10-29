@@ -1151,7 +1151,7 @@ export async function syncInBackground(): Promise<void> {
   }
 }
 
-// loadSettingsWindow loads what the macOS Settings window shows besides its sections' own data: the status, the vaults
+// loadSettingsWindow loads what the Settings window shows besides its sections' own data: the status, the vaults
 // Coding agents lists, invitations and organizations. It never loads items, removed-vault notices or pending recovery:
 // the main window owns them, and a removed-vault notice comes only once.
 export async function loadSettingsWindow(): Promise<void> {
@@ -1440,12 +1440,12 @@ async function loadSelectedItem(itemID: string, version: number): Promise<void> 
   }
 }
 
-// isSettingsWindow is true in the macOS Settings window, which runs this code with a store of its own.
+// isSettingsWindow is true in the Settings window, which runs this code with a store of its own.
 export const isSettingsWindow = new URLSearchParams(window.location.search).get("window") === "settings";
 
-// openSettings opens Settings at sectionID, or at its last section when sectionID is "": in its own window on macOS, as an
-// overlay in the main window elsewhere. The window opens after the unlock when Hisar is locked; an overlay already open
-// closes first, so it opens at that section.
+// openSettings opens Settings at sectionID, or at its last section when sectionID is "": in its own window, or as an
+// overlay in the main window where there is none (the preview). The window opens after the unlock when Hisar is locked;
+// an overlay already open closes first, so it opens at that section.
 export async function openSettings(sectionID = ""): Promise<void> {
   if (sectionID !== "" && !isSettingsSectionID(sectionID)) {
     return;
@@ -1480,7 +1480,7 @@ export function isMainWindowAction(action: unknown): action is MainWindowAction 
 }
 
 // openFromSettings runs a Settings action that leads to the main window: Import, the sharing panel of the vault selected
-// there, or pending recovery. The macOS Settings window closes and hands the action to the main window, whose App
+// there, or pending recovery. The Settings window closes and hands the action to the main window, whose App
 // listens for it.
 export async function openFromSettings(action: MainWindowAction): Promise<void> {
   if (isSettingsWindow) {

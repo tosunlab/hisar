@@ -55,7 +55,14 @@ afterEach(() => {
   wrapper = null;
 });
 
-describe("Settings window", () => {
+// The Mac and Linux run the same Settings window; only the command key differs.
+describe.each([
+  { platform: "MacIntel", name: "Mac", lockKey: "⌘L", modifier: "metaKey" },
+  { platform: "Linux x86_64", name: "Linux", lockKey: "Ctrl+L", modifier: "ctrlKey" },
+] as const)("Settings window on $name", ({ platform, lockKey, modifier }) => {
+  beforeEach(() => Object.defineProperty(navigator, "platform", { configurable: true, value: platform }));
+  afterEach(() => Object.defineProperty(navigator, "platform", { configurable: true, value: "MacIntel" }));
+
   it("loads the account and opens at the section asked for, filling the window", async () => {
     const settings = await openSettingsWindow("security");
     expect(api.getStatus).toHaveBeenCalled();
@@ -148,10 +155,10 @@ describe("Settings window", () => {
     expect(settings.find('[data-testid="replace-secret-key-done"]').exists()).toBe(false);
   });
 
-  it("locks on ⌘L, also over a dialog", async () => {
+  it(`locks on ${lockKey}, also over a dialog`, async () => {
     const settings = await openSettingsWindow("security");
     await settings.find('[data-testid="replace-secret-key"]').trigger("click");
-    const shortcut = new KeyboardEvent("keydown", { key: "l", metaKey: true, cancelable: true });
+    const shortcut = new KeyboardEvent("keydown", { key: "l", [modifier]: true, cancelable: true });
     window.dispatchEvent(shortcut);
     await flushPromises();
     expect(shortcut.defaultPrevented).toBe(true);
