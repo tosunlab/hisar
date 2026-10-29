@@ -166,7 +166,7 @@ describe("Platform command modifiers", () => {
     ["MacIntel", "metaKey", true], ["MacIntel", "ctrlKey", false],
     ["Linux x86_64", "ctrlKey", true], ["Linux x86_64", "metaKey", false],
   ] as const) {
-    it(`${platform} ${modifier} ${accepted ? "runs" : "does not claim"} Search, Settings search, Save and Lock`, async () => {
+    it(`${platform} ${modifier} ${accepted ? "runs" : "does not claim"} Search, Settings, Settings search, Save and Lock`, async () => {
       Object.defineProperty(navigator, "platform", { configurable: true, value: platform });
       const view = mount(MainView, { attachTo: document.body });
       const other = document.createElement("input");
@@ -176,6 +176,13 @@ describe("Platform command modifiers", () => {
       other.dispatchEvent(find);
       expect(find.defaultPrevented).toBe(accepted);
       expect(document.activeElement === view.get('input[name="search"]').element).toBe(accepted);
+      if (accepted) api.showSettingsWindow.mockResolvedValueOnce(true);
+      const openSettingsWindow = new KeyboardEvent("keydown", { key: ",", [modifier]: true, bubbles: true, cancelable: true });
+      other.dispatchEvent(openSettingsWindow);
+      await flushPromises();
+      expect(openSettingsWindow.defaultPrevented).toBe(accepted);
+      expect(api.showSettingsWindow).toHaveBeenCalledTimes(accepted ? 1 : 0);
+      expect(store.isSettingsOpen).toBe(false);
       view.unmount();
       const settings = mount(SettingsPanel, { attachTo: document.body });
       await flushPromises();

@@ -471,8 +471,8 @@ const wailsApi = {
     ApprovalTouchIDService.SetApprovalPromptFrame(x, y, width, height),
   clearApprovalTouchIDFrame: (): Promise<void> => ApprovalTouchIDService.ClearApprovalPromptFrame(),
   cancelApprovalTouchID: (): Promise<void> => ApprovalTouchIDService.CancelApprovalPrompt(),
-  // showSettingsWindow opens Settings in its own window and reports false where Settings is an overlay instead (Linux).
-  // While Hisar is locked the window opens after the unlock.
+  // showSettingsWindow opens Settings in its own window and reports false where there is none (the preview), so Settings
+  // opens as an overlay instead. While Hisar is locked the window opens after the unlock.
   showSettingsWindow: (sectionID: string): Promise<boolean> => SettingsWindowService.Show(sectionID),
   hideSettingsWindow: (): Promise<void> => SettingsWindowService.Hide(),
   // takeSettingsWindowRequest returns the section the Settings window was asked to open at ("" for its last), once, or null.

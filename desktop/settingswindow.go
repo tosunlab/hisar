@@ -7,8 +7,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// SettingsWindowService opens Settings in its own window, as Mac apps do. On Linux there is no Settings window and Settings
-// stays an overlay in the main window, so window is nil there and Show reports false.
+// SettingsWindowService opens Settings in its own window, on macOS and Linux alike. window is nil only before main creates
+// it, and Show then reports false, so the page opens Settings as an overlay in the main window.
 //
 // The service keeps the section Settings was asked to open at until the window's page takes it: the page may be reloading
 // when asked, and while Hisar is locked Settings waits for the unlock. The event it sends only wakes the page.
@@ -55,7 +55,8 @@ func (service *SettingsWindowService) TakeOpenRequest() (string, bool) {
 }
 
 // Hide closes the Settings window and drops a request it has not taken. Its page reloads while hidden, so a closed
-// Settings window holds nothing of the vault.
+// Settings window holds nothing of the vault. It loads settingsWindowURL again rather than calling Reload: on Linux Wails'
+// Reload loads the bare "wails://", which drops ?window=settings and so would load the main window's page.
 func (service *SettingsWindowService) Hide() {
 	if service.window == nil {
 		return
@@ -65,7 +66,7 @@ func (service *SettingsWindowService) Hide() {
 	service.mutex.Unlock()
 	application.InvokeAsync(func() {
 		service.window.Hide()
-		service.window.Reload()
+		service.window.SetURL(settingsWindowURL)
 	})
 }
 

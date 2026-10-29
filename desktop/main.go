@@ -128,7 +128,10 @@ func main() {
 	showWindow := func() {
 		application.InvokeAsync(func() {
 			background.SetDockIconVisible(true)
-			wailsApp.Show()
+			// Unhides Hisar after ⌘H. On Linux App.Show presents every window, the approval and Settings windows too.
+			if runtime.GOOS == "darwin" {
+				wailsApp.Show()
+			}
 			window.UnMinimise()
 			window.Show()
 			window.Focus()
@@ -421,15 +424,13 @@ func main() {
 		approver.DenyAll()
 		approvalWindow.Hide()
 	})
-	if runtime.GOOS == "darwin" {
-		settingsWindow := wailsApp.Window.NewWithOptions(settingsWindowOptions())
-		settingsWindowService.window, settingsWindowService.showMainWindow = settingsWindow, showWindow
-		settingsWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
-			event.Cancel()
-			settingsWindowService.Hide()
-		})
-		app.AddStatusListener(vaultService, func() { settingsWindowService.followStatus(vaultService.GetStatus().State) })
-	}
+	settingsWindow := wailsApp.Window.NewWithOptions(settingsWindowOptions())
+	settingsWindowService.window, settingsWindowService.showMainWindow = settingsWindow, showWindow
+	settingsWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		event.Cancel()
+		settingsWindowService.Hide()
+	})
+	app.AddStatusListener(vaultService, func() { settingsWindowService.followStatus(vaultService.GetStatus().State) })
 
 	go func() {
 		defer close(agentStopped)
