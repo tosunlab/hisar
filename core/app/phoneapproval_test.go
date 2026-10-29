@@ -569,7 +569,7 @@ func (test *phoneApprovalTest) forgetDeviceList() {
 	relay := test.service.phoneApprovals
 	relay.mutex.Lock()
 	defer relay.mutex.Unlock()
-	relay.ownDeviceID, relay.hasPhoneDevice, relay.deviceRefreshedAt = "", false, time.Time{}
+	relay.hasPhoneDevice, relay.deviceRefreshedAt = false, time.Time{}
 }
 
 func TestPhoneApprovalIsOfferedForEveryPhonePlatform(t *testing.T) {
