@@ -17,11 +17,11 @@ func TestBrowsersAreTheSignedReleases(t *testing.T) {
 		"chrome": {Identifier: "com.google.Chrome", TeamID: "EQHXZ8M8AV"},
 		"edge":   {Identifier: "com.microsoft.edgemac", TeamID: "UBF8T346G9"},
 	}
-	if len(browsers) != len(expected) {
-		t.Fatalf("%d browsers, want %d", len(browsers), len(expected))
+	if len(macBrowsers) != len(expected) {
+		t.Fatalf("%d browsers, want %d", len(macBrowsers), len(expected))
 	}
 	for id, signature := range expected {
-		browser, isFound := findBrowser(signature)
+		browser, isFound := macPlatform.findBrowser(agentharness.Process{Signature: signature})
 		if !isFound || browser.ID != id {
 			t.Errorf("%s: %+v, %v", id, browser, isFound)
 		}
@@ -34,14 +34,14 @@ func TestBrowsersAreTheSignedReleases(t *testing.T) {
 		{Identifier: "com.apple.Safari", TeamID: "ABCDE12345"},
 		{Identifier: "company.thebrowser.Browser", TeamID: "S6N382Y83G"},
 	} {
-		if browser, isFound := findBrowser(signature); isFound {
+		if browser, isFound := macPlatform.findBrowser(agentharness.Process{Signature: signature}); isFound {
 			t.Errorf("%+v is %s", signature, browser.ID)
 		}
 	}
 }
 
 func TestDebuggableBrowsers(t *testing.T) {
-	brave, _ := findBrowser(agentharness.Signature{Identifier: "com.brave.Browser", TeamID: "KL8N8XSYF4"})
+	brave, _ := macPlatform.findBrowser(agentharness.Process{Signature: agentharness.Signature{Identifier: "com.brave.Browser", TeamID: "KL8N8XSYF4"}})
 	home := t.TempDir()
 	process := func(arguments ...string) agentharness.Process {
 		return agentharness.Process{Arguments: append([]string{"/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"}, arguments...)}
@@ -60,7 +60,7 @@ func TestDebuggableBrowsers(t *testing.T) {
 		if arguments == nil {
 			running.Arguments = nil
 		}
-		if !isDebuggable(running, brave, home) {
+		if !macPlatform.isDebuggable(running, brave, home) {
 			t.Errorf("%s: not debuggable", name)
 		}
 	}
@@ -73,14 +73,14 @@ func TestDebuggableBrowsers(t *testing.T) {
 	} {
 		running := process(arguments...)
 		running.WorkingDirectory = t.TempDir()
-		if isDebuggable(running, brave, home) {
+		if macPlatform.isDebuggable(running, brave, home) {
 			t.Errorf("%s: debuggable", name)
 		}
 	}
 }
 
 func TestDevToolsActivePortCountsWhileItsPortListens(t *testing.T) {
-	brave, _ := findBrowser(agentharness.Signature{Identifier: "com.brave.Browser", TeamID: "KL8N8XSYF4"})
+	brave, _ := macPlatform.findBrowser(agentharness.Process{Signature: agentharness.Signature{Identifier: "com.brave.Browser", TeamID: "KL8N8XSYF4"}})
 	home := t.TempDir()
 	profile := filepath.Join(home, brave.UserDataDirectory)
 	if err := os.MkdirAll(profile, 0o700); err != nil {
@@ -96,16 +96,16 @@ func TestDevToolsActivePortCountsWhileItsPortListens(t *testing.T) {
 		t.Fatal(err)
 	}
 	running := agentharness.Process{Arguments: []string{"Brave Browser"}}
-	if !isDebuggable(running, brave, home) {
+	if !macPlatform.isDebuggable(running, brave, home) {
 		t.Error("the default profile's live port does not count")
 	}
 	custom := t.TempDir()
 	os.WriteFile(filepath.Join(custom, "DevToolsActivePort"), activePort, 0o600)
-	if !isDebuggable(agentharness.Process{Arguments: []string{"Brave Browser", "--user-data-dir=" + custom}}, brave, home) {
+	if !macPlatform.isDebuggable(agentharness.Process{Arguments: []string{"Brave Browser", "--user-data-dir=" + custom}}, brave, home) {
 		t.Error("a --user-data-dir profile's live port does not count")
 	}
 	listener.Close()
-	if isDebuggable(running, brave, home) {
+	if macPlatform.isDebuggable(running, brave, home) {
 		t.Error("a file left behind by a browser that quit counts")
 	}
 }

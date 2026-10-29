@@ -362,7 +362,8 @@ export function GenerateSSHKey(vaultID: string, title: string, keyType: string):
 }
 
 /**
- * GetAgentSignIn reads Settings → Coding agents → Website sign-in, and whether the system gives Hisar Accessibility now.
+ * GetAgentSignIn reads Settings → Coding agents → Website sign-in, and whether the system lets Hisar read and fill
+ * browser windows now.
  */
 export function GetAgentSignIn(): $CancellablePromise<$models.AgentSignIn> {
     return $Call.ByID(2932810882);
@@ -847,7 +848,7 @@ export function SavePendingRecoveryEmergencyKit(operationID: string, password: s
 
 /**
  * SetAgentSignInEnabled turns website sign-in for agents on or off; turning it on without the Accessibility permission
- * has the system ask for it.
+ * has the Mac ask for it.
  */
 export function SetAgentSignInEnabled(isEnabled: boolean): $CancellablePromise<$models.AgentSignIn> {
     return $Call.ByID(757356227, isEnabled);

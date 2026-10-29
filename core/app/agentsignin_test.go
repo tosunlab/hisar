@@ -30,6 +30,8 @@ func (driver *fakeSignInDriver) HasAccess() bool {
 	return driver.hasAccess
 }
 
+func (*fakeSignInDriver) System() signin.System { return signin.SystemMac }
+
 func (driver *fakeSignInDriver) RequestAccess() {
 	driver.mutex.Lock()
 	defer driver.mutex.Unlock()
@@ -102,7 +104,7 @@ func TestAgentSignInRefusesUntilItIsOnAndAllowed(t *testing.T) {
 	service := testService.service
 	bridge := NewCommandLineBridge(service, clisocket.NewSessionApprovals(0, nil, nil))
 	request := &cliprotocol.Request{Type: cliprotocol.TypeAgentSignIn, Window: &cliprotocol.Window{PID: 1, WindowID: 2}}
-	if _, err := bridge.PrepareAgentSignIn(bridge.BindSession(context.Background()), request); getRefusal(err) != "Signing in to websites works only in Hisar for Mac." {
+	if _, err := bridge.PrepareAgentSignIn(bridge.BindSession(context.Background()), request); getRefusal(err) != "Signing in to websites works only in Hisar for Mac and Linux." {
 		t.Errorf("without a driver: %v", err)
 	}
 
@@ -113,10 +115,11 @@ func TestAgentSignInRefusesUntilItIsOnAndAllowed(t *testing.T) {
 		t.Errorf("switched off: %v", err)
 	}
 	service.SetAgentSignInEnabled(true)
-	if _, err := bridge.PrepareAgentSignIn(bridge.BindSession(context.Background()), request); !strings.HasPrefix(getRefusal(err), "Hisar can't fill browser windows yet") {
+	noAccess := service.signer.RefuseNoAccess().Message
+	if _, err := bridge.PrepareAgentSignIn(bridge.BindSession(context.Background()), request); getRefusal(err) != noAccess {
 		t.Errorf("without Accessibility: %v", err)
 	}
-	if _, err := bridge.PerformAgentSignIn(bridge.BindSession(context.Background()), clisocket.AgentSignInTarget{}, clisocket.AgentLogin{}, clisocket.AgentAuthorization{}); !strings.HasPrefix(getRefusal(err), "Hisar can't fill browser windows yet") {
+	if _, err := bridge.PerformAgentSignIn(bridge.BindSession(context.Background()), clisocket.AgentSignInTarget{}, clisocket.AgentLogin{}, clisocket.AgentAuthorization{}); getRefusal(err) != noAccess {
 		t.Errorf("perform without Accessibility: %v", err)
 	}
 }
@@ -290,6 +293,8 @@ var signInWindowTarget = &cliprotocol.Window{PID: 4242, WindowID: 7}
 func (*signInWindow) HasAccess() bool { return true }
 
 func (*signInWindow) RequestAccess() {}
+
+func (*signInWindow) System() signin.System { return signin.SystemMac }
 
 func (*signInWindow) ListPrompts(context.Context, signin.ProcessInstance) ([]signin.Prompt, error) {
 	return nil, nil

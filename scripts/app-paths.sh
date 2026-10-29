@@ -16,7 +16,7 @@ desktopPaths=(desktop/ cli/ omp/ scripts/download-sparkle.sh scripts/get-build-n
   scripts/package-desktop-flatpak.sh scripts/package-desktop-linux.sh scripts/package-desktop-update.sh
   scripts/desktop-keychain-entitlements.py scripts/test-desktop-keychain-entitlements.py scripts/test-emergency-kit-qr.swift
   scripts/sign-desktop-app.sh scripts/stage-omp-plugin.sh scripts/test-desktop-linux-package.sh scripts/test-download-sparkle.sh
-  scripts/test-secret-clipboard.sh
+  scripts/test-secret-clipboard.sh scripts/test-agent-sign-in-linux.sh
   .github/workflows/release-desktop.yml "${releasePaths[@]}" "${sharedGoPaths[@]}")
 phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum mobile/fast-test-kdf.sh scripts/ui-test-partner.sh scripts/ui-test-parts.sh "${sharedGoPaths[@]}")
 mobilePaths=(mobile/ios/ mobile/build-framework.sh scripts/test-ios-ui.sh "${phonePaths[@]}")
@@ -34,6 +34,8 @@ nonGoPaths=('extension/**' 'docs/**' 'raycast/**' 'mobile/ios/**' 'mobile/androi
 # the app: the iPhone and Android UI tests and the admin dashboard's browser tests run against a real hisar-server and the
 # hisar CLI that scripts/ui-test-partner.sh and the end-to-end fixtures build, and every job builds through Makefile recipes.
 testBackendPaths=(server/ cli/ Makefile)
+# The desktop job's website sign-in test signs in to this fixture site.
+desktopTestPaths=(server/cmd/hisar-sign-in-site-fixture/)
 
 # A commit that only changes tests or documentation is not a reason to release; the docs site is made of Markdown, so
 # only the tests are excluded from it.

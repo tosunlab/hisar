@@ -1,15 +1,20 @@
-//go:build darwin && !ios && cgo
+//go:build (darwin && !ios && cgo) || linux
 
 package axfill
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -39,50 +44,6 @@ func (counter *promptCounter) DismissPrompt(ctx context.Context, process signin.
 		counter.mutex.Unlock()
 	}
 	return err
-}
-
-func watchScreen(t *testing.T, target signin.Target) (stop func() (frontmost []int, wasHidden bool)) {
-	t.Helper()
-	done := make(chan struct{})
-	finished := make(chan struct{})
-	frontmost := []int{readFrontmostPID(t)}
-	wasHidden := false
-	go func() {
-		defer close(finished)
-		for {
-			select {
-			case <-done:
-				return
-			case <-time.After(25 * time.Millisecond):
-			}
-			if pid := readFrontmostPID(t); pid != frontmost[len(frontmost)-1] {
-				frontmost = append(frontmost, pid)
-			}
-			if windows, err := listWindowIDs(target.PID); err == nil && !slices.Contains(windows, target.WindowID) {
-				wasHidden = true
-			}
-		}
-	}()
-	return func() ([]int, bool) {
-		close(done)
-		<-finished
-		return frontmost, wasHidden
-	}
-}
-
-func readFrontmostPID(t *testing.T) int {
-	t.Helper()
-	front, err := exec.Command("lsappinfo", "front").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	output, err := exec.Command("lsappinfo", "info", "-only", "pid", strings.TrimSpace(string(front))).Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, value, _ := strings.Cut(strings.TrimSpace(string(output)), "=")
-	pid, _ := strconv.Atoi(value)
-	return pid
 }
 
 type signInScenario struct {
@@ -166,7 +127,7 @@ var signInScenarios = []signInScenario{
 // TestIntegrationSignIn signs in to the fixture site through axfill and signin.Signer in each browser of
 // HISAR_TEST_SIGN_IN_BROWSERS, each a new instance with a throwaway profile in the background.
 func TestIntegrationSignIn(t *testing.T) {
-	apps := listBrowserApps(t)
+	apps := listBrowsers(t)
 	served := startSite(t, "127.0.0.1:0", "127.0.0.1:0")
 	login := signin.Login{
 		Username: "user@example.com", Password: signin.NewSecret(integrationPassword),
@@ -199,21 +160,18 @@ func TestIntegrationSignIn(t *testing.T) {
 			var run scenarioRun
 			for attempt := 1; ; attempt++ {
 				run = runScenario(t, served, counter, signer, launched, origin+"/"+scenario.page, login)
-				if !run.isDisturbed() || attempt == 5 {
+				if !run.watch.isDisturbed() || attempt == 5 {
 					break
 				}
-				t.Logf("%s %s: the user switched apps or Spaces during the sign-in (%s, frontmost apps %v, window hidden %v); again",
-					launched.name(), scenario.page, run.result.Outcome, run.frontmost, run.wasHidden)
+				t.Logf("%s %s: the user switched windows during the sign-in (%s, %s); again", launched.name(), scenario.page, run.result.Outcome, run.watch)
 			}
 			encoded, _ := json.Marshal(run.result)
 			if run.err != nil && strings.Contains(run.err.Error(), integrationPassword) || strings.Contains(string(encoded), integrationPassword) {
 				t.Fatalf("%s: the password reached the result", scenario.page)
 			}
-			t.Logf("%s %s: %s, err %v, %d posts, %v, frontmost apps %v (browser %d)", launched.name(), scenario.page, encoded, run.err, len(run.posts),
-				run.elapsed.Round(time.Millisecond), run.frontmost, launched.target.PID)
-			if slices.Contains(run.frontmost, launched.target.PID) {
-				t.Errorf("%s: the browser became the frontmost app", scenario.page)
-			}
+			t.Logf("%s %s: %s, err %v, %d posts, %v, %s (browser %d)", launched.name(), scenario.page, encoded, run.err, len(run.posts),
+				run.elapsed.Round(time.Millisecond), run.watch, launched.target.PID)
+			run.watch.check(t, scenario.page, launched)
 			if scenario.reason != "" {
 				var refusal *signin.Refusal
 				if !errors.As(run.err, &refusal) || refusal.Reason != scenario.reason || len(run.posts) != 0 {
@@ -253,19 +211,11 @@ func TestIntegrationSignIn(t *testing.T) {
 }
 
 type scenarioRun struct {
-	result    signin.Result
-	err       error
-	posts     []post
-	elapsed   time.Duration
-	frontmost []int
-	wasHidden bool
-}
-
-// isDisturbed: the window left the screen or the frontmost app changed. Either ends a sign-in the way a user switching to
-// a full-screen app's Space does, and switching back to the browser's Space makes the browser frontmost; a browser that
-// Hisar itself activates does so in every attempt.
-func (run scenarioRun) isDisturbed() bool {
-	return run.wasHidden || len(run.frontmost) > 1
+	result  signin.Result
+	err     error
+	posts   []post
+	elapsed time.Duration
+	watch   screenWatch
 }
 
 func runScenario(t *testing.T, served *site, driver signin.Driver, signer *signin.Signer, launched *browser, pageURL string, login signin.Login) scenarioRun {
@@ -277,7 +227,7 @@ func runScenario(t *testing.T, served *site, driver signin.Driver, signer *signi
 	started := time.Now()
 	result, err := runSignIn(signer, launched.target, login)
 	run := scenarioRun{result: result, err: err, elapsed: time.Since(started)}
-	run.frontmost, run.wasHidden = stopWatching()
+	run.watch = stopWatching()
 	run.posts = served.readPosts(t)[postsBefore:]
 	return run
 }
@@ -288,10 +238,6 @@ func runSignIn(signer *signin.Signer, target signin.Target, login signin.Login) 
 		return signin.Result{}, err
 	}
 	return signer.Run(context.Background(), destination, func(context.Context) (signin.Login, error) { return login, nil })
-}
-
-func (launched *browser) name() string {
-	return strings.TrimSuffix(launched.app[strings.LastIndex(launched.app, "/")+1:], ".app")
 }
 
 func checkNoPasswordPrompt(t *testing.T, driver signin.Driver, target signin.Target) {
@@ -413,4 +359,245 @@ func checkHiddenFieldsKeptTheirValues(t *testing.T, served *site, driver signin.
 		}
 	}
 	t.Error("the report never reached the site")
+}
+
+// browsersVariable lists the browsers the integration tests drive, comma-separated: apps on the Mac, such as
+// "/Applications/Brave Browser.app,/tmp/Google Chrome.app", and executables on Linux, such as
+// "/usr/lib/chromium/chromium,/opt/google/chrome/chrome". Each runs as its own instance with a throwaway profile.
+const browsersVariable = "HISAR_TEST_SIGN_IN_BROWSERS"
+
+type site struct {
+	Main    string `json:"main"`
+	Other   string `json:"other"`
+	logPath string
+}
+
+type post struct {
+	Origin string            `json:"origin"`
+	Path   string            `json:"path"`
+	Form   map[string]string `json:"form"`
+	JSON   json.RawMessage   `json:"json"`
+}
+
+func startSite(t *testing.T, mainAddress, otherAddress string) *site {
+	t.Helper()
+	directory := t.TempDir()
+	binary := filepath.Join(directory, "hisar-sign-in-site-fixture")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/hisar-sign-in-site-fixture")
+	build.Dir = filepath.Join("..", "..", "server")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building the site: %v\n%s", err, output)
+	}
+	logPath := filepath.Join(directory, "posts.jsonl")
+	command := exec.Command(binary, "-steer", "-log", logPath, "-main", mainAddress, "-other", otherAddress)
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command.Stderr = os.Stderr
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		command.Process.Signal(syscall.SIGTERM)
+		command.Wait()
+	})
+	served := &site{logPath: logPath}
+	if err := json.NewDecoder(stdout).Decode(served); err != nil {
+		t.Fatalf("reading the site's origins: %v", err)
+	}
+	return served
+}
+
+func (served *site) steer(t *testing.T, pageURL string) {
+	t.Helper()
+	response, err := http.PostForm(served.Main+"/steer", url.Values{"url": {pageURL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+}
+
+func (served *site) readPosts(t *testing.T) []post {
+	t.Helper()
+	file, err := os.Open(served.logPath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	posts := []post{}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		var line post
+		if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
+			t.Fatal(err)
+		}
+		posts = append(posts, line)
+	}
+	return posts
+}
+
+type browser struct {
+	app     string
+	profile string
+	target  signin.Target
+}
+
+func listBrowsers(t *testing.T) []string {
+	t.Helper()
+	apps := []string{}
+	for _, app := range strings.Split(os.Getenv(browsersVariable), ",") {
+		if app = strings.TrimSpace(app); app != "" {
+			apps = append(apps, app)
+		}
+	}
+	if len(apps) == 0 {
+		t.Skipf("set %s to the browsers to drive", browsersVariable)
+	}
+	if !New(appinfo.NewSystemResolver()).HasAccess() {
+		t.Skip("this process cannot read browser windows: no Accessibility permission, or no X11 display and accessibility bus")
+	}
+	return apps
+}
+
+func (launched *browser) quit() {
+	if launched.target.PID != 0 {
+		syscall.Kill(launched.target.PID, syscall.SIGTERM)
+		for attempt := 0; attempt < 50 && syscall.Kill(launched.target.PID, 0) == nil; attempt++ {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	os.RemoveAll(launched.profile)
+}
+
+// waitForPage observes target until its top document is pageURL and isReady accepts the page. Time the window spends
+// off the screen, as while the user works in a full-screen app's Space, does not count against the 20 s it may take.
+func waitForPage(t *testing.T, driver signin.Driver, target signin.Target, pageURL string, isReady func(signin.Page) bool) signin.Page {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	giveUp := time.Now().Add(5 * time.Minute)
+	var last signin.Page
+	for time.Now().Before(deadline) && time.Now().Before(giveUp) {
+		snapshot, err := driver.Observe(context.Background(), target)
+		switch {
+		case errors.Is(err, signin.ErrNotVisible):
+			deadline = deadline.Add(100 * time.Millisecond)
+		case err == nil:
+			last = snapshot.Page()
+			snapshot.Close()
+			if len(last.Frames) > 0 && last.Frames[0].URL == pageURL && isReady(last) {
+				return last
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("the window did not show %s: last %+v", pageURL, last.Frames)
+	return last
+}
+
+var update = flag.Bool("update", false, "write the recorded pages to core/signin/testdata/pages")
+
+// recordingAddresses are fixed so the recorded pages' URLs do not change between recordings.
+const recordingMainAddress, recordingOtherAddress = "127.0.0.1:47811", "127.0.0.1:47812"
+
+type recordedPage struct {
+	name      string
+	path      string
+	isOther   bool
+	minFields int
+	minFrames int
+}
+
+var recordedPages = []recordedPage{
+	{name: "plain", path: "/plain", minFields: 2},
+	{name: "controlled", path: "/controlled", minFields: 2},
+	{name: "iframe", path: "/iframe", minFields: 2, minFrames: 2},
+	{name: "srcdoc", path: "/srcdoc", minFields: 2, minFrames: 2},
+	{name: "step1", path: "/step1", minFields: 1},
+	{name: "step2", path: "/step2?username=user%40example.com", minFields: 1},
+	{name: "spa-steps", path: "/spa-steps", minFields: 1},
+	{name: "totp", path: "/totp", minFields: 2},
+	{name: "totp-code", path: "/totp-code", minFields: 1},
+	{name: "split-totp", path: "/split-totp", minFields: 8},
+	{name: "spoof", path: "/spoof", minFields: 2},
+	{name: "signup", path: "/signup", minFields: 3},
+	{name: "newsletter", path: "/newsletter", minFields: 1},
+	{name: "wrong", path: "/wrong", minFields: 2},
+	{name: "invisible", path: "/invisible", minFields: 3},
+	{name: "phish", path: "/phish", isOther: true, minFields: 2},
+	{name: "return", path: "/return", minFields: 2},
+	{name: "signed-in", path: "/signed-in"},
+}
+
+// TestIntegrationRecordPages reads every fixture page in each browser and compares it with
+// core/signin/testdata/pages/<browser>/<page>.json; with -update it writes them instead.
+func TestIntegrationRecordPages(t *testing.T) {
+	apps := listBrowsers(t)
+	served := startSite(t, recordingMainAddress, recordingOtherAddress)
+	driver := New(appinfo.NewSystemResolver())
+	for _, app := range apps {
+		launched := launchBrowser(t, app, served.Main+"/signed-in")
+		waitForPage(t, driver, launched.target, served.Main+"/signed-in", func(signin.Page) bool { return true })
+		var browserID string
+		for _, page := range recordedPages {
+			pageURL := served.Main + page.path
+			if page.isOther {
+				pageURL = served.Other + page.path
+			}
+			served.steer(t, pageURL)
+			recorded := waitForPage(t, driver, launched.target, pageURL, func(read signin.Page) bool {
+				return len(read.Fields) >= page.minFields && len(read.Frames) >= max(page.minFrames, 1)
+			})
+			browserID = recordedBrowserID(recorded.Process)
+			if browserID == "" {
+				t.Fatalf("%s is %+v, which is not a known browser", app, recorded.Process)
+			}
+			encoded, err := json.MarshalIndent(normalizePage(recorded), "", "  ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join("..", "..", "core", "signin", "testdata", "pages", browserID, page.name+".json")
+			if *update {
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, append(encoded, '\n'), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				continue
+			}
+			stored, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(bytes.TrimSpace(stored), encoded) {
+				t.Errorf("%s in %s differs from %s (%v); rerun with -update to record it:\n%s", page.name, browserID, path, err, encoded)
+			}
+		}
+		t.Logf("recorded %d pages in %s", len(recordedPages), browserID)
+	}
+}
+
+// normalizePage keeps what core/signin reads from a page and numbers its documents and elements from 1, so a recording
+// changes only when the browser shows the page differently.
+func normalizePage(page signin.Page) signin.Page {
+	normalized := signin.Page{Process: normalizeProcess(page.Process)}
+	next := uint64(0)
+	number := func() uint64 {
+		next++
+		return next
+	}
+	for _, frame := range page.Frames {
+		frame.Document = signin.DocumentID(number())
+		normalized.Frames = append(normalized.Frames, frame)
+	}
+	for _, field := range page.Fields {
+		field.ID = signin.ElementID(number())
+		normalized.Fields = append(normalized.Fields, field)
+	}
+	for _, button := range page.Buttons {
+		button.ID = signin.ElementID(number())
+		normalized.Buttons = append(normalized.Buttons, button)
+	}
+	return normalized
 }

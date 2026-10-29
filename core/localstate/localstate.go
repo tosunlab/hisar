@@ -117,7 +117,7 @@ type Settings struct {
 	// AgentHosts are the apps a coding agent harness ran in. The desktop app answers their callers without a terminal
 	// and without a harness one connection at a time, and never as launchers.
 	AgentHosts []AgentHost `json:"agentHosts,omitempty"`
-	// IsAgentSignInEnabled lets coding agents ask Hisar for Mac to sign in to websites in their browser windows.
+	// IsAgentSignInEnabled lets coding agents ask Hisar for Mac or Linux to sign in to websites in their browser windows.
 	IsAgentSignInEnabled bool `json:"agentSignIn,omitempty"`
 }
 

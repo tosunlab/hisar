@@ -60,6 +60,7 @@ while read -r file desktop mobile android admin go server extension docs raycast
   done
 done <<'EOF'
 server/internal/api/server.go false true true true true true false false false false
+server/cmd/hisar-sign-in-site-fixture/main.go true true true true true true false false false false
 cli/cmd/hisar/main.go true true true true true false false false false false
 Makefile true true true true true true true true true true
 mobile/ios/App/App.swift false true false false false false false false false false

@@ -11,7 +11,8 @@ var (
 	// ErrWindowClosed: the window server no longer has the window, so the pages it showed are gone with it; it closed,
 	// or its process quit.
 	ErrWindowClosed = errors.New("signin: the window closed")
-	ErrNotVisible   = errors.New("signin: the window is on another Space or minimized")
+	// ErrNotVisible: the window is on another Space or minimized (Mac), or is not the active window (Linux).
+	ErrNotVisible = errors.New("signin: the window is not visible")
 	// ErrUnreadable: the browser did not answer in time, or the page is too large to read in full, so the reading
 	// may lack what is on the page.
 	ErrUnreadable = errors.New("signin: the window could not be read in full")
@@ -20,10 +21,32 @@ var (
 	ErrNoCloseControl = errors.New("signin: the prompt has no close control Hisar knows")
 )
 
+// InaccessibleError is a browser process that keeps its pages out of the accessibility tree, as Chromium on Linux does
+// unless it was started with accessibility. Path is its executable.
+type InaccessibleError struct {
+	Path string
+}
+
+func (err *InaccessibleError) Error() string {
+	return "signin: the browser keeps its pages out of the accessibility tree"
+}
+
+// System is how a driver's system tells browsers apart, and the words Hisar's refusals use there.
+type System int
+
+const (
+	// SystemMac recognizes a browser by the code signature macOS verified for its process.
+	SystemMac System = iota
+	// SystemLinux recognizes a browser by its packaged executable, which root owns and only root can change.
+	SystemLinux
+)
+
 // Driver reads and fills browser windows through the platform's accessibility API.
 // After cancellation or a browser timeout it sends no more messages. A message
 // already sent may outlast the context until the browser or accessibility API answers.
 type Driver interface {
+	// System is the system whose windows the driver reads.
+	System() System
 	HasAccess() bool
 	// RequestAccess asks the system to show its permission dialog and returns at once.
 	RequestAccess()

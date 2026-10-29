@@ -2,7 +2,8 @@ package signin
 
 import "github.com/tryhisar/hisar/core/agentharness"
 
-// Target is the window an agent names: a process ID and a macOS CGWindowID, as cua-driver's list_windows reports them.
+// Target is the window an agent names: a process ID and a window ID, the macOS CGWindowID cua-driver's list_windows
+// reports, or the X11 window ID on Linux.
 type Target struct {
 	PID      int
 	WindowID uint32

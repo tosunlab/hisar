@@ -62,7 +62,7 @@ func (s *Server) answerAgentSignIn(ctx context.Context, client *connectionPeer, 
 	}
 	handler, isHandler := s.config.Handler.(AgentSignInHandler)
 	if !isHandler {
-		return nil, cliprotocol.NewError(cliprotocol.ErrorSignInRefused, "Signing in to websites works only in Hisar for Mac.")
+		return nil, cliprotocol.NewError(cliprotocol.ErrorSignInRefused, "Signing in to websites works only in Hisar for Mac and Linux.")
 	}
 	approvals := s.config.Approvals
 	authorization := approvals.authorizeAgent(client)

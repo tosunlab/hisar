@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -93,7 +94,7 @@ func TestInspectNamesTheDestination(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if destination.Origin.String() != fixtureMain || destination.Browser.ID != browserID || destination.Target != testTarget ||
+		if destination.Origin.String() != fixtureMain || destination.Browser.ID != strings.TrimPrefix(browserID, "linux-") || destination.Target != testTarget ||
 			destination.Process != (ProcessInstance{PID: 4242, StartTime: browser.process.StartTime}) {
 			t.Errorf("%s: %+v", browserID, destination)
 		}

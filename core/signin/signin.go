@@ -99,10 +99,14 @@ type Reason string
 const (
 	// ReasonDisabled: Website sign-in is off in Settings.
 	ReasonDisabled Reason = "disabled"
-	// ReasonUnavailable: this app cannot sign in to websites; only Hisar for Mac can.
+	// ReasonUnavailable: this app cannot sign in to websites; only Hisar for Mac and Linux can.
 	ReasonUnavailable Reason = "unavailable"
-	// ReasonNoAccess: the system has not given Hisar the Accessibility permission.
-	ReasonNoAccess       Reason = "no-access"
+	// ReasonNoAccess: the system has not given Hisar the Accessibility permission (Mac), or the session has no X11 display
+	// or accessibility bus (Linux).
+	ReasonNoAccess Reason = "no-access"
+	// ReasonInaccessible: the browser was started without accessibility, so its pages are not in the accessibility tree
+	// (Linux: Chromium needs ACCESSIBILITY_ENABLED=1 and --force-renderer-accessibility).
+	ReasonInaccessible   Reason = "inaccessible"
 	ReasonWindowNotFound Reason = "window-not-found"
 	ReasonNotVisible     Reason = "not-visible"
 	// ReasonUnreadable: the browser did not answer in time, or the page is too large to read in full.
@@ -131,6 +135,7 @@ const (
 // Signer runs sign-ins through a Driver.
 type Signer struct {
 	driver        Driver
+	platform      platform
 	homeDirectory string
 	now           func() time.Time
 	// turn lets one Run at a time drive the screen's browsers; a Run waits for it only while its context lasts, and it
@@ -162,7 +167,7 @@ func NewSigner(driver Driver, homeDirectory string, now func() time.Time) *Signe
 	if now == nil {
 		now = time.Now
 	}
-	return &Signer{driver: driver, homeDirectory: homeDirectory, now: now, turn: make(chan struct{}, 1), timing: defaultTiming}
+	return &Signer{driver: driver, platform: platformOf(driver), homeDirectory: homeDirectory, now: now, turn: make(chan struct{}, 1), timing: defaultTiming}
 }
 
 // Inspect observes the destination without reading secrets or entering values.
@@ -170,7 +175,7 @@ func NewSigner(driver Driver, homeDirectory string, now func() time.Time) *Signe
 func (signer *Signer) Inspect(ctx context.Context, target Target) (Destination, error) {
 	snapshot, err := signer.driver.Observe(ctx, target)
 	if err != nil {
-		return Destination{}, refuseObserving(target, err)
+		return Destination{}, signer.platform.refuseObserving(target, err)
 	}
 	defer snapshot.Close()
 	page := snapshot.Page()

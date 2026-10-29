@@ -16,7 +16,7 @@ import {
   store,
 } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { describeAgentSession, formatCount, formatExpiresIn, formatTimeAgo } from "../util";
+import { describeAgentSession, formatCount, formatExpiresIn, formatTimeAgo, isMacPlatform } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import CodingAgentConnections from "./CodingAgentConnections.vue";
 
@@ -76,6 +76,9 @@ async function toggleAlwaysAgentAccessWhileLocked(checkbox: HTMLInputElement): P
   await setAlwaysAgentAccessWhileLocked(checkbox.checked);
   checkbox.checked = store.alwaysAgentAccessWhileLocked.isEnabled;
 }
+
+// Linux has no Accessibility permission to grant: Hisar needs X11 and a browser started with accessibility on.
+const isMac = isMacPlatform();
 
 function openAccessibilitySettings(): Promise<void> {
   return api.openURL("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
@@ -218,13 +221,31 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
           @change="toggleAgentSignIn($event.target as HTMLInputElement)"
         />
       </label>
-      <div v-if="store.agentSignIn.isEnabled && !store.agentSignIn.hasAccessibility" class="setting" data-testid="agent-sign-in-accessibility">
+      <div v-if="store.agentSignIn.isEnabled && !store.agentSignIn.hasAccessibility && !isMac" class="setting" data-testid="agent-sign-in-accessibility">
+        <span class="settings-row-icon warning-icon"><AppIcon name="warning" :size="14" /></span>
+        <div class="setting-text">
+          <strong>X11 needed</strong>
+          <p class="muted">Hisar fills browser windows on X11, or browsers running under XWayland. This session has no X11 display or no accessibility bus.</p>
+        </div>
+      </div>
+      <div v-else-if="store.agentSignIn.isEnabled && !store.agentSignIn.hasAccessibility" class="setting" data-testid="agent-sign-in-accessibility">
         <span class="settings-row-icon warning-icon"><AppIcon name="warning" :size="14" /></span>
         <div class="setting-text">
           <strong>Accessibility permission needed</strong>
           <p class="muted">Hisar needs the Accessibility permission to fill browser windows.</p>
         </div>
         <button data-testid="open-accessibility-settings" @click="openAccessibilitySettings">Open System Settings</button>
+      </div>
+      <div v-else-if="store.agentSignIn.isEnabled && !isMac" class="setting" data-testid="agent-sign-in-ready">
+        <span class="settings-row-icon"><AppIcon name="check" :size="14" /></span>
+        <div class="setting-text">
+          <strong>Start your browser with accessibility on</strong>
+          <p class="muted">
+            Chrome, Chromium, Brave and Edge show Hisar their pages only when started with
+            <code>ACCESSIBILITY_ENABLED=1 google-chrome --force-renderer-accessibility</code> (or <code>chromium</code>, <code>brave-browser</code>,
+            <code>microsoft-edge</code>). Hisar types the login into the window in front, and any X11 program can see those keys.
+          </p>
+        </div>
       </div>
       <div v-else-if="store.agentSignIn.isEnabled" class="setting" data-testid="agent-sign-in-ready">
         <span class="settings-row-icon"><AppIcon name="check" :size="14" /></span>
@@ -238,7 +259,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       {{
         store.agentSignIn.isAvailable
           ? "Sign-ins ask you unless you allowed that login on that website for longer."
-          : "Only Hisar for Mac signs agents in to websites."
+          : "Only Hisar for Mac and Linux signs agents in to websites."
       }}
     </p>
     <p v-if="store.agentErrors.signIn" class="error settings-note" role="alert" data-testid="agent-sign-in-error">{{ store.agentErrors.signIn }}</p>

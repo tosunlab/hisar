@@ -254,12 +254,31 @@ describe("CodingAgentsSection website sign-in", () => {
     wrapper.unmount();
   });
 
-  it("cannot be turned on outside Hisar for Mac", async () => {
+  it("cannot be turned on outside Hisar for Mac and Linux", async () => {
     api.getAgentSignIn.mockResolvedValue({ isAvailable: false, isEnabled: false, hasAccessibility: false });
     const wrapper = mount(CodingAgentsSection);
     await flushPromises();
     expect((wrapper.find('[data-testid="agent-sign-in-switch"]').element as HTMLInputElement).disabled).toBe(true);
-    expect(wrapper.find('[data-testid="agent-sign-in-note"]').text()).toBe("Only Hisar for Mac signs agents in to websites.");
+    expect(wrapper.find('[data-testid="agent-sign-in-note"]').text()).toBe("Only Hisar for Mac and Linux signs agents in to websites.");
+  });
+
+  it("asks Linux for X11 and a browser started with accessibility, not a permission", async () => {
+    Object.defineProperty(navigator, "platform", { configurable: true, value: "Linux x86_64" });
+    try {
+      api.getAgentSignIn.mockResolvedValue({ isAvailable: true, isEnabled: true, hasAccessibility: false });
+      const wrapper = mount(CodingAgentsSection);
+      await flushPromises();
+      expect(wrapper.find('[data-testid="agent-sign-in-accessibility"]').text()).toContain("This session has no X11 display or no accessibility bus.");
+      expect(wrapper.find('[data-testid="open-accessibility-settings"]').exists()).toBe(false);
+
+      api.getAgentSignIn.mockResolvedValue({ isAvailable: true, isEnabled: true, hasAccessibility: true });
+      window.dispatchEvent(new Event("focus"));
+      await flushPromises();
+      expect(wrapper.find('[data-testid="agent-sign-in-ready"]').text()).toContain("ACCESSIBILITY_ENABLED=1 google-chrome --force-renderer-accessibility");
+      wrapper.unmount();
+    } finally {
+      Object.defineProperty(navigator, "platform", { configurable: true, value: "MacIntel" });
+    }
   });
 });
 

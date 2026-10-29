@@ -2,14 +2,14 @@
 sidebar_position: 3.5
 sidebar_label: Agent website sign-in
 title: Let computer-use agents sign in to websites with Hisar
-description: Set up Hermes, Claude Code, Codex, or another MCP client to request website sign-ins through Hisar for Mac.
+description: Set up Hermes, Claude Code, Codex, or another MCP client to request website sign-ins through Hisar for Mac or Linux.
 ---
 
 # Let computer-use agents sign in to websites with Hisar
 
-A computer-use agent can ask Hisar for Mac to sign in to a website instead of putting a password in its tool arguments. You approve the website and login. Hisar fills and submits the form in your browser, then returns the outcome and login metadata, not the password or one-time code.
+A computer-use agent can ask Hisar for Mac or Linux to sign in to a website instead of putting a password in its tool arguments. You approve the website and login. Hisar fills and submits the form in your browser, then returns the outcome and login metadata, not the password or one-time code.
 
-Use this with Hermes, Claude Code, Codex, or any MCP client that can control native windows through [cua-driver](https://cua.ai/docs/cua-driver). The agent needs both Hisar's MCP server and computer-use tools.
+Use this with Hermes, Claude Code, Codex, or any MCP client that can control native windows through [cua-driver](https://cua.ai/docs/cua-driver) on the Mac, or through the desktop's window tools on Linux. The agent needs both Hisar's MCP server and computer-use tools.
 
 > **The browser still receives the credentials.**
 >
@@ -21,7 +21,7 @@ The screenshots on this page use the desktop frontend preview and sample account
 
 ## How it works
 
-1. The agent opens the website's sign-in form in a supported browser. It gets the browser window's `pid` and `window_id` from cua-driver's `list_windows`.
+1. The agent opens the website's sign-in form in a supported browser. It gets the browser window's `pid` and `window_id` from cua-driver's `list_windows` on the Mac, or the browser's process ID and X11 window ID on Linux.
 2. The agent calls Hisar's `sign_in` tool with those IDs. Hisar reads the website address from the browser's accessibility tree, not from an address supplied by the agent.
 3. Hisar finds matching logins in the vaults available to agents. Unless an existing approval covers the login and website, Hisar asks you to approve.
 4. Hisar rechecks the window, website, and login. It enters the username, password, and authenticator code as each step asks for them, and submits each step while the website stays the same.
@@ -29,11 +29,11 @@ The screenshots on this page use the desktop frontend preview and sample account
 
 ## Set up Hisar
 
-1. Open Hisar for Mac and unlock it.
+1. Open Hisar and unlock it.
 2. Open **Settings → Developer tools → Coding agents**.
 3. Under **Vaults for coding agents**, turn on **Available to agents** for the vault that contains the login. Other vaults stay invisible to Hisar's agent tools. A separate vault for agent accounts lets you choose which accounts to expose.
 4. Under **Website sign-in**, turn on **Let agents sign in to websites in your browser**. It is off by default.
-5. If Hisar says **Accessibility permission needed**, click **Open System Settings**. Turn on Hisar in **Privacy & Security → Accessibility**.
+5. On the Mac, if Hisar says **Accessibility permission needed**, click **Open System Settings**. Turn on Hisar in **Privacy & Security → Accessibility**. On Linux, start the browser as [Linux](#linux) shows.
 
 ![Vaults for coding agents. The Agents vault is available to agents, while Personal and Team stay invisible.](/img/agent-sign-in/10-settings-agent-vaults.png)
 
@@ -127,7 +127,19 @@ Signing out of Hisar ends these approvals. Locking keeps them, but Hisar must un
 
 Hisar for Mac supports **Brave Browser**, **Google Chrome**, and **Microsoft Edge**. Tested with Brave, Chrome 156 and Edge 156 on macOS 26.
 
-Safari, Arc, and other browsers are not supported. The browser window must be on the current Space and not minimized. Use a browser started normally, without remote debugging. Hisar runs one sign-in at a time.
+Safari, Arc, Firefox, and other browsers are not supported. On the Mac, the browser window must be on the current Space and not minimized. Use a browser started normally, without remote debugging. Hisar runs one sign-in at a time.
+
+### Linux
+
+Hisar for Linux supports **Google Chrome**, **Chromium**, **Brave**, and **Microsoft Edge** installed by their packages, on X11 or under XWayland in a Wayland session. Tested with Debian's Chromium 156 on X11. A Flatpak or Snap browser, and a browser window that runs natively on Wayland, are not supported.
+
+Start the browser with accessibility on, or Hisar cannot read its pages:
+
+```sh
+ACCESSIBILITY_ENABLED=1 google-chrome --force-renderer-accessibility
+```
+
+Use `chromium`, `brave-browser`, or `microsoft-edge` in place of `google-chrome`. The browser window must be the active window: Hisar types the login into the focused field and checks before every key that the window, field, and website are still the same. Do not type or switch windows while it signs in. **While Hisar types, any X11 program on your display can read the keys.** A password with a character your keyboard layout types only with AltGr or a dead key is refused before Hisar types anything.
 
 ## What the agent gets back
 
@@ -148,9 +160,9 @@ See the [command-line guide](./apps/cli.md) for commands that use secrets.
 
 ## Limits
 
-Hisar keeps credential values out of the `sign_in` response. It does not isolate those values from the website or from an agent that can observe and control your Mac.
+Hisar keeps credential values out of the `sign_in` response. It does not isolate those values from the website or from an agent that can observe and control your computer.
 
-- Page scripts and show-password controls can reveal an entered password. Hisar enters passwords only into fields that macOS reports as secure text fields. Browsers normally mask them with dots, which can reveal the password's length.
+- Page scripts and show-password controls can reveal an entered password. Hisar enters passwords only into fields that macOS reports as secure text fields, or AT-SPI as password fields on Linux. Browsers normally mask them with dots, which can reveal the password's length.
 - Screenshots, recordings, and accessibility reads can capture a one-time code while the page retains it. Hisar does not pause the agent's other tools during sign-in.
 - Cleanup evidence is not a deletion guarantee. `fields-cleared` means the fields read back empty through Accessibility. `fields-removed` means the fields left the accessibility tree while their document stayed, not that the page erased their values. `cleanup-failed` means cleanup could not be confirmed.
 - Retained fields, page-script copies, captures, browser-owned storage, and unrecognized save-password prompts have no Hisar-enforced deletion limit. The 15-second deadline after each submit and separate five-second cleanup timeout are not credential-retention limits. Browser Accessibility calls can finish after those deadlines.
@@ -168,6 +180,9 @@ Read the website sign-in section of the [security model and design](./design.md)
 |---|---|
 | Hisar says Website sign-in is off. | Turn on **Website sign-in** in **Settings → Developer tools → Coding agents**. |
 | Hisar needs Accessibility permission. | Turn on Hisar in **System Settings → Privacy & Security → Accessibility**, then return to Hisar. |
+| Linux: the browser was started without accessibility. | Quit it and start it with `ACCESSIBILITY_ENABLED=1` and `--force-renderer-accessibility` ([Linux](#linux)). |
+| Linux: Hisar needs X11. | Use an X11 session, or run the browser under XWayland. |
+| Linux: the window is not the active window. | Bring it to the front, then request sign-in again. |
 | Hisar finds no login for the website. | Check the login's saved website and make its vault **Available to agents**. Do not paste the password into chat. |
 | Hermes has no Hisar tools. | Click **Connect**, then start `hermes chat` or use `/reload-mcp`. A `-t` list must include `hisar`, `all`, or `*`. |
 | Claude Code or Codex has no window controls. | Register cua-driver with its `mcp-config` helper. Hisar's **Connect** button does not register it. |
@@ -177,13 +192,13 @@ Read the website sign-in section of the [security model and design](./design.md)
 | The page needs an account choice, CAPTCHA, SMS code, or email code. | Handle that step. Call `sign_in` again only when a supported sign-in field shows. |
 | The site does not accept the login. | Check the saved login yourself. The agent must not retry `not-accepted`. |
 | Cleanup fails. | Stop the agent and inspect the browser window. Do not repeat `sign_in` to dismiss the warning. |
-| Hisar is unavailable or asks for an update. | Open or update Hisar for Mac. Keep **Settings → Developer tools → Let the command-line tool use Hisar** on. |
+| Hisar is unavailable or asks for an update. | Open or update Hisar. Keep **Settings → Developer tools → Let the command-line tool use Hisar** on. |
 
 The [command-line guide](./apps/cli.md) lists the exact refusal messages.
 
 ## For agent and driver authors
 
-Call `sign_in` on `hisar mcp` with `pid` and `window_id` from cua-driver's `list_windows`. The optional `login` field takes an item ID from `search_items`. Call while the sign-in form shows, without typing credentials into it first.
+Call `sign_in` on `hisar mcp` with `pid` and `window_id` from cua-driver's `list_windows` on the Mac, or the X11 window ID and its `_NET_WM_PID` on Linux. The optional `login` field takes an item ID from `search_items`. Call while the sign-in form shows, without typing credentials into it first.
 
 Wait for the result before deciding what to do next. Inspect both `outcome` and `cleanup`. Treat a denial and `not-accepted` as final. Stop on `cleanup-failed`. Never ask the user to paste a password into chat.
 
