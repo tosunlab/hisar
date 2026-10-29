@@ -39,9 +39,10 @@ package-cli-release:
 
 # server tests with -p 1: its database tests in different packages share one schema. The other modules have no database
 # tests, so they test in parallel while server's tests run; server's output follows theirs.
-# desktop: every package but the Wails main package, which needs cgo and the built frontend.
+# desktop: every package but the Wails main package, which needs cgo and the built frontend, and secretclipboard, which
+# needs the X11 and Wayland headers and a display; the desktop-linux CI job tests it.
 # hisar_fast_test_kdf: accounts the tests create get the minimum Argon2 parameters (core/crypt/newaccount_fast_test_kdf.go).
-DESKTOP_PACKAGES = $(shell cd desktop && go list -e ./... | grep -v '^github.com/tryhisar/hisar/desktop$$')
+DESKTOP_PACKAGES = $(shell cd desktop && go list -e ./... | grep -v -e '^github.com/tryhisar/hisar/desktop$$' -e '/desktop/secretclipboard$$')
 TEST_TAGS := -tags hisar_fast_test_kdf
 
 test:

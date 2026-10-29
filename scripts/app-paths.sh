@@ -16,6 +16,7 @@ desktopPaths=(desktop/ cli/ omp/ scripts/download-sparkle.sh scripts/get-build-n
   scripts/package-desktop-flatpak.sh scripts/package-desktop-linux.sh scripts/package-desktop-update.sh
   scripts/desktop-keychain-entitlements.py scripts/test-desktop-keychain-entitlements.py scripts/test-emergency-kit-qr.swift
   scripts/sign-desktop-app.sh scripts/stage-omp-plugin.sh scripts/test-desktop-linux-package.sh scripts/test-download-sparkle.sh
+  scripts/test-secret-clipboard.sh
   .github/workflows/release-desktop.yml "${releasePaths[@]}" "${sharedGoPaths[@]}")
 phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum mobile/fast-test-kdf.sh scripts/ui-test-partner.sh scripts/ui-test-parts.sh "${sharedGoPaths[@]}")
 mobilePaths=(mobile/ios/ mobile/build-framework.sh scripts/test-ios-ui.sh "${phonePaths[@]}")

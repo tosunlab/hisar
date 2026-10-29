@@ -2,7 +2,7 @@
 
 package pasteboard
 
-// Clipboard is the fallback clipboard: copies carry no concealed or transient marker.
+// Clipboard is the fallback's clipboard. On Linux that one marks each copy secret itself (desktop/clipboard_linux.go).
 type Clipboard struct{ fallback Fallback }
 
 func New(fallback Fallback) *Clipboard { return &Clipboard{fallback: fallback} }

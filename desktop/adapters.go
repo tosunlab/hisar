@@ -24,13 +24,6 @@ func reopenApp(bundlePath string) {
 
 // The backend's interfaces implemented with Wails: clipboard, notifications and file dialogs.
 
-type wailsClipboard struct{ app *application.App }
-
-func (clipboard *wailsClipboard) SetText(text string) bool {
-	return clipboard.app.Clipboard.SetText(text)
-}
-func (clipboard *wailsClipboard) GetText() (string, bool) { return clipboard.app.Clipboard.Text() }
-
 // appNotifier tells the windows what changed in the backend: lock, remote changes, share links, the theme and website
 // icons.
 type appNotifier struct{ app *application.App }
