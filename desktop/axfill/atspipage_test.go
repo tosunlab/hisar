@@ -91,6 +91,21 @@ func (tree *fakeTree) documentURL(_ context.Context, document nodeRef) (string, 
 	return tree.urls[document], nil
 }
 
+func (tree *fakeTree) children(_ context.Context, ref nodeRef) ([]nodeRef, error) {
+	children := []nodeRef{}
+	for _, candidate := range tree.order {
+		if tree.parents[candidate] == ref {
+			children = append(children, candidate)
+		}
+	}
+	return children, nil
+}
+
+func (tree *fakeTree) role(ctx context.Context, ref nodeRef) (uint32, error) {
+	read, err := tree.read(ctx, ref)
+	return read.role, err
+}
+
 func (tree *fakeTree) characterCount(_ context.Context, ref nodeRef) (int, error) {
 	return tree.counts[ref], nil
 }
@@ -217,5 +232,68 @@ func TestCheckElementCatchesAChangedFrameOrField(t *testing.T) {
 	delete(tree.nodes, refs["password"])
 	if _, err := checkElement(context.Background(), tree, password); !errors.Is(err, signin.ErrChanged) {
 		t.Errorf("field gone: %v", err)
+	}
+}
+
+// An object path the browser reused for a field of another frame keeps its role, and the old documents may still be at
+// their origins: the walk up from the field finds the frame it is in now.
+func TestCheckElementWalksUpFromTheFieldAsItIsNow(t *testing.T) {
+	tree, window, refs := signInWindow()
+	reading, _ := readPage(context.Background(), tree, window, &idTable{})
+	password := reading.elements[reading.fields[1].ID]
+	other := tree.add("/other-frame", refs["top"], roleDocumentWeb, "", shown, nil)
+	tree.urls[other] = "https://login.example.net/other"
+	tree.parents[refs["password"]] = other
+	if _, err := checkElement(context.Background(), tree, password); !errors.Is(err, signin.ErrChanged) {
+		t.Errorf("the field moved under another frame: %v", err)
+	}
+	tree.parents[refs["password"]] = refs["frame"]
+	if _, err := checkElement(context.Background(), tree, password); err != nil {
+		t.Errorf("back in its frame: %v", err)
+	}
+	otherWindow := tree.add("/frame-2", nodeRef{}, roleFrame, "Other - Chromium", shown, map[string]string{"class": browserWindowClass})
+	tree.parents[refs["top"]] = otherWindow
+	if _, err := checkElement(context.Background(), tree, password); !errors.Is(err, signin.ErrChanged) {
+		t.Errorf("the page moved to another window: %v", err)
+	}
+}
+
+// The X window and the accessible window are one when the title and the extents agree; two that agree, or another
+// window Chromium calls active, leave Hisar unable to tell which one the user sees.
+func TestFindWindowMatchesTheXWindowsTitleAndExtents(t *testing.T) {
+	application := nodeRef{bus: ":1.1", path: "/root"}
+	windowExtents := rect{X: 10, Y: 10, Width: 200, Height: 30}
+	newApplication := func(windows ...node) *fakeTree {
+		tree := newFakeTree()
+		tree.nodes[application] = node{ref: application}
+		for index, window := range windows {
+			ref := tree.add("/frame-"+string(rune('a'+index)), application, roleFrame, window.name, window.states, map[string]string{"class": browserWindowClass})
+			found := tree.nodes[ref]
+			found.extents = window.extents
+			tree.nodes[ref] = found
+		}
+		return tree
+	}
+	sameTitle := node{name: "Sign in - Chromium", states: shown, extents: windowExtents}
+	elsewhere := node{name: "Sign in - Chromium", states: shown, extents: rect{X: 300, Y: 10, Width: 200, Height: 30}}
+	activeOther := node{name: "News - Chromium", states: shown | 1<<stateActive, extents: windowExtents}
+	activeSame := node{name: "Sign in - Chromium", states: shown | 1<<stateActive, extents: windowExtents}
+	for name, testCase := range map[string]struct {
+		windows []node
+		want    string
+	}{
+		"one match":                         {[]node{sameTitle, elsewhere}, "/frame-a"},
+		"one match, another window active":  {[]node{sameTitle, activeOther}, ""},
+		"two matches":                       {[]node{sameTitle, sameTitle}, ""},
+		"two matches, one active":           {[]node{sameTitle, activeSame}, "/frame-b"},
+		"the title elsewhere on the screen": {[]node{elsewhere}, ""},
+	} {
+		found, err := findWindow(context.Background(), newApplication(testCase.windows...), application, "Sign in - Chromium", windowExtents)
+		switch {
+		case testCase.want == "" && !errors.Is(err, signin.ErrUnreadable):
+			t.Errorf("%s: %v, %v; want ErrUnreadable", name, found, err)
+		case testCase.want != "" && (err != nil || found.path != testCase.want):
+			t.Errorf("%s: %v, %v; want %s", name, found, err, testCase.want)
+		}
 	}
 }

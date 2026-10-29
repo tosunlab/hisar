@@ -107,8 +107,8 @@ func New(resolver *appinfo.Resolver) signin.Driver {
 	}}
 }
 
-// HasAccess reports an X11 display with XTest and an accessibility bus: what a session needs for Hisar to read and
-// fill browser windows. A Wayland session without XWayland has no display.
+// HasAccess reports an X11 display with XTest and X-Resource, and an accessibility bus: what a session needs for Hisar
+// to read and fill browser windows. A Wayland session without XWayland has no display.
 func (driver *Driver) HasAccess() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), accessTimeout)
 	defer cancel()
@@ -135,7 +135,7 @@ func (driver *Driver) tree(ctx context.Context) (atspiTree, error) {
 func (driver *Driver) checkWindow(target signin.Target) (windowState, error) {
 	state, err := driver.display.readWindow(target.WindowID)
 	switch {
-	case errors.Is(err, errNoDisplay) || errors.Is(err, errNoXTest):
+	case errors.Is(err, errNoDisplay) || errors.Is(err, errNoXTest) || errors.Is(err, errNoXRes):
 		return windowState{}, signin.ErrNoAccess
 	case err != nil:
 		return windowState{}, signin.ErrWindowNotFound
@@ -161,41 +161,6 @@ func findApplication(ctx context.Context, tree atspiTree, pid int) (nodeRef, boo
 		}
 	}
 	return nodeRef{}, false, ctx.Err()
-}
-
-// findWindow is the application's browser window that X11's target window is: AT-SPI does not name X windows, so it is
-// the browser window with the X window's title, and of several with that title the active one. A title that changed
-// between the two reads leaves none, which reads as a page that changed while Hisar read it.
-func findWindow(ctx context.Context, tree atspiTree, application nodeRef, title string) (nodeRef, error) {
-	windows, err := tree.children(ctx, application)
-	if err != nil {
-		return nodeRef{}, err
-	}
-	var named, active []nodeRef
-	for _, ref := range windows {
-		window, err := tree.read(ctx, ref)
-		if errors.Is(err, errUnknownNode) {
-			continue
-		}
-		if err != nil {
-			return nodeRef{}, err
-		}
-		if window.role != roleFrame || window.attributes["class"] != browserWindowClass || window.name != title {
-			continue
-		}
-		named = append(named, ref)
-		if window.has(stateActive) {
-			active = append(active, ref)
-		}
-	}
-	switch {
-	case len(named) == 1:
-		return named[0], nil
-	case len(active) == 1:
-		return active[0], nil
-	default:
-		return nodeRef{}, signin.ErrUnreadable
-	}
 }
 
 // convertReadError is what a failed read says: parent's own error once it ended, ErrUnreadable for a browser that did
@@ -253,7 +218,7 @@ func (driver *Driver) Observe(parent context.Context, target signin.Target) (sig
 	if !isFound {
 		return nil, &signin.InaccessibleError{Path: process.Path}
 	}
-	window, err := findWindow(ctx, tree, application, state.title)
+	window, err := findWindow(ctx, tree, application, state.title, state.extents)
 	if err != nil {
 		return nil, convertReadError(parent, err)
 	}
@@ -402,7 +367,11 @@ func (snapshot *snapshot) typeKeys(ctx context.Context, field signin.ElementID, 
 		if err != nil || state.heldMasks&(maskShift|maskControl|maskOthers) != 0 || state.isCapsOn != keys.isCapsLock {
 			return signin.ErrChanged
 		}
-		if err := snapshot.driver.display.press(stroke, keys.control, keys.shift, isControlled); err != nil {
+		err = snapshot.driver.display.press(stroke, keys.control, keys.shift, isControlled, snapshot.target.WindowID, snapshot.target.PID)
+		if errors.Is(err, errFocusMoved) {
+			return signin.ErrChanged
+		}
+		if err != nil {
 			return errRefused
 		}
 	}
@@ -656,10 +625,19 @@ func (driver *Driver) ListPrompts(parent context.Context, process signin.Process
 	return prompts, nil
 }
 
-// DismissPrompt reads the prompts again and presses the prompt's close control as it finds it in that reading.
+// DismissPrompt waits until Chromium takes a press of the prompt, then reads the prompts again and presses the close
+// control as it finds it in that reading: Chromium may rebuild the bubble's accessibles while Hisar waits, and a path
+// read before could then name Save or Never.
 func (driver *Driver) DismissPrompt(parent context.Context, process signin.ProcessInstance, prompt signin.ElementID) error {
 	ctx, cancel := beginOperation(parent)
 	defer cancel()
+	// The first reading notes when the prompt showed, for one this driver has not listed yet.
+	if _, _, err := driver.listPrompts(parent, ctx, process); err != nil {
+		return err
+	}
+	if err := driver.prompts.waitUntilPressable(ctx, uint64(prompt)); err != nil {
+		return convertReadError(parent, err)
+	}
 	listed, tree, err := driver.listPrompts(parent, ctx, process)
 	if err != nil {
 		return err
@@ -672,18 +650,15 @@ func (driver *Driver) DismissPrompt(parent context.Context, process signin.Proce
 	if !isFound {
 		return signin.ErrNoCloseControl
 	}
-	if err := driver.prompts.waitUntilPressable(ctx, uint64(prompt)); err != nil {
-		return convertReadError(parent, err)
-	}
 	if !isSameInstance(process.PID, process.StartTime) {
 		return signin.ErrChanged
 	}
-	defer driver.prompts.notePressed(uint64(prompt), time.Now())
 	if err := tree.doAction(ctx, listed[index].refs[control.ID], buttonActions...); err != nil {
 		if errors.Is(err, errUnknownNode) {
 			return signin.ErrChanged
 		}
 		return convertReadError(parent, errRefused)
 	}
+	driver.prompts.notePressed(uint64(prompt), time.Now())
 	return nil
 }

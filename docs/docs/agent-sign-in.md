@@ -198,7 +198,7 @@ The [command-line guide](./apps/cli.md) lists the exact refusal messages.
 
 ## For agent and driver authors
 
-Call `sign_in` on `hisar mcp` with `pid` and `window_id` from cua-driver's `list_windows` on the Mac, or the X11 window ID and its `_NET_WM_PID` on Linux. The optional `login` field takes an item ID from `search_items`. Call while the sign-in form shows, without typing credentials into it first.
+Call `sign_in` on `hisar mcp` with `pid` and `window_id` from cua-driver's `list_windows` on the Mac, or the X11 window ID and the browser's process ID on Linux. The optional `login` field takes an item ID from `search_items`. Call while the sign-in form shows, without typing credentials into it first.
 
 Wait for the result before deciding what to do next. Inspect both `outcome` and `cleanup`. Treat a denial and `not-accepted` as final. Stop on `cleanup-failed`. Never ask the user to paste a password into chat.
 

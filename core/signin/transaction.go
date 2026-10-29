@@ -608,7 +608,7 @@ func (platform platform) refuseObserving(target Target, err error) *Refusal {
 		return &Refusal{Reason: ReasonInaccessible, Message: name + " was started without accessibility, so Hisar can't read its pages. " +
 			"Ask the user to quit it and start it again with " + command + ", then call sign_in again."}
 	case errors.Is(err, ErrNoAccess) && platform.isLinux:
-		return &Refusal{Reason: ReasonNoAccess, Message: "Hisar can't read browser windows: this session has no X11 display or no accessibility bus. " +
+		return &Refusal{Reason: ReasonNoAccess, Message: "Hisar can't read browser windows: this session has no X11 display with the XTest and X-Resource extensions, or no accessibility bus. " +
 			"Website sign-in on Linux needs an X11 session, or a browser running under XWayland."}
 	case errors.Is(err, ErrNoAccess):
 		return &Refusal{Reason: ReasonNoAccess, Message: "Hisar can't fill browser windows yet: macOS hasn't given it the Accessibility permission. " +

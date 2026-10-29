@@ -387,7 +387,7 @@ string format, including escapes when needed.
 | "This Hisar app can't sign in to websites. Ask the user to update Hisar." | Update the Hisar app. |
 | `Website sign-in is off in Hisar. Ask the user to turn on Hisar → Settings → Developer tools → Coding agents → Website sign-in.` | Turn on Website sign-in (above). |
 | `Hisar can't fill browser windows yet: macOS hasn't given it the Accessibility permission. Ask the user to open Hisar → Settings → Developer tools → Coding agents → Website sign-in and allow it.` | Turn on Hisar in System Settings → Privacy & Security → Accessibility. |
-| `Hisar can't read browser windows: this session has no X11 display or no accessibility bus. Website sign-in on Linux needs an X11 session, or a browser running under XWayland.` | Linux: use an X11 session, or a browser under XWayland. |
+| `Hisar can't read browser windows: this session has no X11 display with the XTest and X-Resource extensions, or no accessibility bus. Website sign-in on Linux needs an X11 session, or a browser running under XWayland.` | Linux: use an X11 session, or a browser under XWayland. |
 | `{browser} was started without accessibility, so Hisar can't read its pages. Ask the user to quit it and start it again with {command}, then call sign_in again.` | Linux: quit the browser and start it with the command shown ([On Linux](#on-linux)). |
 | `pass the pid and window_id of the browser window from list_windows` | Supply a positive process ID and a nonzero window ID from `list_windows`. |
 | "Process {pid} has no window {window_id}. Get the current pid and window_id from list_windows." | The window closed or the IDs are old; the agent lists the windows again. |
@@ -431,7 +431,7 @@ string format, including escapes when needed.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `pid` | integer, required | The browser process that owns the window, as cua-driver's `list_windows` reports it on the Mac, or `_NET_WM_PID` on Linux. |
+| `pid` | integer, required | The browser process that owns the window, as cua-driver's `list_windows` reports it on the Mac (on Linux, the process that created the X window, as `xdotool getwindowpid` reports it). |
 | `window_id` | integer, required | The macOS window ID (`CGWindowID`) of the browser window, or its X11 window ID on Linux. |
 | `login` | string, optional | The item ID from `search_items`, for a site where the user has several accounts. Without it, Hisar offers every login saved for the website. |
 

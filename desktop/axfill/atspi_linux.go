@@ -201,6 +201,12 @@ func (tree atspiTree) characterCount(ctx context.Context, ref nodeRef) (int, err
 	return int(count), nil
 }
 
+func (tree atspiTree) role(ctx context.Context, ref nodeRef) (uint32, error) {
+	var role uint32
+	err := tree.object(ref).CallWithContext(ctx, atspiAccessible+".GetRole", 0).Store(&role)
+	return role, convertCallError(err)
+}
+
 func (tree atspiTree) children(ctx context.Context, ref nodeRef) ([]nodeRef, error) {
 	var children []atspiReference
 	if err := tree.object(ref).CallWithContext(ctx, atspiAccessible+".GetChildren", 0).Store(&children); err != nil {

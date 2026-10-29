@@ -15,6 +15,8 @@ var usKeyboard = keyboardMap{minimumKeycode: 8, keysymsPerKeycode: 2, keysyms: f
 	set(38, 'a', 'A')
 	set(11, '2', '@')
 	set(65, ' ', ' ')
+	// A German layout's key for ß has ? as its other level.
+	set(20, 0xdf, '?')
 	set(50, keysymShiftL, 0)
 	return keysyms
 }()}
@@ -30,10 +32,11 @@ func TestPlanTypesEachCharacterWithItsShift(t *testing.T) {
 	}
 }
 
-// With Caps Lock on X types a letter key's other case, so letters get the opposite Shift and nothing else changes.
-func TestPlanUndoesCapsLockForLettersOnly(t *testing.T) {
-	strokes, err := usKeyboard.plan("aA@2", true)
-	expected := []keystroke{{38, true}, {38, false}, {11, true}, {11, false}}
+// With Caps Lock on X types a letter key's other case, so a key whose levels are a letter's two cases gets the opposite
+// Shift. ß is a letter too, but its key's other level is ?, which Shift would type instead.
+func TestPlanUndoesCapsLockForCasePairKeysOnly(t *testing.T) {
+	strokes, err := usKeyboard.plan("aA@2ß", true)
+	expected := []keystroke{{38, true}, {38, false}, {11, true}, {11, false}, {20, false}}
 	if err != nil || !slices.Equal(strokes, expected) {
 		t.Errorf("%v, %v; want %v", strokes, err, expected)
 	}

@@ -268,7 +268,7 @@ describe("CodingAgentsSection website sign-in", () => {
       api.getAgentSignIn.mockResolvedValue({ isAvailable: true, isEnabled: true, hasAccessibility: false });
       const wrapper = mount(CodingAgentsSection);
       await flushPromises();
-      expect(wrapper.find('[data-testid="agent-sign-in-accessibility"]').text()).toContain("This session has no X11 display or no accessibility bus.");
+      expect(wrapper.find('[data-testid="agent-sign-in-accessibility"]').text()).toContain("This session has no X11 display with the XTest and X-Resource extensions, or no accessibility bus.");
       expect(wrapper.find('[data-testid="open-accessibility-settings"]').exists()).toBe(false);
 
       api.getAgentSignIn.mockResolvedValue({ isAvailable: true, isEnabled: true, hasAccessibility: true });

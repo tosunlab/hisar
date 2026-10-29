@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/jezek/xgb"
+	"github.com/jezek/xgb/res"
 	"github.com/jezek/xgb/xproto"
 	"github.com/jezek/xgb/xtest"
 )
@@ -19,9 +20,13 @@ const (
 )
 
 var (
-	errNoDisplay  = errors.New("axfill: no X11 display")
-	errKeyHeld    = errors.New("axfill: a modifier key is held")
-	errNoXTest    = errors.New("axfill: the X server has no XTest extension")
+	errNoDisplay = errors.New("axfill: no X11 display")
+	errKeyHeld   = errors.New("axfill: a modifier key is held")
+	errNoXTest   = errors.New("axfill: the X server has no XTest extension")
+	errNoXRes    = errors.New("axfill: the X server has no X-Resource extension")
+	// errFocusMoved: the X input focus is not in the target window, or belongs to another process, so a key would
+	// reach another client.
+	errFocusMoved = errors.New("axfill: the keyboard focus left the target window")
 	errBadWindow  = errors.New("axfill: the X window is gone")
 	errNotPressed = errors.New("axfill: the X server did not take the key")
 )
@@ -47,6 +52,11 @@ func (display *display) connect() (*xgb.Conn, error) {
 		connection.Close()
 		return nil, errNoXTest
 	}
+	// X-Resource reports the process behind a window as the server knows it; _NET_WM_PID is what the client says.
+	if err := res.Init(connection); err != nil {
+		connection.Close()
+		return nil, errNoXRes
+	}
 	display.connection, display.root = connection, xproto.Setup(connection).DefaultScreen(connection).Root
 	display.atoms = map[string]xproto.Atom{}
 	return connection, nil
@@ -62,7 +72,7 @@ func (display *display) do(work func(connection *xgb.Conn) error) error {
 	}
 	err = work(connection)
 	var protocolError xgb.Error
-	if err != nil && !errors.As(err, &protocolError) && !errors.Is(err, errBadWindow) {
+	if err != nil && !errors.As(err, &protocolError) && !errors.Is(err, errBadWindow) && !errors.Is(err, errFocusMoved) {
 		// Not an X error reply: the connection itself failed, so the next call connects again.
 		connection.Close()
 		display.connection = nil
@@ -104,7 +114,9 @@ func readCardinal(reply *xproto.GetPropertyReply) (uint32, bool) {
 
 // windowState is what X11 says about the target window.
 type windowState struct {
-	exists    bool
+	exists bool
+	// pid is the process of the client that created the window, as the X server knows it (X-Resource), or 0 for a
+	// client that is not local.
 	pid       int
 	isActive  bool
 	isMapped  bool
@@ -113,10 +125,27 @@ type windowState struct {
 	heldMasks uint16
 	// title is _NET_WM_NAME, or WM_NAME for a window without it.
 	title string
+	// extents are the window's position on the screen and its size.
+	extents rect
 }
 
-// readWindow reads the target window: its _NET_WM_PID, whether it is _NET_ACTIVE_WINDOW and viewable and not hidden,
-// and the modifier keys held now.
+// readOwnerPID is the process of the local client that created window, as the X server knows it; 0 when the server
+// does not know one.
+func readOwnerPID(connection *xgb.Conn, window xproto.Window) (int, error) {
+	reply, err := res.QueryClientIds(connection, 1, []res.ClientIdSpec{{Client: uint32(window), Mask: res.ClientIdMaskLocalClientPID}}).Reply()
+	if err != nil {
+		return 0, err
+	}
+	for _, id := range reply.Ids {
+		if id.Spec.Mask == res.ClientIdMaskLocalClientPID && len(id.Value) == 1 {
+			return int(id.Value[0]), nil
+		}
+	}
+	return 0, nil
+}
+
+// readWindow reads the target window: the process that created it, whether it is _NET_ACTIVE_WINDOW and viewable and
+// not hidden, its title and extents, and the modifier keys held now.
 func (display *display) readWindow(window uint32) (windowState, error) {
 	var state windowState
 	err := display.do(func(connection *xgb.Conn) error {
@@ -131,13 +160,18 @@ func (display *display) readWindow(window uint32) (windowState, error) {
 		}
 		state.exists = true
 		state.isMapped = attributes.MapState == xproto.MapStateViewable
-		pid, err := display.property(connection, target, "_NET_WM_PID")
+		if state.pid, err = readOwnerPID(connection, target); err != nil {
+			return err
+		}
+		geometry, err := xproto.GetGeometry(connection, xproto.Drawable(target)).Reply()
 		if err != nil {
 			return err
 		}
-		if value, isValue := readCardinal(pid); isValue {
-			state.pid = int(value)
+		origin, err := xproto.TranslateCoordinates(connection, target, display.root, 0, 0).Reply()
+		if err != nil {
+			return err
 		}
+		state.extents = rect{X: float64(origin.DstX), Y: float64(origin.DstY), Width: float64(geometry.Width), Height: float64(geometry.Height)}
 		active, err := display.property(connection, display.root, "_NET_ACTIVE_WINDOW")
 		if err != nil {
 			return err
@@ -201,35 +235,82 @@ func (display *display) readKeyboard() (keyboardMap, error) {
 	return keyboard, err
 }
 
-// press types one key through XTest, with Control or Shift held around it, and waits until the server has handled it,
-// so the next check sees what it did.
-func (display *display) press(stroke keystroke, control keystroke, shift keystroke, isControlled bool) error {
+// press types one key through XTest, with Control or Shift held around it. XTest keys go to the window with the X
+// input focus, so with the server grabbed, which keeps every other client from moving the focus meanwhile, press checks
+// that the focus is the target window or inside it and belongs to pid, and only then sends the key. Every modifier it
+// pressed is released whatever fails. It waits until the server has handled the key, so the next check sees what it did.
+func (display *display) press(stroke, control, shift keystroke, isControlled bool, target uint32, pid int) error {
 	return display.do(func(connection *xgb.Conn) error {
-		send := func(kind byte, keycode byte) error {
-			return xtest.FakeInputChecked(connection, kind, keycode, 0, display.root, 0, 0, 0).Check()
-		}
-		var modifiers []byte
-		if isControlled {
-			modifiers = append(modifiers, control.keycode)
-		}
-		if stroke.isShifted {
-			modifiers = append(modifiers, shift.keycode)
-		}
-		for _, modifier := range modifiers {
-			if err := send(xproto.KeyPress, modifier); err != nil {
-				return err
-			}
-		}
-		pressError := send(xproto.KeyPress, stroke.keycode)
-		releaseError := send(xproto.KeyRelease, stroke.keycode)
-		for index := len(modifiers) - 1; index >= 0; index-- {
-			if err := send(xproto.KeyRelease, modifiers[index]); err != nil && releaseError == nil {
-				releaseError = err
-			}
-		}
-		if _, err := xproto.GetInputFocus(connection).Reply(); err != nil {
+		if err := xproto.GrabServerChecked(connection).Check(); err != nil {
 			return err
 		}
-		return errors.Join(pressError, releaseError)
+		err := display.pressInFocus(connection, stroke, control, shift, isControlled, xproto.Window(target), pid)
+		ungrabError := xproto.UngrabServerChecked(connection).Check()
+		if _, syncError := xproto.GetInputFocus(connection).Reply(); syncError != nil && ungrabError == nil {
+			ungrabError = syncError
+		}
+		return errors.Join(err, ungrabError)
 	})
+}
+
+func (display *display) pressInFocus(connection *xgb.Conn, stroke, control, shift keystroke, isControlled bool, target xproto.Window, pid int) error {
+	if err := checkFocus(connection, target, pid); err != nil {
+		return err
+	}
+	send := func(kind byte, keycode byte) error {
+		return xtest.FakeInputChecked(connection, kind, keycode, 0, display.root, 0, 0, 0).Check()
+	}
+	var modifiers []byte
+	if isControlled {
+		modifiers = append(modifiers, control.keycode)
+	}
+	if stroke.isShifted {
+		modifiers = append(modifiers, shift.keycode)
+	}
+	var pressed []byte
+	var err error
+	for _, modifier := range modifiers {
+		if err = send(xproto.KeyPress, modifier); err != nil {
+			break
+		}
+		pressed = append(pressed, modifier)
+	}
+	if err == nil {
+		err = send(xproto.KeyPress, stroke.keycode)
+		err = errors.Join(err, send(xproto.KeyRelease, stroke.keycode))
+	}
+	for index := len(pressed) - 1; index >= 0; index-- {
+		err = errors.Join(err, send(xproto.KeyRelease, pressed[index]))
+	}
+	return err
+}
+
+// maximumWindowDepth bounds the walk from the focus window up to the root.
+const maximumWindowDepth = 64
+
+// checkFocus requires the X input focus to be target or a window inside it, created by pid.
+func checkFocus(connection *xgb.Conn, target xproto.Window, pid int) error {
+	focus, err := xproto.GetInputFocus(connection).Reply()
+	if err != nil {
+		return err
+	}
+	// None and PointerRoot name no window: the key would go wherever the pointer is, or nowhere.
+	if focus.Focus == xproto.WindowNone || focus.Focus == xproto.InputFocusPointerRoot {
+		return errFocusMoved
+	}
+	if owner, err := readOwnerPID(connection, focus.Focus); err != nil || owner != pid {
+		return errFocusMoved
+	}
+	window := focus.Focus
+	for range maximumWindowDepth {
+		if window == target {
+			return nil
+		}
+		tree, err := xproto.QueryTree(connection, window).Reply()
+		if err != nil || tree.Parent == xproto.WindowNone || window == tree.Root {
+			return errFocusMoved
+		}
+		window = tree.Parent
+	}
+	return errFocusMoved
 }

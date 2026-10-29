@@ -95,7 +95,7 @@ func TestLinuxRefusalsNameTheLinuxWays(t *testing.T) {
 			err: &InaccessibleError{Path: "/opt/google/chrome/chrome"}, reason: ReasonInaccessible,
 			message: "Google Chrome was started without accessibility, so Hisar can't read its pages. Ask the user to quit it and start it again with ACCESSIBILITY_ENABLED=1 google-chrome --force-renderer-accessibility, then call sign_in again.",
 		},
-		"no display or bus": {err: ErrNoAccess, reason: ReasonNoAccess, message: "this session has no X11 display or no accessibility bus"},
+		"no display or bus": {err: ErrNoAccess, reason: ReasonNoAccess, message: "this session has no X11 display with the XTest and X-Resource extensions, or no accessibility bus"},
 		"not in front":      {err: ErrNotVisible, reason: ReasonNotVisible, message: "Window 67108866 is not the active window"},
 		"no such window":    {err: ErrWindowNotFound, reason: ReasonWindowNotFound, message: "X11 window ID"},
 	} {

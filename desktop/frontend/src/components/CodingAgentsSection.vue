@@ -225,7 +225,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
         <span class="settings-row-icon warning-icon"><AppIcon name="warning" :size="14" /></span>
         <div class="setting-text">
           <strong>X11 needed</strong>
-          <p class="muted">Hisar fills browser windows on X11, or browsers running under XWayland. This session has no X11 display or no accessibility bus.</p>
+          <p class="muted">Hisar fills browser windows on X11, or browsers running under XWayland. This session has no X11 display with the XTest and X-Resource extensions, or no accessibility bus.</p>
         </div>
       </div>
       <div v-else-if="store.agentSignIn.isEnabled && !store.agentSignIn.hasAccessibility" class="setting" data-testid="agent-sign-in-accessibility">

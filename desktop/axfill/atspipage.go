@@ -3,6 +3,7 @@ package axfill
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,8 @@ const (
 	maximumControls = 2000
 	// maximumDocuments bounds the frames of a page.
 	maximumDocuments = 64
+	// maximumDepth bounds a walk from an accessible up to its window.
+	maximumDepth = 256
 )
 
 var errUnknownNode = errors.New("axfill: the accessible is gone")
@@ -65,6 +68,8 @@ type accessibilityTree interface {
 	// find lists the descendants of ref with one of roles, in document order.
 	find(ctx context.Context, ref nodeRef, roles ...uint32) ([]nodeRef, error)
 	parent(ctx context.Context, ref nodeRef) (nodeRef, error)
+	children(ctx context.Context, ref nodeRef) ([]nodeRef, error)
+	role(ctx context.Context, ref nodeRef) (uint32, error)
 	documentURL(ctx context.Context, document nodeRef) (string, error)
 	characterCount(ctx context.Context, ref nodeRef) (int, error)
 }
@@ -112,10 +117,65 @@ func (table *idTable) idOf(ref nodeRef) uint64 {
 	return table.lastID
 }
 
+// extentsSlack is how far apart, in pixels, the X window's and the accessible window's edges may be and still be one
+// window, for scaling that rounds them differently.
+const extentsSlack = 2
+
+// findWindow is the browser window of application that the target X window is. AT-SPI names no X windows, so it is the
+// browser window with the X window's title and extents. Chromium does not mark its window active under every window
+// manager, so the active state only decides between several matches, and another window it marks active makes the
+// match doubtful. A window Hisar cannot tell apart reads as unreadable.
+func findWindow(ctx context.Context, tree accessibilityTree, application nodeRef, title string, extents rect) (nodeRef, error) {
+	windows, err := tree.children(ctx, application)
+	if err != nil {
+		return nodeRef{}, err
+	}
+	var matching, active []nodeRef
+	isOtherActive := false
+	for _, ref := range windows {
+		window, err := tree.read(ctx, ref)
+		if errors.Is(err, errUnknownNode) {
+			continue
+		}
+		if err != nil {
+			return nodeRef{}, err
+		}
+		if window.role != roleFrame || window.attributes["class"] != browserWindowClass {
+			continue
+		}
+		switch {
+		case window.name == title && isSameExtents(window.extents, extents):
+			matching = append(matching, ref)
+			if window.has(stateActive) {
+				active = append(active, ref)
+			}
+		case window.has(stateActive):
+			isOtherActive = true
+		}
+	}
+	switch {
+	case isOtherActive:
+		return nodeRef{}, signin.ErrUnreadable
+	case len(matching) == 1:
+		return matching[0], nil
+	case len(active) == 1:
+		return active[0], nil
+	default:
+		return nodeRef{}, signin.ErrUnreadable
+	}
+}
+
+func isSameExtents(first, second rect) bool {
+	isNear := func(a, b float64) bool { return a-b <= extentsSlack && b-a <= extentsSlack }
+	return isNear(first.X, second.X) && isNear(first.Y, second.Y) && isNear(first.Width, second.Width) && isNear(first.Height, second.Height)
+}
+
 // pageElement is what an action rechecks about an element: the documents from its own up to the top, with the
 // origins they had, and whether it is a secure field.
 type pageElement struct {
-	ref       nodeRef
+	ref nodeRef
+	// window is the browser window the element was read in.
+	window    nodeRef
 	documents []nodeRef
 	origins   []string
 	isSecure  bool
@@ -240,7 +300,7 @@ func readPage(ctx context.Context, tree accessibilityTree, window nodeRef, ids *
 			control.extents.Height >= minimumVisibleSize && isInside(control.extents, topExtents)
 		if control.role == rolePushButton {
 			reading.buttons = append(reading.buttons, signin.Button{ID: id, Frame: frame, Title: control.name, IsVisible: isVisible})
-			reading.elements[id] = pageElement{ref: ref, documents: chain, origins: chainOrigins}
+			reading.elements[id] = pageElement{ref: ref, window: window, documents: chain, origins: chainOrigins}
 			continue
 		}
 		length, err := tree.characterCount(ctx, ref)
@@ -254,7 +314,7 @@ func readPage(ctx context.Context, tree accessibilityTree, window nodeRef, ids *
 			IsEditable: control.has(stateEditable) && control.has(stateEnabled) && control.has(stateSensitive),
 			IsVisible:  isVisible, Length: length,
 		})
-		reading.elements[id] = pageElement{ref: ref, documents: chain, origins: chainOrigins, isSecure: isSecure}
+		reading.elements[id] = pageElement{ref: ref, window: window, documents: chain, origins: chainOrigins, isSecure: isSecure}
 	}
 	return reading, nil
 }
@@ -263,7 +323,7 @@ func readPage(ctx context.Context, tree accessibilityTree, window nodeRef, ids *
 // when there is none.
 func findEnclosingDocument(ctx context.Context, tree accessibilityTree, ref, window nodeRef, isDocument map[nodeRef]bool) (nodeRef, error) {
 	current := ref
-	for range 256 {
+	for range maximumDepth {
 		parent, err := tree.parent(ctx, current)
 		if err != nil {
 			return nodeRef{}, err
@@ -299,7 +359,9 @@ func describeOrigin(url string) string {
 }
 
 // checkElement rereads an element before an action: it must still be there with the same role, a secure field still a
-// password field, and every document from its own up to the top at the origin it had.
+// password field, and still inside the window it was read in, under the same documents, nearest first, each at the
+// origin it had. The documents are found again by walking up from the element, as the Mac driver's guard does, so an
+// object path the browser reused for a field of another frame does not pass.
 func checkElement(ctx context.Context, tree accessibilityTree, element pageElement) (node, error) {
 	current, err := tree.read(ctx, element.ref)
 	if err != nil {
@@ -308,7 +370,29 @@ func checkElement(ctx context.Context, tree accessibilityTree, element pageEleme
 	if element.isSecure && current.role != rolePasswordText {
 		return node{}, signin.ErrChanged
 	}
-	for index, document := range element.documents {
+	var documents []nodeRef
+	ref := element.ref
+	for depth := 0; ; depth++ {
+		parent, err := tree.parent(ctx, ref)
+		if err != nil || parent == (nodeRef{}) || depth > maximumDepth {
+			return node{}, signin.ErrChanged
+		}
+		if parent == element.window {
+			break
+		}
+		role, err := tree.role(ctx, parent)
+		if err != nil {
+			return node{}, signin.ErrChanged
+		}
+		if role == roleDocumentWeb {
+			documents = append(documents, parent)
+		}
+		ref = parent
+	}
+	if !slices.Equal(documents, element.documents) {
+		return node{}, signin.ErrChanged
+	}
+	for index, document := range documents {
 		url, err := tree.documentURL(ctx, document)
 		if err != nil || describeOrigin(url) != element.origins[index] {
 			return node{}, signin.ErrChanged
