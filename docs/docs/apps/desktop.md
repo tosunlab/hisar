@@ -15,7 +15,7 @@ Wails v3 (pinned beta, see `WAILS_VERSION` in the root `Makefile`) with a Vue 3 
 | `browser/` | The browser extension's native messaging host, the app's socket for it and the host manifests; the messages are in `core/browserprotocol` |
 | `commandline/` | Installing the bundled `hisar` on the PATH and Settings → Command-line tool; the CLI socket server is `core/clisocket` |
 | `loginitem/` | Settings → "Open Hisar at login" on top of `background/` |
-| `biometric/` | Touch ID and the macOS Keychain (cgo) |
+| `biometric/` | Touch ID and the macOS Keychain (cgo); on Linux the fingerprint through fprintd on the system bus, with the unlock key kept in memory only |
 | `updater/` | Sparkle bridge for automatic updates (cgo, build tag `sparkle`; packaged macOS builds only) |
 | `background/` | Open at login (`SMAppService` on macOS through cgo, an XDG autostart file on Linux), launch-at-login detection and the Dock icon. No Wails import |
 | `systemidle/`, `windowplacement/` | Idle time for auto-lock, and placing the approval window (cgo on macOS) |

@@ -11,7 +11,7 @@ import {
   uninstallCommandLineTool,
 } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { formatLastUse } from "../util";
+import { biometricObject, formatLastUse } from "../util";
 import AppIcon from "./AppIcon.vue";
 
 const isRowVisible = useSettingsRowVisibility();
@@ -103,7 +103,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
           <p class="muted" data-testid="command-line-integration">
             <template v-if="commandLineStatus?.errorMessage">Not available: {{ commandLineStatus.errorMessage }}</template>
             <template v-else>
-              <span class="monospace">hisar</span> uses this app after you approve each terminal{{ store.status.biometricAvailable ? " with Touch ID" : "" }}, for
+              <span class="monospace">hisar</span> uses this app after you approve each terminal{{ store.status.biometricAvailable ? ` with ${biometricObject()}` : "" }}, for
               10 minutes after its last command or until Hisar locks. Off: <span class="monospace">hisar</span> signs in on its own.
             </template>
           </p>

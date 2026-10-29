@@ -53,7 +53,7 @@ func (prompt *WindowPrompt) Authenticate(reason string) error {
 	}
 	frame := prompt.promptFrame
 	prompt.mutex.Unlock()
-	return authenticateInWindow(reason, window, frame, prompt.size)
+	return prompt.biometric.authenticateInWindow(reason, window, frame, prompt.size)
 }
 
 // CancelPrompt ends a pending Authenticate call with ErrCancelled.

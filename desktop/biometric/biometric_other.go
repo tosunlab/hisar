@@ -1,8 +1,25 @@
-//go:build !darwin || !cgo
+//go:build !linux && (!darwin || !cgo)
 
 package biometric
 
-import "unsafe"
+import (
+	"unsafe"
+
+	"github.com/tryhisar/hisar/core/app"
+)
+
+const Name = "Touch ID"
+
+const (
+	unavailableMessage = "Touch ID is not available on this Mac"
+	cancelledMessage   = "Touch ID was cancelled"
+	keyNotFoundMessage = "Touch ID key not found in the keychain"
+)
+
+type platformBiometric struct{}
+
+// GetKeyPreparer is the Biometric itself: its prompt must come before the keychain operation it authorizes.
+func (biometric *Biometric) GetKeyPreparer() app.BiometricKeyPreparer { return biometric }
 
 func (biometric *Biometric) IsAvailable() bool                           { return false }
 func (biometric *Biometric) Authenticate(reason string) error            { return ErrUnavailable }
@@ -15,6 +32,6 @@ func (biometric *Biometric) PrepareLoadKey(accountID string) error       { retur
 
 func moveActivePrompt(frame PromptFrame) {}
 
-func authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFrame, size PromptSize) error {
+func (biometric *Biometric) authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFrame, size PromptSize) error {
 	return ErrUnavailable
 }

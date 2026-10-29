@@ -1,7 +1,12 @@
 import type { IconName } from "./components/AppIcon.vue";
 import type { EmergencyKitStatus } from "./api";
 
-export const touchIDConsent = "Touch ID unlocks Hisar after it locks, so you type your master password less often. Any fingerprint set up for your account on this Mac can unlock Hisar. Hisar still asks for your master password when it starts and at least every 14 days. Changing these fingerprints turns off Touch ID unlock until you turn it on again with your master password. You can change this later in Settings, Security.";
+// biometricConsent is the Security screen's explanation of fingerprint unlock, worded for the platform's biometric.
+export function biometricConsent(): string {
+  return isMacPlatform()
+    ? "Touch ID unlocks Hisar after it locks, so you type your master password less often. Any fingerprint set up for your account on this Mac can unlock Hisar. Hisar still asks for your master password when it starts and at least every 14 days. Changing these fingerprints turns off Touch ID unlock until you turn it on again with your master password. You can change this later in Settings, Security."
+    : "Your fingerprint unlocks Hisar after it locks, so you type your master password less often. Any finger enrolled for your account on this computer can unlock Hisar. Hisar asks for your master password after it starts and at least every 14 days, and keeps the fingerprint key only while it runs.";
+}
 
 // themes.json defines tile0 to tile9 with their text colours for every theme.
 const tileColorCount = 10;
@@ -73,6 +78,110 @@ export function isMacPlatform(): boolean {
 
 export function isApplicationCommand(event: Pick<KeyboardEvent, "metaKey" | "ctrlKey">): boolean {
   return isMacPlatform() ? event.metaKey : event.ctrlKey;
+}
+
+// The UI names the platform's biometric unlock in several ways. On the Mac it is "Touch ID"; on Linux it is a fingerprint.
+
+// biometricUnlockObject names what gets turned on: "Touch ID" or "fingerprint unlock".
+export function biometricUnlockObject(): string {
+  return isMacPlatform() ? "Touch ID" : "fingerprint unlock";
+}
+
+// biometricObject is the biometric inside a sentence such as "asks for Touch ID" / "asks for your fingerprint".
+export function biometricObject(): string {
+  return isMacPlatform() ? "Touch ID" : "your fingerprint";
+}
+
+// unlockWithBiometric labels the unlock control and the Security row: "Unlock with Touch ID" / "Unlock with fingerprint".
+export function unlockWithBiometric(): string {
+  return isMacPlatform() ? "Unlock with Touch ID" : "Unlock with fingerprint";
+}
+
+// unlockWithBiometricQuestion is the offer heading: "Unlock with Touch ID?" / "Unlock with your fingerprint?".
+export function unlockWithBiometricQuestion(): string {
+  return isMacPlatform() ? "Unlock with Touch ID?" : "Unlock with your fingerprint?";
+}
+
+// turnOnBiometric is the button and menu label: "Turn on Touch ID" / "Turn on fingerprint unlock".
+export function turnOnBiometric(): string {
+  return `Turn on ${biometricUnlockObject()}`;
+}
+
+// continueWithBiometric labels the Emergency Kit button: "Continue with Touch ID" / "Continue with fingerprint".
+export function continueWithBiometric(): string {
+  return isMacPlatform() ? "Continue with Touch ID" : "Continue with fingerprint";
+}
+
+// waitingForBiometric is the button text while the prompt waits: "Waiting for Touch ID…" / "Waiting for your fingerprint…".
+export function waitingForBiometric(): string {
+  return isMacPlatform() ? "Waiting for Touch ID…" : "Waiting for your fingerprint…";
+}
+
+// biometricUnlockOnNotice and biometricUnlockOffNotice announce the setting: "Touch ID unlock is on/off" / "Fingerprint unlock is on/off".
+export function biometricUnlockOnNotice(): string {
+  return isMacPlatform() ? "Touch ID unlock is on" : "Fingerprint unlock is on";
+}
+
+export function biometricUnlockOffNotice(): string {
+  return isMacPlatform() ? "Touch ID unlock is off" : "Fingerprint unlock is off";
+}
+
+// biometricScanPrefix starts an approval's scan phrase: "Touch ID" / "Scan your finger", followed by " to approve" and so on.
+export function biometricScanPrefix(): string {
+  return isMacPlatform() ? "Touch ID" : "Scan your finger";
+}
+
+// tryBiometricAgain labels the retry button after a failed check: "Try Touch ID again" / "Try fingerprint again".
+export function tryBiometricAgain(): string {
+  return isMacPlatform() ? "Try Touch ID again" : "Try fingerprint again";
+}
+
+// biometricWaitingStatus is the unlock screen's live status while the prompt waits.
+export function biometricWaitingStatus(): string {
+  return isMacPlatform() ? "Touch ID is waiting. Or type your master password." : "Scan your finger, or type your master password.";
+}
+
+// exportWithBiometric labels the export button: "Export with Touch ID…" / "Export with fingerprint…".
+export function exportWithBiometric(): string {
+  return isMacPlatform() ? "Export with Touch ID…" : "Export with fingerprint…";
+}
+
+// useBiometricInstead switches the export form to the biometric: "Use Touch ID instead" / "Use fingerprint instead".
+export function useBiometricInstead(): string {
+  return isMacPlatform() ? "Use Touch ID instead" : "Use fingerprint instead";
+}
+
+// biometricReauthReason is the unlock screen's note when a master password is required again, with the biometric available.
+export function biometricReauthReason(): string {
+  return isMacPlatform()
+    ? "Enter your master password to use Touch ID again. Hisar requires it after starting and at least every 14 days."
+    : "Enter your master password to use your fingerprint again. Hisar requires it after starting and at least every 14 days.";
+}
+
+// biometricUnavailableNow is the unlock screen's note when the biometric is enabled but not available right now.
+export function biometricUnavailableNow(): string {
+  return isMacPlatform()
+    ? "Touch ID isn't available right now. Enter your master password."
+    : "Fingerprint unlock isn't available right now. Enter your master password.";
+}
+
+// biometricUnavailableSetting is the Security row's text when the biometric is unavailable and the backend gives no reason.
+export function biometricUnavailableSetting(): string {
+  return isMacPlatform()
+    ? "Touch ID is not available on this Mac."
+    : "Unlocking with a fingerprint is not available on this computer; Hisar unlocks with your master password.";
+}
+
+// biometricSetupPending is the Security row's text while biometric unlock still needs the master password to set up.
+export function biometricSetupPending(): string {
+  return isMacPlatform()
+    ? "Touch ID protection is pending. Unlock with your master password until setup is complete."
+    : "Fingerprint unlock needs your master password to set up again. Your master password still unlocks Hisar.";
+}
+
+// fingerprintScanPrompt is shown on Linux while a biometric request waits with no system prompt of its own.
+export function fingerprintScanPrompt(): string {
+  return "Scan your finger…";
 }
 
 // thisDevice is how the UI names the computer it runs on: "this Mac", or "this computer" on Linux.

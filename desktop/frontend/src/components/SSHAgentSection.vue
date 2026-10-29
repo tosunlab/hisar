@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { configureSSHConfig, openFromSettings, removeSSHConfig, setCompactSSHApproval, setPhoneApproval, setSigningRemember, setSSHRemember, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { isMacPlatform } from "../util";
+import { biometricObject, isMacPlatform } from "../util";
 
 const isRowVisible = useSettingsRowVisibility();
 const allSSHRememberOption = [
@@ -54,7 +54,7 @@ const allSigningRememberOption = [
           <p class="muted">
             {{
               store.sshAgentStatus.isTouchIDApproval
-                ? `Each use of a key asks for Touch ID, unless you let the app skip asking ${sshRememberPeriod}.`
+                ? `Each use of a key asks for ${biometricObject()}, unless you let the app skip asking ${sshRememberPeriod}.`
                 : `Each use of a key asks for your approval in Hisar, unless you let the app skip asking ${sshRememberPeriod}.`
             }}
           </p>

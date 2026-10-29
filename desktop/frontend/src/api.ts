@@ -1,4 +1,5 @@
 import { Browser } from "@wailsio/runtime";
+import { isMacPlatform } from "./util";
 import { ApprovalTouchIDService, SettingsWindowService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
@@ -498,7 +499,7 @@ const wailsApi = {
   clearTouchIDPromptFrame: (): Promise<void> => TouchIDPromptService.ClearPromptFrame(),
   cancelTouchIDPrompt: (): Promise<void> => TouchIDPromptService.CancelPrompt(),
   // hasNativeTouchIDView is true when macOS draws the Touch ID glyph over the prompt slot.
-  hasNativeTouchIDView: true,
+  hasNativeTouchIDView: isMacPlatform(),
   saveNewAccountEmergencyKit: (): Promise<string> => Service.SaveNewAccountEmergencyKit(),
   saveEmergencyKit: (password: string): Promise<string> => Service.SaveEmergencyKit(password),
   revealSecretKey: (password: string): Promise<RevealedSecretKey> => Service.RevealSecretKey(password),

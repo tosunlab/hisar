@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { acceptTouchIDOffer, declineTouchIDOffer, store } from "../store";
-import { touchIDConsent } from "../util";
+import { biometricConsent, turnOnBiometric, unlockWithBiometricQuestion, waitingForBiometric } from "../util";
 import AppIcon from "./AppIcon.vue";
 </script>
 
@@ -10,11 +10,11 @@ import AppIcon from "./AppIcon.vue";
     <div class="page-body">
       <div class="card page-card touch-id-offer-card" data-testid="touch-id-offer">
         <span class="touch-id-icon"><AppIcon name="fingerprint" :size="28" /></span>
-        <h1>Unlock with Touch ID?</h1>
-        <p class="subtitle">{{ touchIDConsent }}</p>
+        <h1>{{ unlockWithBiometricQuestion() }}</h1>
+        <p class="subtitle">{{ biometricConsent() }}</p>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
         <button class="primary full-width" data-testid="accept-touch-id-offer" :disabled="store.isBusy" @click="acceptTouchIDOffer">
-          {{ store.isBusy ? "Waiting for Touch ID…" : "Turn on Touch ID" }}
+          {{ store.isBusy ? waitingForBiometric() : turnOnBiometric() }}
         </button>
         <button class="ghost full-width not-now" data-testid="decline-touch-id-offer" :disabled="store.isBusy" @click="declineTouchIDOffer">
           Not now

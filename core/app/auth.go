@@ -268,6 +268,7 @@ func (s *Service) Unlock(password string) (Status, error) {
 	if migrator != nil {
 		sealedBiometricKey = append([]byte(nil), s.state.BiometricUnlock...)
 	}
+	isSessionKeyNeeded := s.needsSessionBiometricKey()
 	s.mutex.Unlock()
 
 	passwordBytes := []byte(password)
@@ -295,9 +296,11 @@ func (s *Service) Unlock(password string) (Status, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var unlocked *session.Session
+	// kitUnlockKey is the account unlock key, kept when the kit needs it or a biometric key of this process only must
+	// seal it again.
 	var kitUnlockKey []byte
 	defer func() { clear(kitUnlockKey) }()
-	if isKitOpened {
+	if isKitOpened || isSessionKeyNeeded {
 		kitUnlockKey, err = session.DeriveAccountUnlockKey(ctx, apiClient, accountCache, passwordBytes, secretKey)
 		if err == nil {
 			unlocked, err = session.UnlockWithAccountUnlockKey(ctx, apiClient, accountCache, kitUnlockKey, accountID)
@@ -342,6 +345,9 @@ func (s *Service) Unlock(password string) (Status, error) {
 	}
 	s.recordPasswordUnlock()
 	s.biometricSetupError = biometricSetupError
+	if s.unlockedSession == unlocked && s.state.AccountID == accountID {
+		s.rearmSessionBiometricKey(kitUnlockKey)
+	}
 	return s.buildStatus(), nil
 }
 

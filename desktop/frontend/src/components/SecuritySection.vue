@@ -3,7 +3,7 @@ import { onBeforeUnmount, ref, watch } from "vue";
 import { api, getErrorMessage, type RevealedSecretKey } from "../api";
 import { copyText, disableBiometricUnlock, enableBiometricUnlock, saveEmergencyKit, setAutoLock, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { isMacPlatform, touchIDConsent } from "../util";
+import { biometricConsent, biometricSetupPending, biometricUnavailableSetting, biometricUnlockObject, isMacPlatform, unlockWithBiometric } from "../util";
 import ChangeMasterPasswordDialog from "./ChangeMasterPasswordDialog.vue";
 import ReplaceSecretKeyDialog from "./ReplaceSecretKeyDialog.vue";
 import CredentialField from "./CredentialField.vue";
@@ -102,16 +102,16 @@ onBeforeUnmount(clearSecretKey);
       <div class="settings-group">
         <div v-show="isRowVisible('touch-id')" class="setting">
           <div class="setting-text">
-            <strong>Unlock with Touch ID</strong>
+            <strong>{{ unlockWithBiometric() }}</strong>
             <p class="muted">
               {{
                 store.status.biometricSetupError
-                  ? "Touch ID protection is pending. Unlock with your master password until setup is complete."
+                  ? biometricSetupPending()
                   : store.status.biometricAvailable
-                    ? touchIDConsent
-                    : isMacPlatform()
-                      ? "Touch ID is not available on this Mac."
-                      : "Unlocking with a fingerprint is not available on this computer yet; Hisar unlocks with your master password."
+                    ? biometricConsent()
+                    : store.status.biometricUnavailableReason
+                      ? store.status.biometricUnavailableReason
+                      : biometricUnavailableSetting()
               }}
             </p>
             <p v-if="store.status.biometricSetupError" class="error" role="status" data-testid="biometric-setup-error">{{ store.status.biometricSetupError }}</p>
@@ -140,7 +140,7 @@ onBeforeUnmount(clearSecretKey);
             name="touchIDPassword"
             type="password"
             aria-label="Master password"
-            placeholder="Master password to turn on Touch ID"
+            :placeholder="`Master password to turn on ${biometricUnlockObject()}`"
             autocomplete="current-password"
             autofocus
             required

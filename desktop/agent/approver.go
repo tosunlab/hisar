@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"runtime"
 	"sync"
 	"time"
 
@@ -30,7 +31,7 @@ const (
 )
 
 var (
-	errTouchIDFailed    = errors.New("Touch ID did not confirm it's you. Try again, or deny.")
+	errTouchIDFailed    = errors.New(describeBiometricFailure(runtime.GOOS))
 	errPasswordRequired = errors.New("Enter your master password to unlock Hisar.")
 	// errPresenceRequired refuses a bare Approve for an agent on a Mac without Touch ID: a computer-use agent can click it.
 	errPresenceRequired = errors.New("Enter your master password to approve.")
@@ -38,6 +39,15 @@ var (
 	// Locking closes the session a passkey ceremony belongs to, so its approval cannot unlock Hisar instead.
 	errPasskeyCeremonyEnded = errors.New("Hisar locked, so this passkey request has ended. Try again in your browser.")
 )
+
+// describeBiometricFailure is the failed check as the approval window shows it: Touch ID on the Mac, fprintd's
+// fingerprint check on Linux.
+func describeBiometricFailure(system string) string {
+	if system == "linux" {
+		return "Fingerprint check did not confirm it's you. Try again, or deny."
+	}
+	return "Touch ID did not confirm it's you. Try again, or deny."
+}
 
 type Biometric interface {
 	IsAvailable() bool

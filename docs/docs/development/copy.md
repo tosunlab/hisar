@@ -375,6 +375,12 @@ The Android app uses the iPhone's copy with these changes. Shared sentences from
 | Unlock Hisar · Sign in to Hisar · Search Hisar · "Fill a login for \<site>" · Always use for this app, Only this time · Turn on Hisar AutoFill | Unlock vault, Log in, Remember this app | AutoFill suggestions, the AutoFill screen, Settings → AutoFill |
 | Autofill using another service (Chrome's own label, quoted as Chrome writes it) | AutoFill using another service | Settings → AutoFill, Chrome section |
 
+## Linux desktop
+
+| Use | Not | Where |
+|---|---|---|
+| fingerprint, fingerprint unlock ("Unlock with fingerprint", "Turn on fingerprint unlock", "Scan your finger to approve", "Try fingerprint again", "Fingerprint unlock is on", "Fingerprint not recognized. Try again, or use your master password.") | Touch ID, biometrics | Lock screen, the offer after the new Secret Key, Settings → Security, the approval window, export; the Mac keeps "Touch ID" |
+
 ## Style
 
 - Plain sentences: no exclamation marks, no comma splices, and only claims the code keeps ("private keys never leave Hisar"; the command-line tool reads passwords and one-time codes but never private keys).

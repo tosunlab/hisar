@@ -42,6 +42,8 @@ finish-args:
   - --talk-name=org.freedesktop.ScreenSaver
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.freedesktop.Notifications
+  # Fingerprint unlock through fprintd on the system bus.
+  - --system-talk-name=net.reactivated.Fprint
 modules:
   - name: hisar
     buildsystem: simple

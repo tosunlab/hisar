@@ -1,5 +1,6 @@
 import { inject, type InjectionKey } from "vue";
 import type { IconName } from "./components/AppIcon.vue";
+import { unlockWithBiometric } from "./util";
 
 export type SettingsSectionID = "general" | "security" | "ssh" | "developer" | "browser" | "people" | "organizations" | "devices" | "export" | "account" | "help";
 
@@ -36,7 +37,7 @@ export const allSettingsSection: SettingsSection[] = [
     label: "Security",
     icon: "lock",
     allRow: [
-      { id: "touch-id", title: "Unlock with Touch ID", keywords: "biometric fingerprint unlock" },
+      { id: "touch-id", title: unlockWithBiometric(), keywords: "biometric fingerprint unlock" },
       { id: "auto-lock", title: "Auto-lock", keywords: "lock idle timeout minutes" },
       { id: "clipboard", title: "Clear copied values after 90 seconds", keywords: "clipboard copy clear" },
       { id: "change-master-password", title: "Change master password", keywords: "password change new rotate" },

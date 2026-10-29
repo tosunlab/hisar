@@ -75,6 +75,7 @@ import {
   softwareLicenseCategory,
   softwareLicenseFieldName,
   sshKeyCategory,
+  turnOnBiometric,
 } from "../util";
 import { allColumnBound, detailMinWidth, loadColumnWidths, saveColumnWidths } from "../columnWidths";
 import AppIcon from "./AppIcon.vue";
@@ -699,7 +700,7 @@ onBeforeUnmount(() => {
       <PendingRecoveryReminder />
       <button v-if="store.biometricResetReminder" class="vault" data-testid="restore-touch-id" @click="openSettings('security')">
         <AppIcon name="fingerprint" />
-        <span class="vault-name">Turn on Touch ID…</span>
+        <span class="vault-name">{{ turnOnBiometric() }}…</span>
       </button>
       <div class="account">
         <span class="avatar">{{ getInitials(store.status.name || store.status.email) }}</span>
