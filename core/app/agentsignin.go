@@ -15,14 +15,16 @@ import (
 )
 
 // AgentSignIn is Settings → Coding agents → Website sign-in. IsAvailable: this app can fill browser windows (Hisar for
-// Mac). HasAccessibility: the system lets it.
+// Mac and Linux). HasAccessibility: the system lets it (Mac: the Accessibility permission; Linux: an X11 display and the
+// accessibility bus).
 type AgentSignIn struct {
 	IsAvailable      bool `json:"isAvailable"`
 	IsEnabled        bool `json:"isEnabled"`
 	HasAccessibility bool `json:"hasAccessibility"`
 }
 
-// GetAgentSignIn reads Settings → Coding agents → Website sign-in, and whether the system gives Hisar Accessibility now.
+// GetAgentSignIn reads Settings → Coding agents → Website sign-in, and whether the system lets Hisar read and fill
+// browser windows now.
 func (s *Service) GetAgentSignIn() AgentSignIn {
 	s.mutex.Lock()
 	isEnabled := s.state.IsAgentSignInEnabled
@@ -32,11 +34,11 @@ func (s *Service) GetAgentSignIn() AgentSignIn {
 }
 
 // SetAgentSignInEnabled turns website sign-in for agents on or off; turning it on without the Accessibility permission
-// has the system ask for it.
+// has the Mac ask for it.
 func (s *Service) SetAgentSignInEnabled(isEnabled bool) (AgentSignIn, error) {
 	driver := s.config.SignInDriver
 	if driver == nil {
-		return s.GetAgentSignIn(), errors.New("only Hisar for Mac signs agents in to websites")
+		return s.GetAgentSignIn(), errors.New("only Hisar for Mac and Linux signs agents in to websites")
 	}
 	s.mutex.Lock()
 	if err := s.requireUnlocked(); err != nil {
@@ -68,11 +70,11 @@ func (s *Service) requireSignIn() (*signin.Signer, error) {
 	settings := s.GetAgentSignIn()
 	switch {
 	case s.signer == nil:
-		return nil, refuseSignIn(signin.ReasonUnavailable, "Signing in to websites works only in Hisar for Mac.")
+		return nil, refuseSignIn(signin.ReasonUnavailable, "Signing in to websites works only in Hisar for Mac and Linux.")
 	case !settings.IsEnabled:
 		return nil, refuseSignIn(signin.ReasonDisabled, "Website sign-in is off in Hisar. Ask the user to turn on Hisar → Settings → Developer tools → Coding agents → Website sign-in.")
 	case !settings.HasAccessibility:
-		return nil, refuseSignIn(signin.ReasonNoAccess, "Hisar can't fill browser windows yet: macOS hasn't given it the Accessibility permission. Ask the user to open Hisar → Settings → Developer tools → Coding agents → Website sign-in and allow it.")
+		return nil, s.signer.RefuseNoAccess()
 	}
 	return s.signer, nil
 }

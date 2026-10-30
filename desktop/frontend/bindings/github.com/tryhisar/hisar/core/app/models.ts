@@ -74,7 +74,8 @@ export interface AgentSession {
 
 /**
  * AgentSignIn is Settings → Coding agents → Website sign-in. IsAvailable: this app can fill browser windows (Hisar for
- * Mac). HasAccessibility: the system lets it.
+ * Mac and Linux). HasAccessibility: the system lets it (Mac: the Accessibility permission; Linux: an X11 display and the
+ * accessibility bus).
  */
 export interface AgentSignIn {
     "isAvailable": boolean;

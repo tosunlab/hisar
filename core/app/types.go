@@ -599,8 +599,7 @@ type Config struct {
 	// DescribeApp names an app bundle and gives its icon as a data URL, for the coding agent sessions and agent hosts that
 	// Settings lists; nil names it by its file name, without an icon.
 	DescribeApp func(bundlePath string) (name string, iconURL string)
-	// SignInDriver fills browser windows for agent sign-in; nil where agents cannot sign in to websites (every platform
-	// but the Mac).
+	// SignInDriver fills browser windows for agent sign-in; nil where agents cannot sign in to websites (the phones).
 	SignInDriver signin.Driver
 	// AgentGrantHeads keeps the head of the saved agent grants; nil keeps a harness's grants for one session only, as the
 	// approval dialog then offers.

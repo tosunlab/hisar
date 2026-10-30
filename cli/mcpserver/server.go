@@ -127,7 +127,7 @@ func NewServer(config Config) (*mcp.Server, func()) {
 	mcp.AddTool(mcpServer, &mcp.Tool{
 		Name:        "sign_in",
 		Title:       "Sign in to a website",
-		Description: signInDescription,
+		Description: signInDescription(),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: isTrue(), OpenWorldHint: isTrue()},
 	}, server.signIn)
 	if config.IsRevealDisabled {

@@ -1,0 +1,67 @@
+{
+  "Process": {
+    "PID": 0,
+    "ParentPID": 0,
+    "StartTime": 0,
+    "Path": "/usr/lib/chromium/chromium",
+    "Arguments": null,
+    "WorkingDirectory": "",
+    "Signature": {
+      "Identifier": "",
+      "TeamID": ""
+    }
+  },
+  "Frames": [
+    {
+      "Parent": -1,
+      "Document": 1,
+      "URL": "http://127.0.0.1:47811/signup"
+    }
+  ],
+  "Fields": [
+    {
+      "ID": 2,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "email",
+      "Label": "Email",
+      "Identifier": "email",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 3,
+      "Frame": 0,
+      "IsSecure": true,
+      "InputType": "password",
+      "Label": "Password",
+      "Identifier": "password",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 4,
+      "Frame": 0,
+      "IsSecure": true,
+      "InputType": "password",
+      "Label": "Confirm password",
+      "Identifier": "confirm",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    }
+  ],
+  "Buttons": [
+    {
+      "ID": 5,
+      "Frame": 0,
+      "Title": "Create account",
+      "IsVisible": true
+    }
+  ]
+}

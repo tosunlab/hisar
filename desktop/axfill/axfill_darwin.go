@@ -14,7 +14,6 @@ import "C"
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -33,8 +32,6 @@ const readyTimeout = 3000
 // more messages, and each message asks the accessibility API to wait at most what is left. The API keeps that timeout
 // itself, so a message to a browser that stops answering can still outlast it.
 const operationTimeout = 5 * time.Second
-
-var errRefused = errors.New("axfill: the browser refused the action")
 
 // beginLimit limits one native call by ctx and operationTimeout. The call itself returns only once it sends nothing
 // more, so end, which must follow it, frees the cancellation flag no message still reads.
@@ -83,6 +80,8 @@ func New(resolver *appinfo.Resolver) signin.Driver {
 func (*Driver) HasAccess() bool {
 	return C.axfillHasAccess() != 0
 }
+
+func (*Driver) System() signin.System { return signin.SystemMac }
 
 func (*Driver) RequestAccess() {
 	C.axfillRequestAccess()

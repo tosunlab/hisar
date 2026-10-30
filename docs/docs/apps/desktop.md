@@ -416,13 +416,17 @@ An Approve button alone would let an agent that controls the screen approve itse
   Other requests still ask. Unlock, switch-off, revoke and sign-out erase the retained values.
   Values are from the moment Hisar locked; changes on another device take effect after the next unlock.
   The approval dialog explains the current behavior when you choose **Always**.
-- **Website sign-in** (off by default, Hisar for Mac only): "Let agents sign in to websites in your browser". Turning it on asks
-  macOS for the Accessibility permission; while it is missing the row says so, with **Open System Settings**, and it checks again
-  when Hisar's window comes back to the front. An agent then calls `sign_in` with a browser window's `pid` and `window_id`
-  (setup for Hermes, Claude Code and Codex: [Command-line tool](./cli.md#sign-in-to-websites-computer-use-agents)). Hisar
-  signs in only in Brave, Google Chrome and Microsoft Edge, and refuses one started with remote debugging. It reads the page's
+- **Website sign-in** (off by default, Hisar for Mac and Linux): "Let agents sign in to websites in your browser". On the Mac,
+  turning it on asks macOS for the Accessibility permission; while it is missing the row says so, with **Open System Settings**,
+  and it checks again when Hisar's window comes back to the front. On Linux it works on X11 and with browsers under XWayland;
+  the row says "X11 needed" without an X11 display or accessibility bus, and otherwise shows the command that starts the browser
+  with accessibility on (`ACCESSIBILITY_ENABLED=1 google-chrome --force-renderer-accessibility`). An agent then calls `sign_in`
+  with a browser window's `pid` and `window_id`, the X11 window ID on Linux (setup for Hermes, Claude Code and Codex:
+  [Command-line tool](./cli.md#sign-in-to-websites-computer-use-agents)). Hisar signs in only in Brave, Google Chrome and
+  Microsoft Edge, and Chromium on Linux, and refuses one started with remote debugging. On Linux it types the login into the
+  window in front, where any X11 program can read the keys ([On Linux](./cli.md#on-linux)). It reads the page's
   address from the browser itself, finds the logins in the vaults available to agents saved for it, and asks: "Hermes in Terminal
-  wants to sign in to https://tosunlab.com", with the browser, the login (a choice when several match, on this Mac only) and the menu.
+  wants to sign in to https://tosunlab.com", with the browser, the login (a choice when several match, on this computer only) and the menu.
   **Only this time** covers exactly that call: the agent's next `sign_in`, even at the same website, asks again. A longer choice
   covers that login at exactly that website. `cleanup-failed` ends that grant, or drops all saved grants if Hisar is locked or
   cannot save its removal.

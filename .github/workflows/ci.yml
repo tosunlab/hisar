@@ -224,6 +224,8 @@ jobs:
             HISAR_TEST_SECRET_SERVICE=1 go test -count=1 -run "^(TestAgentGrantHeadRoundtrip|TestAHeadAnotherProgramRewroteIsNotTheSavedOne)$" ./granthead'
       - name: Mark copies secret on X11 and Wayland (secretclipboard on Xvfb and a headless sway)
         run: bash scripts/test-secret-clipboard.sh
+      - name: Sign an agent in to a website in Chromium (axfill on Xvfb with AT-SPI and XTest)
+        run: bash scripts/test-agent-sign-in-linux.sh
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           cache: npm

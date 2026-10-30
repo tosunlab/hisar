@@ -195,15 +195,22 @@ func TestReopenedEventStreamSyncsWhatItMissed(t *testing.T) {
 		t.Fatal(err)
 	}
 	ReconnectEventStream(service)
-	select {
-	case <-remoteChangeChannel:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the reopened stream did not sync")
+	// A sync the first stream started can still signal after the cache was emptied, so the test waits for the item the
+	// reopened stream's sync brings, not for the next signal.
+	isSynced := func() bool {
+		service.mutex.Lock()
+		defer service.mutex.Unlock()
+		cachedItems := service.itemsByVaultID[testService.familyID]
+		return len(cachedItems) == 1 && cachedItems[0].Overview.Title == "Saved while disconnected"
 	}
-	service.mutex.Lock()
-	cachedItems := service.itemsByVaultID[testService.familyID]
-	service.mutex.Unlock()
-	if len(cachedItems) != 1 || cachedItems[0].Overview.Title != "Saved while disconnected" {
-		t.Errorf("items after the stream reopened = %+v", cachedItems)
+	for deadline := time.After(5 * time.Second); !isSynced(); {
+		select {
+		case <-remoteChangeChannel:
+		case <-deadline:
+			service.mutex.Lock()
+			t.Errorf("items after the stream reopened = %+v", service.itemsByVaultID[testService.familyID])
+			service.mutex.Unlock()
+			return
+		}
 	}
 }

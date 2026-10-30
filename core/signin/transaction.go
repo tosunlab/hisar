@@ -12,6 +12,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/totp"
 )
 
@@ -94,16 +95,16 @@ func (run *transaction) revalidate() (Snapshot, form, *Refusal) {
 		if errors.Is(err, ErrWindowNotFound) || errors.Is(err, ErrWindowClosed) {
 			return nil, form{}, refuseChanged("the window is gone")
 		}
-		return nil, form{}, refuseObserving(target, err)
+		return nil, form{}, run.signer.platform.refuseObserving(target, err)
 	}
 	page := snapshot.Page()
 	shown := "a page of another process"
 	if run.isSameProcess(page) {
 		shown = describePage(page)
 	}
-	browser, isBrowser := findBrowser(page.Process.Signature)
+	browser, isBrowser := run.signer.platform.findBrowser(page.Process)
 	isUnchanged := run.isSameProcess(page) && isBrowser && browser.ID == run.destination.Browser.ID &&
-		!isDebuggable(page.Process, browser, run.signer.homeDirectory)
+		!run.signer.platform.isDebuggable(page.Process, browser, run.signer.homeDirectory)
 	step, origin, refusal := inspectPage(page)
 	if !isUnchanged || refusal != nil || origin != run.destination.Origin {
 		snapshot.Close()
@@ -544,14 +545,14 @@ func inspectPage(page Page) (form, Origin, *Refusal) {
 }
 
 func (signer *Signer) checkBrowser(target Target, page Page) (Browser, *Refusal) {
-	browser, isBrowser := findBrowser(page.Process.Signature)
+	browser, isBrowser := signer.platform.findBrowser(page.Process)
 	if !isBrowser {
 		return Browser{}, &Refusal{Reason: ReasonNotBrowser, Message: fmt.Sprintf("Window %d belongs to %s, not a browser Hisar signs in with. Hisar supports %s.",
-			target.WindowID, describeApp(page.Process.Path), listBrowserNames())}
+			target.WindowID, describeApp(page.Process.Path), signer.platform.listBrowserNames())}
 	}
-	if isDebuggable(page.Process, browser, signer.homeDirectory) {
-		return Browser{}, &Refusal{Reason: ReasonDebuggable, Message: browser.Name + " was started with remote debugging, so any program on this Mac could read what Hisar types into its pages. " +
-			"Hisar won't sign in there. Use a browser window that was started normally."}
+	if signer.platform.isDebuggable(page.Process, browser, signer.homeDirectory) {
+		return Browser{}, &Refusal{Reason: ReasonDebuggable, Message: browser.Name + " was started with remote debugging, so any program on " +
+			signer.platform.describeComputer() + " could read what Hisar types into its pages. Hisar won't sign in there. Use a browser window that was started normally."}
 	}
 	return browser, nil
 }
@@ -583,11 +584,38 @@ func describePage(page Page) string {
 	return describeURL(page.Frames[0].URL)
 }
 
-func refuseObserving(target Target, err error) *Refusal {
+// RefuseNoAccess is the refusal of a sign-in the system does not let Hisar read browser windows for, in the driver's
+// system's words.
+func (signer *Signer) RefuseNoAccess() *Refusal {
+	return signer.platform.refuseObserving(Target{}, ErrNoAccess)
+}
+
+func (platform platform) describeComputer() string {
+	if platform.isLinux {
+		return "this computer"
+	}
+	return "this Mac"
+}
+
+func (platform platform) refuseObserving(target Target, err error) *Refusal {
+	var inaccessible *InaccessibleError
 	switch {
+	case errors.As(err, &inaccessible):
+		name, command := "The browser", "its accessibility switches: ACCESSIBILITY_ENABLED=1 and --force-renderer-accessibility"
+		if browser, isBrowser := platform.findBrowser(agentharness.Process{Path: inaccessible.Path}); isBrowser {
+			name, command = browser.Name, browser.LaunchCommand
+		}
+		return &Refusal{Reason: ReasonInaccessible, Message: name + " was started without accessibility, so Hisar can't read its pages. " +
+			"Ask the user to quit it and start it again with " + command + ", then call sign_in again."}
+	case errors.Is(err, ErrNoAccess) && platform.isLinux:
+		return &Refusal{Reason: ReasonNoAccess, Message: "Hisar can't read browser windows: this session has no X11 display with the XTest and X-Resource extensions, or no accessibility bus. " +
+			"Website sign-in on Linux needs an X11 session, or a browser running under XWayland."}
 	case errors.Is(err, ErrNoAccess):
 		return &Refusal{Reason: ReasonNoAccess, Message: "Hisar can't fill browser windows yet: macOS hasn't given it the Accessibility permission. " +
 			"Ask the user to open Hisar → Settings → Developer tools → Coding agents → Website sign-in and allow it."}
+	case errors.Is(err, ErrNotVisible) && platform.isLinux:
+		return &Refusal{Reason: ReasonNotVisible, Message: fmt.Sprintf("Window %d is not the active window, or it is minimized: Hisar signs in only in the window in front. "+
+			"Bring it to the front, then call sign_in again.", target.WindowID)}
 	case errors.Is(err, ErrNotVisible):
 		return &Refusal{Reason: ReasonNotVisible, Message: fmt.Sprintf("Window %d is on another Space (or minimized), where Hisar can't read the page. "+
 			"Bring it to the current Space with focus_app or bring_to_front, then call sign_in again.", target.WindowID)}
@@ -596,6 +624,9 @@ func refuseObserving(target Target, err error) *Refusal {
 			"Wait until the page has loaded and call sign_in again.", target.WindowID)}
 	case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
 		return refuseInterrupted()
+	case platform.isLinux:
+		return &Refusal{Reason: ReasonWindowNotFound, Message: fmt.Sprintf("Process %d has no window %d. Get the current pid and X11 window ID "+
+			"from your window tool (for example xdotool getactivewindow, then xdotool getwindowpid).", target.PID, target.WindowID)}
 	default:
 		return &Refusal{Reason: ReasonWindowNotFound, Message: fmt.Sprintf("Process %d has no window %d. Get the current pid and window_id from list_windows.", target.PID, target.WindowID)}
 	}

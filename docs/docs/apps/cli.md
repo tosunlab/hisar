@@ -123,7 +123,7 @@ The agent gets these tools:
 | `list_vaults` | the vaults available to agents | once per agent connection |
 | `search_items` | items by title, username, URL or vault: metadata, field labels and `hisar://` references, never values or notes | once per agent connection |
 | `run_with_secrets` | runs a command, as an argument list or a `/bin/sh -c` command line, with secrets from `env` (variable → `hisar://` reference), `envFiles` (as `hisar run --env-file`) and `stdin` (text or one reference); through `direnv exec` when the directory has an allowed `.envrc`; output masked, at most 64 KiB per stream and streamed as progress to clients that ask, timeout up to 1 hour | every call, showing the command with the env files' plain values (`env NAME=value …`) and its stdin, the directory and secrets, unless you allowed those secrets for longer |
-| `sign_in` | signs in to the website in a browser window (`pid` and `window_id` from cua-driver's `list_windows`) with the login saved for it; Hisar for Mac enters and submits it, and the agent gets the outcome, never the password or code | every call, showing the website, the browser and the login, unless you allowed that login on that website for longer |
+| `sign_in` | signs in to the website in a browser window (`pid` and `window_id`: from cua-driver's `list_windows` on the Mac, the X11 window on Linux) with the login saved for it; Hisar for Mac or Linux enters and submits it, and the agent gets the outcome, never the password or code | every call, showing the website, the browser and the login, unless you allowed that login on that website for longer |
 | `get_one_time_code` | the current one-time code of an item | every call, unless you allowed it for longer |
 | `get_secret` | reveals one value to the agent | every call, unless you allowed that field for longer; another field of the item asks again. `private key` is always refused |
 
@@ -215,13 +215,14 @@ agent host. Its other processes without a terminal ask on every connection, and 
 
 ## Sign in to websites (computer-use agents)
 
-An agent that drives your Mac through [cua-driver](https://cua.ai/docs/cua-driver) can ask Hisar to sign in to a website instead
-of supplying a password in tool arguments. It calls `sign_in` on `hisar mcp`, and Hisar for Mac fills the browser window itself.
-It works in Brave, Google Chrome and Microsoft Edge. The tool returns no credential value, but page scripts and captures can
-still expose entered values.
+An agent that drives your Mac through [cua-driver](https://cua.ai/docs/cua-driver), or your Linux desktop through its own
+window tools, can ask Hisar to sign in to a website instead of supplying a password in tool arguments. It calls `sign_in` on
+`hisar mcp`, and Hisar fills the browser window itself. On the Mac it works in Brave, Google Chrome and Microsoft Edge; on Linux
+in Google Chrome, Chromium, Brave and Microsoft Edge on X11 (see [On Linux](#on-linux)). The tool returns no credential value,
+but page scripts and captures can still expose entered values.
 
-1. The agent opens the site's sign-in page and calls `sign_in` with the window's `pid` and `window_id` from cua-driver's
-   `list_windows`.
+1. The agent opens the site's sign-in page and calls `sign_in` with the window's `pid` and `window_id`: from cua-driver's
+   `list_windows` on the Mac, the browser's process and X11 window ID on Linux.
 2. Hisar reads the page's address from the browser's accessibility tree, never from the agent, and finds the logins saved for
    that website in the vaults available to agents.
 3. Hisar asks you, naming the agent, the website, the browser and the login. You approve with Touch ID, your master password or
@@ -234,13 +235,37 @@ still expose entered values.
 ### Turn on Website sign-in
 
 In Hisar, open Settings → Developer tools → Coding agents and turn on **Let agents sign in to websites in your browser** under
-Website sign-in. It is off by default. Turning it on asks macOS to give Hisar the Accessibility permission. Until macOS does, the
-row says "Accessibility permission needed", and **Open System Settings** opens Privacy & Security → Accessibility, where you turn
-on Hisar. cua-driver needs its own permissions as well; its [quickstart](https://cua.ai/docs/cua-driver/quickstart) lists them.
+Website sign-in. It is off by default. On the Mac, turning it on asks macOS to give Hisar the Accessibility permission. Until
+macOS does, the row says "Accessibility permission needed", and **Open System Settings** opens Privacy & Security →
+Accessibility, where you turn on Hisar. cua-driver needs its own permissions as well; its
+[quickstart](https://cua.ai/docs/cua-driver/quickstart) lists them. On Linux there is no permission to give; the row says
+"X11 needed" in a session without an X11 display or accessibility bus, and otherwise shows how to start your browser.
 
 Hisar signs in only with logins in vaults whose "Available to agents" switch is on (above), and only on a website the login is
 saved for: the same host, or, with Settings → Browser → **Only fill on the exact host** off, a host under the same domain (a login
 for `google.com` also fills on `accounts.google.com`). The page must be https, or http on `localhost` or a loopback address.
+
+### On Linux
+
+Hisar for Linux signs in on X11, and in a Wayland session to browsers that run under XWayland, as Chrome, Chromium, Brave and
+Edge do unless started with `--ozone-platform=wayland`. A native Wayland window is refused: Wayland gives it no X11 window ID
+and lets no program type into it.
+
+1. Start the browser with accessibility on, or it keeps its pages from Hisar:
+
+   ```sh
+   ACCESSIBILITY_ENABLED=1 google-chrome --force-renderer-accessibility
+   ```
+
+   The same works with `chromium`, `brave-browser` and `microsoft-edge`. Hisar recognizes the browsers installed by their
+   packages (`/opt/google/chrome`, `/usr/lib/chromium`, `/opt/brave.com/brave`, `/opt/microsoft/msedge`); a Flatpak or Snap
+   browser is refused.
+2. The agent brings the browser window to the front and passes its process ID and X11 window ID, for example
+   `window_id` from `xdotool getactivewindow` and `pid` from `xdotool getwindowpid <window_id>`. Hisar signs in only in the
+   active window.
+3. Hisar types the login into the focused field. It checks before every key that the window is still in front, the field
+   still has the focus and the page is still on the same website, and stops at the first change. Don't type or switch windows
+   while it signs in. While Hisar types, any X11 program on your display can read the keys, as it can read yours.
 
 ### Hermes
 
@@ -326,7 +351,8 @@ a one-time code or an authenticator secret to `hisar mcp`. A refusal is a tool e
 ### Limits
 
 - `sign_in` returns no password or one-time code. A screenshot, recording or accessibility read can capture a one-time code
-  while the page retains it. Hisar enters passwords only into fields macOS reports as secure text fields.
+  while the page retains it. Hisar enters passwords only into fields macOS reports as secure text fields, or AT-SPI as
+  password text on Linux.
   Browsers normally mask these with dots, which reveal the password's length. Page scripts and show-password controls can
   reveal the password.
 - Hisar uses a 15-second deadline after each submit and a separate five-second cleanup timeout. A browser Accessibility call
@@ -343,7 +369,10 @@ a one-time code or an authenticator secret to `hisar mcp`. A refusal is a tool e
   a passkey, an account chooser or a CAPTCHA is for the agent or for you.
 - Out of scope: an agent that operates Hisar's own window while Hisar is unlocked, and other programs that run as you, which can
   read the browser's pages or take screenshots themselves.
-- Safari, Arc and other browsers are not supported. Hisar signs in one window at a time; a second `sign_in` waits for the first.
+- Safari, Arc, Firefox and other browsers are not supported. Hisar signs in one window at a time; a second `sign_in` waits for
+  the first.
+- On Linux the keys Hisar types are X11 events that any X11 program on the display can read, and a layout without a key for a
+  character of the password (one that needs AltGr or a dead key) refuses the sign-in before any key is pressed.
 
 See [Design](../design.md) §9.4.5 for the transaction and threat model.
 
@@ -354,16 +383,20 @@ string format, including escapes when needed.
 
 | The agent gets | What to do |
 |---|---|
-| "Signing in to websites works only in Hisar for Mac." | Use Hisar for Mac; the Linux app does not sign in to websites. |
+| "Signing in to websites works only in Hisar for Mac and Linux." | Use Hisar for Mac or Linux; the phones do not sign in to websites. |
 | "This Hisar app can't sign in to websites. Ask the user to update Hisar." | Update the Hisar app. |
 | `Website sign-in is off in Hisar. Ask the user to turn on Hisar → Settings → Developer tools → Coding agents → Website sign-in.` | Turn on Website sign-in (above). |
 | `Hisar can't fill browser windows yet: macOS hasn't given it the Accessibility permission. Ask the user to open Hisar → Settings → Developer tools → Coding agents → Website sign-in and allow it.` | Turn on Hisar in System Settings → Privacy & Security → Accessibility. |
+| `Hisar can't read browser windows: this session has no X11 display with the XTest and X-Resource extensions, or no accessibility bus. Website sign-in on Linux needs an X11 session, or a browser running under XWayland.` | Linux: use an X11 session, or a browser under XWayland. |
+| `{browser} was started without accessibility, so Hisar can't read its pages. Ask the user to quit it and start it again with {command}, then call sign_in again.` | Linux: quit the browser and start it with the command shown ([On Linux](#on-linux)). |
 | `pass the pid and window_id of the browser window from list_windows` | Supply a positive process ID and a nonzero window ID from `list_windows`. |
 | "Process {pid} has no window {window_id}. Get the current pid and window_id from list_windows." | The window closed or the IDs are old; the agent lists the windows again. |
+| "Process {pid} has no window {window_id}. Get the current pid and X11 window ID from your window tool (for example xdotool getactivewindow, then xdotool getwindowpid)." | Linux: the window closed, the IDs are old, or the window is a native Wayland one. |
+| `Window {window_id} is not the active window, or it is minimized: Hisar signs in only in the window in front. Bring it to the front, then call sign_in again.` | Linux: bring the window to the front, then call again. |
 | `Window {window_id} is on another Space (or minimized), where Hisar can't read the page. Bring it to the current Space with focus_app or bring_to_front, then call sign_in again.` | Bring the window to the current Space, then call again. |
 | `Hisar couldn't read window {window_id} in full: the browser didn't answer in time, or the page is too large. Wait until the page has loaded and call sign_in again.` | Wait until the page has loaded, then call again. |
-| "Window {window_id} belongs to {app}, not a browser Hisar signs in with. Hisar supports Brave Browser, Google Chrome and Microsoft Edge." | Use a window of one of those browsers. |
-| `{browser} was started with remote debugging, so any program on this Mac could read what Hisar types into its pages. Hisar won't sign in there. Use a browser window that was started normally.` | Quit the browser and start it normally, or use another browser window. |
+| "Window {window_id} belongs to {app}, not a browser Hisar signs in with. Hisar supports Brave Browser, Google Chrome and Microsoft Edge." | Use a window of one of those browsers. On Linux the list is Google Chrome, Chromium, Brave and Microsoft Edge, installed by their packages. |
+| `{browser} was started with remote debugging, so any program on this Mac (this computer, on Linux) could read what Hisar types into its pages. Hisar won't sign in there. Use a browser window that was started normally.` | Quit the browser and start it normally, or use another browser window. |
 | `The window shows {address}, not a website. Open the site's sign-in page and call sign_in again.` | Open the site's sign-in page first. |
 | `The window shows a page that is not a website. Open the site's sign-in page and call sign_in again.` | Open the site's sign-in page first. |
 | "The page is {website}. Hisar signs in only on https pages." | Use the site's https address. |
@@ -391,15 +424,15 @@ string format, including escapes when needed.
 
 ### For agent and driver authors
 
-`sign_in` is a tool of `hisar mcp`, with or without `--no-reveal`. Hisar for Mac answers it; the app announces the
+`sign_in` is a tool of `hisar mcp`, with or without `--no-reveal`. Hisar for Mac and Linux answer it; the app announces the
 `agent-sign-in` feature, and `hisar mcp` refuses the call on an app without it.
 
 **Input.**
 
 | Field | Type | Meaning |
 |---|---|---|
-| `pid` | integer, required | The browser process that owns the window, as cua-driver's `list_windows` reports it. |
-| `window_id` | integer, required | The macOS window ID (`CGWindowID`) of the browser window. |
+| `pid` | integer, required | The browser process that owns the window, as cua-driver's `list_windows` reports it on the Mac (on Linux, the process that created the X window, as `xdotool getwindowpid` reports it). |
+| `window_id` | integer, required | The macOS window ID (`CGWindowID`) of the browser window, or its X11 window ID on Linux. |
 | `login` | string, optional | The item ID from `search_items`, for a site where the user has several accounts. Without it, Hisar offers every login saved for the website. |
 
 Call it while the page shows its sign-in form. Do not type into the form first. Hisar replaces what the fields hold.

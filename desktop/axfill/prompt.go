@@ -9,6 +9,9 @@ type rect struct {
 	Height float64 `json:"height"`
 }
 
+// buttonRole is a button's role in a promptControl: the macOS role, which the Linux driver gives AT-SPI's push buttons.
+const buttonRole = "AXButton"
+
 // promptControl is a control of a browser prompt as its accessibility tree describes it. Classes are the Views class
 // names Chromium reports for the control, and AncestorClasses those of the views around it, nearest first; both are
 // the same in every language.
@@ -31,7 +34,7 @@ const closeCorner = 48
 func findCloseControl(prompt rect, controls []promptControl) (promptControl, bool) {
 	var found []promptControl
 	for _, control := range controls {
-		if control.Role == "AXButton" && slices.Equal(control.Classes, []string{"ImageButton"}) {
+		if control.Role == buttonRole && slices.Equal(control.Classes, []string{"ImageButton"}) {
 			found = append(found, control)
 		}
 	}

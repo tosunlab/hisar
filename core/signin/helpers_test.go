@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -21,7 +22,8 @@ const (
 	fixtureOther = "http://localhost:47812"
 )
 
-var recordedBrowsers = []string{"brave", "chrome", "edge"}
+// recordedBrowsers are the folders of testdata/pages: the Mac's browsers by ID, and Linux's as linux-<ID>.
+var recordedBrowsers = []string{"brave", "chrome", "edge", "linux-chromium"}
 
 var testTiming = timing{
 	poll: time.Millisecond, await: 150 * time.Millisecond, settle: 50 * time.Millisecond,
@@ -62,13 +64,22 @@ type fakeBrowser struct {
 	readBack          func(field Field, value string) int
 	isPromptPermanent bool
 	onListPrompts     func() error
+	// isLinux is a browser recorded on Linux, which the Linux platform signs in with.
+	isLinux bool
 }
 
 const hungObserveBound = 400 * time.Millisecond
 
 func newFakeBrowser(t *testing.T, browser string) *fakeBrowser {
+	if id, isLinux := strings.CutPrefix(browser, "linux-"); isLinux {
+		path := linuxExecutables[id][0]
+		return &fakeBrowser{
+			t: t, name: browser, values: map[ElementID]string{}, nextID: 1000, isLinux: true,
+			process: agentharness.Process{PID: 4242, StartTime: 1_700_000_000, Path: path, Arguments: []string{path + " --force-renderer-accessibility"}},
+		}
+	}
 	signatures := map[string]agentharness.Signature{}
-	for _, row := range browsers {
+	for _, row := range macBrowsers {
 		signatures[row.ID] = row.Signature
 	}
 	return &fakeBrowser{
@@ -159,6 +170,13 @@ type fakeDriver struct {
 func (fakeDriver) HasAccess() bool { return true }
 
 func (fakeDriver) RequestAccess() {}
+
+func (driver fakeDriver) System() System {
+	if driver.browser.isLinux {
+		return SystemLinux
+	}
+	return SystemMac
+}
 
 func (driver fakeDriver) Observe(ctx context.Context, target Target) (Snapshot, error) {
 	if err := ctx.Err(); err != nil {
@@ -347,7 +365,11 @@ var savePasswordPrompt = Prompt{ID: 9000, Title: "Save password?", ButtonTitles:
 
 func newTestSigner(browser *fakeBrowser, now time.Time) *Signer {
 	signer := NewSigner(fakeDriver{browser: browser}, browser.t.TempDir(), func() time.Time { return now })
-	signer.timing = testTiming
+	// Each recorded browser signs in on its own platform, whatever system runs the tests.
+	signer.platform, signer.timing = macPlatform, testTiming
+	if browser.isLinux {
+		signer.platform = testLinuxPlatform(browser.process.Path)
+	}
 	return signer
 }
 

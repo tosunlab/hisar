@@ -6,7 +6,8 @@
 # scripts/app-paths.sh says what each app is built from: core/ and go.work count for each, and the desktop app also counts
 # cli/ and omp/. The phone apps share mobile/hisarkit and mobile/go.mod; an Android-only change keeps off the macOS runner.
 # The phone UI tests and the admin browser tests also run when what they run against changes (testBackendPaths:
-# hisar-server, the hisar CLI and the Makefile), and every job runs when the Makefile changes. The Go tests read scripts
+# hisar-server, the hisar CLI and the Makefile), the desktop tests when the sign-in fixture site changes
+# (desktopTestPaths), and every job runs when the Makefile changes. The Go tests read scripts
 # and fixtures across the repository, so they run unless the change is only to the non-Go apps (nonGoPaths).
 #
 # Environment: BASE_SHA, HEAD_SHA, IS_FORCED ("true" runs everything) and WORKFLOW_FILE (a change to it, or to the
@@ -32,7 +33,7 @@ if [ "${IS_FORCED:-false}" = true ]; then
 else
   # shellcheck source=scripts/app-paths.sh
   source "$(dirname "$0")/app-paths.sh"
-  if isChanged "${desktopPaths[@]}" Makefile; then setChanged Desktop true; fi
+  if isChanged "${desktopPaths[@]}" "${desktopTestPaths[@]}" Makefile; then setChanged Desktop true; fi
   if isChanged "${mobilePaths[@]}" "${testBackendPaths[@]}"; then setChanged Mobile true; fi
   if isChanged "${androidPaths[@]}" "${testBackendPaths[@]}"; then setChanged Android true; fi
   if isChanged "${serverPaths[@]}" "${testBackendPaths[@]}"; then setChanged Admin true; fi

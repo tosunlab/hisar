@@ -47,7 +47,7 @@ hisar run --env-file .env -- npm run dev
 
 Use cua-driver's native window controls, or Hermes' native `computer_use` route, not a CDP browser tool. Hisar refuses debuggable browsers.
 
-At a sign-in page, call `sign_in` instead of typing. Give the window's `pid` and `window_id` from `list_windows`. Give `login`, an item ID from `search_items`, only when the user has several accounts on the site. Hisar reads the website from the browser and asks unless a grant covers the login. It fills and submits the login, then attempts to clear remaining entries and reports the cleanup evidence. It needs Hisar for Mac and a Brave, Chrome or Edge window on the current Space. Never type a password or one-time code yourself, and do not type into the form before the call.
+At a sign-in page, call `sign_in` instead of typing. Give the window's `pid` and `window_id` from `list_windows` (on Linux, the X11 window ID and its process, as `xdotool getactivewindow` and `xdotool getwindowpid` report them). Give `login`, an item ID from `search_items`, only when the user has several accounts on the site. Hisar reads the website from the browser and asks unless a grant covers the login. It fills and submits the login, then attempts to clear remaining entries and reports the cleanup evidence. It needs Hisar for Mac and a Brave, Chrome or Edge window on the current Space, or Hisar for Linux and a Chrome, Chromium, Brave or Edge window in front on X11, started with `ACCESSIBILITY_ENABLED=1` and `--force-renderer-accessibility`. Never type a password or one-time code yourself, and do not type into the form before the call.
 
 The result's `outcome` says what to do next:
 

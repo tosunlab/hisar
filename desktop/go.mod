@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/godbus/dbus/v5 v5.2.2
+	github.com/jezek/xgb v1.3.1
 	github.com/wailsapp/wails/v3 v3.0.0-beta.23
 	github.com/zalando/go-keyring v0.2.8
 	go.yaml.in/yaml/v3 v3.0.5

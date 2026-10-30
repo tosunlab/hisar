@@ -6,7 +6,7 @@ override GOTOOLCHAIN := $(shell bash scripts/go-toolchain.sh)
 $(if $(strip $(GOTOOLCHAIN)),,$(error go.work must name the release toolchain))
 export GOTOOLCHAIN
 
-.PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end test-agent-sign-in docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update package-desktop-linux package-desktop-flatpak test-extension test-extension-end-to-end test-extension-firefox-end-to-end build-extension test-raycast build-docs test-docs test-omp test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui install-android-sdk build-android-aar build-android test-android test-android-ui generate-themes
+.PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end test-agent-sign-in test-agent-sign-in-linux docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update package-desktop-linux package-desktop-flatpak test-extension test-extension-end-to-end test-extension-firefox-end-to-end build-extension test-raycast build-docs test-docs test-omp test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui install-android-sdk build-android-aar build-android test-android test-android-ui generate-themes
 
 build: build-admin
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -64,6 +64,9 @@ test-end-to-end: build
 
 test-agent-sign-in:
 	./scripts/test-agent-sign-in.sh
+
+test-agent-sign-in-linux:
+	./scripts/test-agent-sign-in-linux.sh
 
 # VERSION=1.2.3 builds hisar-server 1.2.3, as the server-<version> release workflow does; without it the version is dev.
 docker:
