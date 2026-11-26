@@ -10,6 +10,7 @@ type Handler = (message: InlineMenuMessage) => unknown;
 let handler: Handler;
 let allMessage: InlineMenuMessage[];
 let allBroadcastListener: ((message: InlineMenuBroadcast) => void)[];
+const allMounted: { unmount: () => void }[] = [];
 
 const allLogin: LoginSummary[] = [
   { vaultID: "v1", itemID: "i1", title: "Example", username: "alex@example.com", vaultName: "Personal" },
@@ -17,7 +18,17 @@ const allLogin: LoginSummary[] = [
 ];
 
 function createState(overrides: Partial<InlineMenuState> = {}): InlineMenuState {
-  return { view: "logins", purpose: "login", host: "example.com", allLogin, hasMoreLogin: false, ...overrides };
+  return { view: "logins", purpose: "login", host: "example.com", allLogin, ...overrides };
+}
+
+function createManyLogins(count: number): LoginSummary[] {
+  return Array.from({ length: count }, (_, index) => ({
+    vaultID: "v1",
+    itemID: `many-${index}`,
+    title: index === count - 1 ? "Billing console" : `Account ${index + 1}`,
+    username: `user${index + 1}@example.com`,
+    vaultName: "Personal",
+  }));
 }
 
 function respondWith(state: InlineMenuState, overrides: Partial<Record<InlineMenuMessage["type"], Handler>> = {}): void {
@@ -31,6 +42,7 @@ function respondWith(state: InlineMenuState, overrides: Partial<Record<InlineMen
 
 async function mountMenu(props: Record<string, unknown> = {}) {
   const wrapper = mount(InlineMenu, { props: { sessionID: "session-1", isEventTrusted: () => true, ...props }, attachTo: document.body });
+  allMounted.push(wrapper);
   await flushPromises();
   return wrapper;
 }
@@ -66,6 +78,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // A menu left mounted keeps its window keydown listener and would answer the next test's keys.
+  for (const wrapper of allMounted.splice(0)) wrapper.unmount();
   vi.unstubAllGlobals();
   vi.useRealTimers();
   document.body.innerHTML = "";
@@ -176,12 +190,135 @@ describe("inline menu page", () => {
     expect(wrapper.find(".menu").attributes("aria-busy")).toBe("false");
   });
 
-  it("offers More in Hisar when there are more logins", async () => {
-    respondWith(createState({ hasMoreLogin: true }));
+  it("shows five logins and a Show all row that expands the menu in place, without opening the popup", async () => {
+    respondWith(createState({ allLogin: createManyLogins(12) }));
     const wrapper = await mountMenu();
-    await wrapper.find('[data-testid="inline-more"]').trigger("click");
+    expect(wrapper.findAll('[data-testid="inline-login"]')).toHaveLength(5);
+    expect(wrapper.find('[data-testid="inline-show-all"]').text()).toBe("Show all 12 logins+7");
+    expect(wrapper.find('[data-testid="inline-filter"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="inline-show-all"]').trigger("click");
     await flushPromises();
-    expect(allMessage).toContainEqual({ type: "inlineMenu.openPopup", sessionID: "session-1" });
+    expect(wrapper.findAll('[data-testid="inline-login"]')).toHaveLength(12);
+    expect(wrapper.find('[data-testid="inline-show-all"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="inline-login"]')[5].classes()).toContain("selected");
+    expect(allMessage.some((message) => message.type === "inlineMenu.openPopup")).toBe(false);
+    expect(document.activeElement).toBe(wrapper.find('[data-testid="inline-filter"]').element);
+  });
+
+  it("filters the expanded list and fills the first match on Enter", async () => {
+    respondWith(createState({ allLogin: createManyLogins(12) }));
+    const wrapper = await mountMenu();
+    await wrapper.find('[data-testid="inline-show-all"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="inline-filter"]').setValue("billing");
+    expect(wrapper.findAll('[data-testid="inline-login"]').map((row) => row.text())).toEqual(["BBilling consoleuser12@example.com"]);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "inlineMenu.fillLogin", sessionID: "session-1", vaultID: "v1", itemID: "many-11" });
+    await wrapper.find('[data-testid="inline-filter"]').setValue("nothing here");
+    expect(wrapper.find('[data-testid="inline-no-matches"]').text()).toBe('Nothing matches "nothing here".');
+  });
+
+  describe("other logins", () => {
+    const gitlab = { vaultID: "v9", itemID: "gitlab", title: "GitLab", username: "alex", host: "gitlab.com" };
+
+    async function searchFor(query: string, overrides: Partial<InlineMenuState> = {}) {
+      respondWith(createState({ canFillOtherLogins: true, ...overrides }), {
+        "inlineMenu.searchOtherLogins": (message) => ((message as { query: string }).query === "git" ? [gitlab] : []),
+      });
+      const wrapper = await mountMenu({ searchDelayMilliseconds: 0 });
+      if (wrapper.find('[data-testid="inline-show-all"]').exists()) await wrapper.find('[data-testid="inline-show-all"]').trigger("click");
+      await flushPromises();
+      await wrapper.find('[data-testid="inline-filter"]').setValue(query);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flushPromises();
+      return wrapper;
+    }
+
+    it("lists the logins found for the filter under the page's own, with the site each is saved for", async () => {
+      const wrapper = await searchFor("git", { allLogin: createManyLogins(7) });
+      expect(allMessage).toContainEqual({ type: "inlineMenu.searchOtherLogins", sessionID: "session-1", query: "git" });
+      expect(wrapper.find('[data-testid="inline-other-title"]').text()).toBe("Other logins in Hisar");
+      expect(wrapper.find('[data-testid="inline-other"]').text()).toBe("GGitLabalex · saved for gitlab.com");
+      expect(wrapper.find('[data-testid="inline-no-matches"]').exists()).toBe(false);
+    });
+
+    it("asks before filling one, fills only on a click on the question, and Escape takes the question back", async () => {
+      const wrapper = await searchFor("git");
+      await wrapper.find('[data-testid="inline-other"]').trigger("click");
+      expect(wrapper.find('[data-testid="inline-confirm"]').text()).toContain("Use “GitLab” on example.com?");
+      expect(wrapper.find('[data-testid="inline-confirm"]').text()).toContain("This login is saved for gitlab.com.");
+      expect(allMessage.some((message) => message.type === "inlineMenu.fillOtherLogin")).toBe(false);
+      // Enter relayed from the page or pressed in the menu does not answer the question.
+      broadcast("ArrowDown");
+      broadcast("Enter");
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+      await flushPromises();
+      expect(allMessage.filter((message) => message.type === "inlineMenu.fillOtherLogin" || message.type === "inlineMenu.fillLogin")).toEqual([]);
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await flushPromises();
+      expect(wrapper.find('[data-testid="inline-confirm"]').exists()).toBe(false);
+      expect(allMessage.some((message) => message.type === "inlineMenu.close")).toBe(false);
+
+      await wrapper.find('[data-testid="inline-other"]').trigger("click");
+      await wrapper.find('[data-testid="inline-confirm-other"]').trigger("click");
+      await flushPromises();
+      expect(allMessage).toContainEqual({ type: "inlineMenu.fillOtherLogin", sessionID: "session-1", vaultID: "v9", itemID: "gitlab" });
+    });
+
+    it("refuses a confirmation the browser did not see the user make", async () => {
+      respondWith(createState({ canFillOtherLogins: true }), { "inlineMenu.searchOtherLogins": () => [gitlab] });
+      const wrapper = await mountMenu({ searchDelayMilliseconds: 0, isEventTrusted: (event: Event) => event.type !== "click" || !(event.target as Element).matches('[data-testid="inline-confirm-other"]') });
+      await wrapper.find('[data-testid="inline-show-all"]').trigger("click");
+      await flushPromises();
+      await wrapper.find('[data-testid="inline-filter"]').setValue("git");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flushPromises();
+      await wrapper.find('[data-testid="inline-other"]').trigger("click");
+      await wrapper.find('[data-testid="inline-confirm-other"]').trigger("click");
+      await flushPromises();
+      expect(allMessage.some((message) => message.type === "inlineMenu.fillOtherLogin")).toBe(false);
+    });
+
+    it("offers to find a login when none is saved for the page, and searches nothing for one letter", async () => {
+      respondWith(createState({ allLogin: [], canFillOtherLogins: true }), { "inlineMenu.searchOtherLogins": () => [gitlab] });
+      const wrapper = await mountMenu({ searchDelayMilliseconds: 0 });
+      expect(wrapper.find('[data-testid="inline-no-logins"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="inline-show-all"]').text()).toBe("Find a login in Hisar…");
+      await wrapper.find('[data-testid="inline-show-all"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.find('[data-testid="inline-filter"]').attributes("placeholder")).toBe("Search all logins");
+      await wrapper.find('[data-testid="inline-filter"]').setValue("g");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await flushPromises();
+      expect(allMessage.some((message) => message.type === "inlineMenu.searchOtherLogins")).toBe(false);
+    });
+
+    it("never searches when the app cannot add sites to logins", async () => {
+      respondWith(createState({ allLogin: [] }));
+      const wrapper = await mountMenu({ searchDelayMilliseconds: 0 });
+      expect(wrapper.find('[data-testid="inline-show-all"]').exists()).toBe(false);
+    });
+  });
+
+  it("collapses cards the same way", async () => {
+    const allCard = Array.from({ length: 7 }, (_, index) => ({ vaultID: "v1", itemID: `card-${index}`, title: `Card ${index}`, brand: "Visa", last4: `000${index}`, expiry: "08/29", vaultName: "Personal" }));
+    respondWith(createState({ purpose: "card", allLogin: [], allCard }));
+    const wrapper = await mountMenu();
+    expect(wrapper.findAll('[data-testid="inline-card"]')).toHaveLength(5);
+    expect(wrapper.find('[data-testid="inline-show-all"]').text()).toBe("Show all 7 cards+2");
+  });
+
+  it("reaches Show all with the arrow keys and expands on Enter", async () => {
+    respondWith(createState({ allLogin: createManyLogins(8) }));
+    const wrapper = await mountMenu();
+    broadcast("ArrowUp");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="inline-show-all"]').classes()).toContain("selected");
+    broadcast("Enter");
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="inline-login"]')).toHaveLength(8);
+    expect(wrapper.findAll('[data-testid="inline-login"]')[5].classes()).toContain("selected");
   });
 
   it("says when no login matches and that Hisar offers to save after sign-in", async () => {
@@ -258,7 +395,7 @@ describe("inline menu page", () => {
   });
 
   it("moves the selection with relayed arrow keys and fills on Enter", async () => {
-    respondWith(createState({ hasMoreLogin: true }));
+    respondWith(createState());
     const wrapper = await mountMenu();
     broadcast("Enter");
     broadcast("ArrowDown", "another-session");
@@ -271,10 +408,8 @@ describe("inline menu page", () => {
     // A menu cut to fit the window scrolls the chosen entry into view.
     expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest" });
     broadcast("ArrowDown");
-    broadcast("ArrowDown");
-    broadcast("ArrowUp");
     await flushPromises();
-    expect(wrapper.find('[data-testid="inline-more"]').classes()).toContain("selected");
+    expect(wrapper.findAll('[data-testid="inline-login"]')[0].classes()).toContain("selected");
     broadcast("ArrowUp");
     broadcast("Enter");
     await flushPromises();
@@ -310,7 +445,7 @@ describe("addresses", () => {
   ];
 
   it("lists addresses on an address field and fills the one chosen by click or keyboard", async () => {
-    respondWith(createState({ purpose: "address", allLogin: [], allAddress, hasMoreAddress: false }));
+    respondWith(createState({ purpose: "address", allLogin: [], allAddress }));
     const wrapper = await mountMenu();
     const allRow = wrapper.findAll('[data-testid="inline-address"]');
     expect(allRow.map((row) => row.text())).toEqual(["HomeSpringfield, US", "AliceIdentity"]);

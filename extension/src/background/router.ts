@@ -132,6 +132,10 @@ async function routeInlineMenuMessage(inlineMenu: InlineMenuService, message: In
       return inlineMenu.fillIdentity(sender, message.sessionID, message.vaultID, message.itemID);
     case "inlineMenu.fillCard":
       return inlineMenu.fillCard(sender, message.sessionID, message.vaultID, message.itemID);
+    case "inlineMenu.searchOtherLogins":
+      return inlineMenu.searchOtherLogins(sender, message.sessionID, message.query);
+    case "inlineMenu.fillOtherLogin":
+      return inlineMenu.fillOtherLogin(sender, message.sessionID, message.vaultID, message.itemID);
     case "inlineMenu.useSuggestedPassword":
       return inlineMenu.useSuggestedPassword(sender, message.sessionID);
     case "inlineMenu.unlock":

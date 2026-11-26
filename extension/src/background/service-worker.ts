@@ -79,7 +79,14 @@ const bridge: BrowserBridge = {
     try {
       await chrome.action.openPopup({ windowId: tab.windowId });
     } catch {
-      await chrome.tabs.create({ url: chrome.runtime.getURL(`popup.html?tabId=${tabId}`), index: tab.index + 1, openerTabId: tabId });
+      // openPopup refuses without a user gesture, which a click in the inline menu's frame does not carry to the service
+      // worker. A popup-sized window by the toolbar takes its place: a tab stretched the 360-pixel popup across the page.
+      const browserWindow = await chrome.windows.get(tab.windowId).catch(() => undefined);
+      const width = 400;
+      const height = 620;
+      const left = browserWindow?.left !== undefined && browserWindow.width !== undefined ? Math.max(0, browserWindow.left + browserWindow.width - width - 16) : undefined;
+      const top = browserWindow?.top !== undefined ? browserWindow.top + 72 : undefined;
+      await chrome.windows.create({ url: chrome.runtime.getURL(`popup.html?tabId=${tabId}`), type: "popup", width, height, left, top, focused: true });
     }
   },
   async setSaveBadge(tabId, isPending) {

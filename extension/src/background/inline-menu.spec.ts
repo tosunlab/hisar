@@ -71,17 +71,17 @@ describe("InlineMenuService", () => {
     expect(await outdated.service.getState(menuFrame, opened.sessionID)).toMatchObject({ view: "update-required", updateRequired, allLogin: [] });
   });
 
-  it("lists at most six matching logins for the frame and says when there are more", async () => {
+  it("lists every matching login for the frame, however many there are", async () => {
     const harness = createService();
-    for (let index = 0; index < 7; index += 1) {
+    const matchCount = harness.state.allLogin.length;
+    for (let index = 0; index < 24; index += 1) {
       harness.state.allLogin.push({ ...harness.state.allLogin[0], itemID: `extra-${index}`, title: `Extra ${index}` });
     }
     await harness.pair();
     const { sessionID } = harness.service.openSession(pageFrame, pageUrl, pageUrl, "login");
     const state = await harness.service.getState(menuFrame, sessionID);
     expect(state.view).toBe("logins");
-    expect(state.allLogin).toHaveLength(6);
-    expect(state.hasMoreLogin).toBe(true);
+    expect(state.allLogin).toHaveLength(matchCount + 24);
     expect(harness.allRequest.find((request) => request.type === "logins.match")).toMatchObject({ url: pageUrl });
   });
 
@@ -125,6 +125,72 @@ describe("InlineMenuService", () => {
     await expectHisarError(harness.service.getState(menuFrame, sessionID), "invalid-request");
   });
 
+  describe("other logins", () => {
+    const gitlab = {
+      vaultID: "vault-personal",
+      vaultName: "Personal",
+      itemID: "item-gitlab",
+      title: "GitLab",
+      username: "alex",
+      password: "gitlab password",
+      url: "https://gitlab.com",
+    };
+
+    it("offers other logins only on a login field of an app that adds sites to logins", async () => {
+      const harness = createService();
+      await harness.pair();
+      const login = harness.service.openSession(pageFrame, pageUrl, pageUrl, "login");
+      expect(await harness.service.getState(menuFrame, login.sessionID)).toMatchObject({ canFillOtherLogins: true });
+      const code = harness.service.openSession(pageFrame, pageUrl, pageUrl, "one-time-code");
+      expect(await harness.service.getState(menuFrame, code.sessionID)).not.toHaveProperty("canFillOtherLogins");
+
+      const older = createService({ state: { features: ["vault"] } });
+      await older.pair();
+      const opened = older.service.openSession(pageFrame, pageUrl, pageUrl, "login");
+      expect(await older.service.getState(menuFrame, opened.sessionID)).not.toHaveProperty("canFillOtherLogins");
+      expect(await older.service.searchOtherLogins(menuFrame, opened.sessionID, "git")).toEqual([]);
+    });
+
+    it("searches the logins not saved for the page, with the site each is saved for", async () => {
+      const harness = createService();
+      harness.state.allLogin.push(gitlab);
+      await harness.pair();
+      const { sessionID } = harness.service.openSession(pageFrame, pageUrl, pageUrl, "login");
+      expect(await harness.service.searchOtherLogins(menuFrame, sessionID, "  ")).toEqual([]);
+      expect(await harness.service.searchOtherLogins(menuFrame, sessionID, "example")).toEqual([]);
+      expect(await harness.service.searchOtherLogins(menuFrame, sessionID, "git")).toEqual([
+        { vaultID: "vault-personal", itemID: "item-gitlab", title: "GitLab", username: "alex", host: "gitlab.com" },
+      ]);
+      await expectHisarError(harness.service.searchOtherLogins({ tabId: 1, frameId: 10 }, sessionID, "git"), "invalid-request");
+    });
+
+    it("adds the page's site to the chosen login before filling it, after checking that the menu is visible", async () => {
+      const harness = createService();
+      harness.state.allLogin.push(gitlab);
+      await harness.pair();
+      const { sessionID } = harness.service.openSession(pageFrame, pageUrl, pageUrl, "login");
+      await harness.service.fillOtherLogin(menuFrame, sessionID, "vault-personal", "item-gitlab");
+      const allType = harness.getRequestTypes();
+      expect(allType.indexOf("logins.addURL")).toBeLessThan(allType.indexOf("logins.fill"));
+      expect(harness.allRequest.find((request) => request.type === "logins.addURL")).toMatchObject({ vaultID: "vault-personal", itemID: "item-gitlab", url: pageUrl });
+      expect(harness.allFrameMessage.find((entry) => entry.message.type === "content.fillLogin")?.message).toMatchObject({ username: "alex", password: "gitlab password" });
+    });
+
+    it("changes no login when the menu was not visible long enough, or the field takes no login", async () => {
+      const hidden = createService({ isMenuVisible: false });
+      await hidden.pair();
+      const first = hidden.service.openSession(pageFrame, pageUrl, pageUrl, "login");
+      await expectHisarError(hidden.service.fillOtherLogin(menuFrame, first.sessionID, "vault-personal", "item-gitlab"), "invalid-request");
+      expect(hidden.getRequestTypes()).not.toContain("logins.addURL");
+
+      const harness = createService();
+      await harness.pair();
+      const code = harness.service.openSession(pageFrame, pageUrl, pageUrl, "one-time-code");
+      await expectHisarError(harness.service.fillOtherLogin(menuFrame, code.sessionID, "vault-personal", "item-gitlab"), "invalid-request");
+      expect(harness.getRequestTypes()).not.toContain("logins.addURL");
+    });
+  });
+
   it("does not ask the desktop for the password when the menu was not visible long enough", async () => {
     const harness = createService({ isMenuVisible: false });
     await harness.pair();
@@ -139,7 +205,7 @@ describe("InlineMenuService", () => {
     await harness.pair();
     const { sessionID } = harness.service.openSession(pageFrame, pageUrl, pageUrl, "address");
     const state = await harness.service.getState(menuFrame, sessionID);
-    expect(state).toMatchObject({ view: "logins", purpose: "address", allLogin: [], hasMoreAddress: false });
+    expect(state).toMatchObject({ view: "logins", purpose: "address", allLogin: [] });
     expect(state.allAddress).toEqual([{ vaultID: "vault-personal", itemID: "item-home", title: "Home", summary: "Springfield, US", source: "address", vaultName: "Personal" }]);
     expect(harness.getRequestTypes()).not.toContain("addresses.fill");
 

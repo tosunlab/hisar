@@ -108,6 +108,9 @@ export const featureSaveConfirmation = "save-confirmation";
 // featureCreateItems: the app answers items.create.
 export const featureCreateItems = "create-items";
 
+// featureAddLoginURL: the app answers logins.addURL, which adds a page's site to a login the user chose for it.
+export const featureAddLoginURL = "add-login-url";
+
 // VaultSummary is a vault a new item may be saved into; the personal vault comes first.
 export interface VaultSummary {
   vaultID: string;
@@ -230,6 +233,7 @@ export interface RequestMap {
   "logins.match": { parameters: { url: string }; result: { logins: LoginSummary[] } };
   "logins.fill": { parameters: { vaultID: string; itemID: string; url: string }; result: Credentials };
   "logins.code": { parameters: { vaultID: string; itemID: string; url: string }; result: OneTimeCode };
+  "logins.addURL": { parameters: { vaultID: string; itemID: string; url: string }; result: LoginSummary };
   // tabID is the tab whose offer this is: Hisar keeps one save context per tab, and the tab's next prepare retires it.
   "logins.prepare": { parameters: { tabID: string; url: string; username: string; password: string }; result: CheckResult };
   "logins.review": { parameters: { saveContext: string }; result: Record<string, never> };

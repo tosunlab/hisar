@@ -87,17 +87,17 @@ export interface InlineMenuState {
   view: InlineMenuView;
   purpose: InlineMenuPurpose;
   host: string;
+  // allLogin and the other lists hold every match; the menu collapses them itself.
   allLogin: LoginSummary[];
-  hasMoreLogin: boolean;
+  // canFillOtherLogins: the menu may search the user's other logins and, once the user confirms, add the page's site to
+  // the one chosen and fill it.
+  canFillOtherLogins?: boolean;
   // allAddress holds the addresses offered on an address field, in place of logins.
   allAddress?: AddressSummary[];
-  hasMoreAddress?: boolean;
   // allCard holds the cards offered on a payment field.
   allCard?: CardSummary[];
-  hasMoreCard?: boolean;
   // allIdentity holds the identities offered on a name, email or phone field.
   allIdentity?: IdentitySummary[];
-  hasMoreIdentity?: boolean;
   suggestedPassword?: string;
   errorMessage?: string;
   updateRequired?: UpdateRequirement;
@@ -148,12 +148,23 @@ export type InlineMenuMessage =
   | { type: "inlineMenu.fillAddress"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.fillCard"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.fillIdentity"; sessionID: string; vaultID: string; itemID: string }
+  | { type: "inlineMenu.searchOtherLogins"; sessionID: string; query: string }
+  | { type: "inlineMenu.fillOtherLogin"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.useSuggestedPassword"; sessionID: string }
   | { type: "inlineMenu.unlock"; sessionID: string }
   | { type: "inlineMenu.openHisar"; sessionID: string }
   | { type: "inlineMenu.openPopup"; sessionID: string }
   | { type: "inlineMenu.resize"; sessionID: string; height: number }
   | { type: "inlineMenu.close"; sessionID: string };
+
+// OtherLogin is a login not saved for the menu's page, found by its search; host is the site it is saved for.
+export interface OtherLogin {
+  vaultID: string;
+  itemID: string;
+  title: string;
+  username: string;
+  host: string;
+}
 
 export interface InlineMenuBroadcast {
   target: "inline-menu";

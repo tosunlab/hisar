@@ -139,6 +139,9 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 	case "logins.fill":
 		result, err := bridge.service.getLoginForFill(ctx, request.VaultID, request.ItemID, request.URL)
 		return result, convertBrowserError(err)
+	case "logins.addURL":
+		result, err := bridge.service.addLoginURL(ctx, request.VaultID, request.ItemID, request.URL)
+		return result, convertBrowserError(err)
 	case "logins.code":
 		result, err := bridge.service.getOneTimeCodeForFill(ctx, request.VaultID, request.ItemID, request.URL)
 		return result, convertBrowserError(err)

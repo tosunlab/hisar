@@ -1,13 +1,11 @@
-import type { InlineMenuKey, InlineMenuPurpose, InlineMenuState } from "../shared/messages";
+import type { InlineMenuKey, InlineMenuPurpose, InlineMenuState, OtherLogin } from "../shared/messages";
 import { HisarError, toHisarError } from "../shared/protocol";
 import { getHost, getOrigin, isWebUrl } from "../shared/url";
 import type { BackgroundController, BrowserBridge } from "./controller";
 import { InlineMenuSessionStore, type InlineMenuSession } from "./inline-menu-sessions";
 
-export const maximumInlineLoginCount = 6;
-export const maximumInlineAddressCount = 6;
-export const maximumInlineCardCount = 6;
-export const maximumInlineIdentityCount = 6;
+// maximumOtherLoginCount bounds one search of the user's other logins; typing more narrows it.
+export const maximumOtherLoginCount = 50;
 
 export interface InlineMenuSender {
   tabId: number;
@@ -48,7 +46,7 @@ export class InlineMenuService {
 
   async getState(menuSender: InlineMenuSender, sessionID: string): Promise<InlineMenuState> {
     const session = this.requireSession(menuSender, sessionID);
-    const base = { purpose: session.purpose, host: getHost(session.frameUrl), allLogin: [], hasMoreLogin: false };
+    const base = { purpose: session.purpose, host: getHost(session.frameUrl), allLogin: [] };
     const popupState = await this.controller.getPopupState();
     if (popupState.view !== "unlocked") {
       return { ...base, view: popupState.view, errorMessage: popupState.errorMessage, updateRequired: popupState.updateRequired };
@@ -56,20 +54,15 @@ export class InlineMenuService {
     try {
       if (session.purpose === "address") {
         const allAddress = await this.controller.listAddresses();
-        return { ...base, view: "logins", allAddress: allAddress.slice(0, maximumInlineAddressCount), hasMoreAddress: allAddress.length > maximumInlineAddressCount };
+        return { ...base, view: "logins", allAddress };
       }
       if (session.purpose === "identity") {
         const allIdentity = await this.controller.listIdentities();
-        return {
-          ...base,
-          view: "logins",
-          allIdentity: allIdentity.slice(0, maximumInlineIdentityCount),
-          hasMoreIdentity: allIdentity.length > maximumInlineIdentityCount,
-        };
+        return { ...base, view: "logins", allIdentity };
       }
       if (session.purpose === "card") {
         const allCard = await this.controller.listCards();
-        return { ...base, view: "logins", allCard: allCard.slice(0, maximumInlineCardCount), hasMoreCard: allCard.length > maximumInlineCardCount };
+        return { ...base, view: "logins", allCard };
       }
       if (session.purpose === "new-password") {
         session.suggestedPassword = await this.controller.generatePassword({});
@@ -77,7 +70,9 @@ export class InlineMenuService {
       }
       let allLogin = await this.controller.matchLoginsForUrl(session.frameUrl, session.tabId);
       if (session.purpose === "one-time-code") allLogin = allLogin.filter((login) => login.hasOneTimePassword);
-      return { ...base, view: "logins", allLogin: allLogin.slice(0, maximumInlineLoginCount), hasMoreLogin: allLogin.length > maximumInlineLoginCount };
+      // Every match goes to the menu: it shows the first few and expands in place to the rest, so no login is out of reach.
+      const canFillOtherLogins = session.purpose === "login" && this.controller.isAddLoginURLAvailable();
+      return { ...base, view: "logins", allLogin, ...(canFillOtherLogins ? { canFillOtherLogins } : {}) };
     } catch (error) {
       const hisarError = toHisarError(error);
       if (hisarError.code === "locked" || hisarError.code === "signed-out" || hisarError.code === "desktop-unavailable" || hisarError.code === "update-required") {
@@ -91,6 +86,39 @@ export class InlineMenuService {
   async fillLogin(menuSender: InlineMenuSender, sessionID: string, vaultID: string, itemID: string): Promise<void> {
     const session = this.requireSession(menuSender, sessionID);
     await this.requireVisibleMenu(session);
+    await this.fillLoginInSession(session, vaultID, itemID);
+  }
+
+  // searchOtherLogins finds the user's logins not saved for the menu's page, by query, for the menu to offer. Only the
+  // menu's own page sees them (router.ts), never the page's content script.
+  async searchOtherLogins(menuSender: InlineMenuSender, sessionID: string, query: string): Promise<OtherLogin[]> {
+    const session = this.requireSession(menuSender, sessionID);
+    if (session.purpose !== "login" || !this.controller.isAddLoginURLAvailable()) return [];
+    const trimmed = query.trim();
+    if (trimmed === "") return [];
+    const [allItem, allMatch] = await Promise.all([
+      this.controller.listItems({ query: trimmed, category: "login" }),
+      this.controller.matchLoginsForUrl(session.frameUrl),
+    ]);
+    const allMatchKey = new Set(allMatch.map((login) => `${login.vaultID}/${login.itemID}`));
+    return allItem
+      .filter((item) => !allMatchKey.has(`${item.vaultID}/${item.itemID}`))
+      .slice(0, maximumOtherLoginCount)
+      .map((item) => ({ vaultID: item.vaultID, itemID: item.itemID, title: item.title, username: item.subtitle, host: item.url ? getHost(item.url) : "" }));
+  }
+
+  // fillOtherLogin fills a login the user chose from the search and confirmed for this page: the app first adds the
+  // page's site to it, so the fill goes through the same rule as every other.
+  async fillOtherLogin(menuSender: InlineMenuSender, sessionID: string, vaultID: string, itemID: string): Promise<void> {
+    const session = this.requireSession(menuSender, sessionID);
+    if (session.purpose !== "login") throw new HisarError("invalid-request", "This field does not take a login");
+    await this.requireVisibleMenu(session);
+    await this.controller.addLoginURL(vaultID, itemID, session.frameUrl);
+    await this.fillLoginInSession(session, vaultID, itemID);
+  }
+
+  private async fillLoginInSession(session: InlineMenuSession, vaultID: string, itemID: string): Promise<void> {
+    const sessionID = session.sessionID;
     const credentials = await this.controller.getCredentials(vaultID, itemID, session.frameUrl);
     const outcome = await this.browser.sendToFrame<{ filledUsername: boolean; filledPassword: boolean }>(session.tabId, session.frameId, {
       type: "content.fillLogin",

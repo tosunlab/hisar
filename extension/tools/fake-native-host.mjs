@@ -26,7 +26,7 @@ export function createInitialState() {
     allPairing: [],
     exactHostOnly: false,
     // features: what the app announces in hello; an older app announces none.
-    features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items", "save-confirmation", "passkey-verification-v2"],
+    features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items", "save-confirmation", "passkey-verification-v2", "add-login-url"],
     allVault: [
       { vaultID: "vault-personal", name: "Personal", isPersonal: true },
       { vaultID: "vault-family", name: "Family", isPersonal: false },
@@ -267,8 +267,13 @@ function requireVaultItem(state, request) {
   return item;
 }
 
+// doesLoginMatch: a login matches by its website or by a site logins.addURL added to it.
+function doesLoginMatch(login, url, exactHostOnly) {
+  return [login.url, ...(login.allAddedUrl ?? [])].some((itemUrl) => doesUrlMatch(itemUrl, url, exactHostOnly));
+}
+
 function findAllMatchingLogin(state, url) {
-  return state.allLogin.filter((login) => doesUrlMatch(login.url, url, state.exactHostOnly));
+  return state.allLogin.filter((login) => doesLoginMatch(login, url, state.exactHostOnly));
 }
 
 export function handleRequest(state, request, now = Date.now(), log = () => undefined) {
@@ -359,14 +364,30 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       const url = requireString(request, "url");
       const login = state.allLogin.find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
       if (!login) throw new ProtocolError("not-found", "No such login");
-      if (!doesUrlMatch(login.url, url, state.exactHostOnly)) throw new ProtocolError("no-match", "This login is not for this page");
+      if (!doesLoginMatch(login, url, state.exactHostOnly)) throw new ProtocolError("no-match", "This login is not for this page");
       return { username: login.username, password: login.password, hasOneTimePassword: Boolean(login.oneTimePassword) };
+    }
+    case "logins.addURL": {
+      if (!state.features?.includes("add-login-url")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const url = requireString(request, "url");
+      let page;
+      try {
+        page = new URL(url);
+      } catch {
+        throw new ProtocolError("invalid-request", "Hisar adds only http and https websites to a login");
+      }
+      if (page.protocol !== "https:" && page.protocol !== "http:") throw new ProtocolError("invalid-request", "Hisar adds only http and https websites to a login");
+      const login = state.allLogin.find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
+      if (!login) throw new ProtocolError("not-found", "No such login");
+      if (!doesLoginMatch(login, url, state.exactHostOnly)) login.allAddedUrl = [...(login.allAddedUrl ?? []), page.origin];
+      return { vaultID: login.vaultID, itemID: login.itemID, title: login.title, username: login.username, vaultName: login.vaultName, hasOneTimePassword: Boolean(login.oneTimePassword) };
     }
     case "logins.code": {
       requireUnlocked(state);
       const url = requireString(request, "url");
       const login = state.allLogin.find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
-      if (!login || !doesUrlMatch(login.url, url, state.exactHostOnly)) throw new ProtocolError("no-match", "This login is not for this page");
+      if (!login || !doesLoginMatch(login, url, state.exactHostOnly)) throw new ProtocolError("no-match", "This login is not for this page");
       if (!login.oneTimePassword) throw new ProtocolError("not-found", "This login has no one-time password");
       state.allCodeRequest = [...(state.allCodeRequest ?? []), { itemID: login.itemID, url }];
       return generateOneTimeCode(login.oneTimePassword, now);

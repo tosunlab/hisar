@@ -64,7 +64,7 @@ test("captures the inline icon and menu states", async () => {
 
     harness.updateState((state) => (state.allLogin = allLogin.map((login) => ({ ...login, url: harness.site.origin }))));
     const many = await openMenu("/login", "#password");
-    await expect(many.menu.getByTestId("inline-more")).toBeVisible();
+    await expect(many.menu.getByTestId("inline-show-all")).toBeVisible();
     await capture(many.page, "more-logins");
     await many.page.close();
 

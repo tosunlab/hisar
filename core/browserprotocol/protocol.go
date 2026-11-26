@@ -139,9 +139,16 @@ const FeatureUnlockPassword = "unlock-password"
 // FeatureSaveConfirmation requires a one-use session-bound context for logins.save.
 const FeatureSaveConfirmation = "save-confirmation"
 
+// FeatureAddLoginURL: logins.addURL adds a page's site to a login the user chose in the inline menu, so the login fills
+// there through logins.fill.
+const FeatureAddLoginURL = "add-login-url"
+
 // ListFeatures returns the features this app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities, FeatureSaveOptions, FeatureCreateItems, FeatureSaveConfirmation, FeaturePasskeyVerification}
+	return []string{
+		FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities, FeatureSaveOptions, FeatureCreateItems, FeatureSaveConfirmation,
+		FeaturePasskeyVerification, FeatureAddLoginURL,
+	}
 }
 
 const (

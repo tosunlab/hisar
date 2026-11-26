@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -142,6 +143,47 @@ func (s *Service) getLoginForFill(ctx context.Context, vaultID, itemID, pageURL 
 		return browserprotocol.FillResult{}, errNoURLMatch
 	}
 	return convertToFillResult(&vaultItem), nil
+}
+
+// addLoginURL adds pageURL's origin to a login's websites, so the login matches that page from then on and fills through
+// getLoginForFill like any other. The extension asks for it only after the user chose, in the inline menu, a login not
+// saved for the page and confirmed adding the page's site to it; the fill rule itself never loosens. Only http and https
+// pages, logins AutoFill fills and vaults the user may write to qualify.
+func (s *Service) addLoginURL(ctx context.Context, vaultID, itemID, pageURL string) (browserprotocol.Login, error) {
+	page, err := url.Parse(pageURL)
+	if err != nil || (page.Scheme != "https" && page.Scheme != "http") || page.Hostname() == "" {
+		return browserprotocol.Login{}, browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "Hisar adds only http and https websites to a login")
+	}
+	if err := s.requireWritableBrowserVault(ctx, vaultID); err != nil {
+		return browserprotocol.Login{}, browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "You cannot change logins in that vault")
+	}
+	s.mutex.Lock()
+	vaultItem, vaultName, err := s.findBrowserItem(ctx, vaultID, itemID)
+	if err != nil {
+		s.mutex.Unlock()
+		return browserprotocol.Login{}, err
+	}
+	if !vaultItem.OffersLoginFill() {
+		s.mutex.Unlock()
+		return browserprotocol.Login{}, browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "Only a login fills on a website")
+	}
+	login := browserprotocol.Login{
+		VaultID: vaultID, ItemID: itemID, Title: vaultItem.Overview.Title, Username: vaultItem.Overview.Username, VaultName: vaultName,
+		HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
+	}
+	isMatch := slices.ContainsFunc(vaultItem.Overview.URLs, func(itemURL string) bool {
+		return browserprotocol.IsURLMatch(itemURL, pageURL, s.state.IsExactHostMatch)
+	})
+	detail := convertToItemDetail(vaultItem, s.config.Now())
+	s.mutex.Unlock()
+	if isMatch {
+		return login, nil
+	}
+	detail.URLs = append(detail.URLs, browserprotocol.GetOrigin(pageURL))
+	if _, err := s.SaveItem(vaultID, detail); err != nil {
+		return browserprotocol.Login{}, err
+	}
+	return login, nil
 }
 
 func convertToFillResult(vaultItem *item.Item) browserprotocol.FillResult {

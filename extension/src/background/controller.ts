@@ -11,6 +11,7 @@ import type {
   SaveOfferView,
 } from "../shared/messages";
 import {
+  featureAddLoginURL,
   featureAddresses,
   featureCards,
   featureCreateItems,
@@ -343,6 +344,19 @@ export class BackgroundController {
 
   isVaultAvailable(): boolean {
     return this.allAppFeature.includes(featureVault);
+  }
+
+  // isAddLoginURLAvailable: the app searches the vault and adds a page's site to a login, so the inline menu offers the
+  // user's other logins.
+  isAddLoginURLAvailable(): boolean {
+    return this.isVaultAvailable() && this.allAppFeature.includes(featureAddLoginURL);
+  }
+
+  // addLoginURL adds url's site to a login, after which logins.fill fills it there. Only the inline menu asks, once the
+  // user confirmed it in the menu.
+  async addLoginURL(vaultID: string, itemID: string, url: string): Promise<LoginSummary> {
+    if (!this.isAddLoginURLAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to fill other logins");
+    return this.request(() => this.client.request("logins.addURL", { vaultID, itemID, url }));
   }
 
   // The vault requests are answered only to the extension's own pages (router.ts): a page's content script never sees
